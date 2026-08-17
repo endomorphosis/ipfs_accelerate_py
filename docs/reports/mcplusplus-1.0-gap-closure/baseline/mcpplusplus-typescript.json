@@ -1,0 +1,473 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "baseline-receipt/v1",
+  "task_id": "MCPP-003",
+  "goal_id": "MCPP-G010",
+  "objective_id": "MCPP-003",
+  "track": "baseline-typescript",
+  "program": "mcplusplus-1.0-gap-closure",
+  "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+  "bundle": "mcplusplus/1.0/baseline-typescript",
+  "description": "Baseline Mcp-Plus-Plus TypeScript tests and coverage for the current tree.",
+  "observed_at": "2026-08-15T18:54:06Z",
+  "attempt": 2,
+  "binding": {
+    "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "tree_sha": "fd328606da5dae3314a87365987f5052180eb807",
+    "command": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm test",
+    "command_argv": [
+      "npm",
+      "test"
+    ],
+    "cwd": "ipfs_accelerate_py/mcplusplus/tests-ts",
+    "resolved_runner": "vitest run",
+    "resolved_runner_version": "1.6.1",
+    "exit_code": 0,
+    "output_sha256": "sha256:aa75ee9595047c26909720bbaf0ae3162e99ca03284d26f21810ba3ead630520",
+    "binds": [
+      "commit_sha",
+      "command"
+    ]
+  },
+  "repository": {
+    "role": "protocol_conformance_nested_gitlink",
+    "path": "ipfs_accelerate_py/mcplusplus",
+    "remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+    "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "tree": "fd328606da5dae3314a87365987f5052180eb807",
+    "branch_observed": "implementation/mcpp-003-f905147f5f0b-attempt-2-1786819965-submodule-ipfs_accelerate_py-mcplusplus",
+    "upstream_main_equivalent_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "dirty": false,
+    "dirty_paths": [],
+    "package": {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-ts",
+      "name": "@mcp-plus-plus/validators-ts",
+      "version": "1.0.0"
+    }
+  },
+  "program_worktree": {
+    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_244294a1bbeb_ba6b8ccae113",
+    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_244294a1bbeb_ba6b8ccae113",
+    "head": "2689347c3ace1e1bd9a4065c4c45dc9ff0d55f3c",
+    "tree": "4ab91d29c48b0006a850ca78b9c729dfb97f7ee1",
+    "branch": "implementation/mcpp-003-f905147f5f0b-attempt-2-1786819965",
+    "forest_reference": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "tree_id_task": "2689347c3ace1e1bd9a4065c4c45dc9ff0d55f3c"
+  },
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.17.0-1014-nvidia",
+    "arch": "arm64",
+    "node": "v18.19.1",
+    "npm": "9.2.0",
+    "vitest": "1.6.1",
+    "typescript_devDependency": "^5.3.3",
+    "zod": "3.25.76",
+    "package_manager_install": "npm install performed in suite directory to satisfy node_modules (not part of receipt outputs)"
+  },
+  "command": {
+    "shell": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm test",
+    "cwd": "ipfs_accelerate_py/mcplusplus/tests-ts",
+    "argv": [
+      "npm",
+      "test"
+    ],
+    "npm_script": "test",
+    "resolved": "vitest run",
+    "exit_code": 0,
+    "started_at": "2026-08-15T18:54:05Z",
+    "ended_at": "2026-08-15T18:54:06Z",
+    "duration_note": "Duration ~844ms wall-clock for final validation run"
+  },
+  "result": {
+    "status": "pass",
+    "passed": true,
+    "exit_code": 0,
+    "failures_hidden": false,
+    "test_files": {
+      "passed": 7,
+      "failed": 0,
+      "total": 7,
+      "collected": [
+        "src/__tests__/conformance-vectors.test.ts",
+        "src/__tests__/new-schemas.test.ts",
+        "src/__tests__/profile-g-codec.test.ts",
+        "src/__tests__/profile-h-codec.test.ts",
+        "src/__tests__/swissknife-adversarial.test.ts",
+        "src/__tests__/swissknife-interop.test.ts",
+        "src/__tests__/validators.test.ts"
+      ]
+    },
+    "tests": {
+      "passed": 223,
+      "failed": 0,
+      "skipped_collected": 19,
+      "total_collected": 242,
+      "disabled_not_collected": 1,
+      "note": "Vitest summary: 223 passed | 19 skipped (242). Additionally, comprehensive.test.ts.disabled is not collected and is recorded as skipped, not passing."
+    },
+    "files": [
+      {
+        "file": "src/__tests__/conformance-vectors.test.ts",
+        "status": "passed",
+        "duration_ms": 20,
+        "counts": {
+          "passed": 17,
+          "failed": 0,
+          "skipped": 0,
+          "total": 17
+        }
+      },
+      {
+        "file": "src/__tests__/new-schemas.test.ts",
+        "status": "passed",
+        "duration_ms": 11,
+        "counts": {
+          "passed": 23,
+          "failed": 0,
+          "skipped": 13,
+          "total": 36
+        }
+      },
+      {
+        "file": "src/__tests__/profile-g-codec.test.ts",
+        "status": "passed",
+        "duration_ms": 11,
+        "counts": {
+          "passed": 25,
+          "failed": 0,
+          "skipped": 0,
+          "total": 25
+        }
+      },
+      {
+        "file": "src/__tests__/profile-h-codec.test.ts",
+        "status": "passed",
+        "duration_ms": 28,
+        "counts": {
+          "passed": 22,
+          "failed": 0,
+          "skipped": 0,
+          "total": 22
+        }
+      },
+      {
+        "file": "src/__tests__/swissknife-adversarial.test.ts",
+        "status": "passed",
+        "duration_ms": 2,
+        "counts": {
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0,
+          "total": 4
+        }
+      },
+      {
+        "file": "src/__tests__/swissknife-interop.test.ts",
+        "status": "passed",
+        "duration_ms": 2,
+        "counts": {
+          "passed": 2,
+          "failed": 0,
+          "skipped": 6,
+          "total": 8
+        }
+      },
+      {
+        "file": "src/__tests__/validators.test.ts",
+        "status": "passed",
+        "duration_ms": 73,
+        "counts": {
+          "passed": 130,
+          "failed": 0,
+          "skipped": 0,
+          "total": 130
+        }
+      }
+    ]
+  },
+  "skipped": [
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop swissknife FRAME_OVERSIZE code matches spec 1001",
+      "title": "swissknife FRAME_OVERSIZE code matches spec 1001",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop swissknife FRAME_OUTBOUND_OVERSIZE code matches spec 1002",
+      "title": "swissknife FRAME_OUTBOUND_OVERSIZE code matches spec 1002",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop swissknife FRAME_MALFORMED_JSON code matches spec 1003",
+      "title": "swissknife FRAME_MALFORMED_JSON code matches spec 1003",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop swissknife PROTOCOL_HANDSHAKE_INVALID code matches spec 2002",
+      "title": "swissknife PROTOCOL_HANDSHAKE_INVALID code matches spec 2002",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop swissknife SESSION_CLOSED code matches spec 4001",
+      "title": "swissknife SESSION_CLOSED code matches spec 4001",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop all swissknife error codes validate against the spec schema",
+      "title": "all swissknife error codes validate against the spec schema",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop computeBackoffDelay produces values within policy bounds",
+      "title": "computeBackoffDelay produces values within policy bounds",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife SessionErrorCode interop negotiateCapabilities intersection is spec-valid",
+      "title": "negotiateCapabilities intersection is spec-valid",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife MCPPubSubBus BusMessage interop MCPPubSubBus.publish produces a spec-valid BusMessage",
+      "title": "MCPPubSubBus.publish produces a spec-valid BusMessage",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife MCPPubSubBus BusMessage interop MCPPubSubBus topics match MCP_PUBSUB_TOPICS",
+      "title": "MCPPubSubBus topics match MCP_PUBSUB_TOPICS",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife PolicyAuditLog AuditEntry interop PolicyAuditLog.record() emits a spec-valid AuditEntry",
+      "title": "PolicyAuditLog.record() emits a spec-valid AuditEntry",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife PolicyAuditLog AuditEntry interop deny decision validates against the spec schema",
+      "title": "deny decision validates against the spec schema",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/new-schemas.test.ts",
+      "full_name": "SwissKnife PolicyAuditLog AuditEntry interop entry_cid is a deterministic sha256 CID",
+      "title": "entry_cid is a deterministic sha256 CID",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/swissknife-interop.test.ts",
+      "full_name": "SwissKnife connector vs datasets wire shapes connects and parses handshake/tools",
+      "title": "connects and parses handshake/tools",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/swissknife-interop.test.ts",
+      "full_name": "SwissKnife connector vs datasets wire shapes parses spec-conformant policy decision",
+      "title": "parses spec-conformant policy decision",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/swissknife-interop.test.ts",
+      "full_name": "SwissKnife connector vs datasets wire shapes parses spec-conformant peer discovery",
+      "title": "parses spec-conformant peer discovery",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/swissknife-interop.test.ts",
+      "full_name": "SwissKnife connector vs accelerate wire shapes connects and parses handshake/tools",
+      "title": "connects and parses handshake/tools",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/swissknife-interop.test.ts",
+      "full_name": "SwissKnife connector vs accelerate wire shapes parses spec-conformant policy decision",
+      "title": "parses spec-conformant policy decision",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "vitest_skip",
+      "file": "src/__tests__/swissknife-interop.test.ts",
+      "full_name": "SwissKnife connector vs accelerate wire shapes parses spec-conformant peer discovery",
+      "title": "parses spec-conformant peer discovery",
+      "reason": "Conditional skip (skipIf/skip) — SwissKnife runtime not available in this worktree"
+    },
+    {
+      "status": "skipped",
+      "kind": "disabled_suite",
+      "file": "src/__tests__/comprehensive.test.ts.disabled",
+      "full_name": "comprehensive.test.ts.disabled (entire suite)",
+      "title": "comprehensive.test.ts.disabled",
+      "reason": "Suite is disabled by filename suffix .disabled and is not collected by vitest. Listed as skipped, not passing. Estimated contained it() cases: 77; describe() blocks: 27.",
+      "estimated_test_count": 77,
+      "estimated_describe_count": 27,
+      "collected_by_runner": false
+    }
+  ],
+  "skipped_summary": {
+    "vitest_skipped_count": 19,
+    "disabled_suites": [
+      {
+        "file": "src/__tests__/comprehensive.test.ts.disabled",
+        "status": "skipped",
+        "not_passing": true,
+        "estimated_test_count": 77
+      }
+    ],
+    "total_skipped_entries": 20,
+    "acceptance": "Disabled tests such as comprehensive.test.ts.disabled are listed as skipped, not passing."
+  },
+  "coverage": {
+    "available": true,
+    "command": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm run test:coverage",
+    "resolved_script": "vitest run --coverage",
+    "provider": "v8",
+    "scope_note": "Supplemental evidence; validation command is npm test (vitest run) without coverage.",
+    "totals": {
+      "statements_pct": 98.08,
+      "branches_pct": 83.03,
+      "functions_pct": 96.15,
+      "lines_pct": 98.08
+    },
+    "by_area": {
+      "all_files": {
+        "statements_pct": 98.08,
+        "branches_pct": 83.03,
+        "functions_pct": 96.15,
+        "lines_pct": 98.08
+      },
+      "src": {
+        "statements_pct": 100.0,
+        "branches_pct": 75.51,
+        "functions_pct": 96.72,
+        "lines_pct": 100.0
+      },
+      "src/validators": {
+        "statements_pct": 99.61,
+        "branches_pct": 98.68,
+        "functions_pct": 100.0,
+        "lines_pct": 99.61
+      }
+    },
+    "notable_uncovered": [
+      {
+        "file": "src/validators/ucanDelegation.ts",
+        "lines": "77-78,91-92",
+        "statements_pct": 97.01,
+        "branches_pct": 88.23
+      },
+      {
+        "file": "src/profileG.ts",
+        "note": "branch coverage ~74.64%"
+      },
+      {
+        "file": "src/profileH.ts",
+        "note": "branch coverage ~75.67%"
+      },
+      {
+        "file": "profile-h-vector-runner.ts",
+        "note": "not under validators; 0% (runner harness)"
+      }
+    ],
+    "historical_static_coverage_summary": {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-ts/coverage-summary.txt",
+      "authority": "observation_only_not_evidence",
+      "note": "Static file records an older CI run (130 tests / validators only). Current-tree coverage above is inventory authority."
+    }
+  },
+  "external_dependencies": {
+    "swissknife_runtime": {
+      "available": false,
+      "effect": "Interop suites using describe.skipIf(!hasSwissKnife) / it.skipIf(!hasConnector) were skipped",
+      "related_skipped_files": [
+        "src/__tests__/new-schemas.test.ts",
+        "src/__tests__/swissknife-interop.test.ts"
+      ]
+    },
+    "npm_registry": "Required once for node_modules install; test execution itself is local vitest run"
+  },
+  "evidence": {
+    "validation_command": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm test",
+    "validation_exit_code": 0,
+    "stdout_sha256": "sha256:aa75ee9595047c26909720bbaf0ae3162e99ca03284d26f21810ba3ead630520",
+    "stdout_tail": "\n(node:448328) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\n RUN  v1.6.1 /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_244294a1bbeb_ba6b8ccae113/ipfs_accelerate_py/mcplusplus/tests-ts\n\n(node:448756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n ✓ src/__tests__/swissknife-adversarial.test.ts  (4 tests) 2ms\n ✓ src/__tests__/profile-h-codec.test.ts  (22 tests) 9ms\n ✓ src/__tests__/swissknife-interop.test.ts  (8 tests | 6 skipped) 3ms\n ✓ src/__tests__/conformance-vectors.test.ts  (17 tests) 8ms\n ✓ src/__tests__/profile-g-codec.test.ts  (25 tests) 23ms\n ✓ src/__tests__/new-schemas.test.ts  (36 tests | 13 skipped) 30ms\n ✓ src/__tests__/validators.test.ts  (130 tests) 70ms\n\n Test Files  7 passed (7)\n      Tests  223 passed | 19 skipped (242)\n   Start at  18:54:05\n   Duration  844ms (transform 535ms, setup 1ms, collect 1.04s, tests 145ms, environment 1ms, prepare 1.04s)\n",
+    "coverage_command": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm run test:coverage",
+    "coverage_summary_path": "ipfs_accelerate_py/mcplusplus/tests-ts/coverage-summary.txt",
+    "coverage_summary_authority": "observation_only_for_static_file; live coverage totals recorded under coverage.totals"
+  },
+  "acceptance": {
+    "criteria": "Receipt binds SHA and command. Disabled tests such as comprehensive.test.ts.disabled are listed as skipped, not passing.",
+    "sha_bound": true,
+    "command_bound": true,
+    "disabled_listed_as_skipped_not_passing": true,
+    "checks": [
+      {
+        "id": "bind_sha",
+        "ok": true,
+        "value": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+      },
+      {
+        "id": "bind_command",
+        "ok": true,
+        "value": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm test"
+      },
+      {
+        "id": "disabled_suite_skipped",
+        "ok": true,
+        "value": "src/__tests__/comprehensive.test.ts.disabled"
+      },
+      {
+        "id": "no_disabled_suite_in_passed_files",
+        "ok": true
+      }
+    ]
+  }
+}

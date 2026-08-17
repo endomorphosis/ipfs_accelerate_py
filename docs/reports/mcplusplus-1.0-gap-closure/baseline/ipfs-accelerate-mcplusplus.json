@@ -1,0 +1,3506 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "mcplusplus-baseline-receipt/v1",
+  "task_id": "MCPP-006",
+  "goal_id": "MCPP-G010",
+  "track": "baseline-accelerate",
+  "bundle": "mcplusplus/1.0/baseline-accelerate",
+  "title": "Baseline ipfs_accelerate MCP++ runtime tests",
+  "generated_at": "2026-08-15T19:05:07.524Z",
+  "attempt": 3,
+  "repository": {
+    "worktree_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db",
+    "head": "3cefebc478f4f939080011d5b2dd345c894f0965",
+    "branch": "implementation/mcpp-006-a4745733c139-attempt-3-1786820494",
+    "dirty_path_count": 1,
+    "dirty_paths_sample": [
+      "A  docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-accelerate-mcplusplus.json"
+    ]
+  },
+  "operator_checkout_observation": {
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+    "head_at_mcpp001": "ea11293bb996f052d620eae989f5377a956764b1",
+    "branch_at_mcpp001": "fix/implementation-auto-rescue-20260809",
+    "dirty_count_at_mcpp001": 172,
+    "dirty_paths_sample_at_mcpp001": [
+      " M docs/architecture/agent_supervisor/PROGRAMS.md",
+      " M ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
+      " M ipfs_accelerate_py/agent_supervisor/analysis/runtime_contract_evidence_compiler.py",
+      " M ipfs_accelerate_py/agent_supervisor/control/default_doctor_factory.py",
+      " M ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+      " M ipfs_accelerate_py/agent_supervisor/planning/default_planner_factory.py",
+      " M ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_synthesis.py",
+      " M ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+      " M ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+      " M ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      " M ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+      " M ipfs_accelerate_py/agent_supervisor/proof/ir_adapters.py",
+      " M ipfs_accelerate_py/agent_supervisor/proof/ir_registry.py",
+      " M ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_obligations.py",
+      " M ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      " M ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+      " M ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      " M ipfs_accelerate_py/agent_supervisor/runtime/deterministic_doctor_runtime.py",
+      " M ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+      " M ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      " M ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_kernel.py",
+      " M ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_provider_gate.py",
+      " M ipfs_accelerate_py/mcp/tests/test_mcp_server_uni158_embedding_tools.py",
+      " M ipfs_accelerate_py/mcp/tests/test_mcp_server_uni184_embedding_dispatch_compat.py",
+      " M ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py",
+      " M ipfs_accelerate_py/mcp_server/server.py",
+      " M ipfs_accelerate_py/mcp_server/tools/backend_management_tools/native_backend_management_tools.py",
+      " M ipfs_accelerate_py/mcp_server/tools/embedding_tools/native_embedding_tools.py",
+      " M ipfs_accelerate_py/mcp_server/tools/ipfs/native_ipfs_tools.py",
+      " M ipfs_accelerate_py/mcp_server/tools/ipfs_cluster_tools/native_ipfs_cluster_tools.py",
+      " M ipfs_accelerate_py/mcp_server/tools/workflow/native_workflow_tools.py",
+      " M scripts/index_repository_contracts.py",
+      " M test/api/test_agent_supervisor_configured_board_scheduler.py",
+      " M test/api/test_agent_supervisor_deterministic_doctor_fixed_point.py",
+      " M test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+      " M test/api/test_agent_supervisor_implementation_daemon_planner_doctor_hook.py",
+      " M test/api/test_agent_supervisor_mcp_contract_catalog.py",
+      " M test/api/test_agent_supervisor_pre_implementation_kernel.py",
+      "?? data/agent_supervisor/.control-transaction.lock",
+      "?? data/agent_supervisor/control-audit.jsonl"
+    ],
+    "verification": {
+      "checked_sample_size": 40,
+      "still_present_or_dirty": 40,
+      "missing_from_sample": [],
+      "operator_dirty_count_now": 147,
+      "operator_dirty_count_at_mcpp001": 172,
+      "operator_head_now": "ea11293bb996f052d620eae989f5377a956764b1",
+      "operator_head_at_mcpp001": "ea11293bb996f052d620eae989f5377a956764b1",
+      "method": "git status --porcelain -- <path> for each MCPP-001 dirty sample path"
+    },
+    "read_only": true
+  },
+  "operator_dirty_files_not_discarded": true,
+  "operator_dirty_files_policy": {
+    "statement": "Operator dirty files were not discarded, reset, stashed-dropped, checked-out over, or force-pushed. Dirty overlay observed read-only from MCPP-001 forest and re-verified; this task only wrote the declared baseline receipt under docs/reports/mcplusplus-1.0-gap-closure/baseline/.",
+    "conflict_policy": "Do not modify dirty supervisor files to obtain a greener baseline.",
+    "actions_not_taken": [
+      "git reset --hard",
+      "git clean -fd",
+      "git checkout -- <dirty paths>",
+      "git stash drop",
+      "git push --force"
+    ]
+  },
+  "command": {
+    "official_validation": "python -m pytest -q ipfs_accelerate_py/mcp/tests test/api -k mcplusplus --maxfail=1",
+    "inventory": "python -m pytest -q ipfs_accelerate_py/mcp/tests test/api -k mcplusplus --continue-on-collection-errors",
+    "filter": "mcplusplus",
+    "paths": [
+      "ipfs_accelerate_py/mcp/tests",
+      "test/api"
+    ],
+    "notes": "Inventory used --continue-on-collection-errors without --maxfail so every selected test outcome is recorded. Official validation command retains --maxfail=1. Failures and collection errors are recorded, not hidden."
+  },
+  "environment": {
+    "python": "3.12.3",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "pytest_version": "9.1.1",
+    "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db"
+  },
+  "named_test_modules": [
+    "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni284_mcplusplus_dispatch_compat.py",
+    "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py",
+    "test/api/semantic_governor/test_authority_matrix.py",
+    "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py",
+    "test/api/test_agent_supervisor_mcplusplus_prompt_entrypoints.py",
+    "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py",
+    "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+    "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py",
+    "test/api/test_mcplusplus_1_0_gap_closure_board.py"
+  ],
+  "collection": {
+    "selected_count": 242,
+    "deselected_count": 15569,
+    "collection_error_count": 63,
+    "collected_tests": [
+      "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_mcpplus_is_superset_of_mcp_tools_and_resources",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_p2p_taskqueue_tool_schemas_match_between_mcp_and_mcpplus",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_run_in_trio_from_asyncio_context_smoke",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_run_in_trio_inside_trio_context_smoke",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_builders_have_expected_fields",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_export_records_returns_deep_copy",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_get_returns_deep_copy_for_nested_payloads",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_json_round_trip_is_deterministic",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_put_many_and_stats",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_returns_payload_copy",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_canonicalization_and_cid_are_deterministic",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_cache_hit_honors_emit_true",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_default_policy_from_config",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_emission_opt_in_persists_chain",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_explicit_false_overrides_enabled_default_policy",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_json_backend_persists_and_reloads_chain",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_policy_is_deterministic_across_emit_modes",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_replay_reconstructs_parent_child_chain_from_json_backend",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_envelope_chain_integrity",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_replay_reconstructs_chain_after_json_reload",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_add_and_lineage",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_add_event_isolated_from_external_nested_mutation",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_export_snapshot_returns_deep_copy_payloads",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_get_event_returns_deep_copy_for_nested_payloads",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_large_dag_replay_and_rollback_are_deterministic",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_merge_node_lineage_prefers_lexically_smallest_parent_path",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_merge_replay_deduplicates_shared_merge_descendant",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_rejects_conflicting_duplicate_event_payload",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_rejects_missing_parent",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_rebuild_rejects_unresolved_parents",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_rebuild_tolerates_reordered_and_invalid_entries",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_roundtrip_and_replay_rollback",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_roundtrip_preserves_merge_fork_determinism",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_canonicalization_is_deterministic",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_canonicalization_is_stable_across_runtime_environments",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_cid_deterministic_for_stability_corpus",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_cover_all_loaded_migrated_categories_consistently",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_cover_workflow_and_p2p_migrated_categories",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_dispatch_flow",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_include_loaded_category_descriptors",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_corpus_is_deterministic",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_missing_requirements",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_case_and_whitespace",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_case_whitespace_and_version_variants",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_versioned_capabilities",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_returns_not_found_for_unknown_interface",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_get_descriptor_returns_deep_copy",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_register_descriptor_isolated_from_external_nested_mutation",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_nodes_management",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_unavailable_paths",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_wrapper_delegates_to_helper_methods",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_create_peer_discovery_honors_bundle_registry_disable",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_create_peer_discovery_uses_service_bundle_registry",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_discovery_manager_capability_filter",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_peer_wrappers_prefer_canonical_implementations",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_registry_delegates_to_common_method_names",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_registry_unavailable_paths",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_datasets_export_returns_formal_logic_and_zkp_ready_statement",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_fulfilled_obligation_no_longer_requires_outstanding_work",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_obligation_deadline_status_is_pending_then_overdue",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_obligation_lifecycle_progression_respects_validity_window",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_parse_policy_clauses_tolerates_non_dict_entries",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_allows_with_obligations",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_denies_on_matching_prohibition",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_version_metadata_is_preserved_in_obligations",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_disk_cache_roundtrip",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_memory_cache_put_get_invalidate",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_memory_cache_ttl_expiration",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_consensus_signal_confidence_can_prioritize",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_consensus_signal_is_optional_and_non_breaking",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_deterministic_fifo_ties_under_load",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_priority_orders_lower_risk_first",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_retry_penalty_deprioritizes_retries",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_risk_record_updates_for_denials_and_obligations",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_create_task_queue_assigns_connection_hints",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_get_status_cancel_and_list_delegate_to_client",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_module_level_helpers_delegate_via_wrapper",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_submit_retries_transient_wrapper_error",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_submit_uses_client_submit_task_with_info",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_unavailable_wrapper_fails_softly",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_actor_and_context_constraints",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_actor_in_and_context_any",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_regex_and_ability_set",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_compact_token_envelope_with_att_claim",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_for_leaf_actor_and_capability",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_did_key_public_key",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_ed25519_hex_signature",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_ed25519_signatures",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_raw_hex_signature",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_required_signatures",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_capability_escalation",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_mismatch",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_when_context_missing",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_with_actor_regex_and_context_none",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_expired_chain",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_invalid_ed25519_signature",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_revoked_proof_cid",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_policy_denial_applies_after_valid_ucan",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_ucan_and_policy_denial_prefers_ucan",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_ucan_denial_overrides_policy_allow",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_ucan_allow_includes_proof_lineage_telemetry",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_ucan_deny_includes_proof_lineage_telemetry",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_parses_token_prf_string_to_proof_cid",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_parses_token_prf_to_proof_cid",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_cycle_detection",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_executor_failure_marks_dependent_skipped",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_executor_success_path",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_validate_and_topological_sort",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_retry_succeeds",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_success",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_with_unregistered_function_fails",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_create_with_context_assigns_scheduler",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_default_scheduler_ownership_is_canonical",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_get_scheduler_prefers_context",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_reset_invokes_underlying_reset",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_submit_workflow_supports_async_result",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_submit_workflow_supports_sync_result",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_unavailable_returns_none",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_list_and_stats_wrappers_apply_sparse_success_defaults",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_register_schema_contracts",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_status_result_and_peer_wrappers_apply_sparse_success_defaults",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_success_envelope_shapes",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_error_only_payload_infers_error",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_infers_error_from_contradictory_delegate_payload",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_minimal_success_defaults",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_mutation_wrappers_apply_sparse_success_defaults",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_validation_error_envelopes",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_package_exports_compat_engine_classes",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_peer_engine_delegates_to_native_wrapper",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_taskqueue_engine_delegates_to_native_wrapper",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_workflow_engine_delegates_to_native_wrapper",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni284_mcplusplus_dispatch_compat.py::TestMCPServerUNI284McplusplusDispatchCompat::test_mcplusplus_dispatch_infers_error_status_from_contradictory_delegate_payloads",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py::TestUnifiedMCPServerBootstrap::test_mcplusplus_tools_dispatch_infers_error_status_from_failed_delegate_payload",
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py::TestUnifiedMCPServerBootstrap::test_mcplusplus_tools_engine_status_operations",
+      "test/api/semantic_governor/test_authority_matrix.py::test_reject_missing_or_malformed_authority_pins[mcplusplus-not-a-commit]",
+      "test/api/semantic_governor/test_authority_matrix.py::test_reject_stale_authority_pins[mcplusplus-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_ambiguous_registration_is_frontier",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_ambiguous_registration_keeps_call_path_unsatisfied",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_caller_import_only_is_rejected",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_classify_non_invocation_roles_and_markers",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_confidence_is_deterministic_and_status_bounded",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_content_addressed_identity_stable",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_covered_evidence_terms_bind_vfs_g152_and_g153_packet",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_cross_language_static_interop_fixture_does_not_claim_runtime",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_duplicate_artifact_id_rejected",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_error_map_mismatch_witness",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_external_package_frontier",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_extra_unreachable_registration_drift",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_forged_runtime_claims_are_rejected_fail_closed",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_hierarchical_alias_resolves_registration",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_hop_requires_evidence_and_deterministic_confidence",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_import_without_call_edge_cannot_prove_connector",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_interface_descriptor_binding_when_required",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_inventory_from_program_graph_and_resolve",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_language_name_mismatch_witness",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_legacy_fallback_rejected",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_drift_requires_evidence",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_checks_middle_registration_not_just_endpoints",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_missing_contract_values_are_unverified",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_serialized_result_requires_bound_check_matrix",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_version_mismatch_fails_closed",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_adapter_unknown",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_registration_manifest_drift",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_tools_call_edge_is_not_proved",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_mock_implementation_rejected",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_normalize_and_alias_helpers",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_path_satisfies_mcplusplus_call_path_on_proved_chain",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_path_stage_order_matches_acceptance_chain",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_paths_for_tool_and_frontier_api",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_profile_mismatch_is_unknown_not_proved",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_prove_mcplusplus_call_path_claim_is_portable_and_non_authoritative",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_prove_mcplusplus_static_packet_covers_both_leaf_goals",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_http_invocation_chain",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_mcp_p2p_transport_edge",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_path_is_static_only_never_runtime_witnessed",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_resolution_result_declares_static_runtime_split",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_resolver_version_constant",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_result_round_trip_dict",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_result_satisfies_and_prove_manifest_parity",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_same_name_local_helper_cannot_prove_invocation",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_schema_mismatch_emits_drift_witness",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_stale_manifest_version_drift",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_static_dashboard_and_copied_manifest_do_not_prove",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_static_resolution_boundary_defers_runtime_to_child_goal",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_test_server_registration_rejected",
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_transport_not_admitted",
+      "test/api/test_agent_supervisor_mcplusplus_prompt_entrypoints.py::test_mcplusplus_prompt_tools_register_closed_vocabulary",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_adapter_profile_mismatch",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_adapter_spec_round_trip_and_fingerprints",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_call_request_normalizes_tool_name",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_token_requires_identity",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_via_request_flag",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_via_token",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_capability_negotiation_success_and_profile_mismatch",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cleanup_is_clean_after_suite",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_default_adapters_distinguish_production_and_mock",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_dispatch_error_typed_error_code",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_dispatch_target_identity_is_recorded",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_evidence_kind_and_version_constants",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_force_timeout",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_malformed_call_empty_tool_name",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_missing_tool",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_mock_success_does_not_grant_runtime_authority",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_negotiation_and_discovery_round_trip",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_network_disabled_by_default",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_objective_validation_repair_evidence_term_discoverable",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_observation_rejects_mock_authority_grant",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_production_echo_witness_records_full_phases",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_production_identity_and_vfs_stat",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_profile_mismatch",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_prove_vfs_g156_runtime_witness_acceptance_matrix",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_receipt_rejects_replacing_static_or_proof",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_run_suite_receipt_and_deterministic_replay",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_runtime_fixture_identity_stable_for_same_registry",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_stale_manifest",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_subprocess_rejects_empty_requests",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_subprocess_runtime_fixture_records_discovery_and_outcomes",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_suite_covers_acceptance_failure_matrix",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_tool_discovery_records_production_and_mock",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_transport_http_and_mcp_p2p_admitted",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_transport_rejected_when_not_admitted",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_unavailable_adapter_spec_flag",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_unavailable_backend",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_validate_against_schema_subset",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g061_acceptance_production_transports_and_non_authority",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests0-shared_transport_contract]",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests1-production_mock_separation]",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests2-typed_bounded_failures]",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_rejects_invalid_or_networked_receipts",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_evidence_surface_binds_objective_leaf",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_witness_rejects_static_completeness_claim",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_witness_round_trip",
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_wrong_input_schema",
+      "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py::test_mcplusplus_calls_crypto_verifier_and_rejects_overbroad_or_revoked",
+      "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py::test_mcplusplus_requires_verifier_result_not_a_boolean",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_graph_fixture_stable_cid",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_hermetic_report_includes_profile_matrix",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_materialized_payload_embeds_contract_graph",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_swissknife_mcp_contract_graph_fixture_shape",
+      "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_production_parsers_consume_exact_task_and_goal_populations",
+      "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_scheduler_loads_and_protects_control_artifacts",
+      "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_validator_check_all_is_green"
+    ],
+    "collection_errors": [
+      "test/api/semantic_governor/test_end_to_end.py",
+      "test/api/semantic_governor/test_promotion.py",
+      "test/api/semantic_governor/test_release_sealing.py",
+      "test/api/semantic_governor/test_resilience_privacy.py",
+      "test/api/semantic_state/test_cli.py",
+      "test/api/semantic_state/test_verification.py",
+      "test/api/test_agent_supervisor_authoritative_task_completion.py",
+      "test/api/test_agent_supervisor_change_propagation_integration.py",
+      "test/api/test_agent_supervisor_composite_post_merge_binding.py",
+      "test/api/test_agent_supervisor_content_identity_bridge.py",
+      "test/api/test_agent_supervisor_contract_assurance_proof_pipeline.py",
+      "test/api/test_agent_supervisor_contract_repair_integration.py",
+      "test/api/test_agent_supervisor_database_implementation_daemon.py",
+      "test/api/test_agent_supervisor_database_runner_propagation.py",
+      "test/api/test_agent_supervisor_dcr_adversarial.py",
+      "test/api/test_agent_supervisor_dcr_benchmark.py",
+      "test/api/test_agent_supervisor_dcr_canary.py",
+      "test/api/test_agent_supervisor_dcr_drift_monitor.py",
+      "test/api/test_agent_supervisor_dcr_fixed_point.py",
+      "test/api/test_agent_supervisor_dcr_release.py",
+      "test/api/test_agent_supervisor_dcr_shadow.py",
+      "test/api/test_agent_supervisor_deterministic_doctor_hammer.py",
+      "test/api/test_agent_supervisor_deterministic_doctor_proof_authority.py",
+      "test/api/test_agent_supervisor_deterministic_doctor_synthesis.py",
+      "test/api/test_agent_supervisor_doctor_proof_cache.py",
+      "test/api/test_agent_supervisor_implementation_daemon.py",
+      "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+      "test/api/test_agent_supervisor_incremental_verification_scheduler.py",
+      "test/api/test_agent_supervisor_ipfs_datasets_logic_conformance.py",
+      "test/api/test_agent_supervisor_ipfs_datasets_symbolic_bridge.py",
+      "test/api/test_agent_supervisor_legacy_landed_review_bootstrap.py",
+      "test/api/test_agent_supervisor_live_logic_repair_integration.py",
+      "test/api/test_agent_supervisor_logic_prediction_admission.py",
+      "test/api/test_agent_supervisor_mcp_contract_analysis.py",
+      "test/api/test_agent_supervisor_mcp_contract_obligations.py",
+      "test/api/test_agent_supervisor_mcp_contract_prover.py",
+      "test/api/test_agent_supervisor_multi_root_repository_index.py",
+      "test/api/test_agent_supervisor_objective_refill_contract.py",
+      "test/api/test_agent_supervisor_plan_create_service.py",
+      "test/api/test_agent_supervisor_planner.py",
+      "test/api/test_agent_supervisor_planning_analysis_factory.py",
+      "test/api/test_agent_supervisor_post_merge_validation_receipt.py",
+      "test/api/test_agent_supervisor_production_contract_composition.py",
+      "test/api/test_agent_supervisor_production_multi_root_index.py",
+      "test/api/test_agent_supervisor_production_provider_route.py",
+      "test/api/test_agent_supervisor_program_repair_synthesis.py",
+      "test/api/test_agent_supervisor_prompt_v3_prompt_transaction.py",
+      "test/api/test_agent_supervisor_provider_command_environment.py",
+      "test/api/test_agent_supervisor_retry_unstall_regression.py",
+      "test/api/test_agent_supervisor_router_owned_provider_decision.py",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_repair_e2e.py",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_live_services.py",
+      "test/api/test_agent_supervisor_tactician_hammer_coordinator.py",
+      "test/api/test_agent_supervisor_todo_daemon_port.py",
+      "test/api/test_agent_supervisor_validation_python_preflight.py",
+      "test/api/test_cli_implement_runner.py",
+      "test/api/test_dependency_installer_package_layout.py",
+      "test/api/test_formal_verification_fvt086_migration.py",
+      "test/api/test_ipfs_datasets_logic_family_parser_board.py",
+      "test/api/test_ipfs_kit_fuse_vfs_board.py",
+      "test/api/test_ipfs_kit_runtime_readiness_board.py",
+      "test/api/test_proof_reuse_authenticated_real_backend_adversarial.py",
+      "test/api/test_vfs_symbolic_assurance_plan_validator.py"
+    ],
+    "summary_line": "collected 15811 items / 63 errors / 15569 deselected / 242 selected"
+  },
+  "outcomes": {
+    "counts": {
+      "passed": 239,
+      "failed": 3,
+      "skipped": 0,
+      "error": 0,
+      "not_run": 0,
+      "other": 0
+    },
+    "tests": [
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_mcpplus_is_superset_of_mcp_tools_and_resources",
+        "outcome": "failed",
+        "when": "call",
+        "duration_seconds": 0.081,
+        "message": "AssertionError: assert {'add_endpoin...orkflow', ...} <= {'add_p2p_pee..._status', ...}\n  \n  Extra items in the left set:\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgh_get_auth_status#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mget_hardware_info#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mnetwork_ping_peer#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgh_get_runner_labels#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgithub_list_issues#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mget_performance_metrics#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mbuild_hf_inference_ipld_document#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mexecute_docker_container#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgithub_get_pr#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mipfs_files_add#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mexecute_with_payload#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mipfs_files_pin#x1B[39; ... <truncated>"
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_p2p_taskqueue_tool_schemas_match_between_mcp_and_mcpplus",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.019
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_run_in_trio_from_asyncio_context_smoke",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_run_in_trio_inside_trio_context_smoke",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_builders_have_expected_fields",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_export_records_returns_deep_copy",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_get_returns_deep_copy_for_nested_payloads",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_json_round_trip_is_deterministic",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.005
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_put_many_and_stats",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_returns_payload_copy",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_canonicalization_and_cid_are_deterministic",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_cache_hit_honors_emit_true",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.044
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_default_policy_from_config",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.007
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_emission_opt_in_persists_chain",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.005
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_explicit_false_overrides_enabled_default_policy",
+        "outcome": "failed",
+        "when": "call",
+        "duration_seconds": 0.009,
+        "message": "AssertionError: 'event_dag' unexpectedly found in {'ok': True, 'result': {'echo': 'ok'}, 'risk_assessment': None, 'risk': {'actor': 'did:model:worker', 'total_invocations': 1, 'denied_count': 0, 'obligation_count': 0, 'disputed_count': 0, 'denial_ratio': 0.0, 'score': 0.0, 'last_event_cid': ''}, 'audit': None, 'policy': {'decision': 'allow', 'justification': 'Explicit permission for actor=did:model:worker action=smoke.echo', 'obligations': [], 'evidence': {'policy_cid': 'baguqeeragxhjclbmpmz24lgocqalnvygsytcm6hdfcjnz5lyrs4c6rtsqtva', 'decision_cid': 'baguqeera2qfbkq3d34hldgdwjeadiyg3o3kd6d4bqi4lhus32f5kabkqvmka', 'formal_logic': ['P(did:model:worker,smoke.echo,*)'], 'formal_logic_cid': 'baguqeerat6kipagydrzmartp3xqwxahbcb2rcuw5hngnxftynmakwtjlxtma', 'zkp_certificate': {'schema': 'mcp++/profile-d-policy-zkp-statement@1', 'status': 'statement_ready', 'zero_knowledge': False, 'proof': None, 'reason': 'No dedicated Profile D policy-evaluation circuit is registered.', 'public_inputs': {'policy_cid': 'baguqeeragxhjclbmpmz24lgocqalnvygsytcm6hdfcjnz5lyrs4c6rtsqtva', 'decision_cid': 'baguqeera2qfbkq3d34hldgdwjeadiyg3o3kd6d4bqi4lhus32f5kabkqvmka', 'intent_cid': 'baguqeerao3wfhjg3ikgn7jxn7gcsrpecnjy3d2gtibd4qket3pujsad6ylfa', 'formal_logic_cid': 'baguqeerat6kipagydrzmartp3xqwxahbcb2rcuw5hngnxftynmakwtjlxtma', 'decision': 'allow', 'allowed': True}, 'statement_cid': 'baguqeerat2tct2xshgn352g3bbbimt2ixu5pvsxjgjhnik4aehf4palc4h2a'}}}, 'policy_decision': {'decision_cid': 'cidv1-sha256-989f96 ... <truncated>"
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_json_backend_persists_and_reloads_chain",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.01
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_policy_is_deterministic_across_emit_modes",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.011
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_replay_reconstructs_parent_child_chain_from_json_backend",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.011
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_envelope_chain_integrity",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_replay_reconstructs_chain_after_json_reload",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_add_and_lineage",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_add_event_isolated_from_external_nested_mutation",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_export_snapshot_returns_deep_copy_payloads",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_get_event_returns_deep_copy_for_nested_payloads",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_large_dag_replay_and_rollback_are_deterministic",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_merge_node_lineage_prefers_lexically_smallest_parent_path",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_merge_replay_deduplicates_shared_merge_descendant",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_rejects_conflicting_duplicate_event_payload",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_rejects_missing_parent",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_rebuild_rejects_unresolved_parents",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_rebuild_tolerates_reordered_and_invalid_entries",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_roundtrip_and_replay_rollback",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_roundtrip_preserves_merge_fork_determinism",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_canonicalization_is_deterministic",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_canonicalization_is_stable_across_runtime_environments",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.398
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_cid_deterministic_for_stability_corpus",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_cover_all_loaded_migrated_categories_consistently",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_cover_workflow_and_p2p_migrated_categories",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_dispatch_flow",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_include_loaded_category_descriptors",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_corpus_is_deterministic",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_missing_requirements",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_case_and_whitespace",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_case_whitespace_and_version_variants",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_versioned_capabilities",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_returns_not_found_for_unknown_interface",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_get_descriptor_returns_deep_copy",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_register_descriptor_isolated_from_external_nested_mutation",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_nodes_management",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.319
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_unavailable_paths",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_wrapper_delegates_to_helper_methods",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.146
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_create_peer_discovery_honors_bundle_registry_disable",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_create_peer_discovery_uses_service_bundle_registry",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_discovery_manager_capability_filter",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_peer_wrappers_prefer_canonical_implementations",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_registry_delegates_to_common_method_names",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.16
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_registry_unavailable_paths",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_datasets_export_returns_formal_logic_and_zkp_ready_statement",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_fulfilled_obligation_no_longer_requires_outstanding_work",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_obligation_deadline_status_is_pending_then_overdue",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_obligation_lifecycle_progression_respects_validity_window",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_parse_policy_clauses_tolerates_non_dict_entries",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_allows_with_obligations",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_denies_on_matching_prohibition",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_version_metadata_is_preserved_in_obligations",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_disk_cache_roundtrip",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_memory_cache_put_get_invalidate",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_memory_cache_ttl_expiration",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.203
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_consensus_signal_confidence_can_prioritize",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_consensus_signal_is_optional_and_non_breaking",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_deterministic_fifo_ties_under_load",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_priority_orders_lower_risk_first",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_retry_penalty_deprioritizes_retries",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_risk_record_updates_for_denials_and_obligations",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_create_task_queue_assigns_connection_hints",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_get_status_cancel_and_list_delegate_to_client",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_module_level_helpers_delegate_via_wrapper",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_submit_retries_transient_wrapper_error",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.013
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_submit_uses_client_submit_task_with_info",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_unavailable_wrapper_fails_softly",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_actor_and_context_constraints",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_actor_in_and_context_any",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_regex_and_ability_set",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_compact_token_envelope_with_att_claim",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_for_leaf_actor_and_capability",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_did_key_public_key",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_ed25519_hex_signature",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_ed25519_signatures",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_raw_hex_signature",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_required_signatures",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_capability_escalation",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_mismatch",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_when_context_missing",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_with_actor_regex_and_context_none",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_expired_chain",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_invalid_ed25519_signature",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_revoked_proof_cid",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_policy_denial_applies_after_valid_ucan",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.006
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_ucan_and_policy_denial_prefers_ucan",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_ucan_denial_overrides_policy_allow",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_ucan_allow_includes_proof_lineage_telemetry",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_ucan_deny_includes_proof_lineage_telemetry",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_parses_token_prf_string_to_proof_cid",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_parses_token_prf_to_proof_cid",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_cycle_detection",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_executor_failure_marks_dependent_skipped",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_executor_success_path",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_validate_and_topological_sort",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_retry_succeeds",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_success",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_with_unregistered_function_fails",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_create_with_context_assigns_scheduler",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_default_scheduler_ownership_is_canonical",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_get_scheduler_prefers_context",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_reset_invokes_underlying_reset",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_submit_workflow_supports_async_result",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_submit_workflow_supports_sync_result",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_unavailable_returns_none",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_list_and_stats_wrappers_apply_sparse_success_defaults",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_register_schema_contracts",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_status_result_and_peer_wrappers_apply_sparse_success_defaults",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_success_envelope_shapes",
+        "outcome": "failed",
+        "when": "call",
+        "duration_seconds": 0.001,
+        "message": "AssertionError: 'queued_local' not found in ['success', 'error']\nself = <workspace_aa623f34ab82_4885792083db.ipfs_accelerate_py.mcp.tests.test_mcp_server_uni147_mcplusplus_tools.TestMCPServerUNI147McplusplusTools testMethod=test_success_envelope_shapes>\n\n    def test_success_envelope_shapes(self) -> None:\n        async def _run() -> None:\n            status = await mcpp_mod.mcplusplus_engine_status()\n            self.assertIn(status.get(\"status\"), [\"success\", \"error\"])\n            self.assertIn(\"available\", status)\n    \n            engines = await mcpp_mod.mcplusplus_list_engines()\n            self.assertEqual(engines.get(\"status\"), \"success\")\n            self.assertIn(\"engines\", engines)\n    \n            submit = await mcpp_mod.mcplusplus_taskqueue_submit(\n                task_id=\"task-1\",\n                task_type=\"demo\",\n                payload={\"x\": 1},\n            )\n            self.assertIn(submit.get(\"status\"), [\"queued\", \"success\", \"error\"])\n    \n            task_priority = await mcpp_mod.mcplusplus_taskqueue_priority(\n                task_id=\"task-1\",\n                new_priority=2,\n            )\n            self.assertIn(task_priority.get(\"status\"), [\"success\", \"error\"])\n    \n            task_list = await mcpp_mod.mcplusplus_taskqueue_list(limit=5)\n            self.assertIn(task_list.get(\"status\"), [\"success\", \"error\"])\n    \n            task_set_priority = await mcpp_mod.mcplusplus_taskqueue_set_priority(\n                task_id=\"task-1\",\n                new_priorit ... <truncated>"
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_error_only_payload_infers_error",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_infers_error_from_contradictory_delegate_payload",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_minimal_success_defaults",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_mutation_wrappers_apply_sparse_success_defaults",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_validation_error_envelopes",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_package_exports_compat_engine_classes",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_peer_engine_delegates_to_native_wrapper",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_taskqueue_engine_delegates_to_native_wrapper",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_workflow_engine_delegates_to_native_wrapper",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni284_mcplusplus_dispatch_compat.py::TestMCPServerUNI284McplusplusDispatchCompat::test_mcplusplus_dispatch_infers_error_status_from_contradictory_delegate_payloads",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.006
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py::TestUnifiedMCPServerBootstrap::test_mcplusplus_tools_dispatch_infers_error_status_from_failed_delegate_payload",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.005
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py::TestUnifiedMCPServerBootstrap::test_mcplusplus_tools_engine_status_operations",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.028
+      },
+      {
+        "nodeid": "test/api/semantic_governor/test_authority_matrix.py::test_reject_missing_or_malformed_authority_pins[mcplusplus-not-a-commit]",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/semantic_governor/test_authority_matrix.py::test_reject_stale_authority_pins[mcplusplus-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_ambiguous_registration_is_frontier",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_ambiguous_registration_keeps_call_path_unsatisfied",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.012
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_caller_import_only_is_rejected",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_classify_non_invocation_roles_and_markers",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_confidence_is_deterministic_and_status_bounded",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_content_addressed_identity_stable",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.012
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_covered_evidence_terms_bind_vfs_g152_and_g153_packet",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_cross_language_static_interop_fixture_does_not_claim_runtime",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.006
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_duplicate_artifact_id_rejected",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_error_map_mismatch_witness",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.007
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_external_package_frontier",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_extra_unreachable_registration_drift",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_forged_runtime_claims_are_rejected_fail_closed",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.005
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_hierarchical_alias_resolves_registration",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_hop_requires_evidence_and_deterministic_confidence",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_import_without_call_edge_cannot_prove_connector",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_interface_descriptor_binding_when_required",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_inventory_from_program_graph_and_resolve",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_language_name_mismatch_witness",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.01
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_legacy_fallback_rejected",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_drift_requires_evidence",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_checks_middle_registration_not_just_endpoints",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.011
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_missing_contract_values_are_unverified",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.017
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_serialized_result_requires_bound_check_matrix",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.012
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_version_mismatch_fails_closed",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.011
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_adapter_unknown",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_registration_manifest_drift",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_tools_call_edge_is_not_proved",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_mock_implementation_rejected",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_normalize_and_alias_helpers",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_path_satisfies_mcplusplus_call_path_on_proved_chain",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.007
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_path_stage_order_matches_acceptance_chain",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_paths_for_tool_and_frontier_api",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_profile_mismatch_is_unknown_not_proved",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_prove_mcplusplus_call_path_claim_is_portable_and_non_authoritative",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.006
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_prove_mcplusplus_static_packet_covers_both_leaf_goals",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.016
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_http_invocation_chain",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_mcp_p2p_transport_edge",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_path_is_static_only_never_runtime_witnessed",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_resolution_result_declares_static_runtime_split",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.007
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_resolver_version_constant",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_result_round_trip_dict",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.008
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_result_satisfies_and_prove_manifest_parity",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.029
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_same_name_local_helper_cannot_prove_invocation",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_schema_mismatch_emits_drift_witness",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_stale_manifest_version_drift",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_static_dashboard_and_copied_manifest_do_not_prove",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_static_resolution_boundary_defers_runtime_to_child_goal",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_test_server_registration_rejected",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_transport_not_admitted",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_prompt_entrypoints.py::test_mcplusplus_prompt_tools_register_closed_vocabulary",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_adapter_profile_mismatch",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_adapter_spec_round_trip_and_fingerprints",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_call_request_normalizes_tool_name",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_token_requires_identity",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_via_request_flag",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_via_token",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_capability_negotiation_success_and_profile_mismatch",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cleanup_is_clean_after_suite",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_default_adapters_distinguish_production_and_mock",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_dispatch_error_typed_error_code",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_dispatch_target_identity_is_recorded",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_evidence_kind_and_version_constants",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_force_timeout",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_malformed_call_empty_tool_name",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_missing_tool",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_mock_success_does_not_grant_runtime_authority",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_negotiation_and_discovery_round_trip",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_network_disabled_by_default",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_objective_validation_repair_evidence_term_discoverable",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_observation_rejects_mock_authority_grant",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_production_echo_witness_records_full_phases",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_production_identity_and_vfs_stat",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_profile_mismatch",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_prove_vfs_g156_runtime_witness_acceptance_matrix",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.005
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_receipt_rejects_replacing_static_or_proof",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_run_suite_receipt_and_deterministic_replay",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.005
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_runtime_fixture_identity_stable_for_same_registry",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_stale_manifest",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_subprocess_rejects_empty_requests",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_subprocess_runtime_fixture_records_discovery_and_outcomes",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.14
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_suite_covers_acceptance_failure_matrix",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.004
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_tool_discovery_records_production_and_mock",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_transport_http_and_mcp_p2p_admitted",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_transport_rejected_when_not_admitted",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_unavailable_adapter_spec_flag",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_unavailable_backend",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_validate_against_schema_subset",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g061_acceptance_production_transports_and_non_authority",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests0-shared_transport_contract]",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests1-production_mock_separation]",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests2-typed_bounded_failures]",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_rejects_invalid_or_networked_receipts",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.003
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_evidence_surface_binds_objective_leaf",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_witness_rejects_static_completeness_claim",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_witness_round_trip",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.002
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_wrong_input_schema",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py::test_mcplusplus_calls_crypto_verifier_and_rejects_overbroad_or_revoked",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.011
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py::test_mcplusplus_requires_verifier_result_not_a_boolean",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_graph_fixture_stable_cid",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_hermetic_report_includes_profile_matrix",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_materialized_payload_embeds_contract_graph",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_swissknife_mcp_contract_graph_fixture_shape",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_production_parsers_consume_exact_task_and_goal_populations",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.015
+      },
+      {
+        "nodeid": "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_scheduler_loads_and_protects_control_artifacts",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.001
+      },
+      {
+        "nodeid": "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_validator_check_all_is_green",
+        "outcome": "passed",
+        "when": "call",
+        "duration_seconds": 0.567
+      }
+    ],
+    "failures": [
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_mcpplus_is_superset_of_mcp_tools_and_resources",
+        "outcome": "failed",
+        "when": "call",
+        "duration_seconds": 0.081,
+        "message": "AssertionError: assert {'add_endpoin...orkflow', ...} <= {'add_p2p_pee..._status', ...}\n  \n  Extra items in the left set:\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgh_get_auth_status#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mget_hardware_info#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mnetwork_ping_peer#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgh_get_runner_labels#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgithub_list_issues#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mget_performance_metrics#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mbuild_hf_inference_ipld_document#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mexecute_docker_container#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mgithub_get_pr#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mipfs_files_add#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mexecute_with_payload#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m#x1B[90m#x1B[39;49;00m\n  #x1B[0m#x1B[33m'#x1B[39;49;00m#x1B[33mipfs_files_pin#x1B[39; ... <truncated>"
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_explicit_false_overrides_enabled_default_policy",
+        "outcome": "failed",
+        "when": "call",
+        "duration_seconds": 0.009,
+        "message": "AssertionError: 'event_dag' unexpectedly found in {'ok': True, 'result': {'echo': 'ok'}, 'risk_assessment': None, 'risk': {'actor': 'did:model:worker', 'total_invocations': 1, 'denied_count': 0, 'obligation_count': 0, 'disputed_count': 0, 'denial_ratio': 0.0, 'score': 0.0, 'last_event_cid': ''}, 'audit': None, 'policy': {'decision': 'allow', 'justification': 'Explicit permission for actor=did:model:worker action=smoke.echo', 'obligations': [], 'evidence': {'policy_cid': 'baguqeeragxhjclbmpmz24lgocqalnvygsytcm6hdfcjnz5lyrs4c6rtsqtva', 'decision_cid': 'baguqeera2qfbkq3d34hldgdwjeadiyg3o3kd6d4bqi4lhus32f5kabkqvmka', 'formal_logic': ['P(did:model:worker,smoke.echo,*)'], 'formal_logic_cid': 'baguqeerat6kipagydrzmartp3xqwxahbcb2rcuw5hngnxftynmakwtjlxtma', 'zkp_certificate': {'schema': 'mcp++/profile-d-policy-zkp-statement@1', 'status': 'statement_ready', 'zero_knowledge': False, 'proof': None, 'reason': 'No dedicated Profile D policy-evaluation circuit is registered.', 'public_inputs': {'policy_cid': 'baguqeeragxhjclbmpmz24lgocqalnvygsytcm6hdfcjnz5lyrs4c6rtsqtva', 'decision_cid': 'baguqeera2qfbkq3d34hldgdwjeadiyg3o3kd6d4bqi4lhus32f5kabkqvmka', 'intent_cid': 'baguqeerao3wfhjg3ikgn7jxn7gcsrpecnjy3d2gtibd4qket3pujsad6ylfa', 'formal_logic_cid': 'baguqeerat6kipagydrzmartp3xqwxahbcb2rcuw5hngnxftynmakwtjlxtma', 'decision': 'allow', 'allowed': True}, 'statement_cid': 'baguqeerat2tct2xshgn352g3bbbimt2ixu5pvsxjgjhnik4aehf4palc4h2a'}}}, 'policy_decision': {'decision_cid': 'cidv1-sha256-989f96 ... <truncated>"
+      },
+      {
+        "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_success_envelope_shapes",
+        "outcome": "failed",
+        "when": "call",
+        "duration_seconds": 0.001,
+        "message": "AssertionError: 'queued_local' not found in ['success', 'error']\nself = <workspace_aa623f34ab82_4885792083db.ipfs_accelerate_py.mcp.tests.test_mcp_server_uni147_mcplusplus_tools.TestMCPServerUNI147McplusplusTools testMethod=test_success_envelope_shapes>\n\n    def test_success_envelope_shapes(self) -> None:\n        async def _run() -> None:\n            status = await mcpp_mod.mcplusplus_engine_status()\n            self.assertIn(status.get(\"status\"), [\"success\", \"error\"])\n            self.assertIn(\"available\", status)\n    \n            engines = await mcpp_mod.mcplusplus_list_engines()\n            self.assertEqual(engines.get(\"status\"), \"success\")\n            self.assertIn(\"engines\", engines)\n    \n            submit = await mcpp_mod.mcplusplus_taskqueue_submit(\n                task_id=\"task-1\",\n                task_type=\"demo\",\n                payload={\"x\": 1},\n            )\n            self.assertIn(submit.get(\"status\"), [\"queued\", \"success\", \"error\"])\n    \n            task_priority = await mcpp_mod.mcplusplus_taskqueue_priority(\n                task_id=\"task-1\",\n                new_priority=2,\n            )\n            self.assertIn(task_priority.get(\"status\"), [\"success\", \"error\"])\n    \n            task_list = await mcpp_mod.mcplusplus_taskqueue_list(limit=5)\n            self.assertIn(task_list.get(\"status\"), [\"success\", \"error\"])\n    \n            task_set_priority = await mcpp_mod.mcplusplus_taskqueue_set_priority(\n                task_id=\"task-1\",\n                new_priorit ... <truncated>"
+      }
+    ],
+    "by_module": {
+      "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py": {
+        "passed": 3,
+        "failed": 1,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_mcpplus_is_superset_of_mcp_tools_and_resources",
+            "outcome": "failed",
+            "duration_seconds": 0.081
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_p2p_taskqueue_tool_schemas_match_between_mcp_and_mcpplus",
+            "outcome": "passed",
+            "duration_seconds": 0.019
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_run_in_trio_from_asyncio_context_smoke",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_mcplusplus_tool_parity.py::test_run_in_trio_inside_trio_context_smoke",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py": {
+        "passed": 15,
+        "failed": 1,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_builders_have_expected_fields",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_export_records_returns_deep_copy",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_get_returns_deep_copy_for_nested_payloads",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_json_round_trip_is_deterministic",
+            "outcome": "passed",
+            "duration_seconds": 0.005
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_put_many_and_stats",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_artifact_store_returns_payload_copy",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_canonicalization_and_cid_are_deterministic",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_cache_hit_honors_emit_true",
+            "outcome": "passed",
+            "duration_seconds": 0.044
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_default_policy_from_config",
+            "outcome": "passed",
+            "duration_seconds": 0.007
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_emission_opt_in_persists_chain",
+            "outcome": "passed",
+            "duration_seconds": 0.005
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_explicit_false_overrides_enabled_default_policy",
+            "outcome": "failed",
+            "duration_seconds": 0.009
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_json_backend_persists_and_reloads_chain",
+            "outcome": "passed",
+            "duration_seconds": 0.01
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_policy_is_deterministic_across_emit_modes",
+            "outcome": "passed",
+            "duration_seconds": 0.011
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_replay_reconstructs_parent_child_chain_from_json_backend",
+            "outcome": "passed",
+            "duration_seconds": 0.011
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_envelope_chain_integrity",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_replay_reconstructs_chain_after_json_reload",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py": {
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_add_and_lineage",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_add_event_isolated_from_external_nested_mutation",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_export_snapshot_returns_deep_copy_payloads",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_get_event_returns_deep_copy_for_nested_payloads",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_large_dag_replay_and_rollback_are_deterministic",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_merge_node_lineage_prefers_lexically_smallest_parent_path",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_merge_replay_deduplicates_shared_merge_descendant",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_rejects_conflicting_duplicate_event_payload",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_rejects_missing_parent",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_rebuild_rejects_unresolved_parents",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_rebuild_tolerates_reordered_and_invalid_entries",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_roundtrip_and_replay_rollback",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py::TestMCPServerMCPPlusPlusEventDAG::test_snapshot_roundtrip_preserves_merge_fork_determinism",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_canonicalization_is_deterministic",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_canonicalization_is_stable_across_runtime_environments",
+            "outcome": "passed",
+            "duration_seconds": 0.398
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_descriptor_cid_deterministic_for_stability_corpus",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_cover_all_loaded_migrated_categories_consistently",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_cover_workflow_and_p2p_migrated_categories",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_dispatch_flow",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_native_idl_tools_include_loaded_category_descriptors",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_corpus_is_deterministic",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_missing_requirements",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_case_and_whitespace",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_case_whitespace_and_version_variants",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_normalizes_versioned_capabilities",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_compatibility_returns_not_found_for_unknown_interface",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_get_descriptor_returns_deep_copy",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py::TestMCPServerMCPPlusPlusIDL::test_registry_register_descriptor_isolated_from_external_nested_mutation",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_nodes_management",
+            "outcome": "passed",
+            "duration_seconds": 0.319
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_unavailable_paths",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_bootstrap_wrapper_delegates_to_helper_methods",
+            "outcome": "passed",
+            "duration_seconds": 0.146
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_create_peer_discovery_honors_bundle_registry_disable",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_create_peer_discovery_uses_service_bundle_registry",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_discovery_manager_capability_filter",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_peer_wrappers_prefer_canonical_implementations",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_registry_delegates_to_common_method_names",
+            "outcome": "passed",
+            "duration_seconds": 0.16
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_peer_primitives.py::TestPeerPrimitives::test_registry_unavailable_paths",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py": {
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_datasets_export_returns_formal_logic_and_zkp_ready_statement",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_fulfilled_obligation_no_longer_requires_outstanding_work",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_obligation_deadline_status_is_pending_then_overdue",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_obligation_lifecycle_progression_respects_validity_window",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_parse_policy_clauses_tolerates_non_dict_entries",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_allows_with_obligations",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_denies_on_matching_prohibition",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py::TestMCPServerMCPPlusPlusPolicy::test_policy_version_metadata_is_preserved_in_obligations",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_disk_cache_roundtrip",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_memory_cache_put_get_invalidate",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_result_cache.py::TestResultCachePrimitive::test_memory_cache_ttl_expiration",
+            "outcome": "passed",
+            "duration_seconds": 0.203
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_consensus_signal_confidence_can_prioritize",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_consensus_signal_is_optional_and_non_breaking",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_deterministic_fifo_ties_under_load",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_priority_orders_lower_risk_first",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_frontier_retry_penalty_deprioritizes_retries",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py::TestMCPServerMCPPlusPlusRiskScheduler::test_risk_record_updates_for_denials_and_obligations",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_create_task_queue_assigns_connection_hints",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_get_status_cancel_and_list_delegate_to_client",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_module_level_helpers_delegate_via_wrapper",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_submit_retries_transient_wrapper_error",
+            "outcome": "passed",
+            "duration_seconds": 0.013
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_submit_uses_client_submit_task_with_info",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_task_queue.py::TestTaskQueueWrapper::test_unavailable_wrapper_fails_softly",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py": {
+        "passed": 24,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_actor_and_context_constraints",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_actor_in_and_context_any",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_caveat_with_regex_and_ability_set",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_compact_token_envelope_with_att_claim",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_for_leaf_actor_and_capability",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_did_key_public_key",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_ed25519_hex_signature",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_ed25519_signatures",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_raw_hex_signature",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_allows_valid_chain_with_required_signatures",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_capability_escalation",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_mismatch",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_when_context_missing",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_caveat_with_actor_regex_and_context_none",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_expired_chain",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_invalid_ed25519_signature",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_denies_revoked_proof_cid",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_policy_denial_applies_after_valid_ucan",
+            "outcome": "passed",
+            "duration_seconds": 0.006
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_ucan_and_policy_denial_prefers_ucan",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_combined_ucan_denial_overrides_policy_allow",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_ucan_allow_includes_proof_lineage_telemetry",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_dispatch_ucan_deny_includes_proof_lineage_telemetry",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_parses_token_prf_string_to_proof_cid",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py::TestMCPServerMCPPlusPlusUCAN::test_parses_token_prf_to_proof_cid",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_cycle_detection",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_executor_failure_marks_dependent_skipped",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_executor_success_path",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_dag.py::TestWorkflowDAGPrimitives::test_validate_and_topological_sort",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_retry_succeeds",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_success",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_engine.py::TestWorkflowEnginePrimitive::test_execute_workflow_with_unregistered_function_fails",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_create_with_context_assigns_scheduler",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_default_scheduler_ownership_is_canonical",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_get_scheduler_prefers_context",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_reset_invokes_underlying_reset",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_submit_workflow_supports_async_result",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_submit_workflow_supports_sync_result",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_workflow_scheduler.py::TestWorkflowSchedulerWrapper::test_unavailable_returns_none",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py": {
+        "passed": 8,
+        "failed": 1,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_list_and_stats_wrappers_apply_sparse_success_defaults",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_register_schema_contracts",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_status_result_and_peer_wrappers_apply_sparse_success_defaults",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_success_envelope_shapes",
+            "outcome": "failed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_error_only_payload_infers_error",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_infers_error_from_contradictory_delegate_payload",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_get_status_minimal_success_defaults",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_taskqueue_mutation_wrappers_apply_sparse_success_defaults",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py::TestMCPServerUNI147McplusplusTools::test_validation_error_envelopes",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_package_exports_compat_engine_classes",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_peer_engine_delegates_to_native_wrapper",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_taskqueue_engine_delegates_to_native_wrapper",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni246_mcplusplus_import_compat.py::TestMCPServerUNI246McplusplusImportCompat::test_workflow_engine_delegates_to_native_wrapper",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni284_mcplusplus_dispatch_compat.py": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni284_mcplusplus_dispatch_compat.py::TestMCPServerUNI284McplusplusDispatchCompat::test_mcplusplus_dispatch_infers_error_status_from_contradictory_delegate_payloads",
+            "outcome": "passed",
+            "duration_seconds": 0.006
+          }
+        ]
+      },
+      "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py::TestUnifiedMCPServerBootstrap::test_mcplusplus_tools_dispatch_infers_error_status_from_failed_delegate_payload",
+            "outcome": "passed",
+            "duration_seconds": 0.005
+          },
+          {
+            "nodeid": "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py::TestUnifiedMCPServerBootstrap::test_mcplusplus_tools_engine_status_operations",
+            "outcome": "passed",
+            "duration_seconds": 0.028
+          }
+        ]
+      },
+      "test/api/semantic_governor/test_authority_matrix.py": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/semantic_governor/test_authority_matrix.py::test_reject_stale_authority_pins[mcplusplus-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/semantic_governor/test_authority_matrix.py::test_reject_missing_or_malformed_authority_pins[mcplusplus-not-a-commit]",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py": {
+        "passed": 50,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_normalize_and_alias_helpers",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_confidence_is_deterministic_and_status_bounded",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_classify_non_invocation_roles_and_markers",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_path_stage_order_matches_acceptance_chain",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_hop_requires_evidence_and_deterministic_confidence",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_drift_requires_evidence",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_content_addressed_identity_stable",
+            "outcome": "passed",
+            "duration_seconds": 0.012
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_http_invocation_chain",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_mcp_p2p_transport_edge",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_same_name_local_helper_cannot_prove_invocation",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_mock_implementation_rejected",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_test_server_registration_rejected",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_static_dashboard_and_copied_manifest_do_not_prove",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_legacy_fallback_rejected",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_import_without_call_edge_cannot_prove_connector",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_caller_import_only_is_rejected",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_ambiguous_registration_is_frontier",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_external_package_frontier",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_profile_mismatch_is_unknown_not_proved",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_schema_mismatch_emits_drift_witness",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_registration_manifest_drift",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_extra_unreachable_registration_drift",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_stale_manifest_version_drift",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_language_name_mismatch_witness",
+            "outcome": "passed",
+            "duration_seconds": 0.01
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_hierarchical_alias_resolves_registration",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_tools_call_edge_is_not_proved",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_missing_adapter_unknown",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_inventory_from_program_graph_and_resolve",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_result_round_trip_dict",
+            "outcome": "passed",
+            "duration_seconds": 0.008
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_resolver_version_constant",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_duplicate_artifact_id_rejected",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_interface_descriptor_binding_when_required",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_paths_for_tool_and_frontier_api",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_error_map_mismatch_witness",
+            "outcome": "passed",
+            "duration_seconds": 0.007
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_transport_not_admitted",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_static_resolution_boundary_defers_runtime_to_child_goal",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_proved_path_is_static_only_never_runtime_witnessed",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_resolution_result_declares_static_runtime_split",
+            "outcome": "passed",
+            "duration_seconds": 0.007
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_forged_runtime_claims_are_rejected_fail_closed",
+            "outcome": "passed",
+            "duration_seconds": 0.005
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_cross_language_static_interop_fixture_does_not_claim_runtime",
+            "outcome": "passed",
+            "duration_seconds": 0.006
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_covered_evidence_terms_bind_vfs_g152_and_g153_packet",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_path_satisfies_mcplusplus_call_path_on_proved_chain",
+            "outcome": "passed",
+            "duration_seconds": 0.007
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_prove_mcplusplus_call_path_claim_is_portable_and_non_authoritative",
+            "outcome": "passed",
+            "duration_seconds": 0.006
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_result_satisfies_and_prove_manifest_parity",
+            "outcome": "passed",
+            "duration_seconds": 0.029
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_missing_contract_values_are_unverified",
+            "outcome": "passed",
+            "duration_seconds": 0.017
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_serialized_result_requires_bound_check_matrix",
+            "outcome": "passed",
+            "duration_seconds": 0.012
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_checks_middle_registration_not_just_endpoints",
+            "outcome": "passed",
+            "duration_seconds": 0.011
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_manifest_parity_version_mismatch_fails_closed",
+            "outcome": "passed",
+            "duration_seconds": 0.011
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_prove_mcplusplus_static_packet_covers_both_leaf_goals",
+            "outcome": "passed",
+            "duration_seconds": 0.016
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_contract_resolver.py::test_ambiguous_registration_keeps_call_path_unsatisfied",
+            "outcome": "passed",
+            "duration_seconds": 0.012
+          }
+        ]
+      },
+      "test/api/test_agent_supervisor_mcplusplus_prompt_entrypoints.py": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_prompt_entrypoints.py::test_mcplusplus_prompt_tools_register_closed_vocabulary",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py": {
+        "passed": 46,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_evidence_kind_and_version_constants",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_objective_validation_repair_evidence_term_discoverable",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g061_acceptance_production_transports_and_non_authority",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_evidence_surface_binds_objective_leaf",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_prove_vfs_g156_runtime_witness_acceptance_matrix",
+            "outcome": "passed",
+            "duration_seconds": 0.005
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests0-shared_transport_contract]",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests1-production_mock_separation]",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_fails_closed_on_incomplete_matrix[requests2-typed_bounded_failures]",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_vfs_g156_claim_rejects_invalid_or_networked_receipts",
+            "outcome": "passed",
+            "duration_seconds": 0.003
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_default_adapters_distinguish_production_and_mock",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_adapter_spec_round_trip_and_fingerprints",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_validate_against_schema_subset",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_tool_discovery_records_production_and_mock",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_capability_negotiation_success_and_profile_mismatch",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_transport_http_and_mcp_p2p_admitted",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_network_disabled_by_default",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_production_echo_witness_records_full_phases",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_production_identity_and_vfs_stat",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_mock_success_does_not_grant_runtime_authority",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_malformed_call_empty_tool_name",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_missing_tool",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_wrong_input_schema",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_unavailable_backend",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_via_request_flag",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_via_token",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_profile_mismatch",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_adapter_profile_mismatch",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_stale_manifest",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_force_timeout",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_dispatch_error_typed_error_code",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_transport_rejected_when_not_admitted",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cleanup_is_clean_after_suite",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_run_suite_receipt_and_deterministic_replay",
+            "outcome": "passed",
+            "duration_seconds": 0.005
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_receipt_rejects_replacing_static_or_proof",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_observation_rejects_mock_authority_grant",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_witness_rejects_static_completeness_claim",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_witness_round_trip",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_subprocess_runtime_fixture_records_discovery_and_outcomes",
+            "outcome": "passed",
+            "duration_seconds": 0.14
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_subprocess_rejects_empty_requests",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_dispatch_target_identity_is_recorded",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_negotiation_and_discovery_round_trip",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_call_request_normalizes_tool_name",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_cancellation_token_requires_identity",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_unavailable_adapter_spec_flag",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_runtime_fixture_identity_stable_for_same_registry",
+            "outcome": "passed",
+            "duration_seconds": 0.002
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py::test_suite_covers_acceptance_failure_matrix",
+            "outcome": "passed",
+            "duration_seconds": 0.004
+          }
+        ]
+      },
+      "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py::test_mcplusplus_requires_verifier_result_not_a_boolean",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py::test_mcplusplus_calls_crypto_verifier_and_rejects_overbroad_or_revoked",
+            "outcome": "passed",
+            "duration_seconds": 0.011
+          }
+        ]
+      },
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_swissknife_mcp_contract_graph_fixture_shape",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_graph_fixture_stable_cid",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_hermetic_report_includes_profile_matrix",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_graph.py::test_materialized_payload_embeds_contract_graph",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          }
+        ]
+      },
+      "test/api/test_mcplusplus_1_0_gap_closure_board.py": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "not_run": 0,
+        "other": 0,
+        "tests": [
+          {
+            "nodeid": "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_production_parsers_consume_exact_task_and_goal_populations",
+            "outcome": "passed",
+            "duration_seconds": 0.015
+          },
+          {
+            "nodeid": "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_scheduler_loads_and_protects_control_artifacts",
+            "outcome": "passed",
+            "duration_seconds": 0.001
+          },
+          {
+            "nodeid": "test/api/test_mcplusplus_1_0_gap_closure_board.py::test_validator_check_all_is_green",
+            "outcome": "passed",
+            "duration_seconds": 0.567
+          }
+        ]
+      }
+    },
+    "exit_status": 1,
+    "elapsed_seconds": 59.162
+  },
+  "summary": {
+    "pass": 239,
+    "fail": 3,
+    "skip": 0,
+    "error": 63,
+    "collected": 242,
+    "deselected": 15569,
+    "collection_errors": 63,
+    "overall": "fail"
+  },
+  "exclusions": {
+    "deselected_by_k_filter_count": 15569,
+    "collection_errors_excluded_from_execution": [
+      "test/api/semantic_governor/test_end_to_end.py",
+      "test/api/semantic_governor/test_promotion.py",
+      "test/api/semantic_governor/test_release_sealing.py",
+      "test/api/semantic_governor/test_resilience_privacy.py",
+      "test/api/semantic_state/test_cli.py",
+      "test/api/semantic_state/test_verification.py",
+      "test/api/test_agent_supervisor_authoritative_task_completion.py",
+      "test/api/test_agent_supervisor_change_propagation_integration.py",
+      "test/api/test_agent_supervisor_composite_post_merge_binding.py",
+      "test/api/test_agent_supervisor_content_identity_bridge.py",
+      "test/api/test_agent_supervisor_contract_assurance_proof_pipeline.py",
+      "test/api/test_agent_supervisor_contract_repair_integration.py",
+      "test/api/test_agent_supervisor_database_implementation_daemon.py",
+      "test/api/test_agent_supervisor_database_runner_propagation.py",
+      "test/api/test_agent_supervisor_dcr_adversarial.py",
+      "test/api/test_agent_supervisor_dcr_benchmark.py",
+      "test/api/test_agent_supervisor_dcr_canary.py",
+      "test/api/test_agent_supervisor_dcr_drift_monitor.py",
+      "test/api/test_agent_supervisor_dcr_fixed_point.py",
+      "test/api/test_agent_supervisor_dcr_release.py",
+      "test/api/test_agent_supervisor_dcr_shadow.py",
+      "test/api/test_agent_supervisor_deterministic_doctor_hammer.py",
+      "test/api/test_agent_supervisor_deterministic_doctor_proof_authority.py",
+      "test/api/test_agent_supervisor_deterministic_doctor_synthesis.py",
+      "test/api/test_agent_supervisor_doctor_proof_cache.py",
+      "test/api/test_agent_supervisor_implementation_daemon.py",
+      "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+      "test/api/test_agent_supervisor_incremental_verification_scheduler.py",
+      "test/api/test_agent_supervisor_ipfs_datasets_logic_conformance.py",
+      "test/api/test_agent_supervisor_ipfs_datasets_symbolic_bridge.py",
+      "test/api/test_agent_supervisor_legacy_landed_review_bootstrap.py",
+      "test/api/test_agent_supervisor_live_logic_repair_integration.py",
+      "test/api/test_agent_supervisor_logic_prediction_admission.py",
+      "test/api/test_agent_supervisor_mcp_contract_analysis.py",
+      "test/api/test_agent_supervisor_mcp_contract_obligations.py",
+      "test/api/test_agent_supervisor_mcp_contract_prover.py",
+      "test/api/test_agent_supervisor_multi_root_repository_index.py",
+      "test/api/test_agent_supervisor_objective_refill_contract.py",
+      "test/api/test_agent_supervisor_plan_create_service.py",
+      "test/api/test_agent_supervisor_planner.py",
+      "test/api/test_agent_supervisor_planning_analysis_factory.py",
+      "test/api/test_agent_supervisor_post_merge_validation_receipt.py",
+      "test/api/test_agent_supervisor_production_contract_composition.py",
+      "test/api/test_agent_supervisor_production_multi_root_index.py",
+      "test/api/test_agent_supervisor_production_provider_route.py",
+      "test/api/test_agent_supervisor_program_repair_synthesis.py",
+      "test/api/test_agent_supervisor_prompt_v3_prompt_transaction.py",
+      "test/api/test_agent_supervisor_provider_command_environment.py",
+      "test/api/test_agent_supervisor_retry_unstall_regression.py",
+      "test/api/test_agent_supervisor_router_owned_provider_decision.py",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_contract_repair_e2e.py",
+      "test/api/test_agent_supervisor_swissknife_mcplusplus_live_services.py",
+      "test/api/test_agent_supervisor_tactician_hammer_coordinator.py",
+      "test/api/test_agent_supervisor_todo_daemon_port.py",
+      "test/api/test_agent_supervisor_validation_python_preflight.py",
+      "test/api/test_cli_implement_runner.py",
+      "test/api/test_dependency_installer_package_layout.py",
+      "test/api/test_formal_verification_fvt086_migration.py",
+      "test/api/test_ipfs_datasets_logic_family_parser_board.py",
+      "test/api/test_ipfs_kit_fuse_vfs_board.py",
+      "test/api/test_ipfs_kit_runtime_readiness_board.py",
+      "test/api/test_proof_reuse_authenticated_real_backend_adversarial.py",
+      "test/api/test_vfs_symbolic_assurance_plan_validator.py"
+    ],
+    "notes": "Modules that fail to import under test/api produce collection errors. The -k mcplusplus filter still deselects non-matching tests among successfully collected items. Inventory continued past collection errors to record all selected mcplusplus outcomes."
+  },
+  "coverage": {
+    "status": "unavailable",
+    "reason": "Coverage not requested by MCPP-006 acceptance; inventory records pytest collection and outcomes only."
+  },
+  "evidence_subset": "pytest collection and results for mcpplusplus and mcp_server",
+  "acceptance": {
+    "lists_collected_tests": true,
+    "lists_outcomes": true,
+    "states_operator_dirty_files_not_discarded": true,
+    "criteria": "Receipt lists collected tests, outcomes, and that operator dirty files were not discarded."
+  },
+  "official_validation_run": {
+    "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests test/api -k mcplusplus --maxfail=1",
+    "exit_status": 1,
+    "stopped_on_first_failure": true,
+    "note": "Official command uses --maxfail=1 and aborts on the first collection error under test/api (unrelated modules that fail to import). Inventory run used --continue-on-collection-errors to record all selected mcplusplus outcomes.",
+    "log_tail": "2026-08-15 19:03:59 [    INFO] SharedCore initialized (core.py:25)\n2026-08-15 19:03:59 [ WARNING] Source IPFS network API unavailable, using fallback stubs (native_ipfs_network_tools.py:29)\n2026-08-15 19:03:59 [    INFO] SharedCore initialized (core.py:25)\n2026-08-15 19:03:59 [    INFO] Using standalone MCP implementation: Test MCP Server (server.py:1863)\n2026-08-15 19:03:59 [    INFO] MCP Server Name: Test MCP Server (test_init.py:37)\n2026-08-15 19:03:59 [    INFO] MCP Server Description: MCP Server for basic testing (test_init.py:38)\n2026-08-15 19:03:59 [    INFO] Number of tools: 2 (test_init.py:41)\n2026-08-15 19:03:59 [   ERROR] Error during MCP initialization: 'str' object has no attribute 'name' (test_init.py:58)\n2026-08-15 19:03:59 [    INFO] Importing ipfs_accelerate_py... (test_mcp_init.py:20)\n2026-08-15 19:03:59 [    INFO] Creating accelerate instance... (test_mcp_init.py:23)\n2026-08-15 19:03:59 [    INFO] APIs: Distributed storage initialized (apis.py:305)\n2026-08-15 19:03:59 [ WARNING] Using stub implementation of IPFSSimpleAPI (__init__.py:58)\n2026-08-15 19:03:59 [    INFO] Initialized IPFS API with role=leecher (transformers_integration.py:120)\n2026-08-15 19:03:59 [    INFO] Transformers integration initialized successfully (ipfs_accelerate.py:249)\n2026-08-15 19:03:59 [    INFO] Importing MCP server... (test_mcp_init.py:26)\n2026-08-15 19:03:59 [    INFO] Creating MCP server... (test_mcp_init.py:29)\n2026-08-15 19:03:59 [    INFO] Using standalone MCP implementation: Test MCP Server (server.py:1863)\n2026-08-15 19:03:59 [    INFO] MCP Server Name: Test MCP Server (test_mcp_init.py:37)\n2026-08-15 19:03:59 [    INFO] MCP Server Description: MCP Server for basic testing (test_mcp_init.py:38)\n2026-08-15 19:03:59 [    INFO] Number of tools: 2 (test_mcp_init.py:41)\n2026-08-15 19:03:59 [   ERROR] Error during MCP initialization: 'str' object has no attribute 'name' (test_mcp_init.py:58)\n2026-08-15 19:03:59 [ WARNING] Source enterprise_api import unavailable: No module named 'ipfs_datasets_py.processors.graphrag' (enterprise_api.py:16)\n2026-08-15 19:03:59 [    INFO] IPFS content addressing enabled (model_manager.py:149)\ncollected 1807 items / 1 error\n\n==================================== ERRORS ====================================\n________ ERROR collecting test/api/semantic_governor/test_end_to_end.py ________\nImportError while importing test module '/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db/test/api/semantic_governor/test_end_to_end.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntest/api/semantic_governor/test_end_to_end.py:57: in <module>\n    from ipfs_kit_py.mcp_server.mcplusplus.coordination_storage import (\nE   ModuleNotFoundError: No module named 'ipfs_kit_py.mcp_server'\n=========================== short test summary info ============================\nERROR test/api/semantic_governor/test_end_to_end.py\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n=============================== 1 error in 8.91s ==============================="
+  },
+  "checkpoints": {
+    "directory": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/lane-0/implementation_checkpoints/mcpp-006-a4745733c139",
+    "artifacts": [
+      "inventory-junit.xml",
+      "inventory-run.log",
+      "official-validation.log",
+      "mcpp-006-complete.json"
+    ]
+  },
+  "operator_reverify": {
+    "observed_at": "2026-08-15T22:44:00Z",
+    "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests test/api -k mcplusplus --maxfail=1",
+    "exit_code": 1,
+    "stdout_summary": "collected 2324 items / 1 error; ERROR collecting test/api/semantic_state/test_cli.py (import file mismatch); stopping after 1 failure",
+    "note": "Official --maxfail=1 gate still fails on inherited test/api collection debt. Honest inventory remains 239 passed / 3 failed / 63 collection errors. Operator dirty overlay was not discarded."
+  }
+}
