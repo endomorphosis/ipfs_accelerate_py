@@ -1,0 +1,1180 @@
+{
+  "schema": "pgir-task-result@1",
+  "contract_version": 1,
+  "task_id": "PGIR-005",
+  "executed_task_revision": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+  "admitted_task_revision": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+  "parent_goal": "PGIR-G010",
+  "subgoal": "baseline-test-receipts",
+  "canonicalization": {
+    "cid": "cidv1-dag-json-sha2-256-lower-base32",
+    "identity_json": "utf-8;sorted-keys;compact-separators;no-floats",
+    "rendered_json": "utf-8;two-space-indent;one-terminal-lf",
+    "receipt_projection": "entire receipt excluding receipt_cid and receipt_identity",
+    "proposal_identity_projection": "entire proposal excluding proposal_cid and proposal_identity",
+    "bundle_identity_projection": "entire evidence_bundle excluding bundle_cid and bundle_identity",
+    "result_projection": "the exact top-level result_projection object",
+    "summary_identity_projection": "entire parsed document excluding top-level summary_cid and summary_identity",
+    "embedded_log_encoding": "base64(gzip -n -9(exact stdout bytes))"
+  },
+  "base_source_revisions": {
+    "ipfs_accelerate_py": "8d46a6d25dd006c8cab3c9d9612707d2a014e79c",
+    "ipfs_datasets_py": "df93e91e6338c84a17c3208ef68b88de8566f78c"
+  },
+  "source_dataset_revisions": [],
+  "data_split_identity": "fixture-populations-named-in-each-receipt/no-source-dataset",
+  "compiler_identity": "COMPILER-CURRENT-1",
+  "decompiler_identity": "DECOMPILER-CURRENT-1",
+  "model_checkpoint_identity": "MODEL-LEGACY-1",
+  "lease": {
+    "policy": "LEASE-DEFAULT",
+    "key": "baseline-tests",
+    "attempt": 1,
+    "fence": 3,
+    "worktree_lease_id": "3e20b43d67e4475078c2f4ec2bf31ab1ccf433a1",
+    "worktree_requirement_id": "asi-171:fenced-cross-lane-worktree-lifecycle",
+    "disposition": "terminal-on-result-admission",
+    "subleases": [
+      {
+        "key": "baseline-tests/accelerator",
+        "test_group_id": "accelerator-pre-change",
+        "parent_fence": 3,
+        "mode": "retrospective-evidence-seal",
+        "mutation_authority": false,
+        "disposition": "sealed"
+      },
+      {
+        "key": "baseline-tests/datasets",
+        "test_group_id": "datasets-pre-change",
+        "parent_fence": 3,
+        "mode": "retrospective-evidence-seal",
+        "mutation_authority": false,
+        "disposition": "sealed-with-failures"
+      },
+      {
+        "key": "baseline-tests/focused-validation",
+        "test_group_id": "pgir-005-focused-validation",
+        "parent_fence": 3,
+        "mode": "current-validation",
+        "mutation_authority": false,
+        "disposition": "sealed"
+      }
+    ]
+  },
+  "input_identities": {
+    "repository_id": "repository:sha256:4d87e009c221f83df2c5846e6085d4917204de75df8dc438b045c3bbff059dbc",
+    "task_base_commit": "597a0285738c5878eed462593fd75e18715ff7f8",
+    "source_set_id": "SRCSET-1",
+    "source_set_order": [
+      "SRC-DATASETS-AUTH-1",
+      "SRC-ACCEL-AUTH-1"
+    ],
+    "source_set_binding_sha256": "9da856806306b144ba86a02505946d995750fe0d8bbf4ab7bc9fcd287b047220",
+    "source_manifest": {
+      "path": "data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json",
+      "cid": "baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a",
+      "result_identity": "sha256:86f7c07cf7b62847b81315b6529942da7647acf9922f32cf5ccef9d8bb221e9c",
+      "reconciliation_disposition": "allow-bounded-inventory-only",
+      "training_or_checkpoint_promotion_authority": false
+    },
+    "upstream_dependencies": [
+      {
+        "task_id": "PGIR-001",
+        "executed_task_revision": "baguqeeraa3ltwmsx2hkyxhigmfkadmyfy2js7cir3jl2kticrqexsemd75rq",
+        "admitted_task_revision": "baguqeeraqps5qlahfst4tnamkjac7xxwun52ngvlike676yvldpsye5fwb3q",
+        "result_identity": "sha256:86f7c07cf7b62847b81315b6529942da7647acf9922f32cf5ccef9d8bb221e9c"
+      },
+      {
+        "task_id": "PGIR-002",
+        "task_revision": "baguqeerac34yqkahhsfvoijyo3hbe3ff2u3o6o754367xnm6tpmzf7iqcmhq",
+        "path": "ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json",
+        "inventory_sha256": "532e1c8b60fcf77515e772368f80475d2f62ba1545490826c3baeea1b402920b"
+      },
+      {
+        "task_id": "PGIR-003",
+        "task_revision": "baguqeeras4bk5tvbfa6rtebnga6ptgb33ek6przxsmpcjsm4z3ew65kxd23a",
+        "path": "docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json",
+        "inventory_cid": "baguqeerablvf72zunpjvbievbspxqnc4eqgxneqjwrg5v6imr7edavovmwca"
+      }
+    ],
+    "justice_dao_pinset": {
+      "id": "JDAO-PINSET-1",
+      "sha256": "8e3a4b1bd81639393ddda35e5dfb3b95f9e7320afa898bde0b3eb9a0317a6b76",
+      "use": "metadata-only",
+      "rows_consumed": 0,
+      "training_repositories_admitted": 0
+    },
+    "model_checkpoint_loaded": false,
+    "network_accessed": false,
+    "gpu_used": false
+  },
+  "evidence_bundle": {
+    "schema": "PGIRBaselineEvidenceBundle@1",
+    "bundle_id": "pgir/freeze/baseline-tests",
+    "embedded_logs": {
+      "accelerator_stdout": {
+        "encoding": "base64(gzip -n -9(exact stdout bytes))",
+        "uncompressed_byte_count": 66790,
+        "sha256": "04d11ead80be1b3af989c6258d5f1bf06c412c1c56c34303a0298e4cc9c48b71",
+        "cid": "bafkreiae2epk3af6dm5ptcogewgv6g7qnrasyhcwynbqhibjrzgmtreloe",
+        "source_locator": {
+          "session_record": "/home/barberb/.codex/sessions/2026/08/16/rollout-2026-08-16T21-11-49-01a00c6a-a192-76e3-a735-237c8a28413d.jsonl",
+          "ordinal": 184,
+          "json_pointer": "/payload/item/stdout"
+        },
+        "payload": "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"
+      },
+      "datasets_stdout": {
+        "encoding": "base64(gzip -n -9(exact stdout bytes))",
+        "uncompressed_byte_count": 17078,
+        "sha256": "09162d0cacb324ac9037ef3447a5dda6d763e9ac1bf4c4f7e83568ec77416d54",
+        "cid": "bafkreiajcywqzlfteswjan7pgrd2lxng25r6tla36tcpp2bvndwhoqlnkq",
+        "source_locator": {
+          "session_record": "/home/barberb/.codex/sessions/2026/08/16/rollout-2026-08-16T21-11-49-01a00c6a-a192-76e3-a735-237c8a28413d.jsonl",
+          "ordinal": 235,
+          "json_pointer": "/payload/item/stdout"
+        },
+        "payload": "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"
+      },
+      "focused_validation_stdout": {
+        "encoding": "base64(gzip -n -9(exact stdout bytes))",
+        "uncompressed_byte_count": 7857,
+        "sha256": "458aeef115763f39b3a4f33e5d25debc6324bb9d2e1417250fd5c7efb1da31a3",
+        "cid": "bafkreicfrlxpcflwh443hjhthzoslxv4mmslxhjocqlskd6vy7x3dwrrum",
+        "source_locator": {
+          "task_log": "/home/barberb/lift_coding/.pgir_campaign/runtime/parallel/lane-0/implementation_logs/pgir-005-attempt-1.log",
+          "line_start": 2850,
+          "line_end": 2908
+        },
+        "payload": "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"
+      },
+      "accelerator_source_binding_stdout": {
+        "encoding": "base64(gzip -n -9(exact stdout bytes))",
+        "uncompressed_byte_count": 321,
+        "sha256": "13dd6bec5242440857d36011a7ce540c8a438b335de7a6917f7d0e46f4007fb9",
+        "cid": "bafkreiat3vv6yusciqefpu3acgt44vamrjbywm2546tjc735bzdpiad7xe",
+        "source_locator": {
+          "session_record": "/home/barberb/.codex/sessions/2026/08/16/rollout-2026-08-16T21-11-49-01a00c6a-a192-76e3-a735-237c8a28413d.jsonl",
+          "ordinal": 44,
+          "json_pointer": "/payload/item/stdout"
+        },
+        "payload": "H4sIAAAAAAACA5WPQW6DMBBF95zCJwhjMMZE4go5QtHMMA5uwUbYqVRVvXtR02U33X49vacPzGCEyBpgw4PT7I3tALQVGCz2LRKIY6iWUvZ8ret7KMuDLpy2WuKctnTsS8oh12H3eUJmWeXAItP+cTnZymPB9apuqShU77iGWSV6FS4q4iaKXaNnINO6vu8GTUTgsfVt4zwxe69dT52V/uXzLG6hfFWE+ZQfkiWWUTfur8KT/V/hKQ7nh8iSSzp+5OVAfpN54gXjXfJotRnUI/7OI1TfE8wylEEBAAA="
+      },
+      "datasets_source_binding_stdout": {
+        "encoding": "base64(gzip -n -9(exact stdout bytes))",
+        "uncompressed_byte_count": 324,
+        "sha256": "55e8641b0857127ae7d2aaff4eba777bd6b90384f8f9be87a2347390701e15fe",
+        "cid": "bafkreicv5bsbwccxcj5opuvk75hlu533224qhbhy7g7ipiruooihahqv7y",
+        "source_locator": {
+          "session_record": "/home/barberb/.codex/sessions/2026/08/16/rollout-2026-08-16T21-11-49-01a00c6a-a192-76e3-a735-237c8a28413d.jsonl",
+          "ordinal": 45,
+          "json_pointer": "/payload/item/stdout"
+        },
+        "payload": "H4sIAAAAAAACA5WOSU4DMRRE9z6FT5D2hNuJ1FfgCFgevtOGeFD7Bwkh7o5FWLJhWaXSexW5Uh70U0qgglZCggIeJAtRn4XhQrNVKgmeFJcr2RH7uCzLNeN+96fQygI1ttKOvreRx5J7GjY6dANw2P5xmkuSZr5d6HND6ui7u+VIm3+FgLS6AnRNLIHw3kUZVjatQs4rICQXAJIbkeKqDU8vn9NXMn4RP/G2HzCg4saF+cvw2P7P8ADnYV0NMLAdP3A8XHiDaMPu6hXGpo0803v9rTdGvgFz7MjTRAEAAA=="
+      },
+      "artifact_validation_stdout": {
+        "encoding": "base64(gzip -n -9(exact stdout bytes))",
+        "uncompressed_byte_count": 36,
+        "sha256": "1ee801836642ccba29bf04907967242b363306a3baa7076f121098ff8a2e097e",
+        "cid": "bafkreia65aaygzsczs5ctpyesb4wojblgyzqni52u4dw6eqqtd7yulqjpy",
+        "source_locator": {
+          "command_receipt_id": "PGIR-005-ARTIFACT-VALIDATION",
+          "json_pointer": "/evidence_bundle/artifact_validation_receipt/command_argv"
+        },
+        "payload": "H4sIAAAAAAACAwtw9wzSNTAwVUgsKslMS0wuUShLzMlMSSzJzM9TKEgsLk5N4QIAaF7ueiQAAAA="
+      }
+    },
+    "test_receipts": [
+      {
+        "schema": "PGIRBaselinePytestReceipt@1",
+        "receipt_id": "PGIR-005-TEST-ACCELERATOR",
+        "category": "accelerator",
+        "phase": "pre-change",
+        "command_argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-p",
+          "no:cacheprovider",
+          "test/api/test_agent_supervisor_semantic_validation_pipeline.py",
+          "test/api/test_agent_supervisor_semantic_dependency_graph.py",
+          "test/api/test_agent_supervisor_formal_verification_contracts.py",
+          "test/api/test_agent_supervisor_formal_verification_provider.py",
+          "test/api/test_agent_supervisor_provider_execution.py",
+          "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py",
+          "test/api/test_agent_supervisor_kernel_verification.py",
+          "test/api/test_agent_supervisor_multi_prover_router.py",
+          "test/api/test_agent_supervisor_proof_workflow_e2e.py",
+          "test/api/test_counterexample_guided_tactician.py",
+          "test/api/test_goal_directed_tactician_integration.py",
+          "test/api/test_goal_tactician_supervisor_lifecycle.py",
+          "test/api/test_goal_tactician_supervisor_restart.py",
+          "test/api/test_agent_supervisor_bounded_persistence.py",
+          "test/api/test_agent_supervisor_fault_recovery_v2.py",
+          "test/api/test_agent_supervisor_daemon_recovery_lease.py",
+          "test/api/test_agent_supervisor_worktree_lifecycle.py",
+          "test/api/test_agent_supervisor_scheduler.py",
+          "test/api/test_agent_supervisor_autonomous_unstall.py",
+          "test/api/test_agent_supervisor_implementation_daemon_runner.py"
+        ],
+        "launcher": "/bin/bash -lc",
+        "environment_overrides": {
+          "PYTHONDONTWRITEBYTECODE": "1"
+        },
+        "cwd": {
+          "observed_uri": "file:///home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py",
+          "portable_identity": "SRC-ACCEL-AUTH-1 repository root"
+        },
+        "source_binding": {
+          "source_id": "SRC-ACCEL-AUTH-1",
+          "checkout_commit": "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+          "authority_commit": "8d46a6d25dd006c8cab3c9d9612707d2a014e79c",
+          "authority_tree": "697ee660025fbf14a1cbe6c24fd8da5365df84d5",
+          "source_binding_receipt_cid": "baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq",
+          "execution_binding_status": "historical_dirty_checkout_context_only",
+          "authority_commit_role": "campaign comparison authority, not the historical execution tree"
+        },
+        "fixture_population": [
+          "test/api/test_agent_supervisor_semantic_validation_pipeline.py",
+          "test/api/test_agent_supervisor_semantic_dependency_graph.py",
+          "test/api/test_agent_supervisor_formal_verification_contracts.py",
+          "test/api/test_agent_supervisor_formal_verification_provider.py",
+          "test/api/test_agent_supervisor_provider_execution.py",
+          "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py",
+          "test/api/test_agent_supervisor_kernel_verification.py",
+          "test/api/test_agent_supervisor_multi_prover_router.py",
+          "test/api/test_agent_supervisor_proof_workflow_e2e.py",
+          "test/api/test_counterexample_guided_tactician.py",
+          "test/api/test_goal_directed_tactician_integration.py",
+          "test/api/test_goal_tactician_supervisor_lifecycle.py",
+          "test/api/test_goal_tactician_supervisor_restart.py",
+          "test/api/test_agent_supervisor_bounded_persistence.py",
+          "test/api/test_agent_supervisor_fault_recovery_v2.py",
+          "test/api/test_agent_supervisor_daemon_recovery_lease.py",
+          "test/api/test_agent_supervisor_worktree_lifecycle.py",
+          "test/api/test_agent_supervisor_scheduler.py",
+          "test/api/test_agent_supervisor_autonomous_unstall.py",
+          "test/api/test_agent_supervisor_implementation_daemon_runner.py"
+        ],
+        "data_split_identity": "accelerator selected file population; synthetic/current fixtures only",
+        "execution": {
+          "status": "passed",
+          "exit_code": 0,
+          "started_at_epoch_ms": 1786915047744,
+          "completed_at_epoch_ms": 1786915104221,
+          "completion_event_at": "2026-08-16T21:18:24.223Z",
+          "duration_nanoseconds": 56476693817,
+          "pytest_duration_milliseconds": 53360,
+          "python": "3.12.3",
+          "pytest": "9.1.1",
+          "pluggy": "1.6.0"
+        },
+        "outcome": {
+          "collected": 360,
+          "passed": 360,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0,
+          "warnings": 1,
+          "summary": "360 passed, 1 warning in 53.36s",
+          "first_failed_assertion": null,
+          "first_setup_cause": null
+        },
+        "warning": {
+          "category": "DeprecationWarning",
+          "source": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py:16",
+          "message": "__package__ != __spec__.parent"
+        },
+        "raw_log_ref": {
+          "embedded_log_id": "accelerator_stdout",
+          "sha256": "04d11ead80be1b3af989c6258d5f1bf06c412c1c56c34303a0298e4cc9c48b71",
+          "cid": "bafkreiae2epk3af6dm5ptcogewgv6g7qnrasyhcwynbqhibjrzgmtreloe"
+        },
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+        },
+        "authority": {
+          "test_result_only": true,
+          "proof_receipt": false,
+          "training_authority": false,
+          "promotion_authority": false
+        },
+        "receipt_cid": "baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a",
+        "receipt_identity": "sha256:c7aa525af4e50f94ce727da2c248ec9599b308b0536a77da6aad481d00e3a0f8"
+      },
+      {
+        "schema": "PGIRBaselinePytestReceipt@1",
+        "receipt_id": "PGIR-005-TEST-DATASETS",
+        "category": "datasets",
+        "phase": "pre-change",
+        "command_argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/integration/logic/test_ir_family_conformance.py",
+          "tests/integration/logic/test_canonical_semantic_roundtrip.py",
+          "tests/unit/logic/formalization",
+          "tests/unit/test_llm_router_accelerate_provider.py",
+          "tests/unit/test_llm_router_provider_aliases.py",
+          "tests/unit/logic/integration/test_legal_ir_proof_carrying_artifacts.py",
+          "tests/unit/logic/integration/test_legal_ir_proof_router.py",
+          "tests/unit_tests/logic/hammers",
+          "tests/unit/optimizers/logic_theorem_optimizer/test_modal_autoencoder_checkpoint.py"
+        ],
+        "launcher": "/bin/bash -lc",
+        "environment_overrides": {
+          "PYTHONDONTWRITEBYTECODE": "1"
+        },
+        "cwd": {
+          "observed_uri": "file:///home/barberb/lift_coding/hallucinate_app/ipfs_datasets_py",
+          "portable_identity": "SRC-DATASETS-AUTH-1 repository root"
+        },
+        "source_binding": {
+          "source_id": "SRC-DATASETS-AUTH-1",
+          "checkout_commit": "d144be65ffe4c6423e4e1c30cd692812607343eb",
+          "authority_commit": "df93e91e6338c84a17c3208ef68b88de8566f78c",
+          "authority_tree": "37b9cb40644831c85c6fdf07d0228e45061e239a",
+          "source_binding_receipt_cid": "baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca",
+          "execution_binding_status": "historical_dirty_checkout_context_only",
+          "authority_commit_role": "campaign comparison authority, not the historical execution tree"
+        },
+        "fixture_population": [
+          "tests/integration/logic/test_ir_family_conformance.py",
+          "tests/integration/logic/test_canonical_semantic_roundtrip.py",
+          "tests/unit/logic/formalization",
+          "tests/unit/test_llm_router_accelerate_provider.py",
+          "tests/unit/test_llm_router_provider_aliases.py",
+          "tests/unit/logic/integration/test_legal_ir_proof_carrying_artifacts.py",
+          "tests/unit/logic/integration/test_legal_ir_proof_router.py",
+          "tests/unit_tests/logic/hammers",
+          "tests/unit/optimizers/logic_theorem_optimizer/test_modal_autoencoder_checkpoint.py"
+        ],
+        "data_split_identity": "datasets selected file/directory population; synthetic/current fixtures only",
+        "execution": {
+          "status": "mixed-fail-closed",
+          "exit_code": 1,
+          "started_at_epoch_ms": 1786915110649,
+          "completed_at_epoch_ms": 1786915262317,
+          "completion_event_at": "2026-08-16T21:21:02.320Z",
+          "duration_nanoseconds": 151668060859,
+          "pytest_duration_milliseconds": 149310,
+          "python": "3.12.3",
+          "pytest": "9.1.1",
+          "pluggy": "1.6.0",
+          "config_warning": "ignoring pytest config in pyproject.toml"
+        },
+        "outcome": {
+          "collected": 818,
+          "passed": 801,
+          "failed": 2,
+          "skipped": 2,
+          "errors": 13,
+          "warnings": 0,
+          "summary": "2 failed, 801 passed, 2 skipped, 13 errors in 149.31s (0:02:29)",
+          "first_failed_assertion": {
+            "node_id": "tests/integration/logic/test_canonical_semantic_roundtrip.py::test_checked_in_parity_snapshot_matches_live_run",
+            "location": "tests/integration/logic/test_canonical_semantic_roundtrip.py:176",
+            "expression": "assert snapshot[\"lineage\"][\"implementation_raw_cids\"][name] == expected, name",
+            "assertion_error": "compiler",
+            "snapshot_value": "bafkreiazl2bdiqresmibt4tjhqhgfd66utqvu4drn642rpykn36yarx6em",
+            "live_expected_value": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "snapshot_path": "docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+            "classification": "semantic-cid-drift"
+          },
+          "additional_failures": [
+            {
+              "node_id": "tests/unit_tests/logic/hammers/test_process_lifecycle.py::test_lean_runtime_uses_supervisor_owned_kind",
+              "location": "tests/unit_tests/logic/hammers/test_process_lifecycle.py:439",
+              "exception_type": "AttributeError",
+              "message": "'module' object at ipfs_datasets_py.logic.modal.lean_runtime has no attribute 'lean_runtime'",
+              "initial_cause": "module 'ipfs_datasets_py.logic.modal' has no attribute 'lean_runtime'",
+              "classification": "missing-lean-runtime-export"
+            }
+          ],
+          "first_setup_cause": {
+            "node_id": "tests/unit_tests/logic/hammers/test_release_gate.py::TestGeneratedEvidenceIsValid::test_generation_produces_receipts_for_every_golden_case",
+            "fixture_location": "tests/unit_tests/logic/hammers/test_release_gate.py:54",
+            "raise_location": "scripts/ops/logic/release_itp_hammer_gate.py:274",
+            "exception_type": "release_itp_hammer_gate.GateFailClosed",
+            "observed_message": "Environment lock not found at /home/barberb/lift_coding/hallucinate_app/ipfs_datasets_py/data/logic/itp_hammer/environment.json. Run 'PYTHONPATH=. python scripts/ops/logic/probe_itp_hammer_environment.py --out /home/barberb/lift_coding/hallucinate_app/ipfs_datasets_py/data/logic/itp_hammer/environment.json' first.",
+            "portable_missing_path": "data/logic/itp_hammer/environment.json",
+            "portable_required_probe_argv": [
+              "env",
+              "PYTHONPATH=.",
+              "python",
+              "scripts/ops/logic/probe_itp_hammer_environment.py",
+              "--out",
+              "data/logic/itp_hammer/environment.json"
+            ],
+            "classification": "absent-hammer-environment-lock"
+          },
+          "error_node_ids": [
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestGeneratedEvidenceIsValid::test_generation_produces_receipts_for_every_golden_case",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestGeneratedEvidenceIsValid::test_generation_includes_at_least_one_kernel_checked_verified_receipt",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestGeneratedEvidenceIsValid::test_valid_evidence_passes_and_exits_zero_via_main",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_missing_evidence_file_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_malformed_evidence_json_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_missing_corpus_lock_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_missing_environment_lock_file_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_stale_environment_lock_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_missing_receipt_fails_closed_as_absent_kernel_proof",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_stale_receipt_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_receipt_status_drift_from_manifest_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_zero_verified_receipts_fails_closed",
+            "tests/unit_tests/logic/hammers/test_release_gate.py::TestFailClosedOnMissingOrCorruptEvidence::test_tampered_receipt_content_fails_closed"
+          ],
+          "skip_identity": {
+            "count": 2,
+            "node_ids_emitted_by_original_quiet_report": false,
+            "progress_locations": [
+              "tests/unit_tests/logic/hammers/test_fallbacks.py",
+              "tests/unit_tests/logic/hammers/test_portfolio.py"
+            ],
+            "authority": "the embedded raw log commits the original progress markers; skips are non-authoritative"
+          }
+        },
+        "raw_log_ref": {
+          "embedded_log_id": "datasets_stdout",
+          "sha256": "09162d0cacb324ac9037ef3447a5dda6d763e9ac1bf4c4f7e83568ec77416d54",
+          "cid": "bafkreiajcywqzlfteswjan7pgrd2lxng25r6tla36tcpp2bvndwhoqlnkq"
+        },
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+        },
+        "authority": {
+          "test_result_only": true,
+          "proof_receipt": false,
+          "training_authority": false,
+          "promotion_authority": false,
+          "mixed_outcome_treated_as_pass": false
+        },
+        "receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+        "receipt_identity": "sha256:d92f5eb73c06cfa5c1c816abb3442367f6c0bce422e9fddf33065f6c85a5ef79"
+      },
+      {
+        "schema": "PGIRBaselinePytestReceipt@1",
+        "receipt_id": "PGIR-005-TEST-FOCUSED-VALIDATION",
+        "category": "focused-validation",
+        "phase": "implementation-validation",
+        "command_argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "test/api/test_agent_supervisor_proof_workflow_e2e.py",
+          "test/api/test_agent_supervisor_autonomous_unstall.py"
+        ],
+        "launcher": "/bin/bash -lc",
+        "environment_overrides": {},
+        "cwd": {
+          "observed_path": "/home/barberb/lift_coding/.pgir_campaign/runtime/worktrees/workspace-9e2fb7a1388a-e4706ea2cc35",
+          "portable_identity": "PGIR-005 task worktree root"
+        },
+        "source_binding": {
+          "repository_id": "repository:sha256:4d87e009c221f83df2c5846e6085d4917204de75df8dc438b045c3bbff059dbc",
+          "task_base_commit": "597a0285738c5878eed462593fd75e18715ff7f8",
+          "task_revision": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+          "candidate_overlay": "no repository source edits; summary output not consumed by these tests"
+        },
+        "fixture_population": [
+          "test/api/test_agent_supervisor_proof_workflow_e2e.py",
+          "test/api/test_agent_supervisor_autonomous_unstall.py"
+        ],
+        "data_split_identity": "focused implementation validation fixtures",
+        "execution": {
+          "status": "passed",
+          "exit_code": 0,
+          "wrapper_duration_milliseconds": 21315,
+          "pytest_duration_milliseconds": 17790,
+          "python": "3.12.3",
+          "pytest": "9.1.1",
+          "pluggy": "1.6.0"
+        },
+        "outcome": {
+          "collected": 31,
+          "passed": 31,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0,
+          "warnings": 1,
+          "summary": "31 passed, 1 warning in 17.79s",
+          "first_failed_assertion": null,
+          "first_setup_cause": null
+        },
+        "warning": {
+          "category": "DeprecationWarning",
+          "source": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py:16",
+          "message": "__package__ != __spec__.parent"
+        },
+        "raw_log_ref": {
+          "embedded_log_id": "focused_validation_stdout",
+          "sha256": "458aeef115763f39b3a4f33e5d25debc6324bb9d2e1417250fd5c7efb1da31a3",
+          "cid": "bafkreicfrlxpcflwh443hjhthzoslxv4mmslxhjocqlskd6vy7x3dwrrum"
+        },
+        "stderr": {
+          "byte_count": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+        },
+        "authority": {
+          "test_result_only": true,
+          "proof_receipt": false,
+          "training_authority": false,
+          "promotion_authority": false
+        },
+        "receipt_cid": "baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq",
+        "receipt_identity": "sha256:d5f9118b27e84b3d7a95f0beffb4f5282f22bde871c5b9ba3e8a0fe2ae59d871"
+      }
+    ],
+    "capability_receipt": {
+      "schema": "PGIRBaselineCapabilityReceipt@1",
+      "receipt_id": "PGIR-005-CAPABILITY",
+      "source_inventory": {
+        "task_id": "PGIR-003",
+        "path": "docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json",
+        "inventory_cid": "baguqeerablvf72zunpjvbievbspxqnc4eqgxneqjwrg5v6imr7edavovmwca"
+      },
+      "source_report": {
+        "schema_version": "ipfs_accelerate_py/agent-supervisor/formal-verification-capabilities@1",
+        "report_version": 1,
+        "generated_at": "2026-08-17T00:28:45.433049Z",
+        "overall_status": "degraded",
+        "bounded": true,
+        "probe_count": 44,
+        "provider_count": 8,
+        "proof_attempted": false,
+        "proof_success": false,
+        "canonical_json_sha256": "4215c4d38d410025b22ceaaa58f517cbab72450a062e43d6a921188f6e469ebe"
+      },
+      "provider_statuses": {
+        "hammer": "available",
+        "tdfol": "available",
+        "external_provers": "available",
+        "lean": "available",
+        "leanstral": "degraded",
+        "frame_logic": "degraded",
+        "knowledge_graphs": "available",
+        "zkp_backends": "degraded"
+      },
+      "prerequisite_probes": [
+        {
+          "capability_id": "semantic-cid-consistency",
+          "status": "unavailable",
+          "evidence_receipt_id": "PGIR-005-TEST-DATASETS",
+          "reason": "the checked-in compiler raw CID differs from the live authority-tree compiler bytes"
+        },
+        {
+          "capability_id": "lean-executable-discovery",
+          "status": "available",
+          "evidence": "PGIR-003 bounded capability projection",
+          "reason": "executable discovery does not repair the Python package export failure"
+        },
+        {
+          "capability_id": "lean-runtime-package-export",
+          "status": "unavailable",
+          "evidence_receipt_id": "PGIR-005-TEST-DATASETS",
+          "reason": "pytest cannot resolve ipfs_datasets_py.logic.modal.lean_runtime through the package surface"
+        },
+        {
+          "capability_id": "hammer-provider-discovery",
+          "status": "available",
+          "evidence": "PGIR-003 bounded capability projection",
+          "reason": "provider discovery does not establish a release-gate environment lock"
+        },
+        {
+          "capability_id": "hammer-environment-lock",
+          "status": "unavailable",
+          "evidence_receipt_id": "PGIR-005-TEST-DATASETS",
+          "reason": "data/logic/itp_hammer/environment.json is absent and the release gate fails closed"
+        }
+      ],
+      "tool_environment": {
+        "platform": "linux",
+        "python": "3.12.3",
+        "pytest": "9.1.1",
+        "pluggy": "1.6.0",
+        "accelerator_pytest_mode": "Mode.STRICT",
+        "datasets_pytest_mode": "Mode.AUTO",
+        "bytecode_disabled_for_pre_change_runs": true
+      },
+      "inference_policy": "Discovery reports route readiness only. Available is not proof, production certification, permission to execute, or a substitute for a failed assertion, missing export, or missing environment lock.",
+      "receipt_cid": "baguqeerambrs2h4t34he6spelik6co6jec53vkgfnkr2remr4bnyz4bn6yia",
+      "receipt_identity": "sha256:60632d1f93df0e4f49e45a15e13bc920bbbaa8c56aa3a89191e05b8cf02df610",
+      "source_report_execution_command_recorded": false,
+      "bounded_replay_command_argv": [
+        "python",
+        "-c",
+        "import json; from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities import probe_formal_verification_capabilities; print(json.dumps(probe_formal_verification_capabilities(force_refresh=True).to_dict(), sort_keys=True))"
+      ],
+      "replay_command_authority": "reproduction recipe only; the sealed PGIR-003 inventory and canonical_json_sha256 remain the source receipt"
+    },
+    "prerequisite_dispositions": [
+      {
+        "category": "semantic_cid_drift",
+        "disposition": "no_go",
+        "bounded_repair_task": {
+          "task_id": "PGIR-005-REPAIR-SEMANTIC-CID",
+          "revision": "separate_task_revision_required",
+          "scope": {
+            "repository_id": "SRC-DATASETS-AUTH-1",
+            "repository_root": "ipfs_datasets_py",
+            "allowed_edit_paths": [
+              "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+              "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+              "ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py"
+            ],
+            "required_validation": [
+              "python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py::test_checked_in_parity_snapshot_matches_live_run",
+              "python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py ipfs_datasets_py/tests/unit/logic/legal_ir/test_canonical_compiler.py"
+            ],
+            "prohibited_shortcuts": [
+              "directly rewriting the frozen CID without explaining and validating the semantic change",
+              "weakening or skipping the canonical round-trip assertion",
+              "mutating the snapshot during PGIR-005 qualification"
+            ]
+          }
+        },
+        "trigger_receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+        "first_failed_assertion_preserved": true,
+        "setup_cause_preserved": null,
+        "cannot_weaken_gate": true,
+        "repair_task_index": {
+          "category": "semantic_cid_drift",
+          "disposition": "no_go",
+          "task_id": "PGIR-005-REPAIR-SEMANTIC-CID",
+          "revision": "separate_task_revision_required",
+          "trigger_receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+          "repository_id": "SRC-DATASETS-AUTH-1",
+          "repository_root": "ipfs_datasets_py",
+          "allowed_edit_paths": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+            "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+            "ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py"
+          ],
+          "cannot_weaken_gate": true
+        },
+        "proposal_cid": "baguqeera4jz46uxax5saxk275bjptynipdhjyw4kksen445eqznk5hoqclba",
+        "proposal_identity": "sha256:e273cf52e0bf640bab5fe852f9e1a878ce9c5b8a5488de73a4865aae9dd012c2"
+      },
+      {
+        "category": "missing_lean_runtime_export",
+        "disposition": "no_go",
+        "bounded_repair_task": {
+          "task_id": "PGIR-005-REPAIR-LEAN-RUNTIME-EXPORT",
+          "revision": "separate_task_revision_required",
+          "scope": {
+            "repository_id": "SRC-DATASETS-AUTH-1",
+            "repository_root": "ipfs_datasets_py",
+            "allowed_edit_paths": [
+              "ipfs_datasets_py/ipfs_datasets_py/logic/modal/__init__.py",
+              "ipfs_datasets_py/ipfs_datasets_py/logic/modal/lean_runtime.py",
+              "ipfs_datasets_py/tests/unit_tests/logic/hammers/test_process_lifecycle.py"
+            ],
+            "required_validation": [
+              "python -m pytest -q ipfs_datasets_py/tests/unit_tests/logic/hammers/test_process_lifecycle.py::test_lean_runtime_uses_supervisor_owned_kind",
+              "python -m pytest -q ipfs_datasets_py/tests/unit_tests/logic/hammers/test_process_lifecycle.py"
+            ],
+            "prohibited_shortcuts": [
+              "skipping the managed-worker lifecycle assertion",
+              "bypassing the managed runtime with a direct subprocess",
+              "reporting unavailable Lean execution as a proof pass"
+            ]
+          }
+        },
+        "trigger_receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+        "first_failed_assertion_preserved": true,
+        "setup_cause_preserved": null,
+        "cannot_weaken_gate": true,
+        "repair_task_index": {
+          "category": "missing_lean_runtime_export",
+          "disposition": "no_go",
+          "task_id": "PGIR-005-REPAIR-LEAN-RUNTIME-EXPORT",
+          "revision": "separate_task_revision_required",
+          "trigger_receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+          "repository_id": "SRC-DATASETS-AUTH-1",
+          "repository_root": "ipfs_datasets_py",
+          "allowed_edit_paths": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/modal/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/modal/lean_runtime.py",
+            "ipfs_datasets_py/tests/unit_tests/logic/hammers/test_process_lifecycle.py"
+          ],
+          "cannot_weaken_gate": true
+        },
+        "proposal_cid": "baguqeera4orjzamfvz5o7qotkalha4r4h2twyxnw2xwrmsuti2pieyhflasa",
+        "proposal_identity": "sha256:e3a29c8185ae7aefc1d3501670723c3ea76c5db6d5ed164a93469e8260e55824"
+      },
+      {
+        "category": "absent_hammer_environment_lock",
+        "disposition": "blocked",
+        "bounded_repair_task": {
+          "task_id": "PGIR-005-REPAIR-HAMMER-ENVIRONMENT-LOCK",
+          "revision": "separate_task_revision_required",
+          "scope": {
+            "repository_id": "SRC-DATASETS-AUTH-1",
+            "repository_root": "ipfs_datasets_py",
+            "allowed_edit_paths": [
+              "ipfs_datasets_py/data/logic/itp_hammer/environment.json"
+            ],
+            "generation_command": [
+              "env",
+              "PYTHONPATH=ipfs_datasets_py",
+              "python",
+              "ipfs_datasets_py/scripts/ops/logic/probe_itp_hammer_environment.py",
+              "--out",
+              "ipfs_datasets_py/data/logic/itp_hammer/environment.json"
+            ],
+            "required_validation": [
+              "python -m pytest -q ipfs_datasets_py/tests/unit_tests/logic/hammers/test_release_gate.py",
+              "python -m pytest -q ipfs_datasets_py/tests/unit_tests/logic/hammers"
+            ],
+            "prohibited_shortcuts": [
+              "fabricating an environment lock without running the bounded probe",
+              "relaxing or skipping the release gate",
+              "generating the lock as an undeclared PGIR-005 effect"
+            ]
+          }
+        },
+        "trigger_receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+        "first_failed_assertion_preserved": null,
+        "setup_cause_preserved": true,
+        "cannot_weaken_gate": true,
+        "repair_task_index": {
+          "category": "absent_hammer_environment_lock",
+          "disposition": "blocked",
+          "task_id": "PGIR-005-REPAIR-HAMMER-ENVIRONMENT-LOCK",
+          "revision": "separate_task_revision_required",
+          "trigger_receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+          "repository_id": "SRC-DATASETS-AUTH-1",
+          "repository_root": "ipfs_datasets_py",
+          "allowed_edit_paths": [
+            "ipfs_datasets_py/data/logic/itp_hammer/environment.json"
+          ],
+          "cannot_weaken_gate": true
+        },
+        "proposal_cid": "baguqeeradttvo5ivx6rxy3upfekzdabwrkdyv5zbzrkog3bscohpagmuv4va",
+        "proposal_identity": "sha256:1ce7577515bfa37c6e8f29159180368a878af721cc54e36c32138ef01994af2a"
+      }
+    ],
+    "coverage_accounting": {
+      "accelerator": {
+        "expected_total": 360,
+        "observed_total": 360,
+        "outcomes": {
+          "passed": 360,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0
+        },
+        "receipt_cid": "baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a",
+        "complete": true
+      },
+      "datasets": {
+        "expected_total": 818,
+        "observed_total": 818,
+        "outcomes": {
+          "passed": 801,
+          "failed": 2,
+          "skipped": 2,
+          "errors": 13
+        },
+        "receipt_cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+        "complete": true,
+        "first_failed_assertion_retained": true,
+        "first_setup_cause_retained": true
+      },
+      "required_validation": {
+        "expected_total": 31,
+        "observed_total": 31,
+        "outcomes": {
+          "passed": 31,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0
+        },
+        "receipt_cid": "baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq",
+        "complete": true
+      }
+    },
+    "authority_boundary": {
+      "justice_dao_pinset_role": "metadata_only",
+      "training_repositories_admitted": 0,
+      "dataset_rows_admitted": 0,
+      "data_consumption_authorized": false,
+      "training_authorized": false,
+      "proof_execution_authorized": false,
+      "capability_probe_is_metadata_discovery_only": true,
+      "unavailable_prover_treated_as_pass": false,
+      "source_snapshot_rewrite_authorized": false,
+      "historical_working_tree_bytes_sealed": false
+    },
+    "bundle_index": {
+      "schema": "pgir-baseline-evidence-bundle@1",
+      "task_id": "PGIR-005",
+      "task_revision": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+      "lease_fence": 3,
+      "test_receipt_cids": [
+        "baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a",
+        "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+        "baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq"
+      ],
+      "capability_receipt_cid": "baguqeerambrs2h4t34he6spelik6co6jec53vkgfnkr2remr4bnyz4bn6yia",
+      "prerequisite_proposal_cids": [
+        "baguqeera4jz46uxax5saxk275bjptynipdhjyw4kksen445eqznk5hoqclba",
+        "baguqeera4orjzamfvz5o7qotkalha4r4h2twyxnw2xwrmsuti2pieyhflasa",
+        "baguqeeradttvo5ivx6rxy3upfekzdabwrkdyv5zbzrkog3bscohpagmuv4va"
+      ],
+      "embedded_log_cids": [
+        "bafkreiae2epk3af6dm5ptcogewgv6g7qnrasyhcwynbqhibjrzgmtreloe",
+        "bafkreiajcywqzlfteswjan7pgrd2lxng25r6tla36tcpp2bvndwhoqlnkq",
+        "bafkreicfrlxpcflwh443hjhthzoslxv4mmslxhjocqlskd6vy7x3dwrrum"
+      ],
+      "authority_boundary": "metadata-only; no training, data consumption, snapshot rewrite, or proof execution",
+      "disposition": "sealed_with_bounded_no_go_prerequisites",
+      "source_binding_receipt_cids": [
+        "baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq",
+        "baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca"
+      ],
+      "artifact_validation_receipt_cid": "baguqeerapro3c5roqitkvbeg5zxkpcleeawrsnzp4jay744rzzazrq57kbva"
+    },
+    "bundle_cid": "baguqeerar3jycpkvsx45hnfnd7u4bh37p2lkvsnl373w2b2ogaj2ixxuwhkq",
+    "bundle_identity": "sha256:8ed3813d5595f9d3b4ad1fe9c09f7f7e96aac9abdff76d074e3013a45ef4b1d5",
+    "source_binding_receipts": [
+      {
+        "schema": "PGIRSourceBindingReceipt@1",
+        "receipt_id": "PGIR-005-SOURCE-BINDING-ACCELERATOR",
+        "phase": "pre-change-source-probe",
+        "repository_id": "SRC-ACCEL-AUTH-1",
+        "command_argv": [
+          "/bin/bash",
+          "-lc",
+          "git rev-parse HEAD; git branch --show-current; git config --get remote.origin.url; git cat-file -e c821d0b43877591bbb0fa3f328fbccff187b56e7^{commit}; echo base_present=$?; git merge-base --is-ancestor c821d0b43877591bbb0fa3f328fbccff187b56e7 HEAD; echo base_is_ancestor=$?; git rev-list --count c821d0b43877591bbb0fa3f328fbccff187b56e7..HEAD 2>/dev/null || true; git status --porcelain=v1 | awk 'BEGIN{m=0;u=0}{if(substr($0,1,2)==\"??\")u++;else m++}END{print \"tracked_changes=\" m \" untracked=\" u}'; git diff --summary | sed -n '1,30p'; find .. -name AGENTS.md -path \"$(pwd)/*\" -print | sed -n '1,30p'"
+        ],
+        "cwd": {
+          "observed_uri": "file:///home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py",
+          "portable_identity": "SRC-ACCEL-AUTH-1 historical checkout root"
+        },
+        "source_locator": {
+          "session_record": "/home/barberb/.codex/sessions/2026/08/16/rollout-2026-08-16T21-11-49-01a00c6a-a192-76e3-a735-237c8a28413d.jsonl",
+          "ordinal": 44,
+          "json_pointer": "/payload/item",
+          "jsonl_record_sha256": "303f9a0ee023f37087045ef23c6241f55718408e47ab5866dd55769b88293c24",
+          "jsonl_record_hash_scope": "UTF-8 JSONL record bytes excluding terminal LF"
+        },
+        "execution": {
+          "exit_code": 0,
+          "status": "probe-completed",
+          "recorded_at": "2026-08-16T21:14:05.590Z",
+          "precedes_test_ordinal": 184
+        },
+        "observed": {
+          "checkout_head": "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+          "branch": null,
+          "origin": "https://github.com/endomorphosis/ipfs_accelerate_py.git",
+          "compared_base": "c821d0b43877591bbb0fa3f328fbccff187b56e7",
+          "compared_base_present": false,
+          "compared_base_is_ancestor": false,
+          "tracked_changes": 6149,
+          "untracked_paths": 0,
+          "working_tree_content_identity_sealed": false
+        },
+        "authority_context": {
+          "campaign_authority_commit": "8d46a6d25dd006c8cab3c9d9612707d2a014e79c",
+          "campaign_authority_tree": "697ee660025fbf14a1cbe6c24fd8da5365df84d5",
+          "relationship": "campaign comparison authority sealed later; not the historical execution tree"
+        },
+        "binding_status": "historical_dirty_checkout_context_only",
+        "raw_log_ref": {
+          "embedded_log_id": "accelerator_source_binding_stdout",
+          "sha256": "13dd6bec5242440857d36011a7ce540c8a438b335de7a6917f7d0e46f4007fb9",
+          "cid": "bafkreiat3vv6yusciqefpu3acgt44vamrjbywm2546tjc735bzdpiad7xe"
+        },
+        "authority": {
+          "exact_working_tree_execution_identity": false,
+          "promotion_authority": false,
+          "proof_receipt": false,
+          "training_authority": false
+        },
+        "receipt_cid": "baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq",
+        "receipt_identity": "sha256:084d161d27bd3f3c772782c42e5100ed2c576e8642a64817d1dc191729048869"
+      },
+      {
+        "schema": "PGIRSourceBindingReceipt@1",
+        "receipt_id": "PGIR-005-SOURCE-BINDING-DATASETS",
+        "phase": "pre-change-source-probe",
+        "repository_id": "SRC-DATASETS-AUTH-1",
+        "command_argv": [
+          "/bin/bash",
+          "-lc",
+          "git rev-parse HEAD; git branch --show-current; git config --get remote.origin.url; git cat-file -e 7f0fe2bbad3c70928234c6e2312ee3182fd7681f^{commit}; echo base_present=$?; git merge-base --is-ancestor 7f0fe2bbad3c70928234c6e2312ee3182fd7681f HEAD; echo base_is_ancestor=$?; git rev-list --count 7f0fe2bbad3c70928234c6e2312ee3182fd7681f..HEAD 2>/dev/null || true; git status --porcelain=v1 | awk 'BEGIN{m=0;u=0}{if(substr($0,1,2)==\"??\")u++;else m++}END{print \"tracked_changes=\" m \" untracked=\" u}'; git diff --summary | sed -n '1,30p'; find .. -name AGENTS.md -path \"$(pwd)/*\" -print | sed -n '1,30p'"
+        ],
+        "cwd": {
+          "observed_uri": "file:///home/barberb/lift_coding/hallucinate_app/ipfs_datasets_py",
+          "portable_identity": "SRC-DATASETS-AUTH-1 historical checkout root"
+        },
+        "source_locator": {
+          "session_record": "/home/barberb/.codex/sessions/2026/08/16/rollout-2026-08-16T21-11-49-01a00c6a-a192-76e3-a735-237c8a28413d.jsonl",
+          "ordinal": 45,
+          "json_pointer": "/payload/item",
+          "jsonl_record_sha256": "4f1b140d6d0106f29ec6bfce2f1b599391687d53e04d73d426569e8f4b8f01a5",
+          "jsonl_record_hash_scope": "UTF-8 JSONL record bytes excluding terminal LF"
+        },
+        "execution": {
+          "exit_code": 0,
+          "status": "probe-completed",
+          "recorded_at": "2026-08-16T21:14:05.592Z",
+          "precedes_test_ordinal": 235
+        },
+        "observed": {
+          "checkout_head": "d144be65ffe4c6423e4e1c30cd692812607343eb",
+          "branch": "main",
+          "origin": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+          "compared_base": "7f0fe2bbad3c70928234c6e2312ee3182fd7681f",
+          "compared_base_present": false,
+          "compared_base_is_ancestor": false,
+          "tracked_changes": 6839,
+          "untracked_paths": 0,
+          "working_tree_content_identity_sealed": false
+        },
+        "authority_context": {
+          "campaign_authority_commit": "df93e91e6338c84a17c3208ef68b88de8566f78c",
+          "campaign_authority_tree": "37b9cb40644831c85c6fdf07d0228e45061e239a",
+          "relationship": "campaign comparison authority sealed later; not the historical execution tree"
+        },
+        "binding_status": "historical_dirty_checkout_context_only",
+        "raw_log_ref": {
+          "embedded_log_id": "datasets_source_binding_stdout",
+          "sha256": "55e8641b0857127ae7d2aaff4eba777bd6b90384f8f9be87a2347390701e15fe",
+          "cid": "bafkreicv5bsbwccxcj5opuvk75hlu533224qhbhy7g7ipiruooihahqv7y"
+        },
+        "authority": {
+          "exact_working_tree_execution_identity": false,
+          "promotion_authority": false,
+          "proof_receipt": false,
+          "training_authority": false
+        },
+        "receipt_cid": "baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca",
+        "receipt_identity": "sha256:92107cae8d45f50b20b4b57c3ba0db4f2b8edf7ec13c993126e9421e80f427c4"
+      }
+    ],
+    "artifact_validation_receipt": {
+      "schema": "PGIRSummaryValidationReceipt@1",
+      "receipt_id": "PGIR-005-ARTIFACT-VALIDATION",
+      "category": "artifact-validation",
+      "phase": "post-seal-validation",
+      "command_argv": [
+        "python",
+        "-c",
+        "import base64\nimport gzip\nimport hashlib\nimport json\nimport re\nimport sys\n\npath = sys.argv[1]\ntext = open(path, encoding=\"utf-8\").read()\nd = json.loads(text)\n\ndef canonical(obj):\n    return json.dumps(obj, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False, allow_nan=False).encode()\n\ndef dag_identity(obj):\n    digest = hashlib.sha256(canonical(obj)).digest()\n    cid = \"b\" + base64.b32encode(b\"\\x01\\xa9\\x02\\x12\\x20\" + digest).decode().lower().rstrip(\"=\")\n    return cid, digest.hex()\n\ndef raw_identity(raw):\n    digest = hashlib.sha256(raw).digest()\n    cid = \"b\" + base64.b32encode(b\"\\x01\\x55\\x12\\x20\" + digest).decode().lower().rstrip(\"=\")\n    return cid, digest.hex()\n\ndef check_receipt(receipt):\n    projection = {k: v for k, v in receipt.items() if k not in (\"receipt_cid\", \"receipt_identity\")}\n    cid, sha = dag_identity(projection)\n    assert receipt[\"receipt_cid\"] == cid\n    assert receipt[\"receipt_identity\"] == \"sha256:\" + sha\n\nassert text.endswith(\"\\n\") and not text.endswith(\"\\n\\n\")\nassert (\"PLACE\" + \"HOLDER_\") not in text\nassert d[\"schema\"] == \"pgir-task-result@1\" and d[\"task_id\"] == \"PGIR-005\"\neb = d[\"evidence_bundle\"]\nfor receipt in eb[\"test_receipts\"] + eb[\"source_binding_receipts\"] + [eb[\"capability_receipt\"], eb[\"artifact_validation_receipt\"]]:\n    check_receipt(receipt)\nfor repair in eb[\"prerequisite_dispositions\"]:\n    projection = {k: v for k, v in repair.items() if k not in (\"proposal_cid\", \"proposal_identity\")}\n    cid, sha = dag_identity(projection)\n    assert repair[\"proposal_cid\"] == cid\n    assert repair[\"proposal_identity\"] == \"sha256:\" + sha\nbundle_projection = {k: v for k, v in eb.items() if k not in (\"bundle_cid\", \"bundle_identity\")}\ncid, sha = dag_identity(bundle_projection)\nassert eb[\"bundle_cid\"] == cid and eb[\"bundle_identity\"] == \"sha256:\" + sha\nassert d[\"artifact\"][\"content_scope\"] == \"/evidence_bundle\"\nassert d[\"artifact\"][\"evidence_bundle_cid\"] == cid\nassert d[\"artifact\"][\"evidence_bundle_identity\"] == \"sha256:\" + sha\ncid, sha = dag_identity(d[\"result_projection\"])\nassert d[\"result_cid\"] == cid and d[\"result_identity\"] == \"sha256:\" + sha\nsummary_projection = {k: v for k, v in d.items() if k not in (\"summary_cid\", \"summary_identity\")}\ncid, sha = dag_identity(summary_projection)\nassert d[\"summary_cid\"] == cid and d[\"summary_identity\"] == \"sha256:\" + sha\ndecoded_logs = {}\nfor log_id, log in eb[\"embedded_logs\"].items():\n    raw = gzip.decompress(base64.b64decode(log[\"payload\"], validate=True))\n    cid, sha = raw_identity(raw)\n    assert len(raw) == log[\"uncompressed_byte_count\"]\n    assert log[\"cid\"] == cid and log[\"sha256\"] == sha\n    decoded_logs[log_id] = re.sub(r\"\\x1b\\[[0-9;]*m\", \"\", raw.decode(\"utf-8\", errors=\"replace\"))\ntests = {r[\"category\"]: r for r in eb[\"test_receipts\"]}\nassert set(tests) == {\"accelerator\", \"datasets\", \"focused-validation\"}\nexpected = {\n    \"accelerator\": (360, 360, 0, 0, 0),\n    \"datasets\": (818, 801, 2, 2, 13),\n    \"focused-validation\": (31, 31, 0, 0, 0)\n}\nfor name, values in expected.items():\n    outcome = tests[name][\"outcome\"]\n    observed = (outcome[\"collected\"], outcome[\"passed\"], outcome[\"failed\"], outcome[\"skipped\"], outcome[\"errors\"])\n    assert observed == values\n    assert outcome[\"collected\"] == outcome[\"passed\"] + outcome[\"failed\"] + outcome[\"skipped\"] + outcome[\"errors\"]\nfor category, log_id in (\n    (\"accelerator\", \"accelerator_stdout\"),\n    (\"datasets\", \"datasets_stdout\"),\n    (\"focused-validation\", \"focused_validation_stdout\"),\n):\n    assert tests[category][\"outcome\"][\"summary\"] in decoded_logs[log_id]\naccelerator_match = re.search(r\"(\\d+) passed, (\\d+) warning\", decoded_logs[\"accelerator_stdout\"])\ndatasets_match = re.search(r\"(\\d+) failed, (\\d+) passed, (\\d+) skipped, (\\d+) errors\", decoded_logs[\"datasets_stdout\"])\nfocused_match = re.search(r\"(\\d+) passed, (\\d+) warning\", decoded_logs[\"focused_validation_stdout\"])\nassert accelerator_match and tuple(map(int, accelerator_match.groups())) == (tests[\"accelerator\"][\"outcome\"][\"passed\"], tests[\"accelerator\"][\"outcome\"][\"warnings\"])\nassert datasets_match and tuple(map(int, datasets_match.groups())) == (tests[\"datasets\"][\"outcome\"][\"failed\"], tests[\"datasets\"][\"outcome\"][\"passed\"], tests[\"datasets\"][\"outcome\"][\"skipped\"], tests[\"datasets\"][\"outcome\"][\"errors\"])\nassert focused_match and tuple(map(int, focused_match.groups())) == (tests[\"focused-validation\"][\"outcome\"][\"passed\"], tests[\"focused-validation\"][\"outcome\"][\"warnings\"])\ndataset_outcome = tests[\"datasets\"][\"outcome\"]\nfailure = dataset_outcome[\"first_failed_assertion\"]\nsetup = dataset_outcome[\"first_setup_cause\"]\nassert failure and setup\nfor field in (\"expression\", \"node_id\", \"location\", \"snapshot_value\", \"live_expected_value\"):\n    assert str(failure[field]) in decoded_logs[\"datasets_stdout\"]\nfor field in (\"observed_message\", \"node_id\", \"raise_location\", \"portable_missing_path\"):\n    assert str(setup[field]) in decoded_logs[\"datasets_stdout\"]\nassert all(node_id in decoded_logs[\"datasets_stdout\"] for node_id in dataset_outcome[\"error_node_ids\"])\nassert all(item[\"node_id\"] in decoded_logs[\"datasets_stdout\"] and item[\"message\"] in decoded_logs[\"datasets_stdout\"] for item in dataset_outcome[\"additional_failures\"])\nsources = {r[\"repository_id\"]: r for r in eb[\"source_binding_receipts\"]}\nfor repository_id, log_id in (\n    (\"SRC-ACCEL-AUTH-1\", \"accelerator_source_binding_stdout\"),\n    (\"SRC-DATASETS-AUTH-1\", \"datasets_source_binding_stdout\"),\n):\n    source = sources[repository_id]\n    observed = source[\"observed\"]\n    source_log = decoded_logs[log_id]\n    assert observed[\"checkout_head\"] in source_log\n    assert observed[\"origin\"] in source_log\n    assert (\"tracked_changes=\" + str(observed[\"tracked_changes\"]) + \" untracked=\" + str(observed[\"untracked_paths\"])) in source_log\n    assert \"base_present=128\" in source_log and \"base_is_ancestor=128\" in source_log\n    assert observed[\"working_tree_content_identity_sealed\"] is False\nrepairs = eb[\"prerequisite_dispositions\"]\nassert [r[\"category\"] for r in repairs] == [\"semantic_cid_drift\", \"missing_lean_runtime_export\", \"absent_hammer_environment_lock\"]\nassert all(r[\"cannot_weaken_gate\"] and r[\"bounded_repair_task\"][\"revision\"] == \"separate_task_revision_required\" for r in repairs)\nassert all(r[\"bounded_repair_task\"][\"scope\"][\"repository_id\"] == \"SRC-DATASETS-AUTH-1\" for r in repairs)\nassert d[\"allowed_effects\"] == [{\"path\": path, \"effect\": \"create qualification evidence summary\"}]\nassert d[\"prohibited_effects_observed\"] == []\nassert d[\"rollback\"][\"protected_files_touched\"] is False\nprint(\"PGIR-005 artifact validation passed\")\n",
+        "data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json"
+      ],
+      "cwd": {
+        "observed_path": "/home/barberb/lift_coding/.pgir_campaign/runtime/worktrees/workspace-9e2fb7a1388a-e4706ea2cc35",
+        "portable_identity": "PGIR-005 task worktree root"
+      },
+      "execution": {
+        "exit_code": 0,
+        "status": "passed",
+        "stdout_contract": "exact deterministic success line"
+      },
+      "checks": [
+        "JSON shape and terminal newline",
+        "all typed receipt CID and SHA-256 projections",
+        "all bounded repair proposal CID and SHA-256 projections",
+        "full evidence-bundle, task-result, and full-summary projections",
+        "embedded transcript decoding, byte counts, SHA-256, and raw CIDs",
+        "unique required test categories and exact count reconciliation",
+        "retained first failed assertion and setup cause",
+        "three separate no-weaken bounded repair dispositions",
+        "typed pytest outcomes and diagnostics derived from decoded transcripts",
+        "source checkout heads and dirty counts derived from decoded Git probe transcripts",
+        "single allowed output and zero prohibited effects"
+      ],
+      "outcome": {
+        "status": "passed",
+        "summary": "artifact identities, transcript-derived evidence closure, counts, diagnostics, and effect bounds validated"
+      },
+      "raw_log_ref": {
+        "embedded_log_id": "artifact_validation_stdout",
+        "sha256": "1ee801836642ccba29bf04907967242b363306a3baa7076f121098ff8a2e097e",
+        "cid": "bafkreia65aaygzsczs5ctpyesb4wojblgyzqni52u4dw6eqqtd7yulqjpy"
+      },
+      "authority": {
+        "artifact_validation_only": true,
+        "promotion_authority": false,
+        "proof_receipt": false,
+        "training_authority": false
+      },
+      "receipt_cid": "baguqeerapro3c5roqitkvbeg5zxkpcleeawrsnzp4jay744rzzazrq57kbva",
+      "receipt_identity": "sha256:7c5db1762e8226aa8486ee6ea78964202d19372fe2418ff391ce4198c3bf506a"
+    }
+  },
+  "artifact": {
+    "path": "data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json",
+    "media_type": "application/json",
+    "content_scope": "/evidence_bundle",
+    "evidence_bundle_cid": "baguqeerar3jycpkvsx45hnfnd7u4bh37p2lkvsnl373w2b2ogaj2ixxuwhkq",
+    "evidence_bundle_identity": "sha256:8ed3813d5595f9d3b4ad1fe9c09f7f7e96aac9abdff76d074e3013a45ef4b1d5",
+    "canonicalization": "RFC 8785-compatible sorted compact JSON, UTF-8, no floats; identity projection excludes its own cid and identity fields"
+  },
+  "evidence": [
+    {
+      "kind": "test_receipt",
+      "category": "accelerator",
+      "cid": "baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a"
+    },
+    {
+      "kind": "test_receipt",
+      "category": "datasets",
+      "cid": "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q"
+    },
+    {
+      "kind": "test_receipt",
+      "category": "required_validation",
+      "cid": "baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq"
+    },
+    {
+      "kind": "capability_receipt",
+      "category": "formal_verification_capabilities",
+      "cid": "baguqeerambrs2h4t34he6spelik6co6jec53vkgfnkr2remr4bnyz4bn6yia"
+    },
+    {
+      "kind": "bounded_repair_proposal",
+      "category": "semantic_cid_drift",
+      "cid": "baguqeera4jz46uxax5saxk275bjptynipdhjyw4kksen445eqznk5hoqclba"
+    },
+    {
+      "kind": "bounded_repair_proposal",
+      "category": "missing_lean_runtime_export",
+      "cid": "baguqeera4orjzamfvz5o7qotkalha4r4h2twyxnw2xwrmsuti2pieyhflasa"
+    },
+    {
+      "kind": "bounded_repair_proposal",
+      "category": "absent_hammer_environment_lock",
+      "cid": "baguqeeradttvo5ivx6rxy3upfekzdabwrkdyv5zbzrkog3bscohpagmuv4va"
+    },
+    {
+      "kind": "source_binding_receipt",
+      "category": "accelerator",
+      "cid": "baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq"
+    },
+    {
+      "kind": "source_binding_receipt",
+      "category": "datasets",
+      "cid": "baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca"
+    },
+    {
+      "kind": "artifact_validation_receipt",
+      "category": "artifact-validation",
+      "cid": "baguqeerapro3c5roqitkvbeg5zxkpcleeawrsnzp4jay744rzzazrq57kbva"
+    }
+  ],
+  "incident": {
+    "kind": "pre_change_qualification_blockers",
+    "test_regression": "not_assessed",
+    "prerequisite_categories": [
+      "semantic_cid_drift",
+      "missing_lean_runtime_export",
+      "absent_hammer_environment_lock"
+    ],
+    "gate_weakening_permitted": false,
+    "source_binding_limitation": "pre-change runs were executed from historically dirty checkouts; their exact working-tree byte projections were not sealed"
+  },
+  "recovery": {
+    "mode": "separate_bounded_repairs",
+    "same_revision_repair_permitted": false,
+    "requires_new_lease_and_revision": true,
+    "preserve_frozen_evidence": true,
+    "cannot_weaken_gates": true
+  },
+  "allowed_effects": [
+    {
+      "path": "data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json",
+      "effect": "create qualification evidence summary"
+    }
+  ],
+  "prohibited_effects_observed": [],
+  "rollback": {
+    "strategy": "remove the single declared output before admission",
+    "protected_files_touched": false,
+    "shared_dependencies_touched": false,
+    "generated_artifacts_outside_declared_output_touched": false
+  },
+  "disposition": {
+    "status": "evidence_sealed_with_bounded_no_go_prerequisites",
+    "accelerator_baseline": "pass",
+    "datasets_baseline": "fail",
+    "required_validation": "pass",
+    "semantic_cid_gate": "no_go",
+    "lean_runtime_gate": "no_go",
+    "hammer_environment_gate": "blocked",
+    "proof_claim": "none",
+    "training_claim": "none",
+    "admission_recommendation": "admit PGIR-005 evidence only; schedule each repair under its own revision and lease",
+    "cannot_weaken_gates": true,
+    "pre_change_source_binding": "historical_dirty_checkout_context_only"
+  },
+  "result_projection": {
+    "schema": "pgir-task-result@1",
+    "task_id": "PGIR-005",
+    "task_revision": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+    "exact_inputs": {
+      "repository_id": "repository:sha256:4d87e009c221f83df2c5846e6085d4917204de75df8dc438b045c3bbff059dbc",
+      "tree_id": "597a0285738c5878eed462593fd75e18715ff7f8",
+      "source_binding_identity": "sha256:9da856806306b144ba86a02505946d995750fe0d8bbf4ab7bc9fcd287b047220"
+    },
+    "lease": {
+      "attempt": 1,
+      "fence": 3,
+      "disposition": "consumed_for_qualification_evidence_only"
+    },
+    "effects": {
+      "allowed_output_cids": [
+        "baguqeerar3jycpkvsx45hnfnd7u4bh37p2lkvsnl373w2b2ogaj2ixxuwhkq"
+      ],
+      "prohibited_effects_observed": [],
+      "protected_files_touched": false
+    },
+    "test_receipt_cids": [
+      "baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a",
+      "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+      "baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq"
+    ],
+    "proof_receipts": [],
+    "capability_receipt_cid": "baguqeerambrs2h4t34he6spelik6co6jec53vkgfnkr2remr4bnyz4bn6yia",
+    "bounded_repair_proposal_cids": [
+      "baguqeera4jz46uxax5saxk275bjptynipdhjyw4kksen445eqznk5hoqclba",
+      "baguqeera4orjzamfvz5o7qotkalha4r4h2twyxnw2xwrmsuti2pieyhflasa",
+      "baguqeeradttvo5ivx6rxy3upfekzdabwrkdyv5zbzrkog3bscohpagmuv4va"
+    ],
+    "disposition": "evidence_sealed_with_bounded_no_go_prerequisites",
+    "recovery": {
+      "mode": "separate_bounded_repairs",
+      "requires_new_lease_and_revision": true,
+      "cannot_weaken_gates": true
+    },
+    "source_binding_receipt_cids": [
+      "baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq",
+      "baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca"
+    ],
+    "artifact_validation_receipt_cid": "baguqeerapro3c5roqitkvbeg5zxkpcleeawrsnzp4jay744rzzazrq57kbva"
+  },
+  "result_cid": "baguqeerabt5f2oxnlybr33a6azszdctygqthph2ww5wrk2dcqxutym4j6yjq",
+  "result_identity": "sha256:0cfa5d3aed5e031dec1e0665918a783426779f56b76d15686285e93c3389f613",
+  "summary_index": {
+    "schema": "pgir-baseline-summary@1",
+    "task_id": "PGIR-005",
+    "task_revision": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+    "result_cid": "baguqeerabt5f2oxnlybr33a6azszdctygqthph2ww5wrk2dcqxutym4j6yjq",
+    "bundle_cid": "baguqeerar3jycpkvsx45hnfnd7u4bh37p2lkvsnl373w2b2ogaj2ixxuwhkq",
+    "artifact_path": "data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json",
+    "disposition": "evidence_sealed_with_bounded_no_go_prerequisites"
+  },
+  "summary_cid": "baguqeerasr4hxpxwkhe64btsxu56moh7v7ww2a6covaavjd7qnzb4xgl5cpq",
+  "summary_identity": "sha256:94787bbef651c9ee0672bd3be638ffafed6d03c275400aa47f83721e5ccbe89f"
+}
