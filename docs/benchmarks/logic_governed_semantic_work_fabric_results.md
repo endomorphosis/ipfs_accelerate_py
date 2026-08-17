@@ -1,6 +1,6 @@
 # LGSWF benchmark results
 
-Generated: 2026-08-17T04:40:03Z
+Generated: 2026-08-17T04:48:53Z
 
 Control plane: DuckDB + Quack (authoritative).
 DuckLake: optional non-authoritative projection; unavailable here.

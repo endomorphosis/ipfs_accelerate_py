@@ -3,7 +3,7 @@
     "authority": "duckdb_quack",
     "ducklake": "optional_non_authoritative"
   },
-  "generated_at": "2026-08-17T04:40:03Z",
+  "generated_at": "2026-08-17T04:48:53Z",
   "honesty": "Raw full A-D sealed repetitions were not substituted with target values. Only the live Quack control probe is marked observed.",
   "modes": [
     {
