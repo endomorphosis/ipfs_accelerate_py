@@ -20,6 +20,14 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
+    ProofStateClass,
+    ProofStateClassification,
+    project_curriculum,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.goal_tactician_lifecycle import (
     GoalTacticianLifecycleConfig,
     GoalTacticianLifecycleError,
@@ -417,6 +425,96 @@ def test_stale_epoch_receipt_cannot_complete_after_restart(
     admitted = second.try_complete(new_lease)
     assert admitted.admitted
     assert second.authoritative_state().status is LifecyclePlanStatus.COMPLETED
+
+
+def _high_curriculum() -> CurriculumProjection:
+    return project_curriculum(
+        ProofStateClassification(
+            state_class=ProofStateClass.CLOSED,
+            curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+            independently_validated=True,
+            kernel_verified=True,
+            reason_code="independently_validated_kernel_success",
+        ),
+        independently_validated=True,
+    )
+
+
+def test_curriculum_authority_survives_restart(tmp_path: Path) -> None:
+    first = create_goal_tactician_supervisor_lifecycle(tmp_path)
+    _open(first)
+    lease = first.acquire_lease("worker-1")
+    first.record_curriculum_projection(_high_curriculum(), lease)
+    assert first.authoritative_state().curriculum_projections[-1]["authority"] == (
+        CurriculumAuthority.HIGH.value
+    )
+    before = first.authoritative_state().curriculum_projections
+
+    second = _fresh_instance(tmp_path)
+    after = second.authoritative_state().curriculum_projections
+    assert after == before
+    assert after[-1]["curriculum_class"] == CurriculumClass.VERIFIED_SUCCESS.value
+    assert after[-1]["upgrades_curriculum_authority"] is True
+
+
+def test_tree_invalidation_drops_high_curriculum_authority(tmp_path: Path) -> None:
+    first = create_goal_tactician_supervisor_lifecycle(tmp_path)
+    _open(first)
+    lease = first.acquire_lease("worker-1")
+    first.record_curriculum_projection(
+        _high_curriculum(),
+        lease,
+        ranked_candidates=(
+            {"candidate_id": "cand:keep", "kind": "tactic", "score_millionths": 1},
+        ),
+    )
+    assert first.authoritative_state().curriculum_projections
+    assert first.authoritative_state().ranked_candidates
+    first.invalidate_tree("tree:repo@def456", lease)
+
+    second = _fresh_instance(tmp_path)
+    state = second.authoritative_state()
+    assert state.curriculum_projections == ()
+    assert state.ranked_candidates == ()
+    new_lease = second.acquire_lease("worker-2")
+    with pytest.raises(GoalTacticianLifecycleError, match="cannot upgrade"):
+        second.record_curriculum_projection(
+            {
+                "curriculum_class": CurriculumClass.TIMEOUT.value,
+                "authority": CurriculumAuthority.HIGH.value,
+                "independently_validated": True,
+            },
+            new_lease,
+        )
+    candidate = project_curriculum(
+        ProofStateClassification(
+            state_class=ProofStateClass.TIMEOUT,
+            curriculum_class=CurriculumClass.TIMEOUT,
+            independently_validated=True,
+            reason_code="timeout_is_not_falsehood",
+        ),
+        independently_validated=True,
+    )
+    recorded = second.record_curriculum_projection(candidate, new_lease)
+    assert recorded.curriculum_projections[-1]["authority"] != CurriculumAuthority.HIGH.value
+
+
+def test_forged_curriculum_after_restart_fails_closed(tmp_path: Path) -> None:
+    first = create_goal_tactician_supervisor_lifecycle(tmp_path)
+    _open(first)
+    first.acquire_lease("worker-1")
+    second = _fresh_instance(tmp_path)
+    new_lease = second.acquire_lease("worker-2")
+    with pytest.raises(GoalTacticianLifecycleError, match="independently validated"):
+        second.record_curriculum_projection(
+            {
+                "curriculum_class": CurriculumClass.VERIFIED_SUCCESS.value,
+                "authority": CurriculumAuthority.HIGH.value,
+                "independently_validated": False,
+                "trace_ids": ["forged"],
+            },
+            new_lease,
+        )
 
 
 # ---------------------------------------------------------------------------

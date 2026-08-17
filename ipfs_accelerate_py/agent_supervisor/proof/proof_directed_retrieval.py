@@ -47,10 +47,17 @@ PROOF_DIRECTED_RETRIEVAL_SCHEMA = (
 )
 RETRIEVAL_SEED_SCHEMA = "ipfs_accelerate_py/agent-supervisor/retrieval-seed@1"
 RETRIEVAL_CANDIDATE_AUDIT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/retrieval-candidate-audit@1"
+PREMISE_RANKING_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-premise-ranking@1"
+BOUNDED_EXPANSION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-bounded-branch-expansion@1"
 RETRIEVAL_CLOSURE_REQUIREMENT_ID = "agent-supervisor.requirement.retrieval-authoritative-closure@1"
 
 APPROXIMATE_SOURCES = ("ast", "bm25", "graphrag", "vector")
 _MAX_TEXT_BYTES = 8_192
+DEFAULT_PREMISE_TOP_K = 8
+ABSOLUTE_MAX_PREMISE_TOP_K = 64
+DEFAULT_MAX_BRANCH_FACTOR = 8
+ABSOLUTE_MAX_BRANCH_FACTOR = 32
+RANKING_BASIS_POINTS = 10_000
 
 
 class ProofDirectedRetrievalError(ValueError):
@@ -80,6 +87,11 @@ class RetrievalBackendState(str, Enum):
     UNAVAILABLE = "unavailable"
     UNHEALTHY = "unhealthy"
     EXACT_FALLBACK = "exact_fallback"
+
+
+class PremiseRankKind(str, Enum):
+    PREMISE = "premise"
+    TACTIC = "tactic"
 
 
 def _plain(value: Any, *, depth: int = 0) -> Any:
@@ -1058,6 +1070,350 @@ def _fixed_point_iterations(closure: MandatoryClosure) -> int:
     return max((len(path) for path in closure.paths.values()), default=1)
 
 
+def _positive_bound(value: Any, name: str, *, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ProofDirectedRetrievalError(f"{name} must be a positive integer")
+    return min(value, maximum)
+
+
+def _score_to_millionths(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        raise ProofDirectedRetrievalError("ranking score must be a finite number")
+    if isinstance(value, int):
+        if 0 <= value <= 1_000_000:
+            return value
+        raise ProofDirectedRetrievalError("ranking score_millionths is out of range")
+    try:
+        score = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ProofDirectedRetrievalError("ranking score must be a finite number") from exc
+    if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+        raise ProofDirectedRetrievalError("ranking score is out of range")
+    return int(round(score * 1_000_000))
+
+
+def recall_at_k(
+    ranked_ids: Sequence[str],
+    relevant_ids: Iterable[str],
+    k: int,
+) -> int:
+    """Recall@k in basis points. Empty relevant sets score 0 (fail-closed)."""
+
+    bound_k = _positive_bound(k, "k", maximum=ABSOLUTE_MAX_PREMISE_TOP_K)
+    relevant = tuple(dict.fromkeys(str(item).strip() for item in relevant_ids if str(item).strip()))
+    if not relevant:
+        return 0
+    top = tuple(str(item).strip() for item in ranked_ids if str(item).strip())[:bound_k]
+    hits = sum(1 for item in relevant if item in top)
+    return (hits * RANKING_BASIS_POINTS) // len(relevant)
+
+
+def select_top_k_ids(ranked_ids: Sequence[str], k: int) -> tuple[str, ...]:
+    bound_k = _positive_bound(k, "k", maximum=ABSOLUTE_MAX_PREMISE_TOP_K)
+    seen: list[str] = []
+    for item in ranked_ids:
+        text = str(item or "").strip()
+        if text and text not in seen:
+            seen.append(text)
+        if len(seen) >= bound_k:
+            break
+    return tuple(seen)
+
+
+@dataclass(frozen=True)
+class PremiseRankItem:
+    """One ranked premise or tactic candidate. Advisory — never proof authority."""
+
+    item_id: str
+    kind: PremiseRankKind
+    score_millionths: int
+    rank: int
+    predicted_cost_ms: int = 0
+    predicted_failure_bps: int = 0
+    predicted_branch_factor: int = 1
+    node_id: str = ""
+    source: str = "exact"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "item_id", _text(self.item_id, "ranked item_id"))
+        object.__setattr__(self, "kind", PremiseRankKind(self.kind))
+        object.__setattr__(self, "score_millionths", _score_to_millionths(self.score_millionths))
+        if isinstance(self.rank, bool) or not isinstance(self.rank, int) or self.rank < 0:
+            raise ProofDirectedRetrievalError("ranked item rank is invalid")
+        for name in ("predicted_cost_ms", "predicted_failure_bps", "predicted_branch_factor"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ProofDirectedRetrievalError(f"{name} must be a non-negative integer")
+        object.__setattr__(self, "node_id", str(self.node_id or "").strip())
+        object.__setattr__(self, "source", str(self.source or "exact").strip() or "exact")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "item_id": self.item_id,
+            "kind": self.kind.value,
+            "score_millionths": self.score_millionths,
+            "rank": self.rank,
+            "predicted_cost_ms": self.predicted_cost_ms,
+            "predicted_failure_bps": self.predicted_failure_bps,
+            "predicted_branch_factor": self.predicted_branch_factor,
+            "node_id": self.node_id,
+            "source": self.source,
+            "proof_authority": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PremiseRankItem":
+        value = _mapping(payload)
+        return cls(
+            item_id=str(value.get("item_id") or value.get("premise_id") or value.get("id") or ""),
+            kind=value.get("kind", PremiseRankKind.PREMISE),
+            score_millionths=value.get("score_millionths", value.get("score", 0)),
+            rank=int(value.get("rank", 0)),
+            predicted_cost_ms=int(value.get("predicted_cost_ms", 0)),
+            predicted_failure_bps=int(value.get("predicted_failure_bps", 0)),
+            predicted_branch_factor=int(value.get("predicted_branch_factor", 1)),
+            node_id=str(value.get("node_id") or ""),
+            source=str(value.get("source") or "exact"),
+        )
+
+
+@dataclass(frozen=True)
+class PremiseRankingReport:
+    """Top-k premise ranking with Recall@k and cost. Never proof authority."""
+
+    items: tuple[PremiseRankItem, ...]
+    k: int
+    relevant_ids: tuple[str, ...]
+    recall_at_k_bps: int
+    cost_ms: int
+    truncated: bool
+    schema: str = PREMISE_RANKING_SCHEMA
+
+    def __post_init__(self) -> None:
+        normalized = tuple(
+            item if isinstance(item, PremiseRankItem) else PremiseRankItem.from_dict(item)
+            for item in self.items
+        )
+        object.__setattr__(self, "items", normalized)
+        object.__setattr__(
+            self, "k", _positive_bound(self.k, "k", maximum=ABSOLUTE_MAX_PREMISE_TOP_K)
+        )
+        object.__setattr__(self, "relevant_ids", _strings(self.relevant_ids))
+        if (
+            isinstance(self.recall_at_k_bps, bool)
+            or not isinstance(self.recall_at_k_bps, int)
+            or not 0 <= self.recall_at_k_bps <= RANKING_BASIS_POINTS
+        ):
+            raise ProofDirectedRetrievalError("recall_at_k_bps is invalid")
+        if isinstance(self.cost_ms, bool) or not isinstance(self.cost_ms, int) or self.cost_ms < 0:
+            raise ProofDirectedRetrievalError("cost_ms must be a non-negative integer")
+        if not isinstance(self.truncated, bool):
+            raise ProofDirectedRetrievalError("truncated must be a boolean")
+
+    @property
+    def proof_authority(self) -> bool:
+        return False
+
+    @property
+    def ranked_ids(self) -> tuple[str, ...]:
+        return tuple(item.item_id for item in self.items)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "items": [item.to_dict() for item in self.items],
+            "k": self.k,
+            "relevant_ids": list(self.relevant_ids),
+            "recall_at_k_bps": self.recall_at_k_bps,
+            "cost_ms": self.cost_ms,
+            "truncated": self.truncated,
+            "ranked_ids": list(self.ranked_ids),
+            "proof_authority": False,
+            "completion_authority": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PremiseRankingReport":
+        value = _mapping(payload)
+        if value.get("schema") not in {None, PREMISE_RANKING_SCHEMA}:
+            raise ProofDirectedRetrievalError("unsupported premise ranking schema")
+        if value.get("proof_authority") not in (None, False):
+            raise ProofDirectedRetrievalError("premise ranking cannot claim proof authority")
+        return cls(
+            items=tuple(value.get("items") or ()),
+            k=int(value.get("k", DEFAULT_PREMISE_TOP_K)),
+            relevant_ids=tuple(value.get("relevant_ids") or ()),
+            recall_at_k_bps=int(value.get("recall_at_k_bps", 0)),
+            cost_ms=int(value.get("cost_ms", 0)),
+            truncated=bool(value.get("truncated", False)),
+        )
+
+
+def rank_proof_premises(
+    candidates: Sequence[Mapping[str, Any] | PremiseRankItem],
+    *,
+    k: int = DEFAULT_PREMISE_TOP_K,
+    relevant_ids: Sequence[str] = (),
+    kind: PremiseRankKind | str = PremiseRankKind.PREMISE,
+) -> PremiseRankingReport:
+    """Deterministically rank premises/tactics and report top-k / Recall@k / cost."""
+
+    bound_k = _positive_bound(k, "k", maximum=ABSOLUTE_MAX_PREMISE_TOP_K)
+    rank_kind = (
+        kind if isinstance(kind, PremiseRankKind) else PremiseRankKind(str(kind).strip().lower())
+    )
+    materialized: list[PremiseRankItem] = []
+    for index, raw in enumerate(candidates):
+        if isinstance(raw, PremiseRankItem):
+            item = raw
+        else:
+            row = _mapping(raw)
+            item = PremiseRankItem(
+                item_id=str(
+                    row.get("item_id")
+                    or row.get("premise_id")
+                    or row.get("tactic_id")
+                    or row.get("id")
+                    or f"candidate:{index}"
+                ),
+                kind=row.get("kind", rank_kind),
+                score_millionths=row.get(
+                    "score_millionths", row.get("score", row.get("similarity", 0))
+                ),
+                rank=int(row.get("rank", index)),
+                predicted_cost_ms=int(row.get("predicted_cost_ms", row.get("cost_ms", 0))),
+                predicted_failure_bps=int(row.get("predicted_failure_bps", 0)),
+                predicted_branch_factor=int(row.get("predicted_branch_factor", 1)),
+                node_id=str(row.get("node_id") or ""),
+                source=str(row.get("source") or "exact"),
+            )
+        materialized.append(item)
+    materialized.sort(key=lambda item: (-item.score_millionths, item.item_id))
+    truncated = len(materialized) > bound_k
+    selected = materialized[:bound_k]
+    ranked = tuple(
+        PremiseRankItem(
+            item_id=item.item_id,
+            kind=item.kind,
+            score_millionths=item.score_millionths,
+            rank=index,
+            predicted_cost_ms=item.predicted_cost_ms,
+            predicted_failure_bps=item.predicted_failure_bps,
+            predicted_branch_factor=item.predicted_branch_factor,
+            node_id=item.node_id,
+            source=item.source,
+        )
+        for index, item in enumerate(selected)
+    )
+    ranked_ids = tuple(item.item_id for item in ranked)
+    relevant = tuple(dict.fromkeys(str(item).strip() for item in relevant_ids if str(item).strip()))
+    return PremiseRankingReport(
+        items=ranked,
+        k=bound_k,
+        relevant_ids=relevant,
+        recall_at_k_bps=recall_at_k(ranked_ids, relevant, bound_k),
+        cost_ms=sum(item.predicted_cost_ms for item in ranked),
+        truncated=truncated,
+    )
+
+
+@dataclass(frozen=True)
+class BoundedBranchExpansion:
+    """Bounded BFS expansion used by retrieval and goal decomposition."""
+
+    root_ids: tuple[str, ...]
+    included_ids: tuple[str, ...]
+    omitted_ids: tuple[str, ...]
+    depths: Mapping[str, int]
+    max_branch_factor: int
+    max_depth: int
+    truncated: bool
+    schema: str = BOUNDED_EXPANSION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "root_ids": list(self.root_ids),
+            "included_ids": list(self.included_ids),
+            "omitted_ids": list(self.omitted_ids),
+            "depths": dict(self.depths),
+            "max_branch_factor": self.max_branch_factor,
+            "max_depth": self.max_depth,
+            "truncated": self.truncated,
+            "proof_authority": False,
+        }
+
+
+def expand_bounded_branches(
+    adjacency: Mapping[str, Sequence[str]],
+    roots: Sequence[str],
+    *,
+    max_branch_factor: int = DEFAULT_MAX_BRANCH_FACTOR,
+    max_depth: int = 8,
+    fail_closed: bool = False,
+) -> BoundedBranchExpansion:
+    """Expand children under a hard branch/depth bound.
+
+    Over-wide nodes omit extra children. When ``fail_closed`` is true, an
+    over-wide node raises instead of silently dropping mandatory work.
+    """
+
+    branch = _positive_bound(
+        max_branch_factor, "max_branch_factor", maximum=ABSOLUTE_MAX_BRANCH_FACTOR
+    )
+    depth_bound = _positive_bound(max_depth, "max_depth", maximum=ABSOLUTE_MAX_BRANCH_FACTOR)
+    root_ids = tuple(dict.fromkeys(str(item).strip() for item in roots if str(item).strip()))
+    if not root_ids:
+        raise ProofDirectedRetrievalError("bounded expansion requires at least one root")
+    included: list[str] = []
+    omitted: list[str] = []
+    depths: dict[str, int] = {}
+    truncated = False
+    queue: list[tuple[str, int]] = [(root, 0) for root in root_ids]
+    seen: set[str] = set()
+    while queue:
+        node_id, depth = queue.pop(0)
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        included.append(node_id)
+        depths[node_id] = depth
+        if depth >= depth_bound:
+            children = [str(item).strip() for item in (adjacency.get(node_id) or ()) if str(item).strip()]
+            if children:
+                truncated = True
+                omitted.extend(child for child in children if child not in seen)
+            continue
+        children = [
+            str(item).strip()
+            for item in (adjacency.get(node_id) or ())
+            if str(item).strip() and str(item).strip() not in seen
+        ]
+        # Stable unique order.
+        unique_children = list(dict.fromkeys(children))
+        if len(unique_children) > branch:
+            truncated = True
+            if fail_closed:
+                raise ProofDirectedRetrievalBudgetError(
+                    f"node {node_id} exceeds max_branch_factor={branch}"
+                )
+            omitted.extend(unique_children[branch:])
+            unique_children = unique_children[:branch]
+        for child in unique_children:
+            queue.append((child, depth + 1))
+    return BoundedBranchExpansion(
+        root_ids=root_ids,
+        included_ids=tuple(included),
+        omitted_ids=tuple(dict.fromkeys(omitted)),
+        depths=MappingProxyType(dict(sorted(depths.items()))),
+        max_branch_factor=branch,
+        max_depth=depth_bound,
+        truncated=truncated,
+    )
+
+
 def retrieve_proof_directed(
     request: DecisionRequest,
     graph: SemanticDependencyGraph,
@@ -1426,16 +1782,27 @@ build_retrieval_closure_receipt = retrieve_proof_directed
 
 
 __all__ = [
+    "ABSOLUTE_MAX_BRANCH_FACTOR",
+    "ABSOLUTE_MAX_PREMISE_TOP_K",
     "APPROXIMATE_SOURCES",
+    "BOUNDED_EXPANSION_SCHEMA",
+    "BoundedBranchExpansion",
     "CandidateAudit",
     "CandidateDisposition",
+    "DEFAULT_MAX_BRANCH_FACTOR",
+    "DEFAULT_PREMISE_TOP_K",
     "MissingRequiredIndexError",
+    "PREMISE_RANKING_SCHEMA",
     "PROOF_DIRECTED_RETRIEVAL_SCHEMA",
+    "PremiseRankItem",
+    "PremiseRankKind",
+    "PremiseRankingReport",
     "ProofDirectedRetrievalBudgetError",
     "ProofDirectedRetrievalError",
     "ProofDirectedRetrievalReceipt",
     "ProofDirectedRetrievalResult",
     "ProofRetrievalBudget",
+    "RANKING_BASIS_POINTS",
     "RETRIEVAL_CLOSURE_REQUIREMENT_ID",
     "RetrievalBackendState",
     "RetrievalCandidate",
@@ -1448,8 +1815,12 @@ __all__ = [
     "derive_exact_retrieval_seeds",
     "derive_retrieval_seeds",
     "embedding_fingerprint",
+    "expand_bounded_branches",
     "proof_directed_retrieve",
+    "rank_proof_premises",
+    "recall_at_k",
     "retrieve_authoritative_closure",
     "retrieve_proof_directed",
     "retrieve_proof_directed_evidence",
+    "select_top_k_ids",
 ]
