@@ -538,7 +538,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-023 Measure deterministic compiler/decompiler baseline
 
-- Status: todo
+- Status: completed
 - Completion: evaluation-evidence
 - Is schedulable: true
 - Priority: P0
