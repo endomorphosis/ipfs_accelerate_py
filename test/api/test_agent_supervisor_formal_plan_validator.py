@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     DCEC,
     ReviewedPredicate,
@@ -634,3 +636,124 @@ def test_subgoal_bound_and_timeout_remain_distinct_from_assurance():
     assert exhausted.outcome is PlanValidationOutcome.RESOURCE_EXHAUSTED
     assert timed_out.outcome is PlanValidationOutcome.TIMEOUT
     assert timed_out.consistency_level is PlanConsistencyLevel.INCONCLUSIVE
+
+
+def _campaign_task_payload(task_id: str = "PGIR-060") -> dict[str, object]:
+    return {
+        "schema": "IRLearningCampaignTask@1",
+        "task_id": task_id,
+        "title": "Implement IR learning campaign contracts and APIs",
+        "status": "todo",
+        "completion": "validated-implementation",
+        "is_schedulable": True,
+        "priority": "P0",
+        "track": "campaign",
+        "parent_goal": "PGIR-G080",
+        "subgoal": "campaign-work-graph",
+        "owning_repository": "ipfs_accelerate_py",
+        "owned_paths": ["ipfs_accelerate_py/agent_supervisor/planning/"],
+        "base_source_revisions": "SRCSET-1",
+        "source_dataset_revisions": "RESULT(PGIR-011)",
+        "data_split_identity": "RESULT(PGIR-012)",
+        "compiler_identity": "RESULT(PGIR-021)",
+        "decompiler_identity": "RESULT(PGIR-022)",
+        "model_checkpoint_identity": "none",
+        "objective": "Add IRLearningCampaign@1",
+        "depends_on": ["PGIR-014"],
+        "resource_profile": "RP-CPU-M",
+        "expected_inputs": "frozen input root",
+        "expected_outputs": "strict campaign schemas",
+        "allowed_effects": "existing planning contracts",
+        "prohibited_effects": "hidden labels",
+        "acceptance_criteria": "board fields validated",
+        "required_proof_or_evaluation_evidence": "plan-admission tests",
+        "lease_and_checkpoint_policy": "LEASE-DEFAULT",
+        "rollback_procedure": "ROLLBACK-DEFAULT",
+        "result_identity": f"RESULT({task_id})",
+        "outputs": ["ipfs_accelerate_py/agent_supervisor/planning/"],
+        "validation": "python -m pytest -q test/api/test_agent_supervisor_formal_plan_validator.py",
+        "bundle": "pgir/campaign/contracts",
+        "parallel_lane": "campaign-contracts",
+        "predicted_files": ["ipfs_accelerate_py/agent_supervisor/planning/"],
+        "conflict_policy": "campaign schema exclusive",
+        "work_graph_role": "campaign_control",
+    }
+
+
+def _campaign_payload(*, resolved: bool = True) -> dict[str, object]:
+    from ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign_contracts import (
+        default_campaign_roles,
+    )
+
+    results = {
+        "PGIR-011": "cid:011",
+        "PGIR-012": "cid:012",
+        "PGIR-014": "cid:014",
+        "PGIR-021": "cid:021",
+        "PGIR-022": "cid:022",
+    }
+    return {
+        "schema": "IRLearningCampaign@1",
+        "campaign_id": "campaign:pgir-validate",
+        "input_root_cid": "cid:input-root",
+        "repository_tree_id": "tree:campaign-validate",
+        "roles": [item.to_dict() for item in default_campaign_roles()],
+        "tasks": [_campaign_task_payload()],
+        "dependency_results": results if resolved else {},
+    }
+
+
+def test_resolved_campaign_plan_validates_and_records_lease_binding() -> None:
+    compiled = compile_formal_plan({"campaign": _campaign_payload(resolved=True)})
+    assert compiled.status is CompilationStatus.COMPILED
+    assert compiled.plan is not None
+    result = validate_formal_plan(compiled.plan, compiled.formulas)
+    assert result.status is PlanValidationStatus.CONSISTENT
+    assert PlanCheckKind.CAMPAIGN_LEASE_BINDING in result.checks_performed
+    assert compiled.plan.metadata["ir_learning_campaign_binding"]["lease_eligible_task_ids"] == [
+        "PGIR-060"
+    ]
+
+
+def test_unresolved_campaign_plan_is_consistent_until_a_lease_is_claimed() -> None:
+    compiled = compile_formal_plan({"campaign": _campaign_payload(resolved=False)})
+    assert compiled.status is CompilationStatus.COMPILED
+    assert compiled.plan is not None
+    consistent = validate_formal_plan(compiled.plan, compiled.formulas)
+    assert consistent.status is PlanValidationStatus.CONSISTENT
+    binding = dict(compiled.plan.metadata["ir_learning_campaign_binding"])
+    binding["lease_eligible_task_ids"] = ["PGIR-060"]
+    adversarial = replace(
+        compiled.plan,
+        metadata={**compiled.plan.metadata, "ir_learning_campaign_binding": binding},
+    )
+    blocked = validate_formal_plan(adversarial, compiled.formulas)
+    assert blocked.status is PlanValidationStatus.INCONSISTENT
+    assert PlanFindingCode.CAMPAIGN_LEASE_BLOCKED in {item.code for item in blocked.findings}
+    assert PlanFindingCode.UNRESOLVED_DEPENDENCY_OUTPUT in {
+        item.code for item in blocked.findings
+    }
+
+
+def test_campaign_missing_role_and_hidden_authority_fail_plan_admission() -> None:
+    compiled = compile_formal_plan({"campaign": _campaign_payload(resolved=True)})
+    assert compiled.plan is not None
+    binding = dict(compiled.plan.metadata["ir_learning_campaign_binding"])
+    binding["roles"] = ["campaign_control"]
+    missing = replace(
+        compiled.plan,
+        metadata={**compiled.plan.metadata, "ir_learning_campaign_binding": binding},
+    )
+    result = validate_formal_plan(missing, compiled.formulas)
+    assert result.status is PlanValidationStatus.INCONSISTENT
+    assert PlanFindingCode.CAMPAIGN_ROLE_MISSING in {item.code for item in result.findings}
+
+    from ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign_contracts import (
+        ContractValidationError,
+        IRLearningCampaign,
+    )
+
+    hidden = _campaign_payload()
+    hidden["metadata"] = {"hidden_label": "do-not-train"}
+    with pytest.raises(ContractValidationError):
+        IRLearningCampaign.from_dict(hidden)

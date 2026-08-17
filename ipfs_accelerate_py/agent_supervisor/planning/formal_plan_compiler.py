@@ -1166,6 +1166,7 @@ def _graph_edge(kind: str, source: str, target: str, *, source_id: str = "") -> 
 
 
 def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
+    binding = payload.get("ir_learning_campaign_binding")
     bundle: dict[str, Any] = {
         "objectives": [],
         "tasks": [],
@@ -1174,6 +1175,7 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
         "leases": [],
         "evidence": [],
         "repository_tree_id": _text(payload, "repository_tree_id", "tree_cid", "tree_id"),
+        "ir_learning_campaign_binding": binding if isinstance(binding, Mapping) else {},
     }
     records_value = payload.get("records")
     if isinstance(records_value, Sequence) and not isinstance(
@@ -1303,6 +1305,9 @@ class FormalPlanCompiler:
                     payload[key] = [_record(item) for item in value]
             if repository_tree_id:
                 payload["repository_tree_id"] = str(repository_tree_id)
+            from .ir_learning_campaign_planner import expand_campaign_source
+
+            payload = expand_campaign_source(payload)
             bundle = _normalize_bundle(payload)
         except (ContractValidationError, TypeError, ValueError) as exc:
             return _failure_result(
@@ -1409,6 +1414,9 @@ class FormalPlanCompiler:
                 ]
             if repository_tree_id:
                 combined["repository_tree_id"] = str(repository_tree_id)
+            from .ir_learning_campaign_planner import expand_campaign_source
+
+            combined = expand_campaign_source(combined)
             bundle = _normalize_bundle(combined)
         except Exception as exc:
             return _failure_result(
@@ -1608,6 +1616,7 @@ class FormalPlanCompiler:
                     for name in ("objectives", "tasks", "ast", "policies", "leases", "evidence")
                 },
                 "repository_tree_id": bundle.get("repository_tree_id", ""),
+                "ir_learning_campaign_binding": bundle.get("ir_learning_campaign_binding") or {},
             }
         )
         issues: list[CompilationIssue] = []
@@ -1801,6 +1810,7 @@ class FormalPlanCompiler:
                 str(bundle.get("repository_tree_id") or ""),
                 issues,
                 source_identity,
+                campaign_binding=bundle.get("ir_learning_campaign_binding") or {},
             )
         except ContractValidationError as exc:
             text = str(exc)
@@ -1847,6 +1857,7 @@ class FormalPlanCompiler:
         repository_tree_id: str,
         issues: list[CompilationIssue],
         source_identity: str,
+        campaign_binding: Mapping[str, Any] | None = None,
     ) -> PlanCompilationResult:
         objective_ids: dict[str, str] = {}
         for record in objectives:
@@ -2945,6 +2956,11 @@ class FormalPlanCompiler:
                 "formula_records": [formulae[key].to_record() for key in sorted(formulae)],
                 "policy_ids": list(policy_ids),
                 "evidence_cids": sorted(_source_id(item, "evidence") for item in evidence_records),
+                **(
+                    {"ir_learning_campaign_binding": dict(campaign_binding)}
+                    if campaign_binding
+                    else {}
+                ),
             },
         )
         graph = self._plan_graph(

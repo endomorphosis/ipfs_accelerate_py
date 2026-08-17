@@ -42,6 +42,7 @@ PLANNING_OWNED_MODULES: Final[tuple[str, ...]] = (
     "formal_planning_metrics",
     "formal_planning_rollout",
     "formal_replanner",
+    "ir_learning_campaign_planner",
     "plan_evaluator",
     "plan_failure_memory",
     "proof_carrying_planner",
