@@ -37,6 +37,13 @@ from .formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
 )
+from .goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
+    GoalDirectedTacticianError,
+    RankedKind,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +139,7 @@ class LifecycleTransitionKind(str, Enum):
     LEASE_ACQUIRE = "lease_acquire"
     LEASE_RELEASE = "lease_release"
     RECONCILE = "reconcile"
+    CURRICULUM = "curriculum"
 
 
 class LifecycleControlSignal(str, Enum):
@@ -845,6 +853,8 @@ class LifecycleAuthoritativeState:
     end_goal: Mapping[str, Any] = field(default_factory=dict)
     proof_graph: Mapping[str, Any] = field(default_factory=dict)
     candidates: tuple[Mapping[str, Any], ...] = ()
+    ranked_candidates: tuple[Mapping[str, Any], ...] = ()
+    curriculum_projections: tuple[Mapping[str, Any], ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
     completion: LifecycleCompletionDecision | None = None
     updated_at_ms: int = 0
@@ -911,6 +921,14 @@ class LifecycleAuthoritativeState:
         for item in self.candidates or ():
             candidates.append(_public_mapping(_mapping(item, field_name="candidate")))
         object.__setattr__(self, "candidates", tuple(candidates))
+        ranked: list[dict[str, Any]] = []
+        for item in self.ranked_candidates or ():
+            ranked.append(_public_mapping(_mapping(item, field_name="ranked_candidate")))
+        object.__setattr__(self, "ranked_candidates", tuple(ranked))
+        projections: list[dict[str, Any]] = []
+        for item in self.curriculum_projections or ():
+            projections.append(_public_mapping(_mapping(item, field_name="curriculum")))
+        object.__setattr__(self, "curriculum_projections", tuple(projections))
         object.__setattr__(self, "metadata", _public_mapping(dict(self.metadata or {})))
         if self.completion is not None and not isinstance(
             self.completion, LifecycleCompletionDecision
@@ -956,6 +974,8 @@ class LifecycleAuthoritativeState:
             "end_goal": dict(self.end_goal),
             "proof_graph": dict(self.proof_graph),
             "candidates": [dict(item) for item in self.candidates],
+            "ranked_candidates": [dict(item) for item in self.ranked_candidates],
+            "curriculum_projections": [dict(item) for item in self.curriculum_projections],
             "metadata": dict(self.metadata),
             "completion": (self.completion.to_dict() if self.completion is not None else None),
             "updated_at_ms": self.updated_at_ms,
@@ -985,6 +1005,8 @@ class LifecycleAuthoritativeState:
             end_goal=dict(value.get("end_goal") or {}),
             proof_graph=dict(value.get("proof_graph") or {}),
             candidates=tuple(value.get("candidates") or ()),
+            ranked_candidates=tuple(value.get("ranked_candidates") or ()),
+            curriculum_projections=tuple(value.get("curriculum_projections") or ()),
             metadata=dict(value.get("metadata") or {}),
             completion=value.get("completion"),
             updated_at_ms=int(value.get("updated_at_ms", 0)),
@@ -1438,6 +1460,7 @@ class GoalTacticianSupervisorLifecycle:
                 LifecycleTransitionKind.CONTROL,
                 LifecycleTransitionKind.TREE_INVALIDATION,
                 LifecycleTransitionKind.COMPLETION,
+                LifecycleTransitionKind.CURRICULUM,
             }:
                 raise GoalTacticianLifecycleError(f"{kind_enum.value} must use its dedicated API")
 
@@ -1460,9 +1483,15 @@ class GoalTacticianSupervisorLifecycle:
             elif kind_enum is LifecycleTransitionKind.PROOF_GRAPH:
                 next_state_fields["proof_graph"] = body
             elif kind_enum is LifecycleTransitionKind.CANDIDATE:
+                self._assert_ranked_candidate_immutable(state, body)
                 existing = [dict(item) for item in state.candidates]
                 existing.append(body)
                 next_state_fields["candidates"] = existing
+                ranked_id = str(body.get("candidate_id") or body.get("item_id") or "").strip()
+                if ranked_id and body.get("ranked") is True:
+                    ranked = [dict(item) for item in state.ranked_candidates]
+                    ranked.append(body)
+                    next_state_fields["ranked_candidates"] = ranked
 
             receipts = list(state.receipts)
             if receipt is not None:
@@ -1488,6 +1517,94 @@ class GoalTacticianSupervisorLifecycle:
                 fencing_token=held.fencing_token,
                 payload=body,
                 reason_code=reason_code or kind_enum.value,
+            )
+            self._commit(state)
+            return state
+
+    def record_curriculum_projection(
+        self,
+        projection: CurriculumProjection | Mapping[str, Any],
+        lease: WorkerLease | Mapping[str, Any],
+        *,
+        reason_code: str = "",
+        ranked_candidates: Sequence[Mapping[str, Any]] = (),
+    ) -> LifecycleAuthoritativeState:
+        """Record a curriculum projection under the active lease.
+
+        High authority is admitted only for independently validated
+        ``verified_success`` and checked ``counterexample`` traces.
+        Timeout and parse_type never upgrade curriculum authority.
+        Ranked candidates are immutable once recorded.
+        """
+
+        with self._lock:
+            state = self._require_open_state()
+            held = self._coerce_lease(lease)
+            self._assert_lease_authoritative(state, held)
+            self._reject_if_control_blocks_mutation(state)
+            if state.status is LifecyclePlanStatus.INVALIDATED:
+                raise GoalTacticianLifecycleError("cannot mutate an invalidated plan")
+            if state.status is LifecyclePlanStatus.COMPLETED:
+                raise GoalTacticianLifecycleError("cannot mutate a completed plan")
+
+            try:
+                if isinstance(projection, CurriculumProjection):
+                    projected = projection
+                else:
+                    projected = CurriculumProjection.from_dict(
+                        _mapping(projection, field_name="curriculum")
+                    )
+            except GoalDirectedTacticianError as exc:
+                raise GoalTacticianLifecycleError(str(exc)) from exc
+            if projected.authority is CurriculumAuthority.HIGH:
+                if not projected.independently_validated:
+                    raise GoalTacticianLifecycleError(
+                        "high curriculum authority requires independently validated traces"
+                    )
+                if projected.curriculum_class not in {
+                    CurriculumClass.VERIFIED_SUCCESS,
+                    CurriculumClass.COUNTEREXAMPLE,
+                }:
+                    raise GoalTacticianLifecycleError(
+                        "timeout and parse_type cannot upgrade curriculum authority"
+                    )
+            elif projected.curriculum_class in {
+                CurriculumClass.TIMEOUT,
+                CurriculumClass.PARSE_TYPE,
+            } and projected.authority is CurriculumAuthority.HIGH:
+                raise GoalTacticianLifecycleError(
+                    "timeout and parse_type cannot upgrade curriculum authority"
+                )
+
+            ranked_next = [dict(item) for item in state.ranked_candidates]
+            for item in ranked_candidates or ():
+                body = _public_mapping(_mapping(item, field_name="ranked_candidate"))
+                self._assert_ranked_candidate_immutable(state, body)
+                ranked_id = str(body.get("candidate_id") or body.get("item_id") or "").strip()
+                if not ranked_id:
+                    raise GoalTacticianLifecycleError("ranked candidate requires candidate_id")
+                ranked_next.append(body)
+
+            payload = projected.to_dict()
+            now = _now_ms(self._clock)
+            state = LifecycleAuthoritativeState.from_dict(
+                {
+                    **state.to_dict(include_identity=False),
+                    "curriculum_projections": [
+                        dict(item) for item in state.curriculum_projections
+                    ]
+                    + [payload],
+                    "ranked_candidates": ranked_next,
+                    "updated_at_ms": now,
+                }
+            )
+            state = self._append_transition(
+                state,
+                kind=LifecycleTransitionKind.CURRICULUM,
+                worker_id=held.worker_id,
+                fencing_token=held.fencing_token,
+                payload=payload,
+                reason_code=reason_code or projected.reason_code or "curriculum_recorded",
             )
             self._commit(state)
             return state
@@ -1593,6 +1710,8 @@ class GoalTacticianSupervisorLifecycle:
                     "cache_key": new_key.to_dict(),
                     "fencing_epoch": next_epoch,
                     "receipts": [],  # prior receipts are tree-stale
+                    "curriculum_projections": [],  # tree-scoped curriculum is stale
+                    "ranked_candidates": [],
                     "status": LifecyclePlanStatus.INVALIDATED.value,
                     "completion": None,
                     "updated_at_ms": now,
@@ -1837,6 +1956,30 @@ class GoalTacticianSupervisorLifecycle:
         if lease.is_expired(now) or state.active_lease.is_expired(now):
             raise StaleWorkerError("lease has expired")
 
+    def _assert_ranked_candidate_immutable(
+        self,
+        state: LifecycleAuthoritativeState,
+        body: Mapping[str, Any],
+    ) -> None:
+        ranked_id = str(body.get("candidate_id") or body.get("item_id") or "").strip()
+        if not ranked_id:
+            return
+        prior = [
+            item
+            for item in state.ranked_candidates
+            if str(item.get("candidate_id") or item.get("item_id") or "") == ranked_id
+        ]
+        if not prior:
+            return
+        for item in prior:
+            frozen_keys = ("candidate_id", "item_id", "kind", "score_millionths", "statement")
+            comparable = {key: item.get(key) for key in frozen_keys if key in item}
+            incoming = {key: body.get(key) for key in comparable}
+            if comparable != incoming:
+                raise GoalTacticianLifecycleError(
+                    f"ranked candidate {ranked_id} is immutable once recorded"
+                )
+
     def _reject_if_control_blocks_mutation(self, state: LifecycleAuthoritativeState) -> None:
         if state.control_signal is not LifecycleControlSignal.NONE:
             raise LifecycleControlActiveError(
@@ -1924,4 +2067,8 @@ __all__ = [
     "WorkerLease",
     "claims_authority",
     "create_goal_tactician_supervisor_lifecycle",
+    "CurriculumAuthority",
+    "CurriculumClass",
+    "CurriculumProjection",
+    "RankedKind",
 ]
