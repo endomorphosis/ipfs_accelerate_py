@@ -1535,3 +1535,19 @@ authority roots into a revised task input binding.
 - Outputs: docs/architecture/proof_grounded_ir_learning.todo.md
 - Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-18-pgir-122-reconciliation-18ab237d43cf.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by unsupported_status. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-18-pgir-122-reconciliation-18ab237d43cf.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## PGIR-123 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 39a438c2b82156fd21c6990b4178c4558801f263
+- Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:unsupported_status
+- Depends on:
+- Outputs: docs/architecture/proof_grounded_ir_learning.todo.md
+- Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-18-pgir-123-reconciliation-39a438c2b821.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by unsupported_status. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-18-pgir-123-reconciliation-39a438c2b821.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
