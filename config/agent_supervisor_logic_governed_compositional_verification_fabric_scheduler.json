@@ -100,12 +100,12 @@
     "test/fixtures/agent_supervisor/compositional_verification/tests/test_unselected.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2",
-    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/state",
-    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/worktrees",
-    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/merge-queue",
-    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/logs",
-    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/evidence",
+    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3",
+    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/state",
+    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/logs",
+    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/evidence",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "database_program": {
@@ -113,15 +113,15 @@
     "authoritative_transactional_data_model": true,
     "authoritative_records_schema_cas_and_fencing": true,
     "task_source_kind": "duckdb",
-    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/control.duckdb",
-    "store_generation": "lgcvf-run-v2",
+    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/control.duckdb",
+    "store_generation": "lgcvf-run-v3",
     "schema_revision": "datasets-authoritative-operational-v1",
     "schema_profile": "datasets-authoritative-operational",
     "semantic_relations_permitted": false,
-    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/events",
-    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/registry",
-    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v2/worktrees",
-    "export_profile": "lgcvf-run-v2",
+    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/registry",
+    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v3/worktrees",
+    "export_profile": "lgcvf-run-v3",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
   },
@@ -161,8 +161,8 @@
     "LGCVF-G130": ["LGCVF-120", "LGCVF-121", "LGCVF-122", "LGCVF-123", "LGCVF-124"]
   },
   "provider": {
-    "provider_id": "codex",
-    "model_id": "gpt-5.6-terra",
+    "provider_id": "grok_cli",
+    "model_id": "grok-4.5",
     "max_concurrency": 1,
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false
