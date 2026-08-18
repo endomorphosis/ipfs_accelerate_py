@@ -1078,7 +1078,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-071 Implement comprehensive evaluation and statistical gates
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
