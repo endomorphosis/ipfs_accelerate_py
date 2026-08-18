@@ -1114,7 +1114,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-072 Implement deterministic promotion comparison and policy admission
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
