@@ -7,6 +7,11 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     reconciliation_guardrail_records,
     resolved_reconciliation_guardrail_keys,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
+    TodoImplementationDaemon,
+    TodoTaskState,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
@@ -390,3 +395,154 @@ def test_resolved_keys_do_not_retire_dirty_cards_when_cleanup_is_locked() -> Non
     assert (
         "reconciliation_guardrail:dirty_backlogged_worktree:unsupported_status" not in resolved
     )
+
+
+def test_run_implementation_skips_board_completed_task(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("base\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "# Agent Todos\n\n"
+        "## PORTAL-071 Already landed\n\n"
+        "- Status: completed\n"
+        "- Completion: validated-implementation\n"
+        "- Priority: P1\n"
+        "- Track: evaluation\n"
+        "- Outputs: src/app.py\n",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## PORTAL-",
+        implementation_command="must-not-run",
+    )
+    task = PortalTask(
+        task_id="PORTAL-071",
+        title="Already landed",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="evaluation",
+        outputs=["src/app.py"],
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "completed_task_leftover"
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+
+
+def test_supervisor_releases_completed_leftover_execution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "todo.md").write_text(
+        "# Agent Todos\n\n"
+        "## PORTAL-071 Already landed\n\n"
+        "- Status: completed\n"
+        "- Completion: validated-implementation\n"
+        "- Priority: P1\n"
+        "- Track: evaluation\n"
+        "- Outputs: src/app.py\n",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    TodoTaskState(
+        active_task_id="PORTAL-071",
+        active_task_title="Already landed",
+        active_attempt=3,
+        active_phase="implementing",
+        active_worktree_path=str(repo / "worktrees" / "portal-071-attempt-3"),
+        active_branch="implementation/portal-071-attempt-3",
+        implementation_in_progress=True,
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+            task_prefix="## PORTAL-",
+        )
+    )
+    stop_calls: list[float] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda grace_seconds=1.0: stop_calls.append(grace_seconds)
+        or {"terminated": True, "pid": 4321, "quiesced": True},
+    )
+
+    result = supervisor.release_completed_leftover_execution()
+
+    assert result["released"] is True
+    assert result["reason"] == "completed_task_leftover"
+    assert result["active_task_id"] == "PORTAL-071"
+    assert stop_calls == [2.0]
+    recovered = TodoTaskState.load(state_path)
+    assert recovered.implementation_in_progress is False
+    assert recovered.active_task_id == "PORTAL-071"
+    assert recovered.active_worktree_path == ""
+    assert recovered.active_attempt == 0
+
+
+def test_supervisor_does_not_stop_live_incomplete_task(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "todo.md").write_text(
+        "# Agent Todos\n\n"
+        "## PORTAL-072 Still open\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P1\n"
+        "- Track: ops\n"
+        "- Outputs: src/app.py\n",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    TodoTaskState(
+        active_task_id="PORTAL-072",
+        active_attempt=1,
+        active_phase="implementing",
+        active_worktree_path=str(repo / "worktrees" / "portal-072"),
+        implementation_in_progress=True,
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+            task_prefix="## PORTAL-",
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not stop live work")),
+    )
+
+    result = supervisor.release_completed_leftover_execution()
+
+    assert result["released"] is False
+    assert result["reason"] == "active_task_not_completed"
+    assert TodoTaskState.load(state_path).implementation_in_progress is True

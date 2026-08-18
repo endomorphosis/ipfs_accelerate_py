@@ -7745,7 +7745,33 @@ class PortalImplementationDaemon:
         self._record_event("implementation_provider_exhausted", result)
         return result
 
+    def _board_task_is_completed(self, task_id: str) -> bool:
+        """Return whether the live board already marked this task completed."""
+
+        normalized = str(task_id or "").strip()
+        if not normalized or not self.todo_path.exists():
+            return False
+        try:
+            tasks = parse_task_file(self.todo_path, self.task_header_prefix)
+        except (OSError, UnicodeDecodeError):
+            return False
+        return any(
+            task.task_id == normalized and normalize_status(task.status) == "completed"
+            for task in tasks
+        )
+
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        if self._board_task_is_completed(task.task_id):
+            result = {
+                "skipped": True,
+                "reason": "completed_task_leftover",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         protected_conflicts = task_implementation_protected_path_conflicts(
             task,
             self.implementation_protected_paths,
