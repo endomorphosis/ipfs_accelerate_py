@@ -67850,6 +67850,8 @@ class DatabaseImplementationDaemon:
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
 
+        return False
+
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
         try:
@@ -68436,6 +68438,7 @@ class DatabaseImplementationDaemon:
             plan_root_cid=plan_root_cid,
         )
         registered: list[str] = []
+        bootstrap_completed: list[str] = []
         for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
             deps = tuple(str(dep) for dep in task.dependencies)
             self.coordinator.register_task(
@@ -68449,10 +68452,24 @@ class DatabaseImplementationDaemon:
                 },
             )
             registered.append(task.task_cid)
+            status = str(task.status or "").strip().lower()
+            if status in {"completed", "complete", "done"}:
+                self.coordinator.mark_task_complete(
+                    task.task_cid,
+                    status="succeeded",
+                    body={
+                        "authority": "database_population",
+                        "source_status": status,
+                        "task_alias": task.task_alias,
+                        "task_revision": int(task.revision),
+                    },
+                )
+                bootstrap_completed.append(task.task_cid)
         return MappingProxyType(
             {
                 "task_source": dict(receipt) if isinstance(receipt, Mapping) else {},
                 "registered_task_cids": list(registered),
+                "bootstrap_completed_task_cids": list(bootstrap_completed),
             }
         )
 

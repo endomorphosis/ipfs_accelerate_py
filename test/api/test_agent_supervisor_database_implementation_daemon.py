@@ -195,6 +195,28 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         idle.close()
 
 
+def test_materialization_projects_completed_prerequisites_into_coordination(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["status"] = "completed"
+    tasks[1]["dependencies"] = ["task:cid:001"]
+    daemon = _open_daemon(tmp_path, session="session:bootstrap")
+    try:
+        receipt = daemon.materialize_population(population)
+        assert receipt["bootstrap_completed_task_cids"] == ["task:cid:001"]
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert projection["counts"]["logical_completions"] == 1
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:002"
+    finally:
+        daemon.close()
+
+
 def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> None:
     markdown = tmp_path / "tasks.md"
     markdown.write_text(

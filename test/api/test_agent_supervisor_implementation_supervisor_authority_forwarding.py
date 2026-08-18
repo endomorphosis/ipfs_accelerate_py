@@ -109,6 +109,8 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
             "quack",
             "--endpoint-secret-handle",
             "env://QUACK_TOKEN",
+            "--quack-endpoint",
+            "quack:127.0.0.1:45123",
             "--state-store-id",
             "control.duckdb",
             "--state-store-generation",
@@ -133,6 +135,7 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
     assert program.authority_mode == "quack"
     assert program.task_source_kind == "duckdb"
     assert program.endpoint_secret_handle == "env://QUACK_TOKEN"
+    assert program.quack_endpoint == "quack:127.0.0.1:45123"
     assert program.store_id == "control.duckdb"
     assert program.store_generation == "gen-7"
     assert program.schema_revision == "schema-v1"
@@ -144,6 +147,77 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
     assert child_env[STATE_AUTHORITY_MODE_ENV] == "quack"
     assert child_env[TASK_SOURCE_KIND_ENV] == "duckdb"
     assert "QUACK_TOKEN" not in child_env
+
+
+def test_direct_supervisor_round_trips_embedded_one_writer_authority(
+    tmp_path: Path,
+) -> None:
+    todo_path = tmp_path / "tasks.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    store_id = "data/agent_supervisor/lgcvf-bootstrap/control.duckdb"
+    args = supervisor_module.parse_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(state_dir),
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--state-store-id",
+            store_id,
+            "--state-store-generation",
+            "lgcvf-bootstrap-v1",
+            "--state-schema-revision",
+            "datasets-authoritative-operational-v1",
+            "--state-failover-policy",
+            "fail_closed",
+        ]
+    )
+
+    config = supervisor_module.supervisor_config_from_args(
+        args,
+        repo_root=tmp_path,
+    )
+    program = config.database_program
+    assert program is not None
+    assert program.authority_mode == "embedded"
+    assert program.task_source_kind == "duckdb"
+    assert program.store_id == store_id
+    assert not program.endpoint_secret_handle
+    assert not program.quack_endpoint
+
+    supervisor = supervisor_module.PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+    assert command.count("--task-source-kind") == 1
+    assert command[command.index("--task-source-kind") + 1] == "duckdb"
+    assert command.count("--authority-mode") == 1
+    assert command[command.index("--authority-mode") + 1] == "embedded"
+
+    child_env = supervisor_module._managed_daemon_child_environment(
+        database_program=program,
+    )
+    daemon_entrypoint = (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    )
+    daemon_argv = command[command.index(daemon_entrypoint) + 1 :]
+    daemon_args = daemon_module.parse_args(daemon_argv)
+    assert daemon_module.database_program_from_daemon_namespace(
+        daemon_args,
+        environ=child_env,
+    ) == program
+
+    provider_env = supervisor.provider_subprocess_environment(
+        {"QUACK_TOKEN": "must-not-cross", **child_env}
+    )
+    assert "QUACK_TOKEN" not in provider_env
+    assert DATABASE_PROGRAM_JSON_ENV not in provider_env
+    assert STATE_AUTHORITY_MODE_ENV not in provider_env
+    assert TASK_SOURCE_KIND_ENV not in provider_env
 
 
 def test_supervisor_rejects_inconsistent_authority_selection(

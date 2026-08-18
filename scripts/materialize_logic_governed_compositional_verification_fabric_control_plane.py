@@ -771,6 +771,19 @@ def materialize(
         raise MaterializationError("DatabaseTaskSource receipt differs from the exact population")
     if list(database_receipt.get("registered_task_cids") or ()) != expected_task_cids:
         raise MaterializationError("DatabaseImplementationDaemon registration differs")
+    expected_completed_cids = [
+        str(item["task_cid"])
+        for item in population["tasks"]
+        if str(item.get("status") or "").strip().lower()
+        in {"completed", "complete", "done"}
+    ]
+    if (
+        list(database_receipt.get("bootstrap_completed_task_cids") or ())
+        != expected_completed_cids
+    ):
+        raise MaterializationError(
+            "DatabaseImplementationDaemon completion projection differs"
+        )
     verification = verify_read_only(
         config,
         population,
