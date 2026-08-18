@@ -1490,7 +1490,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-120 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
