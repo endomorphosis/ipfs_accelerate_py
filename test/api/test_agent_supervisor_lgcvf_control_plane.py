@@ -78,10 +78,9 @@ def test_lgcvf_scheduler_is_single_writer_and_protects_control_evidence() -> Non
         implement=True,
         detach=False,
     )
-    assert launch["environment"][PROVIDER_ENV] == "codex"
-    # The daemon's reviewed direct-Codex default is gpt-5.6-terra. Exporting
-    # CODEX_MODEL_ENV here would be parsed as an incomplete sealed fallback
-    # route, so the one-provider launch must leave it absent.
+    assert launch["environment"][PROVIDER_ENV] == "grok_cli"
+    # This is an explicit one-provider route. Exporting CODEX_MODEL_ENV would
+    # instead be parsed as an incomplete sealed Grok/Codex fallback tuple.
     assert CODEX_MODEL_ENV not in launch["environment"]
     protected = set(board.protected_paths)
     assert {
