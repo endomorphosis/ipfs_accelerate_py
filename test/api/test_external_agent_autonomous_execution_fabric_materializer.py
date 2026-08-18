@@ -315,6 +315,39 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
     )
     monkeypatch.setattr(materializer, "build_population", lambda _config: population)
 
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+
+    native_materialize_population = DatabaseImplementationDaemon.materialize_population
+
+    def forged_materialize_population(self, *args, **kwargs):
+        forged = dict(native_materialize_population(self, *args, **kwargs))
+        forged_task_source = dict(forged["task_source"])
+        forged_task_source["task_count"] = 999
+        forged_task_source["plan_root_cid"] = "sha256:" + "e" * 64
+        forged["task_source"] = forged_task_source
+        return forged
+
+    monkeypatch.setattr(
+        DatabaseImplementationDaemon,
+        "materialize_population",
+        forged_materialize_population,
+    )
+    forged_config = _config("state/forged-native-receipt")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="database materialization receipt differs",
+    ):
+        materializer.materialize(forged_config)
+    assert materializer._claim_path(forged_config).is_file()
+    assert not materializer._receipt_path(forged_config).exists()
+    monkeypatch.setattr(
+        DatabaseImplementationDaemon,
+        "materialize_population",
+        native_materialize_population,
+    )
+
     receipt = materializer.materialize(config)
     assert receipt["process_started"] is False
     assert receipt["schema_install"]["changed"] is True

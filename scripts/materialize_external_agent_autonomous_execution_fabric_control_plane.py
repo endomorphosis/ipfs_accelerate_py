@@ -885,6 +885,64 @@ def _control_projection(path: Path) -> dict[str, Any]:
                 "FROM task_revisions ORDER BY task_cid, revision"
             ).fetchall()
         ]
+        from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+            content_identity,
+        )
+
+        event_watermark = int(
+            connection.execute(
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0]
+        )
+        intent_material = {
+            "objectives": len(objectives),
+            "goals": sorted(
+                (
+                    {
+                        "goal_cid": item["goal_cid"],
+                        "status": item["status"],
+                        "revision": item["revision"],
+                    }
+                    for item in goals
+                ),
+                key=lambda item: item["goal_cid"],
+            ),
+            "plans": sorted(
+                (
+                    {
+                        "plan_cid": item["plan_cid"],
+                        "status": item["status"],
+                        "revision": item["revision"],
+                    }
+                    for item in plans
+                ),
+                key=lambda item: item["plan_cid"],
+            ),
+            "tasks": sorted(
+                (
+                    {
+                        "task_cid": item["task_cid"],
+                        "status": item["status"],
+                        "revision": item["revision"],
+                    }
+                    for item in tasks
+                ),
+                key=lambda item: item["task_cid"],
+            ),
+            "dependency_count": len(dependencies),
+            "event_watermark": event_watermark,
+        }
+        intent_snapshot = {
+            "objective_count": len(objectives),
+            "goal_count": len(goals),
+            "plan_count": len(plans),
+            "task_count": len(tasks),
+            "dependency_count": len(dependencies),
+            "event_watermark": event_watermark,
+            "goal_cids": sorted(item["goal_cid"] for item in goals),
+            "task_cids": sorted(item["task_cid"] for item in tasks),
+            "projection_cid": content_identity(intent_material),
+        }
         # Bind every bootstrap-owned control relation, including revision and
         # materialization history that the ergonomic projections above omit.
         # The table allowlist is closed and identifiers are not caller input.
@@ -946,6 +1004,7 @@ def _control_projection(path: Path) -> dict[str, Any]:
         "objective_revisions": objective_revisions,
         "plan_revisions": plan_revisions,
         "task_revisions": task_revisions,
+        "intent_snapshot": intent_snapshot,
         "exact_relations": exact_relations,
     }
     projection["projection_root"] = _cid(projection)
@@ -1262,6 +1321,80 @@ def _assert_population_equivalent(
         )
 
 
+def _assert_database_materialization_equivalent(
+    database_receipt: Any,
+    population: Mapping[str, Any],
+    control: Mapping[str, Any],
+) -> None:
+    """Verify the native receipt independently against source and read-only rows."""
+
+    if not isinstance(database_receipt, Mapping):
+        raise MaterializationError("database materialization receipt is not an object")
+    wrapper_fields = {"task_source", "registered_task_cids"}
+    if set(database_receipt) != wrapper_fields:
+        raise MaterializationError("database materialization receipt wrapper is not canonical")
+    task_source_receipt = database_receipt.get("task_source")
+    if not isinstance(task_source_receipt, Mapping):
+        raise MaterializationError("database task-source receipt is not an object")
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DATABASE_TASK_SOURCE_SCHEMA,
+    )
+
+    snapshot = control.get("intent_snapshot")
+    if not isinstance(snapshot, Mapping):
+        raise MaterializationError("control intent snapshot is missing")
+    expected_task_cids = [
+        str(item.get("task_cid") or "")
+        for item in population.get("tasks") or ()
+        if isinstance(item, Mapping)
+    ]
+    expected_goal_cids = sorted(
+        str(item.get("goal_cid") or "")
+        for item in population.get("objectives") or ()
+        if isinstance(item, Mapping)
+    )
+    task_source_fields = {
+        "schema",
+        "plan_root_cid",
+        "repository_tree_id",
+        "projection_cid",
+        "task_count",
+        "goal_count",
+        "goal_edge_count",
+        "plan_count",
+        "event_watermark",
+        "task_cids",
+    }
+    if set(task_source_receipt) != task_source_fields:
+        raise MaterializationError("database task-source receipt shape is not canonical")
+    expected = {
+        "schema": DATABASE_TASK_SOURCE_SCHEMA,
+        "plan_root_cid": str(population.get("plan_root_cid") or ""),
+        "repository_tree_id": str(population.get("repository_tree_id") or ""),
+        "projection_cid": str(snapshot.get("projection_cid") or ""),
+        "task_count": len(expected_task_cids),
+        "goal_count": len(expected_goal_cids),
+        "goal_edge_count": len(population.get("goal_edges") or ()),
+        "plan_count": len(population.get("plans") or ()),
+        "event_watermark": int(snapshot.get("event_watermark") or 0),
+        "task_cids": expected_task_cids,
+    }
+    observed = {key: task_source_receipt.get(key) for key in expected}
+    if observed != expected:
+        raise MaterializationError(
+            "database materialization receipt differs from source and control authority"
+        )
+    registered_task_cids = database_receipt.get("registered_task_cids")
+    if not isinstance(registered_task_cids, list) or registered_task_cids != expected_task_cids:
+        raise MaterializationError(
+            "database materialization registered task identities differ from source"
+        )
+    if list(snapshot.get("task_cids") or ()) != sorted(expected_task_cids):
+        raise MaterializationError("control intent snapshot task identities differ from source")
+    if list(snapshot.get("goal_cids") or ()) != expected_goal_cids:
+        raise MaterializationError("control intent snapshot goal identities differ from source")
+
+
 def _execution_projection(path: Path) -> dict[str, Any]:
     connection = _read_only_connection(path)
     try:
@@ -1420,6 +1553,9 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         coordination = read_coordination_registry_projection(paths["coordination"])
         execution = _execution_projection(paths["execution"])
         _assert_population_equivalent(population, control)
+        _assert_database_materialization_equivalent(
+            database_receipt, population, control
+        )
         expected_aliases = list(population["task_cids_by_alias"])
         if [item["task_alias"] for item in control["tasks"]] != expected_aliases:
             raise MaterializationError("control task aliases differ from initial population")
@@ -1543,6 +1679,10 @@ def verify(config: Mapping[str, Any]) -> dict[str, Any]:
         raise MaterializationError("execution authority differs from materialization receipt")
     if control_schema != receipt.get("control_schema_projection"):
         raise MaterializationError("control schema differs from materialization receipt")
+    _assert_population_equivalent(population, control)
+    _assert_database_materialization_equivalent(
+        receipt.get("database_materialization"), population, control
+    )
     return {
         "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-verification@1",
         "valid": True,
