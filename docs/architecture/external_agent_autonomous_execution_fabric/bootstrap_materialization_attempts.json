@@ -22,6 +22,42 @@
       "authority_mutated": false,
       "process_started": false,
       "recovery": "Advance every configured runtime path and the store generation to run-v2 after committing the direct-script import repair; never retry run-v1."
+    },
+    {
+      "attempt_id": "sha256:c605711ba5fe94bfc95acb2fc41ba66483a7968f75bbdb7ccc1ec5e68d2675e9",
+      "attempted_at_utc": "2026-08-18T05:37:41.421304096Z",
+      "store_generation": "eaaef-run-v2",
+      "source_head": "f48dc6e3f430dd6559e1a869b97840851dffdf79",
+      "source_tree": "93d6cc691417d8d68287e09e9a8ad60c42f3ac8c",
+      "population_cid": "sha256:e6b77f909e0b17791e1884dda827209f99cdfde31a58cf565a49c1df61e3cae5",
+      "plan_root_cid": "sha256:8dda4f8fceff1c02946061b1048cf89966471bfbbab761f8ba8a11c6bdd8cd5a",
+      "outcome": "materialized_but_not_admitted",
+      "failure_class": "SelfGeneratedRuntimePathVisibility",
+      "failure_summary": "The six expected local lock files created during materialization were visible as untracked source, so exact source verification failed closed before reading the sealed authority.",
+      "partial_effects": [
+        {
+          "path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v2/registry/bootstrap-materialization.json",
+          "sha256": "d1acf66c1d80d7b453c237726d17051a335c89135ad43e870e7220cf5fb317ba",
+          "byte_count": 749121,
+          "disposition": "preserved_immutable_do_not_launch_or_reuse"
+        },
+        {
+          "paths": [
+            ".control.coordination.duckdb.lock",
+            ".control.duckdb.intent.lock",
+            ".control.duckdb.lock",
+            ".control.duckdb.migration.lock",
+            ".control.execution.duckdb.lock",
+            ".control.execution.duckdb.writer.lock"
+          ],
+          "byte_count_each": 0,
+          "disposition": "preserved_with_run-v2_namespace"
+        }
+      ],
+      "database_created": true,
+      "authority_mutated": true,
+      "process_started": false,
+      "recovery": "Narrowly ignore only the EAAEF runtime root, commit that source policy, advance every configured runtime path and store generation to run-v3, and never launch or retry run-v2."
     }
   ]
 }

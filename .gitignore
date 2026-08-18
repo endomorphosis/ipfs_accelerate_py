@@ -268,6 +268,7 @@ state/**/*.out
 
 # Adversarial Assurance Engine operator controls and generated runtime state.
 /data/agent_supervisor/adversarial_assurance_engine/
+/data/agent_supervisor/external_agent_autonomous_execution_fabric/
 !config/adversarial_assurance_engine_scheduler.json
 !config/adversarial_assurance_prerequisites.json
 !docs/architecture/adversarial_assurance_inventory/*.json
