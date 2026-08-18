@@ -47,11 +47,11 @@ from transformers import AutoModelForCausalLM
 
 # create LoRA configuration object
 lora_config = LoraConfig(
-    task_type=TaskType.CAUSAL_LM, # type of task to train on
-    inference_mode=False, # set to False for training
-    r=8, # dimension of the smaller matrices
-    lora_alpha=32, # scaling factor
-    lora_dropout=0.1 # dropout of LoRA layers
+    task_type=TaskType.CAUSAL_LM,  # type of task to train on
+    inference_mode=False,  # set to False for training
+    r=8,  # dimension of the smaller matrices
+    lora_alpha=32,  # scaling factor
+    lora_dropout=0.1,  # dropout of LoRA layers
 )
 ```
 

@@ -68,12 +68,13 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import logging
    from typing import Any, Dict, List, Optional, Tuple, Union
 
+
    class BaseTest:
        """Base class for all test classes.
-       
+
        Provides common functionality for test setup, teardown, and utilities.
        """
-       
+
        @pytest.fixture(autouse=True)
        def setup_test(self):
            """Set up test environment before each test method."""
@@ -81,41 +82,45 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            self.test_start_time = self.get_current_time()
            yield
            self.cleanup()
-           
+
        def setup_logging(self, level=logging.INFO):
            """Configure logging for tests."""
            self.logger = logging.getLogger(self.__class__.__name__)
            self.logger.setLevel(level)
            if not self.logger.handlers:
                handler = logging.StreamHandler()
-               formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+               formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
                handler.setFormatter(formatter)
                self.logger.addHandler(handler)
-               
+
        def get_current_time(self) -> float:
            """Get current time for performance measurements."""
            import time
+
            return time.time()
-           
+
        def measure_execution_time(self, start_time: float) -> float:
            """Measure execution time since start_time."""
            return self.get_current_time() - start_time
-           
+
        def cleanup(self):
            """Clean up resources after test execution."""
            pass  # Override in subclasses as needed
-           
+
        def assert_structure_matches(self, obj: Any, expected_structure: Dict[str, type]):
            """Assert that object has expected structure of attributes and types."""
            for attr, expected_type in expected_structure.items():
                assert hasattr(obj, attr), f"Object missing attribute: {attr}"
                if expected_type is not None:
-                   assert isinstance(getattr(obj, attr), expected_type), \
+                   assert isinstance(getattr(obj, attr), expected_type), (
                        f"Attribute {attr} has wrong type. Expected {expected_type}, got {type(getattr(obj, attr))}"
-                       
+                   )
+
        def assert_lists_equal_unordered(self, list1: List, list2: List):
            """Assert that two lists contain the same elements, regardless of order."""
-           assert len(list1) == len(list2), f"Lists have different lengths: {len(list1)} vs {len(list2)}"
+           assert len(list1) == len(list2), (
+               f"Lists have different lengths: {len(list1)} vs {len(list2)}"
+           )
            for item in list1:
                assert item in list2, f"Item {item} in first list but not in second list"
    ```
@@ -131,15 +136,16 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import json
    from typing import Any, Dict, List, Optional, Tuple, Union
 
+
    class ModelTest(BaseTest):
        """Base class for model tests.
-       
+
        Provides common functionality for testing machine learning models.
        """
-       
+
        model_name: str = None
        model_type: str = None
-       
+
        @pytest.fixture(autouse=True)
        def setup_model_test(self):
            """Set up test environment for model testing."""
@@ -148,30 +154,31 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            self.model = self.load_model()
            yield
            self.unload_model()
-           
+
        def verify_model_attributes(self):
            """Verify that required model attributes are set."""
            assert self.model_name is not None, "model_name must be defined in the test class"
            assert self.model_type is not None, "model_type must be defined in the test class"
-           
+
        def load_model(self):
            """Load the model for testing.
-           
+
            Override in subclasses with specific model loading logic.
            """
            self.logger.info(f"Loading model: {self.model_name} (type: {self.model_type})")
            return None
-           
+
        def unload_model(self):
            """Unload the model after testing.
-           
+
            Override in subclasses with specific model unloading logic.
            """
            self.logger.info(f"Unloading model: {self.model_name}")
            self.model = None
-           
-       def assert_model_outputs_match_expected(self, outputs: Any, expected_outputs: Any, 
-                                            tolerance: float = 1e-5):
+
+       def assert_model_outputs_match_expected(
+           self, outputs: Any, expected_outputs: Any, tolerance: float = 1e-5
+       ):
            """Assert that model outputs match expected outputs within tolerance."""
            # Implement comparison logic based on output type
            # This is a placeholder for actual implementation
@@ -189,14 +196,15 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import platform
    from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+
    class HardwareTest(BaseTest):
        """Base class for hardware compatibility tests.
-       
+
        Provides common functionality for testing hardware compatibility.
        """
-       
+
        required_hardware: Set[str] = set()
-       
+
        @pytest.fixture(autouse=True)
        def setup_hardware_test(self):
            """Set up test environment for hardware testing."""
@@ -204,11 +212,11 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            self.detect_available_hardware()
            self.verify_required_hardware()
            yield
-           
+
        def detect_available_hardware(self):
            """Detect available hardware for testing."""
            self.available_hardware = set()
-           
+
            # Basic system information
            self.system_info = {
                "platform": platform.system(),
@@ -217,23 +225,23 @@ Based on our comprehensive analysis of the test codebase, this document outlines
                "architecture": platform.machine(),
                "processor": platform.processor(),
            }
-           
+
            # Add CPU info
            self.available_hardware.add("cpu")
-           
+
            # Detect GPU if available
            # This is a placeholder for actual implementation
            # Would use platform-specific methods to detect GPUs
-           
+
            self.logger.info(f"Detected hardware: {self.available_hardware}")
-           
+
        def verify_required_hardware(self):
            """Verify that required hardware is available."""
            if self.required_hardware:
                missing_hardware = self.required_hardware - self.available_hardware
                if missing_hardware:
                    pytest.skip(f"Required hardware not available: {missing_hardware}")
-                   
+
        def assert_hardware_compatibility(self, feature: str, expected_compatibility: bool = True):
            """Assert that a specific hardware feature is compatible as expected."""
            # This is a placeholder for actual implementation
@@ -251,14 +259,15 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import json
    from typing import Any, Dict, List, Optional, Tuple, Union
 
+
    class APITest(BaseTest):
        """Base class for API tests.
-       
+
        Provides common functionality for testing APIs.
        """
-       
+
        api_base_url: str = None
-       
+
        @pytest.fixture(autouse=True)
        def setup_api_test(self):
            """Set up test environment for API testing."""
@@ -267,31 +276,37 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            self.setup_api_client()
            yield
            self.teardown_api_client()
-           
+
        def verify_api_attributes(self):
            """Verify that required API attributes are set."""
            assert self.api_base_url is not None, "api_base_url must be defined in the test class"
-           
+
        def setup_api_client(self):
            """Set up API client for testing."""
            self.session = requests.Session()
-           
+
        def teardown_api_client(self):
            """Clean up API client after testing."""
-           if hasattr(self, 'session'):
+           if hasattr(self, "session"):
                self.session.close()
-               
-       def make_api_request(self, method: str, endpoint: str, 
-                          params: Optional[Dict] = None, 
-                          data: Optional[Dict] = None, 
-                          headers: Optional[Dict] = None) -> requests.Response:
+
+       def make_api_request(
+           self,
+           method: str,
+           endpoint: str,
+           params: Optional[Dict] = None,
+           data: Optional[Dict] = None,
+           headers: Optional[Dict] = None,
+       ) -> requests.Response:
            """Make an API request and return the response."""
            url = f"{self.api_base_url.rstrip('/')}/{endpoint.lstrip('/')}"
            return self.session.request(method, url, params=params, json=data, headers=headers)
-           
+
        def assert_successful_response(self, response: requests.Response):
            """Assert that an API response is successful."""
-           assert response.ok, f"API request failed with status {response.status_code}: {response.text}"
+           assert response.ok, (
+               f"API request failed with status {response.status_code}: {response.text}"
+           )
    ```
 
 5. **BrowserTest Class Implementation**
@@ -304,14 +319,15 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import os
    from typing import Any, Dict, List, Optional, Tuple, Union
 
+
    class BrowserTest(BaseTest):
        """Base class for browser tests.
-       
+
        Provides common functionality for browser-specific testing.
        """
-       
+
        browser_type: str = None
-       
+
        @pytest.fixture(autouse=True)
        def setup_browser_test(self):
            """Set up test environment for browser testing."""
@@ -320,17 +336,17 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            self.setup_browser()
            yield
            self.teardown_browser()
-           
+
        def verify_browser_attributes(self):
            """Verify that required browser attributes are set."""
            assert self.browser_type is not None, "browser_type must be defined in the test class"
-           
+
        def setup_browser(self):
            """Set up browser environment for testing."""
            self.logger.info(f"Setting up browser: {self.browser_type}")
            # This is a placeholder for actual browser setup
            # Would use selenium or similar tools in actual implementation
-           
+
        def teardown_browser(self):
            """Clean up browser environment after testing."""
            self.logger.info(f"Tearing down browser: {self.browser_type}")
@@ -349,11 +365,13 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import tempfile
    from typing import Any, Dict, List, Optional, Tuple, Union
 
+
    @pytest.fixture
    def temp_dir():
        """Create a temporary directory for tests."""
        with tempfile.TemporaryDirectory() as tmp_dir:
            yield tmp_dir
+
 
    @pytest.fixture
    def temp_file():
@@ -363,6 +381,7 @@ Based on our comprehensive analysis of the test codebase, this document outlines
        yield file_path
        os.unlink(file_path)
 
+
    @pytest.fixture
    def sample_model_outputs():
        """Provide sample model outputs for testing."""
@@ -371,6 +390,7 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            "vision": [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]],
            "audio": [[[0.01, 0.02, 0.03], [0.04, 0.05, 0.06]]],
        }
+
 
    @pytest.fixture
    def mock_api_response():
@@ -382,7 +402,7 @@ Based on our comprehensive analysis of the test codebase, this document outlines
                    {"id": 1, "name": "Result 1"},
                    {"id": 2, "name": "Result 2"},
                ]
-           }
+           },
        }
    ```
 
@@ -394,35 +414,51 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import numpy as np
    from typing import Any, Dict, List, Optional, Tuple, Union
 
-   def assert_tensors_equal(tensor1: np.ndarray, tensor2: np.ndarray, rtol: float = 1e-5, atol: float = 1e-8):
+
+   def assert_tensors_equal(
+       tensor1: np.ndarray, tensor2: np.ndarray, rtol: float = 1e-5, atol: float = 1e-8
+   ):
        """Assert that two tensors are equal within tolerance."""
-       assert np.allclose(tensor1, tensor2, rtol=rtol, atol=atol), \
+       assert np.allclose(tensor1, tensor2, rtol=rtol, atol=atol), (
            f"Tensors not equal within tolerance. Max difference: {np.max(np.abs(tensor1 - tensor2))}"
+       )
+
 
    def assert_json_structure_matches(json_obj: Dict, expected_structure: Dict):
        """Assert that a JSON object matches the expected structure."""
        for key, expected_type in expected_structure.items():
            assert key in json_obj, f"JSON missing key: {key}"
-           
+
            if isinstance(expected_type, dict):
-               assert isinstance(json_obj[key], dict), f"Expected dict for key {key}, got {type(json_obj[key])}"
+               assert isinstance(json_obj[key], dict), (
+                   f"Expected dict for key {key}, got {type(json_obj[key])}"
+               )
                assert_json_structure_matches(json_obj[key], expected_type)
            elif isinstance(expected_type, list) and len(expected_type) > 0:
-               assert isinstance(json_obj[key], list), f"Expected list for key {key}, got {type(json_obj[key])}"
+               assert isinstance(json_obj[key], list), (
+                   f"Expected list for key {key}, got {type(json_obj[key])}"
+               )
                if json_obj[key]:  # Only check if list is not empty
                    assert_json_structure_matches(json_obj[key][0], expected_type[0])
            else:
-               assert isinstance(json_obj[key], expected_type), \
+               assert isinstance(json_obj[key], expected_type), (
                    f"Type mismatch for key {key}. Expected {expected_type}, got {type(json_obj[key])}"
+               )
+
 
    def assert_api_success(response_json: Dict):
        """Assert that an API response indicates success."""
        assert "status" in response_json, "Response missing 'status' field"
-       assert response_json["status"] == "success", f"API returned non-success status: {response_json['status']}"
+       assert response_json["status"] == "success", (
+           f"API returned non-success status: {response_json['status']}"
+       )
+
 
    def assert_model_performance(execution_time: float, max_time: float):
        """Assert that model execution time is within acceptable range."""
-       assert execution_time <= max_time, f"Model execution time ({execution_time:.4f}s) exceeds maximum ({max_time:.4f}s)"
+       assert execution_time <= max_time, (
+           f"Model execution time ({execution_time:.4f}s) exceeds maximum ({max_time:.4f}s)"
+       )
    ```
 
 3. **Test Mocks Module**
@@ -433,13 +469,14 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    from typing import Any, Dict, List, Optional, Tuple, Union
    import numpy as np
 
+
    class MockModel:
        """Mock model for testing."""
-       
+
        def __init__(self, model_type: str = "text"):
            self.model_type = model_type
            self.initialized = True
-           
+
        def predict(self, inputs: Any) -> Any:
            """Mock prediction method."""
            if self.model_type == "text":
@@ -455,23 +492,24 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            else:
                return None
 
+
    class MockAPIClient:
        """Mock API client for testing."""
-       
+
        def __init__(self, base_url: str = "https://api.example.com"):
            self.base_url = base_url
            self.requests = []
-           
+
        def get(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
            """Mock GET request."""
            self.requests.append({"method": "GET", "endpoint": endpoint, "params": params})
            return self._mock_response(endpoint)
-           
+
        def post(self, endpoint: str, data: Optional[Dict] = None) -> Dict:
            """Mock POST request."""
            self.requests.append({"method": "POST", "endpoint": endpoint, "data": data})
            return self._mock_response(endpoint)
-           
+
        def _mock_response(self, endpoint: str) -> Dict:
            """Generate mock response based on endpoint."""
            if endpoint == "models":
@@ -482,20 +520,15 @@ Based on our comprehensive analysis of the test codebase, this document outlines
                            {"id": 1, "name": "model1", "type": "text"},
                            {"id": 2, "name": "model2", "type": "vision"},
                        ]
-                   }
+                   },
                }
            elif endpoint == "predict":
                return {
                    "status": "success",
-                   "data": {
-                       "predictions": ["Mock prediction 1", "Mock prediction 2"]
-                   }
+                   "data": {"predictions": ["Mock prediction 1", "Mock prediction 2"]},
                }
            else:
-               return {
-                   "status": "error",
-                   "message": f"Unknown endpoint: {endpoint}"
-               }
+               return {"status": "error", "message": f"Unknown endpoint: {endpoint}"}
    ```
 
 4. **Hardware Detection Utility**
@@ -509,6 +542,7 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import re
    from typing import Dict, List, Optional, Set
 
+
    def get_system_info() -> Dict[str, str]:
        """Get basic system information."""
        return {
@@ -519,47 +553,47 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            "processor": platform.processor(),
        }
 
+
    def detect_available_hardware() -> Set[str]:
        """Detect available hardware for testing."""
        available_hardware = set(["cpu"])
-       
+
        system = platform.system()
-       
+
        # Check for CUDA GPUs on Linux/Windows
        if system in ("Linux", "Windows"):
            try:
                # Try to get NVIDIA GPU info (will fail if no NVIDIA GPU or driver installed)
                nvidia_smi_output = subprocess.check_output(
-                   ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                   universal_newlines=True
+                   ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], universal_newlines=True
                )
                if nvidia_smi_output.strip():
                    available_hardware.add("cuda")
                    available_hardware.add("gpu")
            except (subprocess.SubprocessError, FileNotFoundError):
                pass
-               
+
        # Check for Metal on macOS
        if system == "Darwin":
            try:
                # Get macOS GPU info
                system_profiler_output = subprocess.check_output(
-                   ["system_profiler", "SPDisplaysDataType"],
-                   universal_newlines=True
+                   ["system_profiler", "SPDisplaysDataType"], universal_newlines=True
                )
                if "Chipset Model" in system_profiler_output:
                    available_hardware.add("metal")
                    available_hardware.add("gpu")
            except subprocess.SubprocessError:
                pass
-               
+
        # Check for WebGPU support (this would be browser-specific in reality)
        # This is a placeholder for actual detection logic
-       
+
        # Check for WebNN support (this would be browser-specific in reality)
        # This is a placeholder for actual detection logic
-       
+
        return available_hardware
+
 
    def get_cpu_info() -> Dict[str, Any]:
        """Get detailed CPU information."""
@@ -567,25 +601,25 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            "processor": platform.processor(),
            "cores": os.cpu_count(),
        }
-       
+
        # For Linux, try to get more detailed info from /proc/cpuinfo
        if platform.system() == "Linux":
            try:
                with open("/proc/cpuinfo", "r") as f:
                    cpu_info_text = f.read()
-                   
+
                # Extract model name
                model_match = re.search(r"model name\s+:\s+(.*)", cpu_info_text)
                if model_match:
                    cpu_info["model_name"] = model_match.group(1)
-                   
+
                # Extract CPU MHz
                mhz_match = re.search(r"cpu MHz\s+:\s+(.*)", cpu_info_text)
                if mhz_match:
                    cpu_info["mhz"] = float(mhz_match.group(1))
            except:
                pass
-               
+
        return cpu_info
    ```
 
@@ -602,16 +636,18 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import numpy as np
    from test.refactored_tests.common.model_test import ModelTest
 
+
    class TestBertModel(ModelTest):
        """Tests for BERT model functionality."""
-       
+
        model_name = "bert-base-uncased"
        model_type = "text"
-       
+
        def load_model(self):
            """Load BERT model for testing."""
            try:
                from transformers import AutoModel, AutoTokenizer
+
                tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                model = AutoModel.from_pretrained(self.model_name)
                return {"model": model, "tokenizer": tokenizer}
@@ -619,31 +655,31 @@ Based on our comprehensive analysis of the test codebase, this document outlines
                pytest.skip("transformers package not installed")
            except Exception as e:
                pytest.skip(f"Failed to load model: {str(e)}")
-           
+
        def test_should_encode_text_successfully(self):
            """Test that BERT model can encode text successfully."""
            if not self.model:
                pytest.skip("Model not loaded")
-               
+
            # Prepare input
            text = ["Hello world", "Testing BERT model"]
            inputs = self.model["tokenizer"](text, return_tensors="pt", padding=True)
-           
+
            # Run model
            start_time = self.get_current_time()
            outputs = self.model["model"](**inputs)
            execution_time = self.measure_execution_time(start_time)
-           
+
            # Verify outputs
            self.logger.info(f"Model execution time: {execution_time:.4f}s")
            assert outputs.last_hidden_state is not None
            assert outputs.last_hidden_state.shape[0] == len(text)
-           
+
        def test_should_handle_empty_input(self):
            """Test that BERT model handles empty input appropriately."""
            if not self.model:
                pytest.skip("Model not loaded")
-               
+
            # Empty input should raise a specific exception
            with pytest.raises(ValueError):
                inputs = self.model["tokenizer"]([], return_tensors="pt", padding=True)
@@ -665,16 +701,17 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    from test.refactored_tests.common.api_test import APITest
    from test.refactored_tests.common.browser_test import BrowserTest
 
+
    class TestBaseTestClass:
        """Tests for BaseTest class functionality."""
-       
+
        def test_should_setup_logging(self):
            """Test that logging setup works correctly."""
            test_instance = BaseTest()
            test_instance.setup_test()
-           assert hasattr(test_instance, 'logger')
-           assert test_instance.logger.name == 'BaseTest'
-           
+           assert hasattr(test_instance, "logger")
+           assert test_instance.logger.name == "BaseTest"
+
        def test_should_measure_execution_time(self):
            """Test that execution time measurement works correctly."""
            test_instance = BaseTest()
@@ -682,57 +719,69 @@ Based on our comprehensive analysis of the test codebase, this document outlines
            time.sleep(0.1)  # Sleep for 100ms
            execution_time = test_instance.measure_execution_time(start_time)
            assert execution_time >= 0.1
-           
+
        def test_should_assert_structure_matches(self):
            """Test that structure assertion works correctly."""
            test_instance = BaseTest()
-           
+
            # Create a test object
            class TestObj:
                def __init__(self):
                    self.attr1 = "value1"
                    self.attr2 = 42
-                   
+
            obj = TestObj()
-           
+
            # Test with matching structure
-           test_instance.assert_structure_matches(obj, {
-               "attr1": str,
-               "attr2": int,
-           })
-           
+           test_instance.assert_structure_matches(
+               obj,
+               {
+                   "attr1": str,
+                   "attr2": int,
+               },
+           )
+
            # Test with missing attribute
            with pytest.raises(AssertionError):
-               test_instance.assert_structure_matches(obj, {
-                   "attr1": str,
-                   "attr3": str,
-               })
-               
+               test_instance.assert_structure_matches(
+                   obj,
+                   {
+                       "attr1": str,
+                       "attr3": str,
+                   },
+               )
+
            # Test with wrong type
            with pytest.raises(AssertionError):
-               test_instance.assert_structure_matches(obj, {
-                   "attr1": int,
-                   "attr2": int,
-               })
+               test_instance.assert_structure_matches(
+                   obj,
+                   {
+                       "attr1": int,
+                       "attr2": int,
+                   },
+               )
+
 
    class TestModelTestClass:
        """Tests for ModelTest class functionality."""
-       
+
        def test_should_require_model_attributes(self):
            """Test that ModelTest requires model_name and model_type."""
+
            class TestModelSubclass(ModelTest):
                pass
-               
+
            test_instance = TestModelSubclass()
            with pytest.raises(AssertionError):
                test_instance.verify_model_attributes()
-               
+
        def test_should_accept_valid_model_attributes(self):
            """Test that ModelTest accepts valid model_name and model_type."""
+
            class TestModelSubclass(ModelTest):
                model_name = "test_model"
                model_type = "test_type"
-               
+
            test_instance = TestModelSubclass()
            test_instance.verify_model_attributes()  # Should not raise
    ```
@@ -753,21 +802,23 @@ Based on our comprehensive analysis of the test codebase, this document outlines
    import sys
    import pytest
 
+
    def main():
        """Run refactored tests."""
        print("Running refactored tests...")
-       
+
        # Add argument to identify refactored tests
        pytest_args = ["-m", "refactored"]
-       
+
        # Add any command line args passed to this script
        pytest_args.extend(sys.argv[1:])
-       
+
        # Add refactored tests directory
        pytest_args.append("test/refactored_tests")
-       
+
        # Run pytest with the specified args
        return pytest.main(pytest_args)
+
 
    if __name__ == "__main__":
        sys.exit(main())
@@ -889,18 +940,19 @@ import pytest
 import torch
 from transformers import BertModel, BertTokenizer
 
+
 def test_bert_model():
     # Load model
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     model = BertModel.from_pretrained("bert-base-uncased")
-    
+
     # Prepare input
     text = ["Hello world", "Testing BERT model"]
     inputs = tokenizer(text, return_tensors="pt", padding=True)
-    
+
     # Run model
     outputs = model(**inputs)
-    
+
     # Verify outputs
     assert outputs.last_hidden_state is not None
     assert outputs.last_hidden_state.shape[0] == len(text)
@@ -913,17 +965,19 @@ import pytest
 import torch
 from test.refactored_tests.common.model_test import ModelTest
 
+
 @pytest.mark.refactored
 class TestBertModel(ModelTest):
     """Tests for BERT model functionality."""
-    
+
     model_name = "bert-base-uncased"
     model_type = "text"
-    
+
     def load_model(self):
         """Load BERT model for testing."""
         try:
             from transformers import AutoModel, AutoTokenizer
+
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             model = AutoModel.from_pretrained(self.model_name)
             return {"model": model, "tokenizer": tokenizer}
@@ -931,21 +985,21 @@ class TestBertModel(ModelTest):
             pytest.skip("transformers package not installed")
         except Exception as e:
             pytest.skip(f"Failed to load model: {str(e)}")
-    
+
     def test_should_encode_text_successfully(self):
         """Test that BERT model can encode text successfully."""
         if not self.model:
             pytest.skip("Model not loaded")
-            
+
         # Prepare input
         text = ["Hello world", "Testing BERT model"]
         inputs = self.model["tokenizer"](text, return_tensors="pt", padding=True)
-        
+
         # Run model
         start_time = self.get_current_time()
         outputs = self.model["model"](**inputs)
         execution_time = self.measure_execution_time(start_time)
-        
+
         # Verify outputs
         self.logger.info(f"Model execution time: {execution_time:.4f}s")
         assert outputs.last_hidden_state is not None

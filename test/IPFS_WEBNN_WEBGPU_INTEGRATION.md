@@ -35,44 +35,33 @@ result = ipfs_accelerate_py.accelerate(
     content="Text to process with the model",
     config={
         "platform": "webgpu",  # or "webnn"
-        "browser": "chrome",   # or "firefox", "edge", "safari"
+        "browser": "chrome",  # or "firefox", "edge", "safari"
         "is_real_hardware": True,  # Whether real hardware is available
-        "precision": 8,        # Bit precision (4, 8, 16)
-        "mixed_precision": False, 
-        "use_firefox_optimizations": False
-    }
+        "precision": 8,  # Bit precision (4, 8, 16)
+        "mixed_precision": False,
+        "use_firefox_optimizations": False,
+    },
 )
 
 # Firefox audio optimization for Whisper models
 result = ipfs_accelerate_py.accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "audio.mp3"},
-    config={
-        "platform": "webgpu",
-        "browser": "firefox",
-        "use_firefox_optimizations": True
-    }
+    config={"platform": "webgpu", "browser": "firefox", "use_firefox_optimizations": True},
 )
 
 # Edge-optimized WebNN for text models
 result = ipfs_accelerate_py.accelerate(
     model_name="bert-base-uncased",
     content="Text to process with the model",
-    config={
-        "platform": "webnn",
-        "browser": "edge"
-    }
+    config={"platform": "webnn", "browser": "edge"},
 )
 
 # 4-bit quantization with mixed precision
 result = ipfs_accelerate_py.accelerate(
     model_name="t5-small",
     content="Text to translate",
-    config={
-        "platform": "webgpu",
-        "precision": 4,
-        "mixed_precision": True
-    }
+    config={"platform": "webgpu", "precision": 4, "mixed_precision": True},
 )
 ```
 
@@ -101,14 +90,14 @@ The `accelerate()` function returns a dictionary with the following information:
     "precision": 8,
     "mixed_precision": False,
     "processing_time": 0.025,  # Model processing time in seconds
-    "total_time": 0.134,       # Total execution time in seconds
-    "ipfs_cache_hit": True,    # Whether model was found in cache
-    "ipfs_source": "p2p",      # Source of model: "cache", "p2p", or "ipfs"
-    "ipfs_load_time": 100.5,   # Load time in milliseconds
+    "total_time": 0.134,  # Total execution time in seconds
+    "ipfs_cache_hit": True,  # Whether model was found in cache
+    "ipfs_source": "p2p",  # Source of model: "cache", "p2p", or "ipfs"
+    "ipfs_load_time": 100.5,  # Load time in milliseconds
     "optimizations": ["4bit_optimization"],  # Applied optimizations
     "memory_usage_mb": 256.5,  # Estimated memory usage
     "throughput_items_per_sec": 40.0,  # Items processed per second
-    "p2p_optimized": True,     # Whether P2P optimization was used
+    "p2p_optimized": True,  # Whether P2P optimization was used
 }
 ```
 

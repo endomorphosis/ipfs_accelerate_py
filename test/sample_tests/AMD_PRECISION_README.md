@@ -166,7 +166,7 @@ AMD GPUs are now fully supported with:
    - Use this configuration to initialize models with the best settings
    - Load the configuration with:
    ```python
-   with open('hardware_config.json') as f:
+   with open("hardware_config.json") as f:
        config = json.load(f)
    ```
 
@@ -188,6 +188,7 @@ model = AutoModel.from_pretrained("bert-base-uncased", load_in_8bit=True)
 
 # For INT4 quantization
 from transformers import BitsAndBytesConfig
+
 quantization_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4")
 model = AutoModel.from_pretrained("bert-base-uncased", quantization_config=quantization_config)
 ```
@@ -202,6 +203,7 @@ from transformers import AutoModel
 has_amd = False
 try:
     import torch.utils.hip
+
     has_amd = torch.utils.hip.is_available()
 except ImportError:
     pass

@@ -65,11 +65,13 @@ Worker skillsets automatically benefit from patching with **zero code changes**:
 ```python
 # worker/skillset/my_model.py
 
+
 class MyModel:
     def init(self):
         import transformers
+
         self.transformers = transformers
-    
+
     def load_model(self, model_name):
         # This automatically uses distributed storage!
         model = self.transformers.AutoModel.from_pretrained(model_name)
@@ -155,7 +157,8 @@ Previously, to use distributed storage, you would need to modify each skillset:
 ```python
 # OLD WAY: Manual modification required
 from ipfs_transformers_py import AutoModel  # Change import
-model = AutoModel.from_ipfs("QmXXX...")     # Change method
+
+model = AutoModel.from_ipfs("QmXXX...")  # Change method
 ```
 
 Now, **no changes needed**:
@@ -163,6 +166,7 @@ Now, **no changes needed**:
 ```python
 # NEW WAY: Automatic patching
 from transformers import AutoModel  # Same import
+
 model = AutoModel.from_pretrained("bert-base-uncased")  # Same method
 # Distributed storage used automatically!
 ```
@@ -262,12 +266,14 @@ The module uses Python's dynamic nature to replace methods at runtime:
 # Store original method
 original_from_pretrained = transformers.AutoModel.from_pretrained
 
+
 # Create wrapper
 def patched_from_pretrained(model_name, *args, **kwargs):
     # Add distributed cache_dir
-    if 'cache_dir' not in kwargs:
-        kwargs['cache_dir'] = get_distributed_cache_dir()
+    if "cache_dir" not in kwargs:
+        kwargs["cache_dir"] = get_distributed_cache_dir()
     return original_from_pretrained(model_name, *args, **kwargs)
+
 
 # Apply patch
 transformers.AutoModel.from_pretrained = classmethod(patched_from_pretrained)

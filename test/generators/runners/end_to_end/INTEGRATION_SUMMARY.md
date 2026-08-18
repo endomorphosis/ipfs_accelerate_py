@@ -55,7 +55,7 @@ The enhanced documentation system is fully integrated with the Unified Component
            skill_path=skill_file,
            test_path=test_file,
            benchmark_path=benchmark_file,
-           template_db_path=self.template_db_path
+           template_db_path=self.template_db_path,
        )
    ```
 
@@ -66,12 +66,16 @@ The enhanced documentation system is fully integrated with the Unified Component
        """Test the documentation generation."""
        # Generate components
        skill_file, test_file, benchmark_file = self.tester.generate_components(self.temp_dir)
-       
+
        # Generate documentation
        doc_result = self.tester.generate_documentation(
            self.temp_dir,
            test_results={"success": True, "test_count": 4},
-           benchmark_results={"results_by_batch": {"1": {"average_latency_ms": 10.5, "average_throughput_items_per_second": 95.2}}}
+           benchmark_results={
+               "results_by_batch": {
+                   "1": {"average_latency_ms": 10.5, "average_throughput_items_per_second": 95.2}
+               }
+           },
        )
    ```
 

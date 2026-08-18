@@ -155,9 +155,7 @@ def test_health_classification_covers_budgets_and_impossible_evidence(
 
 def test_impossible_funnel_accepts_ref201_dispositions_and_rejects_overages():
     assert impossible_candidate_funnel(_inventory()) == ()
-    failures = impossible_candidate_funnel(
-        _inventory(appended_tasks=4, raw_candidates=3)
-    )
+    failures = impossible_candidate_funnel(_inventory(appended_tasks=4, raw_candidates=3))
     assert "raw_candidates_do_not_balance" in failures
     assert "candidates_without_parsed_files" in impossible_candidate_funnel(
         _inventory(parsed_files=0, eligible_files=0, excluded_files=10)

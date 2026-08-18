@@ -24,12 +24,8 @@ from .llm_defaults import DEFAULT_CODEX_MODEL
 from .engine import compact_message
 
 
-LLM_CHILD_ENVELOPE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/todo-daemon-llm-child-envelope@1"
-)
-LLM_CHILD_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/todo-daemon-llm-child-result@1"
-)
+LLM_CHILD_ENVELOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/todo-daemon-llm-child-envelope@1"
+LLM_CHILD_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/todo-daemon-llm-child-result@1"
 LLM_CHILD_ENVELOPE_VERSION = 1
 MAX_ENVELOPE_BYTES = 16_384
 MAX_RESULT_BYTES = 32_768
@@ -227,15 +223,11 @@ class LlmChildRequestEnvelope:
             lease_id=str(payload.get("lease_id") or ""),
             fence_id=str(payload.get("fence_id") or ""),
             deadline_at=str(payload.get("deadline_at") or ""),
-            side_effect_boundary=str(
-                payload.get("side_effect_boundary") or "idempotent"
-            ),
+            side_effect_boundary=str(payload.get("side_effect_boundary") or "idempotent"),
             supervisor_receipt_id=str(payload.get("supervisor_receipt_id") or ""),
             endpoint_receipt_id=str(payload.get("endpoint_receipt_id") or ""),
             input_digest=str(
-                payload.get("input_digest")
-                or payload.get("prompt_file_digest")
-                or ""
+                payload.get("input_digest") or payload.get("prompt_file_digest") or ""
             ),
             result_file=str(payload.get("result_file") or ""),
         )
@@ -337,24 +329,19 @@ def _assert_envelope_safe(payload: Mapping[str, Any]) -> None:
     for key in payload:
         lowered = str(key).casefold()
         if lowered in _FORBIDDEN_ENVELOPE_KEYS:
-            raise RuntimeError(
-                f"LLM envelope must not embed forbidden field {key!r}"
-            )
+            raise RuntimeError(f"LLM envelope must not embed forbidden field {key!r}")
         if any(
             marker in lowered
             for marker in ("prompt", "password", "secret", "api_key", "credential")
         ):
-            raise RuntimeError(
-                f"LLM envelope must not embed forbidden field {key!r}"
-            )
+            raise RuntimeError(f"LLM envelope must not embed forbidden field {key!r}")
 
 
 def _normalize_usage_mode(value: str) -> str:
     mode = str(value or LLM_USAGE_MODE_OFF).strip().casefold()
     if mode not in _VALID_USAGE_MODES:
         raise RuntimeError(
-            f"unsupported LLM usage_mode {value!r}; "
-            f"expected one of {sorted(_VALID_USAGE_MODES)}"
+            f"unsupported LLM usage_mode {value!r}; expected one of {sorted(_VALID_USAGE_MODES)}"
         )
     return mode
 
@@ -802,12 +789,8 @@ def call_llm_router_with_receipt(
                 _env_name(config, "REQUEST_ID"): str(config.request_id or ""),
                 _env_name(config, "ATTEMPT"): str(int(config.attempt or 1)),
                 _env_name(config, "IDEMPOTENCY_KEY"): str(config.idempotency_key or ""),
-                _env_name(config, "SUPERVISOR_RECEIPT_ID"): str(
-                    config.supervisor_receipt_id or ""
-                ),
-                _env_name(config, "ENDPOINT_RECEIPT_ID"): str(
-                    config.endpoint_receipt_id or ""
-                ),
+                _env_name(config, "SUPERVISOR_RECEIPT_ID"): str(config.supervisor_receipt_id or ""),
+                _env_name(config, "ENDPOINT_RECEIPT_ID"): str(config.endpoint_receipt_id or ""),
                 _env_name(config, "RESULT_FILE"): str(result_file or ""),
                 _env_name(config, "ENVELOPE_FILE"): str(envelope_file or ""),
             }
@@ -856,9 +839,7 @@ def call_llm_router_with_receipt(
                 attempt=int(config.attempt or 1),
                 idempotency_key=str(config.idempotency_key or ""),
                 status="ok" if completed.returncode == 0 else "error",
-                reason_codes=()
-                if completed.returncode == 0
-                else ("child_exit_error",),
+                reason_codes=() if completed.returncode == 0 else ("child_exit_error",),
                 supervisor_receipt_id=str(config.supervisor_receipt_id or ""),
                 endpoint_receipt_id=str(config.endpoint_receipt_id or ""),
                 text_chars=len(completed.stdout or ""),
@@ -878,9 +859,7 @@ def call_llm_router_with_receipt(
         details = compact_message(
             (completed.stdout or "") + " " + (completed.stderr or ""), limit=1200
         )
-        raise RuntimeError(
-            f"llm_router child exited with code {completed.returncode}: {details}"
-        )
+        raise RuntimeError(f"llm_router child exited with code {completed.returncode}: {details}")
     return completed.stdout, result_envelope
 
 
@@ -917,10 +896,7 @@ def call_with_thread_deadline(
         if on_timeout is not None:
             on_timeout(elapsed, timeout, thread.name)
         if timeout_message is None:
-            message = (
-                f"daemon call exceeded deadline after {elapsed:.1f}s "
-                f"(timeout={timeout:.1f}s)"
-            )
+            message = f"daemon call exceeded deadline after {elapsed:.1f}s (timeout={timeout:.1f}s)"
         else:
             message = timeout_message(elapsed, timeout, thread.name)
         raise TimeoutError(message)

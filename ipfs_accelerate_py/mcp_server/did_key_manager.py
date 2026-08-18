@@ -38,7 +38,13 @@ class DIDKeyManager:
         auto_load: bool = True,
     ) -> None:
         env_path = os.environ.get(_KEY_FILE_ENV)
-        self._key_file = Path(key_file) if key_file is not None else Path(env_path) if env_path else _DEFAULT_KEY_FILE
+        self._key_file = (
+            Path(key_file)
+            if key_file is not None
+            else Path(env_path)
+            if env_path
+            else _DEFAULT_KEY_FILE
+        )
         self._keypair: Optional[Any] = None
         self._did: Optional[str] = None
 
@@ -180,7 +186,9 @@ class DIDKeyManager:
         lifetime_seconds: int = 86_400,
     ) -> str:
         aud = audience_did or getattr(token, "audience", None) or self._did
-        caps: List[Tuple[str, str]] = [(c.resource, c.ability) for c in getattr(token, "capabilities", [])]
+        caps: List[Tuple[str, str]] = [
+            (c.resource, c.ability) for c in getattr(token, "capabilities", [])
+        ]
 
         if _UCAN_AVAILABLE and self._keypair is not None:
             return await self.mint_delegation(
@@ -200,7 +208,11 @@ class DIDKeyManager:
             "exp": int(time.time()) + lifetime_seconds,
             "cid": getattr(token, "cid", "stub"),
         }
-        b64 = base64.urlsafe_b64encode(_json.dumps(payload, separators=(",", ":")).encode()).rstrip(b"=").decode()
+        b64 = (
+            base64.urlsafe_b64encode(_json.dumps(payload, separators=(",", ":")).encode())
+            .rstrip(b"=")
+            .decode()
+        )
         return f"stub:{b64}"
 
     async def verify_signed_token(

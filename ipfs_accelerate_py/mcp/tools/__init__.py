@@ -43,6 +43,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
     # Provide StandaloneMCP-like register_tool API when running under FastMCP.
     try:
         from ..fastmcp_compat import ensure_register_tool_compat
+
         ensure_register_tool_compat(mcp)
     except Exception as e:
         logger.debug(f"FastMCP compatibility shim not applied: {e}")
@@ -51,6 +52,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
         # Register unified tools (new architecture) - wraps kit modules
         try:
             from ..unified_tools import register_unified_tools
+
             register_unified_tools(mcp)
             logger.info("Registered unified tools from kit modules")
         except Exception as e:
@@ -58,11 +60,13 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
 
         # Always register hardware tools (supports both Standalone and FastMCP styles)
         from .hardware import register_hardware_tools
+
         register_hardware_tools(mcp)
 
         # Register model tools (search, recommendations, details)
         try:
             from .models import register_model_tools
+
             register_model_tools(mcp)
             logger.debug("Registered model tools")
         except Exception as e:
@@ -72,6 +76,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
         if hasattr(mcp, "tool"):
             try:
                 from .inference import register_tools as register_inference_tools
+
                 register_inference_tools(mcp)
                 logger.debug("Registered inference tools")
             except Exception as e:
@@ -79,6 +84,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
 
             try:
                 from .endpoints import register_tools as register_endpoint_tools
+
                 register_endpoint_tools(mcp)
                 logger.debug("Registered endpoint tools")
             except Exception as e:
@@ -86,6 +92,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
 
             try:
                 from .status import register_tools as register_status_tools
+
                 register_status_tools(mcp)
                 logger.debug("Registered status tools")
             except Exception as e:
@@ -93,27 +100,31 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
 
             try:
                 from .manifest import register_tools as register_manifest_tools
+
                 register_manifest_tools(mcp)
                 logger.debug("Registered manifest tools")
             except Exception as e:
                 logger.warning(f"Manifest tools not registered: {e}")
-            
+
             try:
                 from .workflows import register_tools as register_workflow_tools
+
                 register_workflow_tools(mcp)
                 logger.debug("Registered workflow tools")
             except Exception as e:
                 logger.warning(f"Workflow tools not registered: {e}")
-            
+
             try:
                 from .dashboard_data import register_tools as register_dashboard_tools
+
                 register_dashboard_tools(mcp)
                 logger.debug("Registered dashboard data tools")
             except Exception as e:
                 logger.warning(f"Dashboard data tools not registered: {e}")
-            
+
             try:
                 from .github_tools import register_tools as register_github_tools
+
                 register_github_tools(mcp)
                 logger.debug("Registered GitHub CLI tools")
             except Exception as e:
@@ -125,6 +136,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
                     from .p2p_taskqueue import (
                         register_tools as register_p2p_taskqueue_tools,
                     )
+
                     register_p2p_taskqueue_tools(mcp)
                     logger.debug("Registered p2p TaskQueue tools")
                 except Exception as e:
@@ -133,6 +145,7 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
             # Register Docker tools
             try:
                 from .docker_tools import register_docker_tools
+
                 register_docker_tools(mcp)
                 logger.debug("Registered Docker execution tools")
             except Exception as e:

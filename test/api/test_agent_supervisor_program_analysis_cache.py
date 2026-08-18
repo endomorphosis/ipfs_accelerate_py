@@ -110,9 +110,7 @@ def test_exact_key_hit_is_deterministic_and_survives_restart(tmp_path: Path) -> 
     assert stored.entry is not None
     assert stored.runtime_artifact is not None
     assert stored.entry.receipt["program_key"]["component_kind"] == "inventory"
-    assert stored.entry.receipt["runtime_artifact_id"] == (
-        stored.runtime_artifact.artifact_id
-    )
+    assert stored.entry.receipt["runtime_artifact_id"] == (stored.runtime_artifact.artifact_id)
 
     path_bytes = cache.entry_path(_key()).read_bytes()
     assert b"entry_digest" in path_bytes or b"program_key" in path_bytes
@@ -243,9 +241,7 @@ def test_compact_receipts_reject_heavy_payloads_and_store_blob_refs(
         {**_receipt(), "source_text": "print('not cache material')"},
     )
     assert not rejected.stored
-    assert ProgramAnalysisCacheReason.MALFORMED_RECEIPT.value in (
-        rejected.reason_codes
-    )
+    assert ProgramAnalysisCacheReason.MALFORMED_RECEIPT.value in (rejected.reason_codes)
 
     body = b'{"ast":{"type":"Module","body":[]}}'
     stored = cache.put(
@@ -271,9 +267,7 @@ def test_compact_receipts_reject_heavy_payloads_and_store_blob_refs(
         AnalysisOutcome.INCONCLUSIVE,
     ],
 )
-def test_negative_ttl_never_satisfies_completion(
-    tmp_path: Path, outcome: AnalysisOutcome
-) -> None:
+def test_negative_ttl_never_satisfies_completion(tmp_path: Path, outcome: AnalysisOutcome) -> None:
     now = [2_000.0]
     cache = ProgramAnalysisCache(
         tmp_path,
@@ -293,19 +287,14 @@ def test_negative_ttl_never_satisfies_completion(
 
     completion = cache.lookup(_key(), require_completion_evidence=True)
     assert completion.status is ProgramAnalysisLookupStatus.INVALIDATED
-    assert (
-        ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value
-        in completion.reason_codes
-    )
+    assert ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value in completion.reason_codes
 
     now[0] += 11
     stale = cache.lookup(_key(), require_completion_evidence=False)
     assert stale.status is ProgramAnalysisLookupStatus.INVALIDATED
     assert (
-        ProgramAnalysisCacheReason.STALE_NEGATIVE_ENTRY.value
-        in stale.reason_codes
-        or ProgramAnalysisCacheReason.RUNTIME_ARTIFACT_STALE.value
-        in stale.reason_codes
+        ProgramAnalysisCacheReason.STALE_NEGATIVE_ENTRY.value in stale.reason_codes
+        or ProgramAnalysisCacheReason.RUNTIME_ARTIFACT_STALE.value in stale.reason_codes
         or ProgramAnalysisCacheReason.STALE_ENTRY.value in stale.reason_codes
     )
     assert not stale.is_completion_evidence
@@ -315,10 +304,7 @@ def test_authority_namespace_isolation_prevents_draft_upgrade(
     tmp_path: Path,
 ) -> None:
     cache = ProgramAnalysisCache(tmp_path)
-    keys = {
-        authority: _key(authority=authority)
-        for authority in ProgramAnalysisAuthority
-    }
+    keys = {authority: _key(authority=authority) for authority in ProgramAnalysisAuthority}
     for ordinal, key in enumerate(keys.values(), start=1):
         assert cache.put(key, _receipt(ordinal=ordinal))
 
@@ -334,12 +320,8 @@ def test_authority_namespace_isolation_prevents_draft_upgrade(
     ) == len(ProgramAnalysisAuthority)
     for authority, hit in hits.items():
         assert hit.runtime_artifact is not None
-        assert hit.runtime_artifact.identity.authority is RuntimeAuthority(
-            authority.value
-        )
-        assert hit.is_completion_evidence is (
-            authority is ProgramAnalysisAuthority.AUTHORITATIVE
-        )
+        assert hit.runtime_artifact.identity.authority is RuntimeAuthority(authority.value)
+        assert hit.is_completion_evidence is (authority is ProgramAnalysisAuthority.AUTHORITATIVE)
 
     # Exact lookup never upgrades draft, diagnostic, or proposal material.
     authoritative = hits[ProgramAnalysisAuthority.AUTHORITATIVE]
@@ -351,10 +333,7 @@ def test_transitive_invalidation_preserves_unrelated_components(
     tmp_path: Path,
 ) -> None:
     cache = ProgramAnalysisCache(tmp_path)
-    keys = {
-        component: _key(component_kind=component)
-        for component in ProgramAnalysisComponentKind
-    }
+    keys = {component: _key(component_kind=component) for component in ProgramAnalysisComponentKind}
     unrelated_key = _key(
         component_kind=ProgramAnalysisComponentKind.INVENTORY,
         query_digest="sha256:unrelated-query",
@@ -409,9 +388,7 @@ def test_transitive_invalidation_preserves_unrelated_components(
 
     # Invalidate AST only: every downstream stage goes, while its upstream
     # inventory and a separate population remain reusable.
-    result = cache.invalidate_component(
-        keys[ProgramAnalysisComponentKind.AST], include_root=True
-    )
+    result = cache.invalidate_component(keys[ProgramAnalysisComponentKind.AST], include_root=True)
     invalidated = set(result["invalidated_artifact_ids"])
     descendants = (ast, graph, contract, proof, runtime, zk)
     assert {
@@ -423,9 +400,7 @@ def test_transitive_invalidation_preserves_unrelated_components(
 
     for component in ProgramAnalysisComponentKind:
         lookup = cache.lookup(keys[component])
-        assert lookup.hit is (
-            component is ProgramAnalysisComponentKind.INVENTORY
-        )
+        assert lookup.hit is (component is ProgramAnalysisComponentKind.INVENTORY)
     assert cache.lookup(unrelated_key).hit
     assert cache.lookup(unrelated_key).is_completion_evidence
 
@@ -459,9 +434,7 @@ def test_corruption_recovery_and_atomic_rewrite(tmp_path: Path) -> None:
 
     corrupt = cache.lookup(_key())
     assert corrupt.status is ProgramAnalysisLookupStatus.INVALIDATED
-    assert (
-        ProgramAnalysisCacheReason.CORRUPT_ENTRY.value in corrupt.reason_codes
-    )
+    assert ProgramAnalysisCacheReason.CORRUPT_ENTRY.value in corrupt.reason_codes
     assert corrupt.receipt is None
 
     recovered = cache.put(_key(), _receipt(ordinal=2))
@@ -513,9 +486,7 @@ def test_process_single_flight_collapses_identical_misses(tmp_path: Path) -> Non
     # Followers and leader share one durable completion hit.
     assert cache.lookup(_key()).is_completion_evidence
     metrics = cache.coordinator.metrics()
-    produced = getattr(metrics, "produced", 0) + getattr(
-        metrics, "producer_invocation_count", 0
-    )
+    produced = getattr(metrics, "produced", 0) + getattr(metrics, "producer_invocation_count", 0)
     assert produced >= 1 or invocations["count"] == 1
 
 
@@ -598,9 +569,7 @@ def test_concurrent_writers_never_publish_partial_json(tmp_path: Path) -> None:
         except BaseException as exc:  # pragma: no cover
             failures.append(exc)
 
-    threads = [
-        threading.Thread(target=worker, args=(ordinal,)) for ordinal in range(12)
-    ]
+    threads = [threading.Thread(target=worker, args=(ordinal,)) for ordinal in range(12)]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -688,9 +657,7 @@ def test_build_key_aliases_and_evidence_constants(tmp_path: Path) -> None:
     assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
     assert CACHE_INVALIDATION_PROOF_EVIDENCE == "vfs/cache-invalidation-proof@1"
 
-    compact = compact_program_analysis_receipt(
-        _receipt(component="zk"), key=key
-    )
+    compact = compact_program_analysis_receipt(_receipt(component="zk"), key=key)
     assert compact["program_key"]["component_kind"] == "zk"
     assert compact["component_kind"] == "zk"
 
@@ -826,9 +793,7 @@ def test_vfs_057_packet_evidence_is_discoverable_but_not_cache_authority(
         "vfs/dependency-cache@1",
         "vfs/cache-invalidation-proof@1",
     )
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     assert all_covered_evidence_terms() == (
         "vfs/dependency-cache@1",
         "vfs/cache-invalidation-proof@1",
@@ -850,22 +815,15 @@ def test_vfs_057_packet_evidence_is_discoverable_but_not_cache_authority(
         assert stored.stored
         assert stored.runtime_artifact is not None
         artifact_ids.add(stored.runtime_artifact.artifact_id)
-        encoded_runtime_payload = json.dumps(
-            stored.runtime_artifact.payload, sort_keys=True
-        )
-        assert all(
-            term not in encoded_runtime_payload
-            for term in packet_evidence_terms()
-        )
+        encoded_runtime_payload = json.dumps(stored.runtime_artifact.payload, sort_keys=True)
+        assert all(term not in encoded_runtime_payload for term in packet_evidence_terms())
 
         hit = cache.lookup(key)
         assert hit.hit
         assert hit.receipt is not None
         encoded_receipt = json.dumps(hit.receipt, sort_keys=True)
         assert all(term not in encoded_receipt for term in packet_evidence_terms())
-        assert hit.is_completion_evidence is (
-            authority is ProgramAnalysisAuthority.AUTHORITATIVE
-        )
+        assert hit.is_completion_evidence is (authority is ProgramAnalysisAuthority.AUTHORITATIVE)
 
     assert len(artifact_ids) == len(ProgramAnalysisAuthority)
 

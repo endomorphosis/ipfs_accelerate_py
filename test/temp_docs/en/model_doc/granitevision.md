@@ -50,11 +50,7 @@ conversation = [
     },
 ]
 inputs = processor.apply_chat_template(
-    conversation,
-    add_generation_prompt=True,
-    tokenize=True,
-    return_dict=True,
-    return_tensors="pt"
+    conversation, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
 ).to("cuda")
 
 

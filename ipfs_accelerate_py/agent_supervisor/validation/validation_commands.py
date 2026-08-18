@@ -60,9 +60,7 @@ class ValidationStage(IntEnum):
         try:
             return mapping[value]
         except KeyError as exc:
-            raise ValueError(
-                f"unsupported proof validation stage: {value or '<empty>'}"
-            ) from exc
+            raise ValueError(f"unsupported proof validation stage: {value or '<empty>'}") from exc
 
 
 class ValidationVerdictKind(str, Enum):
@@ -194,9 +192,7 @@ class DeclaredValidation:
         if not validation_id:
             raise ValueError("validation_id is required")
         try:
-            kind = ValidationRequirementKind(
-                str(payload.get("kind") or "").strip().lower()
-            )
+            kind = ValidationRequirementKind(str(payload.get("kind") or "").strip().lower())
         except ValueError as exc:
             raise ValueError("unsupported validation requirement kind") from exc
         raw_command = str(payload.get("command") or "").strip()
@@ -242,9 +238,7 @@ class ValidationSelectionItem:
                 if isinstance(self.decision_kind, ValidationDecisionKind)
                 else ValidationDecisionKind(str(self.decision_kind))
             )
-        if self.declaration is not None or (
-            self.spec is not None and self.spec.fallback
-        ):
+        if self.declaration is not None or (self.spec is not None and self.spec.fallback):
             return ValidationDecisionKind.FALLBACK
         if (
             self.spec is not None
@@ -252,11 +246,7 @@ class ValidationSelectionItem:
             and self.spec.stage is not self.original_stage
         ):
             return ValidationDecisionKind.ESCALATED
-        return (
-            ValidationDecisionKind.INCLUDED
-            if self.selected
-            else ValidationDecisionKind.OMITTED
-        )
+        return ValidationDecisionKind.INCLUDED if self.selected else ValidationDecisionKind.OMITTED
 
     def to_dict(self) -> dict[str, object]:
         declaration = self.declaration
@@ -276,23 +266,13 @@ class ValidationSelectionItem:
             "reason": self.reason,
             "stage": stage,
             "original_stage": (
-                self.original_stage.label
-                if self.original_stage is not None
-                else stage
+                self.original_stage.label if self.original_stage is not None else stage
             ),
-            "verdict_kind": (
-                spec.effective_verdict_kind.value if spec is not None else ""
-            ),
+            "verdict_kind": (spec.effective_verdict_kind.value if spec is not None else ""),
             "source": (
-                "fallback"
-                if declaration is not None
-                else spec.source
-                if spec is not None
-                else ""
+                "fallback" if declaration is not None else spec.source if spec is not None else ""
             ),
-            "fallback": bool(
-                declaration is not None or (spec is not None and spec.fallback)
-            ),
+            "fallback": bool(declaration is not None or (spec is not None and spec.fallback)),
             "executable": spec is not None,
             "requirement_kind": (
                 declaration.kind.value
@@ -333,17 +313,13 @@ class ValidationSelection:
     @property
     def skipped(self) -> tuple[ValidationCommand, ...]:
         return tuple(
-            item.spec
-            for item in self.items
-            if not item.selected and item.spec is not None
+            item.spec for item in self.items if not item.selected and item.spec is not None
         )
 
     @property
     def fallback_items(self) -> tuple[ValidationSelectionItem, ...]:
         return tuple(
-            item
-            for item in self.items
-            if item.decision is ValidationDecisionKind.FALLBACK
+            item for item in self.items if item.decision is ValidationDecisionKind.FALLBACK
         )
 
     @property
@@ -1125,9 +1101,7 @@ def parse_validation_declaration(
     if not declaration:
         raise ValueError("validation declaration must not be empty")
     prefix, separator, suffix = declaration.partition(":")
-    declared_kind = (
-        _DECLARATION_PREFIXES.get(prefix.strip().lower()) if separator else None
-    )
+    declared_kind = _DECLARATION_PREFIXES.get(prefix.strip().lower()) if separator else None
     if separator and not suffix.strip():
         raise ValueError("validation declaration suffix must not be empty")
 
@@ -1195,9 +1169,7 @@ def build_declared_validations(
     result: list[DeclaredValidation] = []
     seen: set[str] = set()
     for value in declarations:
-        declaration = parse_validation_declaration(
-            value, command_catalog=command_catalog
-        )
+        declaration = parse_validation_declaration(value, command_catalog=command_catalog)
         if declaration.validation_id in seen:
             continue
         seen.add(declaration.validation_id)
@@ -1214,17 +1186,15 @@ def build_focused_validation_commands(
 
     commands = tuple(
         declaration.command
-        for declaration in build_declared_validations(
-            declarations, command_catalog=command_catalog
-        )
+        for declaration in build_declared_validations(declarations, command_catalog=command_catalog)
         if declaration.command is not None
     )
-    return tuple(
-        replace(command, ordinal=index) for index, command in enumerate(commands)
-    )
+    return tuple(replace(command, ordinal=index) for index, command in enumerate(commands))
 
 
-def build_validation_commands(commands: Iterable[str | ValidationCommand]) -> tuple[ValidationCommand, ...]:
+def build_validation_commands(
+    commands: Iterable[str | ValidationCommand],
+) -> tuple[ValidationCommand, ...]:
     """Build stable command specs, preserving list order and duplicate commands."""
 
     result: list[ValidationCommand] = []
@@ -1246,7 +1216,8 @@ def is_global_impact_change(path: str) -> bool:
     return (
         not normalized
         or name in _GLOBAL_IMPACT_NAMES
-        or name.startswith("requirements") and name.endswith((".txt", ".in"))
+        or name.startswith("requirements")
+        and name.endswith((".txt", ".in"))
         or name.endswith(_DEPENDENCY_SUFFIXES)
         or normalized.startswith((".github/", "ci/", "scripts/ci/"))
     )
@@ -1257,7 +1228,11 @@ def _path_related(changed: str, impact: str) -> bool:
     impact = _normalize_path(impact)
     if not changed or not impact:
         return False
-    if changed == impact or changed.startswith(f"{impact.rstrip('/')}/") or impact.startswith(f"{changed.rstrip('/')}/"):
+    if (
+        changed == impact
+        or changed.startswith(f"{impact.rstrip('/')}/")
+        or impact.startswith(f"{changed.rstrip('/')}/")
+    ):
         return True
 
     changed_path = PurePosixPath(changed)
@@ -1266,9 +1241,10 @@ def _path_related(changed: str, impact: str) -> bool:
     impact_stem = impact_path.stem.removeprefix("test_").removesuffix("_test")
     if changed_stem and changed_stem == impact_stem:
         return True
-    if changed_stem and impact_stem and (
-        impact_stem.endswith(f"_{changed_stem}")
-        or changed_stem.endswith(f"_{impact_stem}")
+    if (
+        changed_stem
+        and impact_stem
+        and (impact_stem.endswith(f"_{changed_stem}") or changed_stem.endswith(f"_{impact_stem}"))
     ):
         return True
 
@@ -1284,9 +1260,7 @@ def select_validation_commands(
     *,
     require_full_validation: bool = False,
     scope: str | None = None,
-    fallback_validations: Iterable[
-        str | ValidationCommand | DeclaredValidation
-    ] = (),
+    fallback_validations: Iterable[str | ValidationCommand | DeclaredValidation] = (),
     command_catalog: Mapping[str, str | ValidationCommand] | None = None,
 ) -> ValidationSelection:
     """Select impacted commands and explain every inclusion or omission.
@@ -1309,7 +1283,9 @@ def select_validation_commands(
         fallback_validations,
         command_catalog=command_catalog,
     )
-    changed = tuple(sorted({_normalize_path(path) for path in changed_files if _normalize_path(path)}))
+    changed = tuple(
+        sorted({_normalize_path(path) for path in changed_files if _normalize_path(path)})
+    )
     broad_trigger = not changed or any(is_global_impact_change(path) for path in changed)
     items: list[ValidationSelectionItem] = []
     escalated = False
@@ -1317,7 +1293,9 @@ def select_validation_commands(
     for spec in specs:
         original_stage = spec.stage
         matched = tuple(
-            path for path in changed if any(_path_related(path, impact) for impact in spec.impact_paths)
+            path
+            for path in changed
+            if any(_path_related(path, impact) for impact in spec.impact_paths)
         )
         selected = True
         selected_spec = spec
@@ -1402,9 +1380,7 @@ def select_validation_commands(
             fallback_spec.command,
         )
         duplicate = identity in existing or any(
-            item.spec is not None
-            and item.spec.command == fallback_spec.command
-            and item.selected
+            item.spec is not None and item.spec.command == fallback_spec.command and item.selected
             for item in items
         )
         existing.add(identity)

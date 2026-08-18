@@ -22,8 +22,10 @@ except ImportError:
         from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
+
         def get_storage_wrapper(*args, **kwargs):
             return None
+
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -39,126 +41,127 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class CaselawDashboard:
     """Web dashboard for caselaw GraphRAG system."""
-    
+
     def __init__(self, port: int = 5000):
         """Initialize the dashboard.
-        
+
         Args:
             port: Port to run the Flask server on
         """
         self.port = port
         self.app = Flask(__name__)
         CORS(self.app)
-        
+
         # Initialize storage wrapper for distributed storage
         self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
-        
+
         # Initialize components
         self.dataset_loader = None
         self.graphrag_processor = None
         self.temporal_processor = None
         self.dataset_info = None
-        
+
         try:
             self.dataset_loader = CaselawDatasetLoader()
             self.graphrag_processor = CaselawGraphRAGProcessor()
             self.temporal_processor = TemporalDeonticLogicProcessor()
-            
+
             # Load initial dataset
-            cache_dir = os.getenv('CASELAW_CACHE_DIR')
+            cache_dir = os.getenv("CASELAW_CACHE_DIR")
             if cache_dir:
                 logger.info(f"Using cache directory: {cache_dir}")
                 self.dataset_info = self.dataset_loader.load_external_dataset(cache_dir)
             else:
                 self.dataset_info = self.dataset_loader.load_sample_dataset(max_samples=50)
-                
+
             # Process with GraphRAG
             if self.dataset_info:
                 self.graph_stats = self.graphrag_processor.process_cases(self.dataset_info)
         except Exception as e:
             logger.error(f"Failed to initialize components: {e}")
             self._initialize_mock_data()
-        
+
         self._setup_routes()
         logger.info(f"Caselaw dashboard initialized on port {port}")
-    
+
     def _initialize_mock_data(self):
         """Initialize with mock data when components fail to load."""
         logger.info("Initializing with mock data")
-        
+
         self.dataset_info = {
-            'total_cases': 25,
-            'courts': ['Supreme Court', 'Court of Appeals'],
-            'topics': ['Civil Rights', 'Constitutional Law'],
-            'all_cases': [
+            "total_cases": 25,
+            "courts": ["Supreme Court", "Court of Appeals"],
+            "topics": ["Civil Rights", "Constitutional Law"],
+            "all_cases": [
                 {
-                    'id': 'mock-1',
-                    'title': 'Brown v. Board of Education',
-                    'citation': '347 U.S. 483',
-                    'court': 'Supreme Court',
-                    'year': 1954,
-                    'topic': 'Civil Rights',
-                    'summary': 'Landmark case declaring segregation unconstitutional.',
-                    'relevance': 0.95
+                    "id": "mock-1",
+                    "title": "Brown v. Board of Education",
+                    "citation": "347 U.S. 483",
+                    "court": "Supreme Court",
+                    "year": 1954,
+                    "topic": "Civil Rights",
+                    "summary": "Landmark case declaring segregation unconstitutional.",
+                    "relevance": 0.95,
                 }
-            ]
+            ],
         }
-        
+
         self.graph_stats = {
-            'total_nodes': 125,
-            'total_edges': 280,
-            'entity_types': ['Case', 'Court', 'Judge'],
-            'relationship_types': ['CITES', 'OVERRULES']
+            "total_nodes": 125,
+            "total_edges": 280,
+            "entity_types": ["Case", "Court", "Judge"],
+            "relationship_types": ["CITES", "OVERRULES"],
         }
-    
+
     def _setup_routes(self):
         """Setup Flask routes."""
-        
-        @self.app.route('/')
+
+        @self.app.route("/")
         def dashboard():
             """Main dashboard page."""
             return self._render_dashboard_template()
-        
-        @self.app.route('/api/search')
+
+        @self.app.route("/api/search")
         def search():
             """Search cases API endpoint."""
-            query = request.args.get('q', '')
-            limit = int(request.args.get('limit', 10))
-            
+            query = request.args.get("q", "")
+            limit = int(request.args.get("limit", 10))
+
             try:
                 if self.dataset_loader:
                     results = self.dataset_loader.search_cases(query, limit)
                 else:
                     results = self._mock_search(query, limit)
-                
+
                 # Flatten results for UI compatibility
                 flattened_results = []
                 for result in results:
-                    flattened_results.append({
-                        'id': result.get('id', ''),
-                        'title': result.get('title', ''),
-                        'citation': result.get('citation', ''),
-                        'court': result.get('court', ''),
-                        'year': result.get('year', ''),
-                        'topic': result.get('topic', ''),
-                        'summary': result.get('summary', ''),
-                        'relevance': result.get('relevance', 0.5)
-                    })
-                
-                return jsonify({
-                    'results': flattened_results,
-                    'total': len(flattened_results),
-                    'query': query
-                })
-                
+                    flattened_results.append(
+                        {
+                            "id": result.get("id", ""),
+                            "title": result.get("title", ""),
+                            "citation": result.get("citation", ""),
+                            "court": result.get("court", ""),
+                            "year": result.get("year", ""),
+                            "topic": result.get("topic", ""),
+                            "summary": result.get("summary", ""),
+                            "relevance": result.get("relevance", 0.5),
+                        }
+                    )
+
+                return jsonify(
+                    {"results": flattened_results, "total": len(flattened_results), "query": query}
+                )
+
             except Exception as e:
                 logger.error(f"Search error: {e}")
-                return jsonify({'error': str(e), 'results': []}), 500
-        
-        @self.app.route('/api/legal-doctrines')
-        @self.app.route('/api/doctrines')  # Alias for UI compatibility
+                return jsonify({"error": str(e), "results": []}), 500
+
+        @self.app.route("/api/legal-doctrines")
+        @self.app.route("/api/doctrines")  # Alias for UI compatibility
         def legal_doctrines():
             """Get legal doctrines API endpoint."""
             try:
@@ -166,17 +169,14 @@ class CaselawDashboard:
                     doctrines = self.dataset_loader.get_legal_doctrines()
                 else:
                     doctrines = self._mock_doctrines()
-                
-                return jsonify({
-                    'doctrines': doctrines,
-                    'total': len(doctrines)
-                })
-                
+
+                return jsonify({"doctrines": doctrines, "total": len(doctrines)})
+
             except Exception as e:
-                logger.error(f"Doctrines error: {e}")  
-                return jsonify({'error': str(e), 'doctrines': []}), 500
-        
-        @self.app.route('/api/temporal-analysis')
+                logger.error(f"Doctrines error: {e}")
+                return jsonify({"error": str(e), "doctrines": []}), 500
+
+        @self.app.route("/api/temporal-analysis")
         def temporal_analysis():
             """Get temporal analysis API endpoint."""
             try:
@@ -184,59 +184,69 @@ class CaselawDashboard:
                     # Create sample lineage for demonstration
                     sample_lineage = [
                         {
-                            'case_id': 'qualified-immunity-1967',
-                            'doctrine': 'qualified immunity',
-                            'year': 1967,
-                            'holding': 'Police officers have qualified immunity'
+                            "case_id": "qualified-immunity-1967",
+                            "doctrine": "qualified immunity",
+                            "year": 1967,
+                            "holding": "Police officers have qualified immunity",
                         },
                         {
-                            'case_id': 'qualified-immunity-1982',
-                            'doctrine': 'qualified immunity', 
-                            'year': 1982,
-                            'holding': 'Qualified immunity requires clearly established law'
-                        }
+                            "case_id": "qualified-immunity-1982",
+                            "doctrine": "qualified immunity",
+                            "year": 1982,
+                            "holding": "Qualified immunity requires clearly established law",
+                        },
                     ]
-                    
+
                     analysis = self.temporal_processor.analyze_lineage(sample_lineage)
                     # Add 'analysis' field for frontend compatibility
-                    analysis['analysis'] = analysis.get('evolution_steps', [])
+                    analysis["analysis"] = analysis.get("evolution_steps", [])
                 else:
                     analysis = self._mock_temporal_analysis()
-                
+
                 return jsonify(analysis)
-                
+
             except Exception as e:
                 logger.error(f"Temporal analysis error: {e}")
-                return jsonify({'error': str(e), 'analysis': []}), 500
-        
-        @self.app.route('/api/stats')
+                return jsonify({"error": str(e), "analysis": []}), 500
+
+        @self.app.route("/api/stats")
         def stats():
             """Get system statistics."""
             try:
                 stats = {
-                    'total_cases': self.dataset_info.get('total_cases', 0) if self.dataset_info else 0,
-                    'total_courts': len(self.dataset_info.get('courts', [])) if self.dataset_info else 0,
-                    'total_topics': len(self.dataset_info.get('topics', [])) if self.dataset_info else 0,
-                    'graph_nodes': self.graph_stats.get('total_nodes', 0) if hasattr(self, 'graph_stats') else 0,
-                    'graph_edges': self.graph_stats.get('total_edges', 0) if hasattr(self, 'graph_stats') else 0
+                    "total_cases": self.dataset_info.get("total_cases", 0)
+                    if self.dataset_info
+                    else 0,
+                    "total_courts": len(self.dataset_info.get("courts", []))
+                    if self.dataset_info
+                    else 0,
+                    "total_topics": len(self.dataset_info.get("topics", []))
+                    if self.dataset_info
+                    else 0,
+                    "graph_nodes": self.graph_stats.get("total_nodes", 0)
+                    if hasattr(self, "graph_stats")
+                    else 0,
+                    "graph_edges": self.graph_stats.get("total_edges", 0)
+                    if hasattr(self, "graph_stats")
+                    else 0,
                 }
-                
+
                 return jsonify(stats)
-                
+
             except Exception as e:
                 logger.error(f"Stats error: {e}")
-                return jsonify({'error': str(e)}), 500
-        
+                return jsonify({"error": str(e)}), 500
+
         @self.app.errorhandler(404)
         def not_found(error):
             """Handle 404 errors."""
-            return jsonify({'error': 'Not found'}), 404
-        
+            return jsonify({"error": "Not found"}), 404
+
         @self.app.errorhandler(500)
         def internal_error(error):
             """Handle 500 errors."""
-            return jsonify({'error': 'Internal server error'}), 500
-    
+            return jsonify({"error": "Internal server error"}), 500
+
     def _render_dashboard_template(self) -> str:
         """Render the dashboard HTML template."""
         # Generate HTML template directly since template files may not exist
@@ -560,48 +570,48 @@ class CaselawDashboard:
 </body>
 </html>
         """
-        
+
         return html_template
-    
+
     def _mock_search(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Mock search for when components are not available."""
         mock_results = [
             {
-                'id': 'mock-search-1',
-                'title': f'Mock Result for "{query}"',
-                'citation': '123 U.S. 456',
-                'court': 'Supreme Court',
-                'year': 2020,
-                'topic': 'Mock Topic',
-                'summary': f'This is a mock search result for the query: {query}',
-                'relevance': 0.8
+                "id": "mock-search-1",
+                "title": f'Mock Result for "{query}"',
+                "citation": "123 U.S. 456",
+                "court": "Supreme Court",
+                "year": 2020,
+                "topic": "Mock Topic",
+                "summary": f"This is a mock search result for the query: {query}",
+                "relevance": 0.8,
             }
         ]
         return mock_results[:limit]
-    
+
     def _mock_doctrines(self) -> List[Dict[str, Any]]:
         """Mock doctrines for when components are not available."""
         return [
             {
-                'name': 'Mock Doctrine',
-                'description': 'This is a mock legal doctrine for demonstration.',
-                'key_cases': ['Mock Case 1', 'Mock Case 2']
+                "name": "Mock Doctrine",
+                "description": "This is a mock legal doctrine for demonstration.",
+                "key_cases": ["Mock Case 1", "Mock Case 2"],
             }
         ]
-    
+
     def _mock_temporal_analysis(self) -> Dict[str, Any]:
         """Mock temporal analysis for when components are not available."""
         return {
-            'lineage_id': 'mock_analysis',
-            'evolution_steps': [],
-            'theorems': [],
-            'consistency_score': 0.85,
-            'analysis': []  # For frontend compatibility
+            "lineage_id": "mock_analysis",
+            "evolution_steps": [],
+            "theorems": [],
+            "consistency_score": 0.85,
+            "analysis": [],  # For frontend compatibility
         }
-    
-    def run(self, debug: bool = False, host: str = '127.0.0.1') -> None:
+
+    def run(self, debug: bool = False, host: str = "127.0.0.1") -> None:
         """Run the Flask application.
-        
+
         Args:
             debug: Enable debug mode
             host: Host to bind to
@@ -610,15 +620,15 @@ class CaselawDashboard:
         self.app.run(host=host, port=self.port, debug=debug)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
-    
-    parser = argparse.ArgumentParser(description='Run Caselaw Dashboard')
-    parser.add_argument('--port', type=int, default=5000, help='Port to run on')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--host', default='127.0.0.1', help='Host to bind to')
-    
+
+    parser = argparse.ArgumentParser(description="Run Caselaw Dashboard")
+    parser.add_argument("--port", type=int, default=5000, help="Port to run on")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+
     args = parser.parse_args()
-    
+
     dashboard = CaselawDashboard(port=args.port)
     dashboard.run(debug=args.debug, host=args.host)

@@ -34,7 +34,9 @@ def _load_dashboard_api() -> Dict[str, Any]:
             "reset_tdfol_metrics": _reset_tdfol_metrics,
         }
     except Exception:
-        logger.warning("Source dashboard_tools import unavailable, using fallback dashboard functions")
+        logger.warning(
+            "Source dashboard_tools import unavailable, using fallback dashboard functions"
+        )
 
         def _metrics_fallback() -> Dict[str, Any]:
             return {
@@ -170,7 +172,9 @@ async def profile_tdfol_operation(
         }
     normalized_kb_formulas: Optional[List[str]] = None
     if kb_formulas is not None:
-        if not isinstance(kb_formulas, list) or not all(isinstance(item, str) for item in kb_formulas):
+        if not isinstance(kb_formulas, list) or not all(
+            isinstance(item, str) for item in kb_formulas
+        ):
             return {
                 "status": "error",
                 "message": "kb_formulas must be an array of strings when provided",
@@ -190,7 +194,12 @@ async def profile_tdfol_operation(
             "runs": runs,
         }
     normalized_strategy = str(strategy).strip().lower() if strategy is not None else None
-    if normalized_strategy is not None and normalized_strategy not in {"auto", "forward", "modal", "cec"}:
+    if normalized_strategy is not None and normalized_strategy not in {
+        "auto",
+        "forward",
+        "modal",
+        "cec",
+    }:
         return {
             "status": "error",
             "message": "strategy must be one of: auto, forward, modal, cec when provided",
@@ -323,7 +332,9 @@ async def compare_tdfol_strategies(
     normalized_strategies: Optional[List[str]] = None
     valid_strategies = {"forward", "modal", "cec"}
     if strategies is not None:
-        if not isinstance(strategies, list) or not all(isinstance(item, str) for item in strategies):
+        if not isinstance(strategies, list) or not all(
+            isinstance(item, str) for item in strategies
+        ):
             return {
                 "status": "error",
                 "message": "strategies must be an array of strings when provided",
@@ -346,7 +357,9 @@ async def compare_tdfol_strategies(
 
     normalized_kb_formulas: Optional[List[str]] = None
     if kb_formulas is not None:
-        if not isinstance(kb_formulas, list) or not all(isinstance(item, str) for item in kb_formulas):
+        if not isinstance(kb_formulas, list) or not all(
+            isinstance(item, str) for item in kb_formulas
+        ):
             return {
                 "status": "error",
                 "message": "kb_formulas must be an array of strings when provided",
@@ -404,7 +417,9 @@ async def check_tdfol_performance_regression(
             "threshold_percent": threshold_percent,
         }
 
-    result = _API["check_tdfol_performance_regression"](normalized_baseline_path, float(threshold_percent))
+    result = _API["check_tdfol_performance_regression"](
+        normalized_baseline_path, float(threshold_percent)
+    )
     if hasattr(result, "__await__"):
         payload = _normalize_payload(await result)
     else:

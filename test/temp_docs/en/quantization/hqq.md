@@ -38,10 +38,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
 quant_config = HqqConfig(nbits=8, group_size=64)
 model = transformers.AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.1-8B", 
-    torch_dtype=torch.float16, 
-    device_map="cuda", 
-    quantization_config=quant_config
+    "meta-llama/Llama-3.1-8B",
+    torch_dtype=torch.float16,
+    device_map="cuda",
+    quantization_config=quant_config,
 )
 ```
 
@@ -51,24 +51,25 @@ model = transformers.AutoModelForCausalLM.from_pretrained(
 Quantize a model by creating a dictionary specifying the `nbits` and `group_size` for the linear layers to quantize. Pass them to [`HqqConfig`] and set which layers to quantize with the config. This approach is especially useful for quantizing mixture-of-experts (MoEs) because they are less affected ly lower quantization settings.
 
 ``` py
-q4_config = {'nbits':4, 'group_size':64}
-q3_config = {'nbits':3, 'group_size':32}
-quant_config  = HqqConfig(dynamic_config={
-  'self_attn.q_proj':q4_config,
-  'self_attn.k_proj':q4_config,
-  'self_attn.v_proj':q4_config,
-  'self_attn.o_proj':q4_config,
-
-  'mlp.gate_proj':q3_config,
-  'mlp.up_proj'  :q3_config,
-  'mlp.down_proj':q3_config,
-})
+q4_config = {"nbits": 4, "group_size": 64}
+q3_config = {"nbits": 3, "group_size": 32}
+quant_config = HqqConfig(
+    dynamic_config={
+        "self_attn.q_proj": q4_config,
+        "self_attn.k_proj": q4_config,
+        "self_attn.v_proj": q4_config,
+        "self_attn.o_proj": q4_config,
+        "mlp.gate_proj": q3_config,
+        "mlp.up_proj": q3_config,
+        "mlp.down_proj": q3_config,
+    }
+)
 
 model = transformers.AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.1-8B", 
-    torch_dtype=torch.float16, 
-    device_map="cuda", 
-    quantization_config=quant_config
+    "meta-llama/Llama-3.1-8B",
+    torch_dtype=torch.float16,
+    device_map="cuda",
+    quantization_config=quant_config,
 )
 ```
 

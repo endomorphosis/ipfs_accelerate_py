@@ -31,7 +31,12 @@ import pytest
 
 
 def _enabled() -> bool:
-    return str(os.environ.get("RUN_MCP_INTEROP_SMOKE", "")).strip().lower() in {"1", "true", "yes", "on"}
+    return str(os.environ.get("RUN_MCP_INTEROP_SMOKE", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _env(name: str, default: str) -> str:
@@ -168,18 +173,34 @@ async def _p2p_smoke(mcp_multiaddr: str, mcpplus_multiaddr: str) -> None:
     mcpplus_status = await discover_status(remote=mcpplus_remote, timeout_s=12.0, detail=True)
     assert mcpplus_status.get("ok"), f"MCP++ P2P status failed: {mcpplus_status}"
 
-    mcp_pid = str(((mcp_status.get("result") or {}) if isinstance(mcp_status.get("result"), dict) else {}).get("peer_id") or "")
-    mcpplus_pid = str(((mcpplus_status.get("result") or {}) if isinstance(mcpplus_status.get("result"), dict) else {}).get("peer_id") or "")
+    mcp_pid = str(
+        (
+            (mcp_status.get("result") or {}) if isinstance(mcp_status.get("result"), dict) else {}
+        ).get("peer_id")
+        or ""
+    )
+    mcpplus_pid = str(
+        (
+            (mcpplus_status.get("result") or {})
+            if isinstance(mcpplus_status.get("result"), dict)
+            else {}
+        ).get("peer_id")
+        or ""
+    )
 
     # Helpful invariant when both services run on the same machine.
     if mcp_pid and mcpplus_pid:
-        assert mcp_pid != mcpplus_pid, "Both services reported the same peer_id; expected distinct libp2p hosts"
+        assert mcp_pid != mcpplus_pid, (
+            "Both services reported the same peer_id; expected distinct libp2p hosts"
+        )
 
     # Minimal write/read to confirm RPC beyond status.
     ts = int(time.time())
     key = f"interop_smoke/{ts}"
 
-    set_resp_1 = await cache_set(remote=mcp_remote, key=key, value={"service": "mcp", "ts": ts}, ttl_s=60.0, timeout_s=12.0)
+    set_resp_1 = await cache_set(
+        remote=mcp_remote, key=key, value={"service": "mcp", "ts": ts}, ttl_s=60.0, timeout_s=12.0
+    )
     assert set_resp_1.get("ok"), f"MCP cache.set failed: {set_resp_1}"
 
     get_resp_1 = await cache_get(remote=mcp_remote, key=key, timeout_s=12.0)
@@ -206,13 +227,19 @@ def test_libp2p_taskqueue_rpc_reachable_for_both_services() -> None:
     if not _have_libp2p():
         pytest.skip("libp2p is not installed in this environment")
 
-    mcp_ma = _resolve_multiaddr(env_var="MCP_P2P_MULTIADDR", announce_candidates=_guess_standard_announce_candidates())
-    mcpplus_ma = _resolve_multiaddr(env_var="MCPPLUS_P2P_MULTIADDR", announce_candidates=_guess_mcpplus_announce_candidates())
+    mcp_ma = _resolve_multiaddr(
+        env_var="MCP_P2P_MULTIADDR", announce_candidates=_guess_standard_announce_candidates()
+    )
+    mcpplus_ma = _resolve_multiaddr(
+        env_var="MCPPLUS_P2P_MULTIADDR", announce_candidates=_guess_mcpplus_announce_candidates()
+    )
 
     if not mcp_ma:
         pytest.skip("Could not resolve MCP multiaddr. Set MCP_P2P_MULTIADDR or MCP_ANNOUNCE_FILE")
     if not mcpplus_ma:
-        pytest.skip("Could not resolve MCP++ multiaddr. Set MCPPLUS_P2P_MULTIADDR or MCPPLUS_ANNOUNCE_FILE")
+        pytest.skip(
+            "Could not resolve MCP++ multiaddr. Set MCPPLUS_P2P_MULTIADDR or MCPPLUS_ANNOUNCE_FILE"
+        )
 
     import trio
 

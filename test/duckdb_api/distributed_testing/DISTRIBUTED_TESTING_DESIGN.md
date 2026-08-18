@@ -230,7 +230,7 @@ hardware_info = support.detect_hardware()
 print(f"CPU: {hardware_info['cpu']['model']} with {hardware_info['cpu']['cores']} cores")
 print(f"Memory: {hardware_info['memory']['total_gb']} GB")
 print(f"GPUs: {hardware_info['gpu']['count']}")
-for i, device in enumerate(hardware_info['gpu']['devices']):
+for i, device in enumerate(hardware_info["gpu"]["devices"]):
     print(f"  GPU {i}: {device['name']} ({device['type']})")
 ```
 
@@ -240,7 +240,7 @@ support = CrossPlatformWorkerSupport()
 config = {
     "coordinator_url": "http://coordinator.example.com:8080",
     "api_key": "your_api_key",
-    "worker_id": "worker_123"
+    "worker_id": "worker_123",
 }
 script_path = support.create_deployment_script(config, "deploy_worker")
 ```
@@ -251,7 +251,7 @@ support = CrossPlatformWorkerSupport()
 startup_script = support.get_startup_script(
     coordinator_url="http://coordinator.example.com:8080",
     api_key="your_api_key",
-    worker_id="worker_abc123"
+    worker_id="worker_abc123",
 )
 ```
 
@@ -457,19 +457,22 @@ auto_recovery = AutoRecoverySystem(
     coordinator_id="coordinator-1",
     coordinator_addresses=["localhost:8081", "localhost:8082"],
     db_path="./benchmark_db.duckdb",
-    visualization_path="./visualizations"
+    visualization_path="./visualizations",
 )
 
 # Start the system
 auto_recovery.start()
 
+
 # Register callbacks for leader transitions
 def on_become_leader():
     print("This node is now the leader!")
-    
+
+
 def on_leader_changed(old_leader, new_leader):
     print(f"Leader changed from {old_leader} to {new_leader}")
-    
+
+
 auto_recovery.register_become_leader_callback(on_become_leader)
 auto_recovery.register_leader_changed_callback(on_leader_changed)
 
@@ -570,7 +573,7 @@ auto_recovery = AutoRecoverySystem(
     coordinator_addresses=["localhost:8081", "localhost:8082"],
     db_path="./benchmark_db.duckdb",
     auto_leader_election=True,
-    visualization_path="./visualizations"
+    visualization_path="./visualizations",
 )
 
 # Start the system
@@ -588,8 +591,9 @@ if auto_recovery.is_leader():
 auto_recovery.on_become_leader(lambda: print("I am now the leader"))
 
 # Callback when leader changes
-auto_recovery.on_leader_changed(lambda old_leader, new_leader: 
-    print(f"Leader changed from {old_leader} to {new_leader}"))
+auto_recovery.on_leader_changed(
+    lambda old_leader, new_leader: print(f"Leader changed from {old_leader} to {new_leader}")
+)
 ```
 
 **Health monitoring and visualization:**
@@ -631,7 +635,7 @@ result = {
     "hardware_type": "cuda",
     "success": True,
     "execution_time": 10.5,
-    "memory_usage": 1.2
+    "memory_usage": 1.2,
 }
 worker_db.store_result(result)
 
@@ -646,14 +650,13 @@ worker_db.store_batch_results(results)
 from duckdb_api.distributed_testing.test_generator_integration import TestGeneratorIntegration
 
 # Initialize test generator
-generator = TestGeneratorIntegration(template_db_path="./templates.duckdb", 
-                                    coordinator_url="http://coordinator:8080")
+generator = TestGeneratorIntegration(
+    template_db_path="./templates.duckdb", coordinator_url="http://coordinator:8080"
+)
 
 # Generate and submit tests
 results = generator.generate_and_submit_tests(
-    model_name="bert-base-uncased",
-    hardware_types=["cpu", "cuda", "rocm"],
-    batch_sizes=[1, 4, 16]
+    model_name="bert-base-uncased", hardware_types=["cpu", "cuda", "rocm"], batch_sizes=[1, 4, 16]
 )
 ```
 
@@ -675,7 +678,7 @@ print(f"Memory: {hardware_info['memory']['total_gb']} GB")
 config = {
     "coordinator_url": "http://coordinator.example.com:8080",
     "api_key": "your_api_key",
-    "worker_id": "worker_123"
+    "worker_id": "worker_123",
 }
 script_path = support.create_deployment_script(config, "deploy_worker")
 
@@ -683,7 +686,7 @@ script_path = support.create_deployment_script(config, "deploy_worker")
 startup_script = support.get_startup_script(
     coordinator_url="http://coordinator.example.com:8080",
     api_key="your_api_key",
-    worker_id="worker_abc123"
+    worker_id="worker_abc123",
 )
 ```
 
@@ -698,38 +701,32 @@ from distributed_testing.ci.register_providers import register_all_providers
 register_all_providers()
 
 # Create a CI provider
-ci_config = {
-    "token": "YOUR_GITHUB_TOKEN",
-    "repository": "your-username/your-repo"
-}
+ci_config = {"token": "YOUR_GITHUB_TOKEN", "repository": "your-username/your-repo"}
 ci_provider = await CIProviderFactory.create_provider("github", ci_config)
 
 # Upload an artifact
 test_run_id = "test-123"
 artifact_result = await ci_provider.upload_artifact(
-    test_run_id=test_run_id,
-    artifact_path="./test_results.json",
-    artifact_name="test_results.json"
+    test_run_id=test_run_id, artifact_path="./test_results.json", artifact_name="test_results.json"
 )
 
 # Retrieve the artifact URL for inclusion in reports or notifications
 if artifact_result:
     url = await ci_provider.get_artifact_url(
-        test_run_id=test_run_id,
-        artifact_name="test_results.json"
+        test_run_id=test_run_id, artifact_name="test_results.json"
     )
     if url:
         print(f"Artifact available at: {url}")
         # URL can be used in reports, notifications, or dashboards
-        
+
         # Example: Include artifact URL in test report
         report = f"""
         # Test Run Report
-        
+
         Test run {test_run_id} completed successfully.
-        
+
         ## Artifacts
-        
+
         - [Test Results JSON]({url})
         """
 ```
@@ -745,8 +742,9 @@ auto_recovery = AutoRecoverySystem(
     coordinator_addresses=["localhost:8081", "localhost:8082"],
     db_path="./benchmark_db.duckdb",
     auto_leader_election=True,
-    visualization_path="./visualizations"
+    visualization_path="./visualizations",
 )
+
 
 # Register callbacks for leader transitions
 def on_become_leader():
@@ -754,10 +752,12 @@ def on_become_leader():
     # Perform leader-specific initialization
     # For example, start primary load balancer
 
+
 def on_leader_changed(old_leader_id, new_leader_id):
     print(f"Leader changed from {old_leader_id} to {new_leader_id}")
     # Update local state based on leader change
     # For example, redirect clients to new leader
+
 
 auto_recovery.auto_recovery.on_become_leader(on_become_leader)
 auto_recovery.auto_recovery.on_leader_changed(on_leader_changed)
@@ -771,34 +771,34 @@ try:
         coordinator_id="coordinator-2",
         address="localhost",
         port=8082,
-        capabilities={"hardware_types": ["cpu", "cuda"]}
+        capabilities={"hardware_types": ["cpu", "cuda"]},
     )
-    
+
     # Check if we're the leader
     if auto_recovery.is_leader():
         print("This coordinator is the leader")
-        
+
         # Perform leader-only operations
         # For example, start distributing tasks
     else:
         print(f"Current leader is: {auto_recovery.get_leader_id()}")
-        
+
         # Sync state with leader
         auto_recovery.sync_with_leader()
-        
+
     # Get system status
     status = auto_recovery.get_status()
     print(f"Cluster size: {status['coordinators_count']} coordinators")
     print(f"Active coordinators: {status['active_coordinators']}")
-    
+
     # Generate visualizations
     auto_recovery._generate_cluster_status_visualization()
     auto_recovery._generate_health_metrics_visualization()
-    
+
     # Run until interrupted
     while True:
         time.sleep(1)
-        
+
 except KeyboardInterrupt:
     # Gracefully shut down
     auto_recovery.stop()

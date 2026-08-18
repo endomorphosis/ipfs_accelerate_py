@@ -89,7 +89,9 @@ async def copilot_suggest_command(
         result = _call_mod("_copilot_mod", "copilot_suggest_command", prompt=prompt, shell=shell)
         if result is not None:
             return _normalize_payload(result)
-        return _normalize_payload({"prompt": prompt, "shell": shell, "suggestion": None, "backend_available": False})
+        return _normalize_payload(
+            {"prompt": prompt, "shell": shell, "suggestion": None, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), prompt=prompt)
 
@@ -100,7 +102,9 @@ async def copilot_explain_command(command: str) -> Dict[str, Any]:
         result = _call_mod("_copilot_mod", "copilot_explain_command", command=command)
         if result is not None:
             return _normalize_payload(result)
-        return _normalize_payload({"command": command, "explanation": None, "backend_available": False})
+        return _normalize_payload(
+            {"command": command, "explanation": None, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), command=command)
 
@@ -111,7 +115,9 @@ async def copilot_suggest_git_command(prompt: str) -> Dict[str, Any]:
         result = _call_mod("_copilot_mod", "copilot_suggest_git_command", prompt=prompt)
         if result is not None:
             return _normalize_payload(result)
-        return _normalize_payload({"prompt": prompt, "suggestion": None, "backend_available": False})
+        return _normalize_payload(
+            {"prompt": prompt, "suggestion": None, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), prompt=prompt)
 
@@ -127,7 +133,9 @@ async def copilot_sdk_create_session(
 ) -> Dict[str, Any]:
     """Create a GitHub Copilot SDK conversation session."""
     try:
-        result = _call_mod("_sdk_mod", "copilot_sdk_create_session", model=model, system_prompt=system_prompt)
+        result = _call_mod(
+            "_sdk_mod", "copilot_sdk_create_session", model=model, system_prompt=system_prompt
+        )
         if result is not None:
             return _normalize_payload(result)
         return _normalize_payload({"session_id": None, "backend_available": False})
@@ -141,10 +149,14 @@ async def copilot_sdk_send_message(
 ) -> Dict[str, Any]:
     """Send a message to an existing Copilot SDK session."""
     try:
-        result = _call_mod("_sdk_mod", "copilot_sdk_send_message", session_id=session_id, message=message)
+        result = _call_mod(
+            "_sdk_mod", "copilot_sdk_send_message", session_id=session_id, message=message
+        )
         if result is not None:
             return _normalize_payload(result)
-        return _normalize_payload({"session_id": session_id, "response": None, "backend_available": False})
+        return _normalize_payload(
+            {"session_id": session_id, "response": None, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), session_id=session_id)
 
@@ -155,10 +167,14 @@ async def copilot_sdk_stream_message(
 ) -> Dict[str, Any]:
     """Stream a message response from a Copilot SDK session."""
     try:
-        result = _call_mod("_sdk_mod", "copilot_sdk_stream_message", session_id=session_id, message=message)
+        result = _call_mod(
+            "_sdk_mod", "copilot_sdk_stream_message", session_id=session_id, message=message
+        )
         if result is not None:
             return _normalize_payload(result)
-        return _normalize_payload({"session_id": session_id, "stream": None, "backend_available": False})
+        return _normalize_payload(
+            {"session_id": session_id, "stream": None, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), session_id=session_id)
 
@@ -169,7 +185,9 @@ async def copilot_sdk_destroy_session(session_id: str) -> Dict[str, Any]:
         result = _call_mod("_sdk_mod", "copilot_sdk_destroy_session", session_id=session_id)
         if result is not None:
             return _normalize_payload(result)
-        return _normalize_payload({"session_id": session_id, "destroyed": False, "backend_available": False})
+        return _normalize_payload(
+            {"session_id": session_id, "destroyed": False, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), session_id=session_id)
 
@@ -206,7 +224,10 @@ def register_native_copilot_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "Natural language description of the task."},
+                "prompt": {
+                    "type": "string",
+                    "description": "Natural language description of the task.",
+                },
                 "shell": {
                     "type": "string",
                     "description": "Target shell (bash, zsh, fish, powershell).",
@@ -241,7 +262,10 @@ def register_native_copilot_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "Natural language description of the git task."}
+                "prompt": {
+                    "type": "string",
+                    "description": "Natural language description of the git task.",
+                }
             },
             "required": ["prompt"],
         },

@@ -49,41 +49,43 @@ import anyio
 from openai import AsyncClient
 from examples.openai_semantic_cache import SemanticCacheOpenAIClient
 
+
 async def main():
     # Create a standard OpenAI client
     client = AsyncClient()
-    
+
     # Wrap it with the semantic cache
     cached_client = SemanticCacheOpenAIClient(
         base_client=client,
         similarity_threshold=0.85,
         max_cache_size=1000,
-        ttl=3600  # Cache entries expire after 1 hour
+        ttl=3600,  # Cache entries expire after 1 hour
     )
-    
+
     # First query (cache miss)
     response1 = await cached_client.create_chat_completion(
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         model="gpt-3.5-turbo",
-        temperature=0.0  # Use 0 temperature for deterministic responses
+        temperature=0.0,  # Use 0 temperature for deterministic responses
     )
-    
+
     # Semantically similar query (likely cache hit)
     response2 = await cached_client.create_chat_completion(
         messages=[{"role": "user", "content": "Tell me the capital city of France."}],
         model="gpt-3.5-turbo",
-        temperature=0.0
+        temperature=0.0,
     )
-    
+
     # Different query (cache miss)
     response3 = await cached_client.create_chat_completion(
         messages=[{"role": "user", "content": "What is the largest city in France?"}],
         model="gpt-3.5-turbo",
-        temperature=0.0
+        temperature=0.0,
     )
-    
+
     # Print cache statistics
     print(cached_client.get_cache_stats())
+
 
 anyio.run(main)
 ```
@@ -122,18 +124,16 @@ base_client = anthropic.Anthropic(api_key="your_api_key")
 
 # Create cached client
 cached_client = SemanticCacheClaudeClient(
-    base_client=base_client,
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=3600
+    base_client=base_client, similarity_threshold=0.85, max_cache_size=1000, ttl=3600
 )
+
 
 # Use the client
 async def example():
     response = await cached_client.chat(
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         model="claude-3-opus-20240229",
-        temperature=0.0
+        temperature=0.0,
     )
     print(response)
 ```
@@ -146,7 +146,7 @@ For non-deterministic outputs or where fresh data is needed:
 # Setting temperature > 0 automatically bypasses cache
 response = await cached_client.create_chat_completion(
     messages=[{"role": "user", "content": "Write a creative story."}],
-    temperature=0.7  # Non-zero temperature bypasses cache
+    temperature=0.7,  # Non-zero temperature bypasses cache
 )
 
 # Explicitly disable cache for a specific client
@@ -170,7 +170,7 @@ print(f"Cache hit rate: {stats['cache_hits'] / stats['total_requests']:.1%}")
 print(f"Active cache entries: {stats['active_entries']}")
 
 # Estimate cost savings
-token_savings = stats['token_savings']
+token_savings = stats["token_savings"]
 cost_savings = token_savings * 0.00002  # Approximate cost per token
 print(f"Estimated cost savings: ${cost_savings:.4f}")
 ```
@@ -193,18 +193,12 @@ Example:
 ```python
 # Strict matching for critical applications
 cached_client = SemanticCacheOpenAIClient(
-    base_client=client,
-    similarity_threshold=0.92,
-    max_cache_size=1000,
-    ttl=3600
+    base_client=client, similarity_threshold=0.92, max_cache_size=1000, ttl=3600
 )
 
 # Lenient matching for higher hit rate
 cached_client = SemanticCacheOpenAIClient(
-    base_client=client,
-    similarity_threshold=0.82,
-    max_cache_size=2000,
-    ttl=7200
+    base_client=client, similarity_threshold=0.82, max_cache_size=2000, ttl=7200
 )
 ```
 
@@ -216,7 +210,7 @@ You can provide a custom embedding model for better semantic similarity detectio
 from sentence_transformers import SentenceTransformer
 
 # Load a sentence transformer model
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Create client with custom embeddings
 cached_client = SemanticCacheOpenAIClient(
@@ -224,7 +218,7 @@ cached_client = SemanticCacheOpenAIClient(
     embedding_model=embedding_model,
     similarity_threshold=0.85,
     max_cache_size=1000,
-    ttl=3600
+    ttl=3600,
 )
 ```
 
@@ -235,18 +229,12 @@ Configure cache expiration based on your use case:
 ```python
 # Short-lived cache for rapidly changing information (5 minutes)
 cached_client = SemanticCacheOpenAIClient(
-    base_client=client,
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=300
+    base_client=client, similarity_threshold=0.85, max_cache_size=1000, ttl=300
 )
 
 # Long-lived cache for stable information (24 hours)
 cached_client = SemanticCacheOpenAIClient(
-    base_client=client, 
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=86400
+    base_client=client, similarity_threshold=0.85, max_cache_size=1000, ttl=86400
 )
 ```
 
@@ -262,7 +250,7 @@ cached_client = SemanticCacheOpenAIClient(
     base_client=client,
     similarity_threshold=0.85,
     max_cache_size=500,  # Reduced cache size
-    ttl=3600
+    ttl=3600,
 )
 
 # Shorter TTL for more frequent cleanup
@@ -270,7 +258,7 @@ cached_client = SemanticCacheOpenAIClient(
     base_client=client,
     similarity_threshold=0.85,
     max_cache_size=1000,
-    ttl=1800  # 30 minutes
+    ttl=1800,  # 30 minutes
 )
 ```
 
@@ -281,36 +269,34 @@ All cache implementations are thread-safe for concurrent usage:
 ```python
 import anyio
 
+
 async def process_query(query, cached_client):
     response = await cached_client.create_chat_completion(
-        messages=[{"role": "user", "content": query}],
-        model="gpt-3.5-turbo",
-        temperature=0.0
+        messages=[{"role": "user", "content": query}], model="gpt-3.5-turbo", temperature=0.0
     )
     return response
 
+
 async def main():
     cached_client = SemanticCacheOpenAIClient(
-        base_client=AsyncClient(),
-        similarity_threshold=0.85,
-        max_cache_size=1000,
-        ttl=3600
+        base_client=AsyncClient(), similarity_threshold=0.85, max_cache_size=1000, ttl=3600
     )
-    
+
     # Process multiple queries concurrently
     queries = [
         "What is the capital of France?",
         "What is the population of Paris?",
         "What's the capital city of France?",
-        "Tell me about the Eiffel Tower."
+        "Tell me about the Eiffel Tower.",
     ]
-    
+
     # Run concurrently
     tasks = [process_query(query, cached_client) for query in queries]
     results = await anyio.gather(*tasks)
-    
+
     # Print cache statistics
     print(cached_client.get_cache_stats())
+
 
 anyio.run(main)
 ```
@@ -341,8 +327,8 @@ Monitor cache effectiveness:
 stats = cached_client.get_cache_stats()
 
 # Calculate key metrics
-hit_rate = stats['cache_hits'] / stats['total_requests'] if stats['total_requests'] > 0 else 0
-cost_savings = stats['token_savings'] * 0.00002  # $0.02 per 1K tokens
+hit_rate = stats["cache_hits"] / stats["total_requests"] if stats["total_requests"] > 0 else 0
+cost_savings = stats["token_savings"] * 0.00002  # $0.02 per 1K tokens
 
 print(f"Cache hit rate: {hit_rate:.1%}")
 print(f"API cost savings: ${cost_savings:.4f}")
@@ -372,6 +358,7 @@ Enable debug logging for more detailed information:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("semantic_cache")
 ```
@@ -386,14 +373,14 @@ stats_before = cached_client.get_cache_stats()
 response = await cached_client.create_chat_completion(
     messages=[{"role": "user", "content": "What is the capital of France?"}],
     model="gpt-3.5-turbo",
-    temperature=0.0
+    temperature=0.0,
 )
 
 # After query
 stats_after = cached_client.get_cache_stats()
 
 # Check if it was a cache hit
-cache_hit = stats_after['cache_hits'] > stats_before['cache_hits']
+cache_hit = stats_after["cache_hits"] > stats_before["cache_hits"]
 print(f"Cache hit: {cache_hit}")
 ```
 
@@ -414,30 +401,33 @@ Example with function calling:
 from openai import AsyncClient
 from examples.openai_semantic_cache import SemanticCacheOpenAIClient
 
+
 async def main():
     cached_client = SemanticCacheOpenAIClient(base_client=AsyncClient())
-    
+
     # Function calling bypasses cache by default
     response = await cached_client.create_chat_completion(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": "What's the weather in Paris?"}],
-        tools=[{
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get the current weather in a location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g. San Francisco, CA"
-                        }
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get the current weather in a location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The city and state, e.g. San Francisco, CA",
+                            }
+                        },
+                        "required": ["location"],
                     },
-                    "required": ["location"]
-                }
+                },
             }
-        }]
+        ],
     )
 ```
 
@@ -457,10 +447,11 @@ Example with multi-part messages:
 import anthropic
 from examples.claude_cache.claude_semantic_cache import SemanticCacheClaudeClient
 
+
 async def main():
     client = anthropic.Anthropic()
     cached_client = SemanticCacheClaudeClient(base_client=client)
-    
+
     # Multi-part messages
     response = await cached_client.chat(
         model="claude-3-opus-20240229",
@@ -469,11 +460,11 @@ async def main():
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Analyze this data:"},
-                    {"type": "text", "text": "Temperature: 72F, Humidity: 65%, Wind: 5mph"}
-                ]
+                    {"type": "text", "text": "Temperature: 72F, Humidity: 65%, Wind: 5mph"},
+                ],
             }
         ],
-        temperature=0.0
+        temperature=0.0,
     )
 ```
 
@@ -492,18 +483,15 @@ Example with Gemini:
 from examples.semantic_cache import SemanticCacheGeminiClient
 import google.generativeai as genai
 
+
 async def main():
     genai.configure(api_key="your_api_key")
-    model = genai.GenerativeModel('gemini-pro')
-    
-    cached_client = SemanticCacheGeminiClient(
-        base_client=model,
-        similarity_threshold=0.85
-    )
-    
+    model = genai.GenerativeModel("gemini-pro")
+
+    cached_client = SemanticCacheGeminiClient(base_client=model, similarity_threshold=0.85)
+
     response = await cached_client.generate_content(
-        "What is the capital of France?",
-        temperature=0.0
+        "What is the capital of France?", temperature=0.0
     )
 ```
 
@@ -521,17 +509,15 @@ Example with Groq:
 import groq
 from examples.groq_semantic_cache import SemanticCacheGroqClient
 
+
 async def main():
     client = groq.AsyncClient(api_key="your_api_key")
-    cached_client = SemanticCacheGroqClient(
-        base_client=client,
-        similarity_threshold=0.85
-    )
-    
+    cached_client = SemanticCacheGroqClient(base_client=client, similarity_threshold=0.85)
+
     response = await cached_client.create_chat_completion(
         model="llama3-70b-8192",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-        temperature=0.0
+        temperature=0.0,
     )
 ```
 
@@ -544,31 +530,27 @@ Caching multi-turn conversations:
 ```python
 async def main():
     cached_client = SemanticCacheOpenAIClient(base_client=AsyncClient())
-    
+
     # First conversation
     conversation1 = [
         {"role": "user", "content": "What is the capital of France?"},
         {"role": "assistant", "content": "The capital of France is Paris."},
-        {"role": "user", "content": "What's the population?"}
+        {"role": "user", "content": "What's the population?"},
     ]
-    
+
     response1 = await cached_client.create_chat_completion(
-        model="gpt-3.5-turbo",
-        messages=conversation1,
-        temperature=0.0
+        model="gpt-3.5-turbo", messages=conversation1, temperature=0.0
     )
-    
+
     # Semantically similar conversation (should hit cache)
     conversation2 = [
         {"role": "user", "content": "What's the capital city of France?"},
         {"role": "assistant", "content": "Paris is the capital of France."},
-        {"role": "user", "content": "How many people live there?"}
+        {"role": "user", "content": "How many people live there?"},
     ]
-    
+
     response2 = await cached_client.create_chat_completion(
-        model="gpt-3.5-turbo",
-        messages=conversation2,
-        temperature=0.0
+        model="gpt-3.5-turbo", messages=conversation2, temperature=0.0
     )
 ```
 
@@ -581,26 +563,24 @@ from ipfs_accelerate_py.api_key_multiplexer import ApiKeyMultiplexer
 from examples.openai_semantic_cache import SemanticCacheOpenAIClient
 from openai import AsyncClient
 
+
 async def main():
     # Set up multiplexer
     multiplexer = ApiKeyMultiplexer()
     multiplexer.add_openai_key("key1", "sk-key1...")
     multiplexer.add_openai_key("key2", "sk-key2...")
-    
+
     # Get a client using the multiplexer
     base_client = multiplexer.get_openai_client(strategy="least-loaded")
-    
+
     # Wrap with semantic cache
-    cached_client = SemanticCacheOpenAIClient(
-        base_client=base_client,
-        similarity_threshold=0.85
-    )
-    
+    cached_client = SemanticCacheOpenAIClient(base_client=base_client, similarity_threshold=0.85)
+
     # Use the cached client
     response = await cached_client.create_chat_completion(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-        temperature=0.0
+        temperature=0.0,
     )
 ```
 
@@ -619,11 +599,9 @@ app = FastAPI()
 
 # Create cached client
 cached_client = SemanticCacheOpenAIClient(
-    base_client=AsyncClient(),
-    similarity_threshold=0.85,
-    max_cache_size=10000,
-    ttl=3600
+    base_client=AsyncClient(), similarity_threshold=0.85, max_cache_size=10000, ttl=3600
 )
+
 
 # Cache maintenance task
 async def clean_cache():
@@ -631,44 +609,40 @@ async def clean_cache():
         # Log cache statistics every hour
         stats = cached_client.get_cache_stats()
         print(f"Cache stats: {stats}")
-        
+
         # Wait for an hour
         await anyio.sleep(3600)
+
 
 @app.on_event("startup")
 async def startup_event():
     # Start cache maintenance task
     anyio.create_task(clean_cache())
 
+
 @app.post("/chat")
 async def chat(query: str):
     start_time = time.time()
-    
+
     # Get response from cached client
     response = await cached_client.create_chat_completion(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": query}],
-        temperature=0.0
+        model="gpt-3.5-turbo", messages=[{"role": "user", "content": query}], temperature=0.0
     )
-    
+
     # Extract text from response
-    if 'choices' in response and len(response['choices']) > 0:
-        text = response['choices'][0]['message']['content']
+    if "choices" in response and len(response["choices"]) > 0:
+        text = response["choices"][0]["message"]["content"]
     else:
         text = str(response)
-    
+
     # Calculate time taken
     time_taken = time.time() - start_time
-    
+
     # Get updated stats
     stats = cached_client.get_cache_stats()
-    hit_rate = stats['cache_hits'] / stats['total_requests'] if stats['total_requests'] > 0 else 0
-    
-    return {
-        "response": text,
-        "time_taken": time_taken,
-        "cache_hit_rate": hit_rate
-    }
+    hit_rate = stats["cache_hits"] / stats["total_requests"] if stats["total_requests"] > 0 else 0
+
+    return {"response": text, "time_taken": time_taken, "cache_hit_rate": hit_rate}
 ```
 
 This comprehensive guide should provide all the information needed to effectively integrate and use semantic caching with various LLM API providers in the IPFS Accelerate Python framework.

@@ -27,7 +27,12 @@ import numpy as np
 from transformers import RobertaConfig, is_flax_available
 from transformers.testing_utils import require_flax, slow
 
-from test.test_modeling_flax_common import FlaxModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
+from test.test_modeling_flax_common import (
+    FlaxModelTesterMixin,
+    floats_tensor,
+    ids_tensor,
+    random_attention_mask,
+)
 
 
 if is_flax_available():
@@ -118,7 +123,11 @@ class FlaxRobertaModelTester:
     def prepare_config_and_inputs_for_common(self):
         config_and_inputs = self.prepare_config_and_inputs()
         config, input_ids, token_type_ids, attention_mask = config_and_inputs
-        inputs_dict = {"input_ids": input_ids, "token_type_ids": token_type_ids, "attention_mask": attention_mask}
+        inputs_dict = {
+            "input_ids": input_ids,
+            "token_type_ids": token_type_ids,
+            "attention_mask": attention_mask,
+        }
         return config, inputs_dict
 
     def prepare_config_and_inputs_for_decoder(self):

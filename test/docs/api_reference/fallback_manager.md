@@ -12,17 +12,19 @@ This module is critical for cross-browser compatibility, particularly for Safari
 
 ```python
 class FallbackManager:
-    def __init__(self, 
-                 browser_info: Dict[str, Any] = None,
-                 model_type: str = "text",
-                 config: Dict[str, Any] = None,
-                 error_handler: Any = None,
-                 enable_layer_processing: bool = True,
-                 memory_threshold: float = 0.8,
-                 enable_telemetry: bool = True):
+    def __init__(
+        self,
+        browser_info: Dict[str, Any] = None,
+        model_type: str = "text",
+        config: Dict[str, Any] = None,
+        error_handler: Any = None,
+        enable_layer_processing: bool = True,
+        memory_threshold: float = 0.8,
+        enable_telemetry: bool = True,
+    ):
         """
         Initialize the fallback manager with browser information and configuration.
-        
+
         Args:
             browser_info: Dictionary containing browser name, version, etc.
             model_type: Type of model being used (text, vision, audio, multimodal)
@@ -54,18 +56,17 @@ def needs_fallback(self, operation_name: str) -> bool:
 ##### run_with_fallback
 
 ```python
-def run_with_fallback(self, 
-                     operation: Union[str, Callable], 
-                     inputs: Dict[str, Any],
-                     context: Dict[str, Any] = None) -> Any:
+def run_with_fallback(
+    self, operation: Union[str, Callable], inputs: Dict[str, Any], context: Dict[str, Any] = None
+) -> Any:
     """
     Run an operation with appropriate fallback strategy if needed.
-    
+
     Args:
         operation: Operation name or callable function
         inputs: Input data for the operation
         context: Additional context information
-        
+
     Returns:
         Result of the operation or its fallback
     """
@@ -94,14 +95,16 @@ def reset_metrics(self) -> None:
 
 ```python
 class SafariWebGPUFallback:
-    def __init__(self,
-                browser_info: Dict[str, Any] = None,
-                model_type: str = "text",
-                config: Dict[str, Any] = None,
-                enable_layer_processing: bool = True):
+    def __init__(
+        self,
+        browser_info: Dict[str, Any] = None,
+        model_type: str = "text",
+        config: Dict[str, Any] = None,
+        enable_layer_processing: bool = True,
+    ):
         """
         Initialize Safari-specific WebGPU fallback.
-        
+
         Args:
             browser_info: Safari browser information (version, device, etc.)
             model_type: Type of model being processed
@@ -130,18 +133,17 @@ def needs_fallback(self, operation_name: str) -> bool:
 ##### execute_with_fallback
 
 ```python
-def execute_with_fallback(self, 
-                         operation_name: str, 
-                         inputs: Dict[str, Any],
-                         context: Dict[str, Any] = None) -> Any:
+def execute_with_fallback(
+    self, operation_name: str, inputs: Dict[str, Any], context: Dict[str, Any] = None
+) -> Any:
     """
     Execute an operation using appropriate Safari-specific fallback strategy.
-    
+
     Args:
         operation_name: Name of the operation
         inputs: Input data for the operation
         context: Additional context information
-        
+
     Returns:
         Result of the operation with fallback strategy
     """
@@ -156,16 +158,17 @@ def create_optimal_fallback_strategy(
     model_type: str,
     browser_info: Dict[str, Any],
     operation_type: str,
-    config: Dict[str, Any] = None) -> Dict[str, Any]:
+    config: Dict[str, Any] = None,
+) -> Dict[str, Any]:
     """
     Create an optimal fallback strategy based on model type, browser, and operation.
-    
+
     Args:
         model_type: Type of model (text, vision, audio, multimodal)
         browser_info: Browser information
         operation_type: Type of operation requiring fallback
         config: Additional configuration options
-        
+
     Returns:
         Dictionary containing optimal fallback strategy
     """
@@ -245,32 +248,31 @@ def _detect_metal_features(self) -> Dict[str, bool]:
 from fixed_web_platform.unified_framework.fallback_manager import (
     FallbackManager,
     SafariWebGPUFallback,
-    create_optimal_fallback_strategy
+    create_optimal_fallback_strategy,
 )
 
 # Create fallback manager with Safari specialization
 fallback_mgr = FallbackManager(
     browser_info={"name": "safari", "version": "17.0"},
     model_type="text",
-    enable_layer_processing=True
+    enable_layer_processing=True,
 )
 
 # Check if attention operation needs fallback
 if fallback_mgr.needs_fallback("attention_compute"):
     # Use fallback implementation
     result = fallback_mgr.run_with_fallback(
-        "attention_compute", 
-        {"query": query, "key": key, "value": value}
+        "attention_compute", {"query": query, "key": key, "value": value}
     )
 else:
     # Use native implementation
     result = attention_function({"query": query, "key": key, "value": value})
-    
+
 # Create optimal fallback strategy for a specific use case
 strategy = create_optimal_fallback_strategy(
     model_type="text",
     browser_info={"name": "safari", "version": "17.0"},
-    operation_type="attention"
+    operation_type="attention",
 )
 
 # Get performance metrics
@@ -307,11 +309,11 @@ The fallback manager includes comprehensive performance telemetry:
 ```python
 metrics = {
     "fallback_activations": 0,  # Number of times fallback was activated
-    "native_operations": 0,     # Number of native operations
-    "layer_operations": 0,      # Number of layer-by-layer operations
-    "wasm_fallbacks": 0,        # Number of WebAssembly fallbacks
-    "operation_timings": {},    # Timing metrics for operations
-    "memory_usage": {}          # Memory usage metrics
+    "native_operations": 0,  # Number of native operations
+    "layer_operations": 0,  # Number of layer-by-layer operations
+    "wasm_fallbacks": 0,  # Number of WebAssembly fallbacks
+    "operation_timings": {},  # Timing metrics for operations
+    "memory_usage": {},  # Memory usage metrics
 }
 ```
 

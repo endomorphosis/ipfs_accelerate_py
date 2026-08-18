@@ -64,9 +64,8 @@ def compute_cid(data: Any) -> str:
     """
     serialized = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
     digest = hashlib.sha256(serialized).digest()
-    multihash = b"\x12\x20" + digest          # sha2-256 (0x12), length 32 (0x20)
+    multihash = b"\x12\x20" + digest  # sha2-256 (0x12), length 32 (0x20)
     return "b" + _multibase_base32(b"\x01\x70" + multihash)  # CIDv1 + dag-pb codec
-
 
 
 def cid_digest(cid: str) -> str:
@@ -79,7 +78,7 @@ def cid_digest(cid: str) -> str:
     s = str(cid)
     for prefix in ("bafy-mock-", "sha256:"):
         if s.startswith(prefix):
-            return s[len(prefix):][:52]
+            return s[len(prefix) :][:52]
     return s
 
 
@@ -92,9 +91,11 @@ def cids_equivalent(a: str, b: str) -> bool:
 # Profile B: CID-Native Execution
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class IntentObject:
     """Declared intention to invoke a method with specific parameters."""
+
     method: str
     params: Dict[str, Any] = field(default_factory=dict)
     constraints: Dict[str, Any] = field(default_factory=dict)
@@ -104,19 +105,22 @@ class IntentObject:
 
     def __post_init__(self):
         if not self.cid:
-            self.cid = compute_cid({
-                "type": "intent",
-                "method": self.method,
-                "params": self.params,
-                "constraints": self.constraints,
-                "requester": self.requester,
-                "timestamp": self.timestamp,
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "intent",
+                    "method": self.method,
+                    "params": self.params,
+                    "constraints": self.constraints,
+                    "requester": self.requester,
+                    "timestamp": self.timestamp,
+                }
+            )
 
 
 @dataclass
 class DecisionObject:
     """Authorization decision for an intent."""
+
     intent_cid: str
     authorized: bool
     reason: str = ""
@@ -127,18 +131,21 @@ class DecisionObject:
 
     def __post_init__(self):
         if not self.cid:
-            self.cid = compute_cid({
-                "type": "decision",
-                "intent_cid": self.intent_cid,
-                "authorized": self.authorized,
-                "reason": self.reason,
-                "timestamp": self.timestamp,
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "decision",
+                    "intent_cid": self.intent_cid,
+                    "authorized": self.authorized,
+                    "reason": self.reason,
+                    "timestamp": self.timestamp,
+                }
+            )
 
 
 @dataclass
 class ReceiptObject:
     """Execution receipt with result and provenance."""
+
     intent_cid: str
     decision_cid: str
     result: Any = None
@@ -151,14 +158,16 @@ class ReceiptObject:
 
     def __post_init__(self):
         if not self.cid:
-            self.cid = compute_cid({
-                "type": "receipt",
-                "intent_cid": self.intent_cid,
-                "decision_cid": self.decision_cid,
-                "result": self.result,
-                "error": self.error,
-                "timestamp": self.timestamp,
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "receipt",
+                    "intent_cid": self.intent_cid,
+                    "decision_cid": self.decision_cid,
+                    "result": self.result,
+                    "error": self.error,
+                    "timestamp": self.timestamp,
+                }
+            )
 
     @property
     def success(self) -> bool:
@@ -175,18 +184,22 @@ class ReceiptObject:
         If nacl is not available or no key is provided, creates an HMAC-based
         signature using the executor identity as the key (weaker but functional).
         """
-        payload = json.dumps({
-            "cid": self.cid,
-            "intent_cid": self.intent_cid,
-            "decision_cid": self.decision_cid,
-            "executor": self.executor,
-            "timestamp": self.timestamp,
-        }, sort_keys=True).encode()
+        payload = json.dumps(
+            {
+                "cid": self.cid,
+                "intent_cid": self.intent_cid,
+                "decision_cid": self.decision_cid,
+                "executor": self.executor,
+                "timestamp": self.timestamp,
+            },
+            sort_keys=True,
+        ).encode()
 
         if signing_key:
             try:
                 from nacl.signing import SigningKey
                 from nacl.encoding import HexEncoder
+
                 signed = signing_key.sign(payload, encoder=HexEncoder)
                 self.signature = signed.signature.decode()
                 return
@@ -195,6 +208,7 @@ class ReceiptObject:
 
         # Fallback: HMAC-SHA256 with executor identity
         import hmac
+
         key = (self.executor or "mcppp").encode()
         self.signature = hmac.new(key, payload, hashlib.sha256).hexdigest()
 
@@ -202,6 +216,7 @@ class ReceiptObject:
 @dataclass
 class ExecutionEnvelope:
     """Complete execution unit combining intent, decision, and receipt."""
+
     intent: IntentObject
     decision: DecisionObject
     receipt: ReceiptObject
@@ -209,19 +224,36 @@ class ExecutionEnvelope:
 
     def __post_init__(self):
         if not self.cid:
-            self.cid = compute_cid({
-                "type": "envelope",
-                "intent_cid": self.intent.cid,
-                "decision_cid": self.decision.cid,
-                "receipt_cid": self.receipt.cid,
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "envelope",
+                    "intent_cid": self.intent.cid,
+                    "decision_cid": self.decision.cid,
+                    "receipt_cid": self.receipt.cid,
+                }
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "cid": self.cid,
-            "intent": {"cid": self.intent.cid, "method": self.intent.method, "params": self.intent.params},
-            "decision": {"cid": self.decision.cid, "authorized": self.decision.authorized, "reason": self.decision.reason},
-            "receipt": {"cid": self.receipt.cid, "receipt_cid": self.receipt.cid, "output_cid": self.receipt.output_cid, "result": self.receipt.result, "error": self.receipt.error, "duration_ms": self.receipt.duration_ms},
+            "intent": {
+                "cid": self.intent.cid,
+                "method": self.intent.method,
+                "params": self.intent.params,
+            },
+            "decision": {
+                "cid": self.decision.cid,
+                "authorized": self.decision.authorized,
+                "reason": self.decision.reason,
+            },
+            "receipt": {
+                "cid": self.receipt.cid,
+                "receipt_cid": self.receipt.cid,
+                "output_cid": self.receipt.output_cid,
+                "result": self.receipt.result,
+                "error": self.receipt.error,
+                "duration_ms": self.receipt.duration_ms,
+            },
         }
 
 
@@ -229,16 +261,22 @@ class ExecutionEnvelope:
 # Profile C: UCAN Delegation
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Capability:
     """A resource/ability pair."""
+
     resource: str
     ability: str
 
     def covers(self, resource: str, ability: str) -> bool:
         """Check if this capability covers the requested resource/ability."""
         # Wildcard matching
-        res_match = self.resource == "*" or self.resource == resource or resource.startswith(self.resource.rstrip("*"))
+        res_match = (
+            self.resource == "*"
+            or self.resource == resource
+            or resource.startswith(self.resource.rstrip("*"))
+        )
         abil_match = self.ability == "*" or self.ability == ability
         return res_match and abil_match
 
@@ -246,6 +284,7 @@ class Capability:
 @dataclass
 class Delegation:
     """UCAN delegation token."""
+
     issuer: str
     audience: str
     capabilities: List[Capability] = field(default_factory=list)
@@ -257,14 +296,18 @@ class Delegation:
 
     def __post_init__(self):
         if not self.cid:
-            self.cid = compute_cid({
-                "type": "delegation",
-                "issuer": self.issuer,
-                "audience": self.audience,
-                "capabilities": [{"resource": c.resource, "ability": c.ability} for c in self.capabilities],
-                "expiry": self.expiry,
-                "not_before": self.not_before,
-            })
+            self.cid = compute_cid(
+                {
+                    "type": "delegation",
+                    "issuer": self.issuer,
+                    "audience": self.audience,
+                    "capabilities": [
+                        {"resource": c.resource, "ability": c.ability} for c in self.capabilities
+                    ],
+                    "expiry": self.expiry,
+                    "not_before": self.not_before,
+                }
+            )
 
     def is_expired(self, now: Optional[float] = None) -> bool:
         t = now or time.time()
@@ -282,7 +325,9 @@ class Delegation:
             "cid": self.cid,
             "issuer": self.issuer,
             "audience": self.audience,
-            "capabilities": [{"resource": c.resource, "ability": c.ability} for c in self.capabilities],
+            "capabilities": [
+                {"resource": c.resource, "ability": c.ability} for c in self.capabilities
+            ],
             "expiry": self.expiry,
             "not_before": self.not_before,
             "proof_cids": self.proof_cids,
@@ -308,6 +353,7 @@ class DelegationEvaluator:
     def save_revocations(self, path: str) -> None:
         """Persist revocation list to disk."""
         import os
+
         os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
         with open(path, "w") as f:
             json.dump({"revoked": list(self._revoked)}, f)
@@ -315,6 +361,7 @@ class DelegationEvaluator:
     def load_revocations(self, path: str) -> int:
         """Load revocation list from disk. Returns count loaded."""
         import os
+
         if not os.path.isfile(path):
             return 0
         with open(path, "r") as f:
@@ -326,14 +373,16 @@ class DelegationEvaluator:
     def save_delegations(self, path: str) -> None:
         """Persist all delegations to disk (atomic write)."""
         import os
+
         os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
         data = {
             "delegations": {
                 cid: {
                     "issuer": d.issuer,
                     "audience": d.audience,
-                    "capabilities": [{"resource": c.resource, "ability": c.ability}
-                                     for c in d.capabilities],
+                    "capabilities": [
+                        {"resource": c.resource, "ability": c.ability} for c in d.capabilities
+                    ],
                     "expiry": d.expiry,
                     "not_before": d.not_before,
                     "proof_cids": d.proof_cids,
@@ -353,14 +402,17 @@ class DelegationEvaluator:
     def load_delegations(self, path: str) -> int:
         """Load delegations from disk. Returns count loaded."""
         import os
+
         if not os.path.isfile(path):
             return 0
         try:
             with open(path, "r") as f:
                 data = json.load(f)
             for cid, d_dict in data.get("delegations", {}).items():
-                caps = [Capability(resource=c["resource"], ability=c["ability"])
-                        for c in d_dict.get("capabilities", [])]
+                caps = [
+                    Capability(resource=c["resource"], ability=c["ability"])
+                    for c in d_dict.get("capabilities", [])
+                ]
                 d = Delegation(
                     issuer=d_dict["issuer"],
                     audience=d_dict["audience"],
@@ -379,7 +431,7 @@ class DelegationEvaluator:
 
     def build_chain(self, leaf_cid: str) -> List[Delegation]:
         """Build the delegation chain from leaf to root.
-        
+
         Raises ValueError if chain exceeds MAX_CHAIN_DEPTH.
         """
         chain = []
@@ -388,9 +440,7 @@ class DelegationEvaluator:
 
         while current_cid and current_cid not in visited:
             if len(chain) >= self.MAX_CHAIN_DEPTH:
-                raise ValueError(
-                    f"Delegation chain exceeds maximum depth ({self.MAX_CHAIN_DEPTH})"
-                )
+                raise ValueError(f"Delegation chain exceeds maximum depth ({self.MAX_CHAIN_DEPTH})")
             visited.add(current_cid)
             delegation = self._store.get(current_cid)
             if not delegation:
@@ -404,8 +454,14 @@ class DelegationEvaluator:
 
         return list(reversed(chain))  # root-first order
 
-    def can_invoke(self, leaf_cid: str, resource: str, ability: str,
-                   actor: Optional[str] = None, now: Optional[float] = None) -> Tuple[bool, str]:
+    def can_invoke(
+        self,
+        leaf_cid: str,
+        resource: str,
+        ability: str,
+        actor: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> Tuple[bool, str]:
         """Check if the delegation chain authorizes resource/ability for actor."""
         if leaf_cid in self._revoked:
             return False, f"Delegation '{leaf_cid}' has been revoked"
@@ -448,7 +504,7 @@ class DelegationEvaluator:
 
     def _verify_signature(self, delegation: Delegation) -> bool:
         """Verify delegation signature using Ed25519.
-        
+
         Fail-closed: returns False if crypto libs aren't available and a
         signature is present. Unsigned delegations are only allowed if
         MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 is set (default: deny).
@@ -457,7 +513,9 @@ class DelegationEvaluator:
             allow_unsigned = os.environ.get("MCPPP_ALLOW_UNSIGNED_DELEGATIONS", "0") == "1"
             if allow_unsigned:
                 return True
-            logger.warning("Unsigned delegation denied (set MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 to allow)")
+            logger.warning(
+                "Unsigned delegation denied (set MCPPP_ALLOW_UNSIGNED_DELEGATIONS=1 to allow)"
+            )
             return False
 
         if not delegation.issuer.startswith("did:key:"):
@@ -474,11 +532,17 @@ class DelegationEvaluator:
             verify_key = VerifyKey(key_material.encode(), encoder=HexEncoder)
 
             # Verify signature over canonical payload
-            payload = json.dumps({
-                "issuer": delegation.issuer,
-                "audience": delegation.audience,
-                "capabilities": [{"resource": c.resource, "ability": c.ability} for c in delegation.capabilities],
-            }, sort_keys=True).encode()
+            payload = json.dumps(
+                {
+                    "issuer": delegation.issuer,
+                    "audience": delegation.audience,
+                    "capabilities": [
+                        {"resource": c.resource, "ability": c.ability}
+                        for c in delegation.capabilities
+                    ],
+                },
+                sort_keys=True,
+            ).encode()
 
             verify_key.verify(payload, bytes.fromhex(delegation.signature))
             return True
@@ -495,9 +559,11 @@ class DelegationEvaluator:
 # Event DAG (Profile B provenance tracking)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DAGEvent:
     """A node in the append-only provenance DAG."""
+
     cid: str
     event_type: str  # "intent" | "decision" | "receipt" | "envelope"
     parent_cids: List[str] = field(default_factory=list)
@@ -533,6 +599,7 @@ class EventDAG:
         if self._compactor is None:
             try:
                 from .dag_compaction import DAGCompactor, COLD_TIER_DIR
+
                 storage = self._storage_dir or COLD_TIER_DIR
                 self._compactor = DAGCompactor(storage_dir=storage)
             except ImportError:
@@ -592,8 +659,7 @@ class EventDAG:
                 # Also clean up children references to removed parents
                 for parent_cid in list(self._children.keys()):
                     self._children[parent_cid] = [
-                        c for c in self._children[parent_cid]
-                        if c not in set(result.compacted_cids)
+                        c for c in self._children[parent_cid] if c not in set(result.compacted_cids)
                     ]
                     if not self._children[parent_cid]:
                         del self._children[parent_cid]
@@ -663,7 +729,7 @@ class EventDAG:
 
     def to_dict(self, include_events: bool = False) -> Dict[str, Any]:
         """Serialize DAG state including compaction summary.
-        
+
         Args:
             include_events: If True, include full event details (expensive for large DAGs).
                            Default False for use in health/ready probes.
@@ -672,11 +738,15 @@ class EventDAG:
         with self._lock:
             result = {
                 "hot_events": len(self._events),
-                "frontier_size": len([e for e in self._events.values() if e.cid not in self._children]),
+                "frontier_size": len(
+                    [e for e in self._events.values() if e.cid not in self._children]
+                ),
             }
             if include_events:
-                result["events"] = {cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
-                                    for cid, e in self._events.items()}
+                result["events"] = {
+                    cid: {"type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp}
+                    for cid, e in self._events.items()
+                }
         if compactor:
             result["compaction"] = compactor.summary()
             result["total_events"] = result["hot_events"] + compactor.total_compacted_events
@@ -727,6 +797,7 @@ def get_event_dag() -> EventDAG:
 # High-level execution helper
 # ---------------------------------------------------------------------------
 
+
 async def execute_with_envelope(
     method: str,
     params: Dict[str, Any],
@@ -736,10 +807,10 @@ async def execute_with_envelope(
     timeout_ms: int = 30000,
 ) -> ExecutionEnvelope:
     """Execute a method call with full CID-native envelope tracking.
-    
+
     Creates Intent → Decision → Receipt → Envelope, recording everything
     in the Event DAG for provenance.
-    
+
     Args:
         method: Method name (e.g. "run_model", "infer")
         params: Method parameters
@@ -747,7 +818,7 @@ async def execute_with_envelope(
         delegation_cid: Optional UCAN delegation CID for authorization
         executor_fn: Async callable that performs the actual execution
         timeout_ms: Maximum execution time in milliseconds (default: 30s)
-        
+
     Returns:
         ExecutionEnvelope with full provenance chain
     """
@@ -773,10 +844,14 @@ async def execute_with_envelope(
         reason=reason,
         policy_cid=delegation_cid or "",
     )
-    dag.append(DAGEvent(
-        cid=decision.cid, event_type="decision",
-        parent_cids=[intent.cid], payload={"authorized": authorized},
-    ))
+    dag.append(
+        DAGEvent(
+            cid=decision.cid,
+            event_type="decision",
+            parent_cids=[intent.cid],
+            payload={"authorized": authorized},
+        )
+    )
 
     # Execute (if authorized) with timeout
     start_time = time.time()
@@ -788,6 +863,7 @@ async def execute_with_envelope(
             # Use trio timeout if available in current context
             try:
                 import trio
+
                 with trio.move_on_after(timeout_ms / 1000.0) as cancel_scope:
                     result = await executor_fn(method, params)
                 if cancel_scope.cancelled_caught:
@@ -815,16 +891,23 @@ async def execute_with_envelope(
         executor="ipfs_accelerate_py",
     )
     receipt.sign()
-    dag.append(DAGEvent(
-        cid=receipt.cid, event_type="receipt",
-        parent_cids=[decision.cid], payload={"success": receipt.success},
-    ))
+    dag.append(
+        DAGEvent(
+            cid=receipt.cid,
+            event_type="receipt",
+            parent_cids=[decision.cid],
+            payload={"success": receipt.success},
+        )
+    )
 
     # Create Envelope
     envelope = ExecutionEnvelope(intent=intent, decision=decision, receipt=receipt)
-    dag.append(DAGEvent(
-        cid=envelope.cid, event_type="envelope",
-        parent_cids=[intent.cid, decision.cid, receipt.cid],
-    ))
+    dag.append(
+        DAGEvent(
+            cid=envelope.cid,
+            event_type="envelope",
+            parent_cids=[intent.cid, decision.cid, receipt.cid],
+        )
+    )
 
     return envelope

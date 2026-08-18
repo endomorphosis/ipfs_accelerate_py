@@ -13,6 +13,7 @@ Covers:
 - Tags are correct for key models
 - get_models_by_pipeline_type returns seeded API models
 """
+
 from __future__ import annotations
 
 import os
@@ -145,8 +146,7 @@ class TestSeedWellKnownModelsMetaAI(unittest.TestCase):
         self.assertEqual(m.model_type, ModelType.LANGUAGE_MODEL)
 
     def test_llama_models_have_meta_tag(self):
-        for mid in ("meta-llama/Llama-3.3-70B-Instruct",
-                    "meta-llama/Llama-3.1-405B-Instruct"):
+        for mid in ("meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Llama-3.1-405B-Instruct"):
             self.assertIn("meta", self.models[mid].tags)
 
     def test_spark_has_spark_tag(self):
@@ -203,14 +203,16 @@ class TestSeedWellKnownModelsOtherProviders(unittest.TestCase):
         for m in self.models.values():
             if m.serving_config:
                 self.assertEqual(
-                    m.serving_config["engine"], "api",
+                    m.serving_config["engine"],
+                    "api",
                     f"{m.model_id} should have engine=api, got {m.serving_config['engine']}",
                 )
 
     def test_all_seeded_models_have_api_backend(self):
         for m in self.models.values():
             self.assertIn(
-                "api", m.supported_backends,
+                "api",
+                m.supported_backends,
                 f"{m.model_id} missing 'api' in supported_backends",
             )
 

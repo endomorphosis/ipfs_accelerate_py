@@ -97,9 +97,7 @@ def test_todo_vector_refresh_reprojects_resources_into_bundle_and_dependency_gra
     assert task["resource_class"] == "cpu-medium"
     assert task["resources"] == ["cpu-medium", "prover-lean"]
     assert refreshed["dependency_dag"] == refreshed["task_dependency_graph"]
-    graph_node = refreshed["task_dependency_graph"]["nodes"][
-        task["canonical_task_cid"]
-    ]
+    graph_node = refreshed["task_dependency_graph"]["nodes"][task["canonical_task_cid"]]
     assert graph_node["metadata"]["resource_class"] == "cpu-medium"
     assert graph_node["metadata"]["resources"] == ["cpu-medium", "prover-lean"]
 

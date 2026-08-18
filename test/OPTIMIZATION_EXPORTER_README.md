@@ -74,7 +74,7 @@ from test.optimization_recommendation.optimization_exporter import OptimizationE
 exporter = OptimizationExporter(
     output_dir="./optimizations",
     benchmark_db_path="benchmark_db.duckdb",
-    api_url="http://localhost:8080"
+    api_url="http://localhost:8080",
 )
 
 # Export a single optimization
@@ -82,7 +82,7 @@ result = exporter.export_optimization(
     model_name="bert-base-uncased",
     hardware_platform="cuda",
     recommendation_name="Mixed Precision Training",
-    output_format="all"  # Options: python, json, yaml, script, all
+    output_format="all",  # Options: python, json, yaml, script, all
 )
 
 # Create ZIP archive of exported files
@@ -97,7 +97,7 @@ with open(f"./optimizations/{archive_filename}", "wb") as f:
 batch_result = exporter.export_batch_optimizations(
     recommendations_report=report,  # Report with multiple recommendations
     output_dir="./batch_optimizations",
-    output_format="all"
+    output_format="all",
 )
 
 # Create ZIP archive of batch exports

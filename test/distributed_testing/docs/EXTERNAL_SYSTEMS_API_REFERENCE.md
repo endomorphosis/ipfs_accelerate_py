@@ -117,12 +117,14 @@ Initialize the connector with the provided configuration.
 **Example:**
 ```python
 # Initialize JIRA connector
-result = await jira_connector.initialize({
-    "email": "user@example.com",
-    "token": "api_token",
-    "server_url": "https://jira.example.com",
-    "project_key": "PROJECT"
-})
+result = await jira_connector.initialize(
+    {
+        "email": "user@example.com",
+        "token": "api_token",
+        "server_url": "https://jira.example.com",
+        "project_key": "PROJECT",
+    }
+)
 
 if result:
     print("Initialization successful")
@@ -178,10 +180,9 @@ Execute an operation on the external system.
 **Example:**
 ```python
 # Execute custom operation
-result = await connector.execute_operation("send_message", {
-    "channel": "#general",
-    "text": "Hello, world!"
-})
+result = await connector.execute_operation(
+    "send_message", {"channel": "#general", "text": "Hello, world!"}
+)
 
 if result["success"]:
     print(f"Operation successful: {result['result_data']}")
@@ -202,11 +203,9 @@ Query the external system for data.
 **Example:**
 ```python
 # Query issues from JIRA
-issues = await jira_connector.query({
-    "project": "PROJECT",
-    "status": ["Open", "In Progress"],
-    "assignee": "current_user"
-})
+issues = await jira_connector.query(
+    {"project": "PROJECT", "status": ["Open", "In Progress"], "assignee": "current_user"}
+)
 
 for issue in issues:
     print(f"Issue: {issue['key']} - {issue['summary']}")
@@ -226,12 +225,15 @@ Create an item in the external system.
 **Example:**
 ```python
 # Create issue in JIRA
-issue = await jira_connector.create_item("issue", {
-    "summary": "Test Issue",
-    "description": "This is a test issue",
-    "issue_type": "Bug",
-    "priority": "Medium"
-})
+issue = await jira_connector.create_item(
+    "issue",
+    {
+        "summary": "Test Issue",
+        "description": "This is a test issue",
+        "issue_type": "Bug",
+        "priority": "Medium",
+    },
+)
 
 print(f"Created issue: {issue['key']}")
 ```
@@ -251,10 +253,9 @@ Update an item in the external system.
 **Example:**
 ```python
 # Update issue in JIRA
-success = await jira_connector.update_item("issue", "PROJECT-123", {
-    "status": "In Progress",
-    "assignee": "user@example.com"
-})
+success = await jira_connector.update_item(
+    "issue", "PROJECT-123", {"status": "In Progress", "assignee": "user@example.com"}
+)
 
 if success:
     print("Issue updated successfully")
@@ -379,7 +380,7 @@ capabilities = ConnectorCapabilities(
     max_batch_size=100,
     rate_limit=60,
     # Connector-specific capabilities
-    supports_markdown=True
+    supports_markdown=True,
 )
 
 # Check capabilities at runtime
@@ -424,9 +425,7 @@ restored_capabilities = ConnectorCapabilities.from_dict(capabilities_dict)
 ```python
 # Create successful result
 success_result = ExternalSystemResult(
-    success=True,
-    operation="create_issue",
-    result_data={"key": "PROJECT-123", "id": "10001"}
+    success=True, operation="create_issue", result_data={"key": "PROJECT-123", "id": "10001"}
 )
 
 # Create error result
@@ -434,7 +433,7 @@ error_result = ExternalSystemResult(
     success=False,
     operation="create_issue",
     error_message="Field 'summary' is required",
-    error_code="VALIDATION_ERROR"
+    error_code="VALIDATION_ERROR",
 )
 
 # Convert to dictionary
@@ -467,13 +466,13 @@ ExternalSystemFactory.register_connector("custom", CustomConnector)
 
 # Create a connector instance
 connector = await ExternalSystemFactory.create_connector(
-    "jira", 
+    "jira",
     {
         "email": "user@example.com",
         "token": "api_token",
         "server_url": "https://jira.example.com",
-        "project_key": "PROJECT"
-    }
+        "project_key": "PROJECT",
+    },
 )
 
 # Get available connector types
@@ -526,35 +525,36 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create JIRA connector
 jira = await ExternalSystemFactory.create_connector(
-    "jira", 
+    "jira",
     {
         "email": "user@example.com",
         "token": "api_token",
         "server_url": "https://jira.example.com",
-        "project_key": "PROJECT"
-    }
+        "project_key": "PROJECT",
+    },
 )
 
 # Create an issue
-issue = await jira.create_item("issue", {
-    "summary": "Test Issue",
-    "description": "This is a test issue",
-    "issue_type": "Bug",
-    "priority": "Medium",
-    "labels": ["automated", "test"]
-})
+issue = await jira.create_item(
+    "issue",
+    {
+        "summary": "Test Issue",
+        "description": "This is a test issue",
+        "issue_type": "Bug",
+        "priority": "Medium",
+        "labels": ["automated", "test"],
+    },
+)
 
 # Add a comment
-await jira.execute_operation("add_comment", {
-    "issue_key": issue["key"],
-    "body": "This is a test comment"
-})
+await jira.execute_operation(
+    "add_comment", {"issue_key": issue["key"], "body": "This is a test comment"}
+)
 
 # Update the issue
-await jira.update_item("issue", issue["key"], {
-    "assignee": "john.doe@example.com",
-    "priority": "High"
-})
+await jira.update_item(
+    "issue", issue["key"], {"assignee": "john.doe@example.com", "priority": "High"}
+)
 
 # Get the issue
 updated_issue = await jira.get_item("issue", issue["key"])
@@ -599,34 +599,36 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create Slack connector
 slack = await ExternalSystemFactory.create_connector(
-    "slack", 
-    {
-        "token": "xoxb-your-token",
-        "default_channel": "#notifications"
-    }
+    "slack", {"token": "xoxb-your-token", "default_channel": "#notifications"}
 )
 
 # Send a message
-message = await slack.create_item("message", {
-    "channel": "#notifications",
-    "text": "Hello from the Distributed Testing Framework!",
-    "blocks": [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*Notification*\nTest run completed successfully"
+message = await slack.create_item(
+    "message",
+    {
+        "channel": "#notifications",
+        "text": "Hello from the Distributed Testing Framework!",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*Notification*\nTest run completed successfully",
+                },
             }
-        }
-    ]
-})
+        ],
+    },
+)
 
 # Upload a file
-file = await slack.create_item("file", {
-    "channel": "#notifications",
-    "file_path": "/path/to/test_results.json",
-    "title": "Test Results"
-})
+file = await slack.create_item(
+    "file",
+    {
+        "channel": "#notifications",
+        "file_path": "/path/to/test_results.json",
+        "title": "Test Results",
+    },
+)
 
 # Close the connection
 await slack.close()
@@ -672,30 +674,36 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create TestRail connector
 testrail = await ExternalSystemFactory.create_connector(
-    "testrail", 
+    "testrail",
     {
         "url": "https://example.testrail.io",
         "username": "user@example.com",
         "api_key": "api_key",
-        "project_id": "1"
-    }
+        "project_id": "1",
+    },
 )
 
 # Create a test run
-test_run = await testrail.create_item("test_run", {
-    "name": "Automated Test Run",
-    "description": "Run created by Distributed Testing Framework",
-    "suite_id": 1,
-    "include_all": True
-})
+test_run = await testrail.create_item(
+    "test_run",
+    {
+        "name": "Automated Test Run",
+        "description": "Run created by Distributed Testing Framework",
+        "suite_id": 1,
+        "include_all": True,
+    },
+)
 
 # Add a test result
-await testrail.create_item("test_result", {
-    "test_id": 100,
-    "status_id": 1,  # Passed
-    "comment": "Test passed successfully",
-    "elapsed": "1m 30s"
-})
+await testrail.create_item(
+    "test_result",
+    {
+        "test_id": 100,
+        "status_id": 1,  # Passed
+        "comment": "Test passed successfully",
+        "elapsed": "1m 30s",
+    },
+)
 
 # Get test run details
 run_details = await testrail.get_item("test_run", test_run["id"])
@@ -740,29 +748,30 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create Prometheus connector
 prometheus = await ExternalSystemFactory.create_connector(
-    "prometheus", 
+    "prometheus",
     {
         "prometheus_url": "http://prometheus.example.com:9090",
         "pushgateway_url": "http://pushgateway.example.com:9091",
-        "job_prefix": "distributed_testing"
-    }
+        "job_prefix": "distributed_testing",
+    },
 )
 
 # Query metrics
-results = await prometheus.execute_operation("query", {
-    "query": 'up{job="distributed_testing"}'
-})
+results = await prometheus.execute_operation("query", {"query": 'up{job="distributed_testing"}'})
 
 # Push metrics
-await prometheus.create_item("metric", {
-    "job_name": "test_job",
-    "instance": "test_instance",
-    "name": "test_execution_duration_seconds",
-    "value": 10.5,
-    "help": "Duration of test execution in seconds",
-    "type": "gauge",
-    "labels": {"suite": "performance", "module": "api"}
-})
+await prometheus.create_item(
+    "metric",
+    {
+        "job_name": "test_job",
+        "instance": "test_instance",
+        "name": "test_execution_duration_seconds",
+        "value": 10.5,
+        "help": "Duration of test execution in seconds",
+        "type": "gauge",
+        "labels": {"suite": "performance", "module": "api"},
+    },
+)
 
 # Close the connection
 await prometheus.close()
@@ -805,7 +814,7 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create Email connector
 email = await ExternalSystemFactory.create_connector(
-    "email", 
+    "email",
     {
         "smtp_server": "smtp.example.com",
         "smtp_port": 587,
@@ -813,33 +822,37 @@ email = await ExternalSystemFactory.create_connector(
         "password": "password",
         "use_tls": True,
         "default_sender": "notifications@example.com",
-        "default_recipients": ["team@example.com"]
-    }
+        "default_recipients": ["team@example.com"],
+    },
 )
 
 # Send an email
-await email.create_item("email", {
-    "recipients": ["user@example.com"],
-    "subject": "Test Execution Completed",
-    "body": "Test execution has completed successfully.",
-    "html_body": "<h1>Test Execution Results</h1><p>All tests passed!</p>",
-    "attachments": [
-        {"path": "/path/to/test_report.pdf"}
-    ]
-})
+await email.create_item(
+    "email",
+    {
+        "recipients": ["user@example.com"],
+        "subject": "Test Execution Completed",
+        "body": "Test execution has completed successfully.",
+        "html_body": "<h1>Test Execution Results</h1><p>All tests passed!</p>",
+        "attachments": [{"path": "/path/to/test_report.pdf"}],
+    },
+)
 
 # Send a template-based email
-await email.execute_operation("send_template_email", {
-    "template_name": "test_report",
-    "template_data": {
-        "test_name": "API Test Suite",
-        "result": "PASSED",
-        "duration": "10m 15s",
-        "failures": 0,
-        "success_rate": "100%"
+await email.execute_operation(
+    "send_template_email",
+    {
+        "template_name": "test_report",
+        "template_data": {
+            "test_name": "API Test Suite",
+            "result": "PASSED",
+            "duration": "10m 15s",
+            "failures": 0,
+            "success_rate": "100%",
+        },
+        "subject": "Test Report: API Test Suite",
     },
-    "subject": "Test Report: API Test Suite"
-})
+)
 
 # Close the connection
 await email.close()
@@ -885,81 +898,82 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create MS Teams connector with webhook integration
 teams = await ExternalSystemFactory.create_connector(
-    "msteams", 
-    {
-        "webhook_url": "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL"
-    }
+    "msteams", {"webhook_url": "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL"}
 )
 
 # Create MS Teams connector with Microsoft Graph API integration
 teams_graph = await ExternalSystemFactory.create_connector(
-    "msteams", 
+    "msteams",
     {
         "use_graph_api": True,
         "tenant_id": "your_tenant_id",
         "client_id": "your_client_id",
         "client_secret": "your_client_secret",
         "default_team_id": "your_team_id",
-        "default_channel": "General"
-    }
+        "default_channel": "General",
+    },
 )
 
 # Send a simple message
-await teams.create_item("message", {
-    "title": "Test Execution Completed",
-    "text": "Test execution has completed successfully.",
-    "theme_color": "0078D7",  # Blue
-    "facts": [
-        ("Test Suite", "API Tests"),
-        ("Result", "PASSED"),
-        ("Duration", "10m 15s"),
-        ("Failures", "0"),
-        ("Success Rate", "100%")
-    ]
-})
+await teams.create_item(
+    "message",
+    {
+        "title": "Test Execution Completed",
+        "text": "Test execution has completed successfully.",
+        "theme_color": "0078D7",  # Blue
+        "facts": [
+            ("Test Suite", "API Tests"),
+            ("Result", "PASSED"),
+            ("Duration", "10m 15s"),
+            ("Failures", "0"),
+            ("Success Rate", "100%"),
+        ],
+    },
+)
 
 # Send an adaptive card
-await teams.create_item("adaptive_card", {
-    "card_content": {
-        "type": "AdaptiveCard",
-        "version": "1.2",
-        "body": [
-            {
-                "type": "TextBlock",
-                "text": "Test Execution Results",
-                "weight": "bolder",
-                "size": "large"
-            },
-            {
-                "type": "FactSet",
-                "facts": [
-                    {"title": "Test Suite", "value": "API Tests"},
-                    {"title": "Result", "value": "PASSED"},
-                    {"title": "Duration", "value": "10m 15s"},
-                    {"title": "Failures", "value": "0"}
-                ]
-            }
-        ],
-        "actions": [
-            {
-                "type": "Action.OpenUrl",
-                "title": "View Details",
-                "url": "https://example.com/test-results"
-            }
-        ]
-    }
-})
+await teams.create_item(
+    "adaptive_card",
+    {
+        "card_content": {
+            "type": "AdaptiveCard",
+            "version": "1.2",
+            "body": [
+                {
+                    "type": "TextBlock",
+                    "text": "Test Execution Results",
+                    "weight": "bolder",
+                    "size": "large",
+                },
+                {
+                    "type": "FactSet",
+                    "facts": [
+                        {"title": "Test Suite", "value": "API Tests"},
+                        {"title": "Result", "value": "PASSED"},
+                        {"title": "Duration", "value": "10m 15s"},
+                        {"title": "Failures", "value": "0"},
+                    ],
+                },
+            ],
+            "actions": [
+                {
+                    "type": "Action.OpenUrl",
+                    "title": "View Details",
+                    "url": "https://example.com/test-results",
+                }
+            ],
+        }
+    },
+)
 
 # With Graph API, you can get channels in a team
 if teams_graph.use_graph_api:
-    channels = await teams_graph.execute_operation("get_channels", {
-        "team_id": "your_team_id"
-    })
-    
+    channels = await teams_graph.execute_operation("get_channels", {"team_id": "your_team_id"})
+
     # And get team members
-    team_members = await teams_graph.execute_operation("get_team_members", {
-        "team_id": "your_team_id"
-    })
+    team_members = await teams_graph.execute_operation(
+        "get_team_members", {"team_id": "your_team_id"}
+    )
 
 # Close the connection
 await teams.close()
@@ -977,7 +991,7 @@ config = {
     "smtp_server": os.environ.get("SMTP_SERVER", "smtp.example.com"),
     "smtp_port": int(os.environ.get("SMTP_PORT", "587")),
     "username": os.environ.get("SMTP_USERNAME", ""),
-    "password": os.environ.get("SMTP_PASSWORD", "")
+    "password": os.environ.get("SMTP_PASSWORD", ""),
 }
 ```
 
@@ -991,13 +1005,14 @@ self.last_request_time = time.time()
 self.request_count = 0
 self.rate_limit = 60  # 60 requests per minute
 
+
 async def _handle_rate_limit(self):
     """Handle rate limiting to avoid exceeding API limits."""
     # Implement a simple token bucket algorithm
     self.request_count += 1
     current_time = time.time()
     time_passed = current_time - self.last_request_time
-    
+
     if self.request_count >= self.rate_limit:
         # Reset counter and wait if needed
         wait_time = 60.0 - time_passed
@@ -1017,10 +1032,10 @@ async def execute_operation(self, operation: str, params: Dict[str, Any]) -> Dic
     try:
         # Ensure connection is established
         await self._ensure_connection()
-        
+
         # Handle rate limiting
         await self._handle_rate_limit()
-        
+
         # Execute operation
         if operation == "send_message":
             result = await self._send_message(params)
@@ -1031,18 +1046,15 @@ async def execute_operation(self, operation: str, params: Dict[str, Any]) -> Dic
                 success=False,
                 operation=operation,
                 error_message=f"Unsupported operation: {operation}",
-                error_code="UNSUPPORTED_OPERATION"
+                error_code="UNSUPPORTED_OPERATION",
             )
-            
+
         return result.to_dict()
-        
+
     except Exception as e:
         # Handle and report errors
         return ExternalSystemResult(
-            success=False,
-            operation=operation,
-            error_message=str(e),
-            error_code="EXCEPTION"
+            success=False, operation=operation, error_message=str(e), error_code="EXCEPTION"
         ).to_dict()
 ```
 
@@ -1055,6 +1067,7 @@ async def _ensure_connection(self):
     """Ensure connection is established."""
     if not self.connected:
         await self.connect()
+
 
 async def close(self):
     """Close the connection and clean up resources."""
@@ -1076,28 +1089,24 @@ Consistent error handling is a key aspect of the connectors:
 try:
     # Operation that might fail
     response = await self.session.post(endpoint, json=payload)
-    
+
     if response.status == 200:
         data = await response.json()
-        return ExternalSystemResult(
-            success=True,
-            operation="create_item",
-            result_data=data
-        )
+        return ExternalSystemResult(success=True, operation="create_item", result_data=data)
     else:
         error_text = await response.text()
         return ExternalSystemResult(
             success=False,
             operation="create_item",
             error_message=f"API Error: {error_text}",
-            error_code=f"API_ERROR_{response.status}"
+            error_code=f"API_ERROR_{response.status}",
         )
 except Exception as e:
     return ExternalSystemResult(
         success=False,
         operation="create_item",
         error_message=f"Exception: {str(e)}",
-        error_code="EXCEPTION"
+        error_code="EXCEPTION",
     )
 ```
 
@@ -1119,18 +1128,19 @@ from distributed_testing.external_systems.api_interface import (
     ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,
-    ExternalSystemFactory
+    ExternalSystemFactory,
 )
+
 
 class CustomConnector(ExternalSystemInterface):
     """Custom connector implementation."""
-    
+
     def __init__(self):
         """Initialize the connector."""
         self.connected = False
         self.config = {}
         self.session = None
-        
+
         # Define capabilities
         self.capabilities = ConnectorCapabilities(
             supports_create=True,
@@ -1138,9 +1148,9 @@ class CustomConnector(ExternalSystemInterface):
             supports_delete=True,
             supports_query=True,
             item_types=["custom_item"],
-            rate_limit=100
+            rate_limit=100,
         )
-    
+
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """Initialize with configuration."""
         self.config = config
@@ -1148,24 +1158,25 @@ class CustomConnector(ExternalSystemInterface):
         if "api_key" not in config:
             return False
         return True
-    
+
     # Implement other required methods...
-    
+
     async def system_info(self) -> Dict[str, Any]:
         """Get system information."""
         return {
             "system_type": "custom",
             "connected": self.connected,
             "api_version": "1.0",
-            "capabilities": self.capabilities.to_dict()
+            "capabilities": self.capabilities.to_dict(),
         }
-    
+
     async def close(self) -> None:
         """Close the connection."""
         if self.session:
             await self.session.close()
             self.session = None
             self.connected = False
+
 
 # Register with factory
 ExternalSystemFactory.register_connector("custom", CustomConnector)
@@ -1180,28 +1191,30 @@ async def initialize(self, config: Dict[str, Any]) -> bool:
     """Initialize with configuration."""
     # Direct configuration
     self.api_key = config.get("api_key")
-    
+
     # Environment variable fallback
     self.api_url = config.get("api_url", os.environ.get("API_URL"))
-    
+
     # Type conversion
     self.timeout = int(config.get("timeout", "30"))
-    
+
     # Boolean conversion
     self.verify_ssl = config.get("verify_ssl", "true").lower() in ("true", "yes", "1")
-    
+
     # List conversion
-    self.default_labels = config.get("default_labels", "").split(",") if config.get("default_labels") else []
-    
+    self.default_labels = (
+        config.get("default_labels", "").split(",") if config.get("default_labels") else []
+    )
+
     # Validation
     if not self.api_key:
         logger.error("API key is required")
         return False
-    
+
     if not self.api_url:
         logger.error("API URL is required")
         return False
-    
+
     return True
 ```
 
@@ -1213,16 +1226,16 @@ For complex operations:
 async def execute_operation(self, operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Execute an operation."""
     await self._ensure_connection()
-    
+
     # Map operation to handler method
     handlers = {
         "create_issue": self._create_issue,
         "update_issue": self._update_issue,
         "search_issues": self._search_issues,
         "add_comment": self._add_comment,
-        "upload_attachment": self._upload_attachment
+        "upload_attachment": self._upload_attachment,
     }
-    
+
     # Get handler or return error
     handler = handlers.get(operation)
     if not handler:
@@ -1230,19 +1243,16 @@ async def execute_operation(self, operation: str, params: Dict[str, Any]) -> Dic
             success=False,
             operation=operation,
             error_message=f"Unsupported operation: {operation}",
-            error_code="UNSUPPORTED_OPERATION"
+            error_code="UNSUPPORTED_OPERATION",
         ).to_dict()
-    
+
     # Execute handler
     try:
         result = await handler(params)
         return result.to_dict()
     except Exception as e:
         return ExternalSystemResult(
-            success=False,
-            operation=operation,
-            error_message=str(e),
-            error_code="EXCEPTION"
+            success=False, operation=operation, error_message=str(e), error_code="EXCEPTION"
         ).to_dict()
 ```
 
@@ -1280,22 +1290,18 @@ The framework defines several error categories:
 ```python
 try:
     response = await self.session.post(endpoint, json=payload, timeout=self.timeout)
-    
+
     if response.status == 200:
         # Success case
         data = await response.json()
-        return ExternalSystemResult(
-            success=True,
-            operation="create_item",
-            result_data=data
-        )
+        return ExternalSystemResult(success=True, operation="create_item", result_data=data)
     elif response.status == 401:
         # Authentication error
         return ExternalSystemResult(
             success=False,
             operation="create_item",
             error_message="Authentication failed. Check credentials.",
-            error_code="AUTHENTICATION_ERROR"
+            error_code="AUTHENTICATION_ERROR",
         )
     elif response.status == 403:
         # Permission error
@@ -1303,7 +1309,7 @@ try:
             success=False,
             operation="create_item",
             error_message="Permission denied. Check account permissions.",
-            error_code="PERMISSION_ERROR"
+            error_code="PERMISSION_ERROR",
         )
     elif response.status == 404:
         # Not found error
@@ -1311,7 +1317,7 @@ try:
             success=False,
             operation="create_item",
             error_message="Resource not found.",
-            error_code="NOT_FOUND_ERROR"
+            error_code="NOT_FOUND_ERROR",
         )
     elif response.status == 422:
         # Validation error
@@ -1320,7 +1326,7 @@ try:
             success=False,
             operation="create_item",
             error_message=f"Validation error: {error_text}",
-            error_code="VALIDATION_ERROR"
+            error_code="VALIDATION_ERROR",
         )
     elif response.status == 429:
         # Rate limit error
@@ -1328,7 +1334,7 @@ try:
             success=False,
             operation="create_item",
             error_message="Rate limit exceeded. Try again later.",
-            error_code="RATE_LIMIT_ERROR"
+            error_code="RATE_LIMIT_ERROR",
         )
     elif response.status >= 500:
         # Server error
@@ -1336,7 +1342,7 @@ try:
             success=False,
             operation="create_item",
             error_message=f"Server error: {response.status}",
-            error_code="SERVER_ERROR"
+            error_code="SERVER_ERROR",
         )
     else:
         # Other client error
@@ -1345,7 +1351,7 @@ try:
             success=False,
             operation="create_item",
             error_message=f"API Error {response.status}: {error_text}",
-            error_code=f"CLIENT_ERROR"
+            error_code=f"CLIENT_ERROR",
         )
 except TimeoutError:
     # Timeout error
@@ -1353,7 +1359,7 @@ except TimeoutError:
         success=False,
         operation="create_item",
         error_message=f"Request timed out after {self.timeout} seconds",
-        error_code="TIMEOUT_ERROR"
+        error_code="TIMEOUT_ERROR",
     )
 except Exception as e:
     # Unexpected exception
@@ -1362,7 +1368,7 @@ except Exception as e:
         success=False,
         operation="create_item",
         error_message=f"Exception: {str(e)}",
-        error_code="EXCEPTION"
+        error_code="EXCEPTION",
     )
 ```
 

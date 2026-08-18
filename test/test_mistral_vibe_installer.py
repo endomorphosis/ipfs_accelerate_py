@@ -77,4 +77,3 @@ def test_mistral_vibe_auth_available_ignores_empty_keys(tmp_path):
         environ={"IPFS_ACCELERATE_MISTRAL_API_KEY": "secret"},
         home=tmp_path,
     )
-

@@ -3812,15 +3812,38 @@ def task_evidence_output_paths(task: PortalTask) -> tuple[str, ...]:
     return _task_evidence_output_paths_from_metadata(task.metadata)
 
 
+def _declared_output_path_is_repo_relative(path: str) -> bool:
+    """Return whether a declared output can be tracked inside a Git tree.
+
+    Retry-budget and reconciliation cards copy host discovery directories as
+    absolute Outputs so ``test -f`` evidence stays findable. Those paths are
+    not repository objects; treating them as declared outputs fails commit
+    handoff with ``declared_output_path_unsafe``.
+    """
+
+    text = str(path or "").strip().replace("\\", "/")
+    if not text or "\0" in text:
+        return False
+    candidate = PurePosixPath(text)
+    return not (
+        text.startswith("/")
+        or candidate.is_absolute()
+        or ".." in candidate.parts
+        or (candidate.parts and candidate.parts[0].endswith(":"))
+    )
+
+
 def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     """Return ordinary outputs plus validated typed evidence outputs."""
 
     return tuple(
         dict.fromkeys(
-            [
-                *(str(path).strip() for path in task.outputs if str(path).strip()),
+            path
+            for path in (
+                *(str(item).strip() for item in task.outputs if str(item).strip()),
                 *task_evidence_output_paths(task),
-            ]
+            )
+            if _declared_output_path_is_repo_relative(path)
         )
     )
 
@@ -19458,7 +19481,33 @@ class PortalImplementationDaemon:
             ),
         }
 
+    def _board_task_is_completed(self, task_id: str) -> bool:
+        """Return whether the live board already marked this task completed."""
+
+        normalized = str(task_id or "").strip()
+        if not normalized or not self.todo_path.exists():
+            return False
+        try:
+            tasks = parse_task_file(self.todo_path, self.task_header_prefix)
+        except (OSError, UnicodeDecodeError):
+            return False
+        return any(
+            task.task_id == normalized and normalize_status(task.status) == "completed"
+            for task in tasks
+        )
+
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        if self._board_task_is_completed(task.task_id):
+            result = {
+                "skipped": True,
+                "reason": "completed_task_leftover",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         authority_revalidation_only = (
             self._manual_completion_authority_revalidation_only_task(task)
         )

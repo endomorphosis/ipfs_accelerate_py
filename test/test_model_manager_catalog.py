@@ -262,9 +262,7 @@ def test_read_facade_has_no_refresh_probe_or_invocation_side_effects(
     manager_factory,
 ):
     source = MemorySource("router.readonly", _snapshot("readonly", "chat"))
-    manager = manager_factory(
-        catalog=AIServiceCatalog({source.source: source})
-    )
+    manager = manager_factory(catalog=AIServiceCatalog({source.source: source}))
     assert source.load_calls == 1
 
     isolated = manager.snapshot()
@@ -288,9 +286,7 @@ def test_refresh_is_explicit_named_and_policy_gated(manager_factory):
         _snapshot("active", "chat", source="deployments.active"),
         side_effecting=True,
     )
-    manager = manager_factory(
-        catalog=AIServiceCatalog({source.source: source})
-    )
+    manager = manager_factory(catalog=AIServiceCatalog({source.source: source}))
 
     with pytest.raises(RefreshPolicyError, match="deployments.active"):
         manager.refresh((source.source,))
@@ -314,9 +310,7 @@ def test_source_failure_retains_last_good_records_and_is_typed_in_health(
         "router.failing",
         _snapshot("retained", "v1", source="router.failing"),
     )
-    manager = manager_factory(
-        catalog=AIServiceCatalog({source.source: source})
-    )
+    manager = manager_factory(catalog=AIServiceCatalog({source.source: source}))
     old_revision = manager.catalog_revision
     source.current = _snapshot("replacement", "v2", source="router.failing")
     source.fail_refresh = True
@@ -336,9 +330,7 @@ def test_concurrent_facade_reads_observe_one_immutable_revision(manager_factory)
         "router.concurrent",
         _snapshot("concurrent", "chat", source="router.concurrent"),
     )
-    manager = manager_factory(
-        catalog=AIServiceCatalog({source.source: source})
-    )
+    manager = manager_factory(catalog=AIServiceCatalog({source.source: source}))
     expected_revision = manager.catalog_revision
     barrier = threading.Barrier(8)
 
@@ -357,15 +349,12 @@ def test_concurrent_facade_reads_observe_one_immutable_revision(manager_factory)
         results = list(pool.map(lambda _: read_many(), range(8)))
 
     assert all(
-        result == {(expected_revision, expected_revision, expected_revision)}
-        for result in results
+        result == {(expected_revision, expected_revision, expected_revision)} for result in results
     )
     assert source.refresh_calls == 0
 
 
-def test_old_enveloped_registry_migration_is_idempotent_and_non_writing(
-    monkeypatch, tmp_path
-):
+def test_old_enveloped_registry_migration_is_idempotent_and_non_writing(monkeypatch, tmp_path):
     for name in (
         "HAVE_STORAGE_WRAPPER",
         "HAVE_IPFS_KIT_STORAGE",

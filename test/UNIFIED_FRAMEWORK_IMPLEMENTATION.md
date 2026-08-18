@@ -23,11 +23,7 @@ The main entry point that integrates all components and provides a standardized 
 from fixed_web_platform.unified_framework import UnifiedWebPlatform
 
 # Create platform with automatic browser detection
-platform = UnifiedWebPlatform(
-    model_name="llama-7b",
-    model_type="text",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="llama-7b", model_type="text", platform="webgpu")
 
 # Run inference with unified API (handles all browser compatibility)
 result = platform.run_inference({"input_text": "Sample text"})
@@ -168,7 +164,7 @@ text_platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webgpu",
-    auto_detect=True  # Auto-detect browser capabilities
+    auto_detect=True,  # Auto-detect browser capabilities
 )
 
 # Run inference
@@ -184,7 +180,7 @@ audio_platform = UnifiedWebPlatform(
     model_type="audio",
     platform="webgpu",
     browser_info={"name": "firefox", "version": "122.0"},
-    configuration={"enable_compute_shaders": True}
+    configuration={"enable_compute_shaders": True},
 )
 
 # Run audio inference

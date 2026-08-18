@@ -21,13 +21,11 @@ llvm_backend = llvm()
 endpoint_url, api_key, handler, queue, batch_size = llvm_backend.init(
     endpoint_url="http://localhost:8080",
     model_name="my-model",
-    endpoint_type="chat"  # or "completion", "streaming"
+    endpoint_type="chat",  # or "completion", "streaming"
 )
 
 # Use handler for generation
-messages = [
-    {"role": "user", "content": "Hello! How are you?"}
-]
+messages = [{"role": "user", "content": "Hello! How are you?"}]
 response = handler(messages)
 ```
 
@@ -50,16 +48,11 @@ ollama_backend = ollama()
 endpoint_url, api_key, handler, queue, batch_size = ollama_backend.init(
     endpoint_url="http://localhost:11434",
     model_name="llama2",
-    endpoint_type="chat"  # or "completion", "streaming", "embedding"
+    endpoint_type="chat",  # or "completion", "streaming", "embedding"
 )
 
 # Use handler for generation
-response = handler("What is machine learning?", 
-    parameters={
-        "temperature": 0.7,
-        "num_predict": 100
-    }
-)
+response = handler("What is machine learning?", parameters={"temperature": 0.7, "num_predict": 100})
 ```
 
 ### Gemini Backend
@@ -81,20 +74,18 @@ gemini_backend = gemini()
 endpoint_url, api_key, handler, queue, batch_size = gemini_backend.init(
     api_key="your-google-api-key",
     model_name="gemini-pro",
-    endpoint_type="chat"  # or "completion", "vision", "embedding"
+    endpoint_type="chat",  # or "completion", "vision", "embedding"
 )
 
 # For text/chat
-response = handler("What is quantum computing?", 
-    parameters={
-        "temperature": 0.7,
-        "top_p": 0.9,
-        "max_output_tokens": 1024
-    }
+response = handler(
+    "What is quantum computing?",
+    parameters={"temperature": 0.7, "top_p": 0.9, "max_output_tokens": 1024},
 )
 
 # For vision tasks
 from PIL import Image
+
 image = Image.open("image.jpg")
 vision_response = handler("Describe this image", image_data=image)
 ```
@@ -118,22 +109,16 @@ claude_backend = claude()
 endpoint_url, api_key, handler, queue, batch_size = claude_backend.init(
     api_key="your-anthropic-api-key",
     model_name="claude-3-opus",
-    endpoint_type="chat"  # or "completion"
+    endpoint_type="chat",  # or "completion"
 )
 
 # Using system prompts
 messages = [
     {"role": "system", "content": "You are a helpful science teacher."},
-    {"role": "user", "content": "Explain black holes"}
+    {"role": "user", "content": "Explain black holes"},
 ]
 
-response = handler(messages, 
-    parameters={
-        "temperature": 0.7,
-        "max_tokens": 2000,
-        "top_p": 0.9
-    }
-)
+response = handler(messages, parameters={"temperature": 0.7, "max_tokens": 2000, "top_p": 0.9})
 ```
 
 ### Common Features

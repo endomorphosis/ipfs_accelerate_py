@@ -31,48 +31,54 @@ import re
 import json
 from pathlib import Path
 
+
 def is_webgpu_webnn_file(content):
     """Check if file is related to WebGPU/WebNN implementation."""
     patterns = [
-        r'webgpu', r'webnn', r'wgsl', r'shaders?', 
-        r'gpu\.requestAdapter', r'navigator\.ml', r'compute[sS]hader'
+        r"webgpu",
+        r"webnn",
+        r"wgsl",
+        r"shaders?",
+        r"gpu\.requestAdapter",
+        r"navigator\.ml",
+        r"compute[sS]hader",
     ]
     for pattern in patterns:
         if re.search(pattern, content, re.IGNORECASE):
             return True
     return False
 
+
 def scan_codebase(root_dir):
     """Scan codebase for WebGPU/WebNN related files."""
     webgpu_webnn_files = []
-    
+
     for root, _, files in os.walk(root_dir):
         for file in files:
-            if file.endswith(('.js', '.ts', '.jsx', '.tsx', '.wgsl')):
+            if file.endswith((".js", ".ts", ".jsx", ".tsx", ".wgsl")):
                 file_path = os.path.join(root, file)
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     try:
                         content = f.read()
                         if is_webgpu_webnn_file(content):
-                            webgpu_webnn_files.append({
-                                'path': file_path,
-                                'filename': file,
-                                'content': content
-                            })
+                            webgpu_webnn_files.append(
+                                {"path": file_path, "filename": file, "content": content}
+                            )
                     except Exception as e:
                         print(f"Error reading {file_path}: {e}")
-    
+
     return webgpu_webnn_files
+
 
 # Main execution
 if __name__ == "__main__":
     root_directory = "/home/barberb/ipfs_accelerate_py"
     files = scan_codebase(root_directory)
-    
+
     # Output results to JSON for further processing
-    with open('webgpu_webnn_files.json', 'w') as f:
+    with open("webgpu_webnn_files.json", "w") as f:
         json.dump(files, f, indent=2)
-    
+
     print(f"Found {len(files)} WebGPU/WebNN related files.")
 ```
 
@@ -87,57 +93,60 @@ import re
 import networkx as nx
 import matplotlib.pyplot as plt
 
+
 def extract_imports(content):
     """Extract import statements from file content."""
     import_patterns = [
         r'import\s+.+\s+from\s+[\'"](.+)[\'"]',
         r'require\s*\(\s*[\'"](.+)[\'"]\s*\)',
-        r'@import\s+[\'"](.+)[\'"]'
+        r'@import\s+[\'"](.+)[\'"]',
     ]
-    
+
     imports = []
     for pattern in import_patterns:
         imports.extend(re.findall(pattern, content))
-    
+
     return imports
+
 
 def build_dependency_graph(files):
     """Build a dependency graph between files."""
     graph = nx.DiGraph()
-    
-    file_map = {f['path']: f for f in files}
-    
+
+    file_map = {f["path"]: f for f in files}
+
     # Add all files as nodes
     for file in files:
-        graph.add_node(file['path'], filename=file['filename'])
-    
+        graph.add_node(file["path"], filename=file["filename"])
+
     # Add edges for dependencies
     for file in files:
-        imports = extract_imports(file['content'])
+        imports = extract_imports(file["content"])
         for imp in imports:
             # Resolve import to actual file path
             for potential_dep in file_map:
                 if potential_dep.endswith(imp) or imp in potential_dep:
-                    graph.add_edge(file['path'], potential_dep)
-    
+                    graph.add_edge(file["path"], potential_dep)
+
     return graph
+
 
 # Main execution
 if __name__ == "__main__":
-    with open('webgpu_webnn_files.json', 'r') as f:
+    with open("webgpu_webnn_files.json", "r") as f:
         files = json.load(f)
-    
+
     graph = build_dependency_graph(files)
-    
+
     # Save graph as JSON
     graph_data = nx.node_link_data(graph)
-    with open('dependency_graph.json', 'w') as f:
+    with open("dependency_graph.json", "w") as f:
         json.dump(graph_data, f, indent=2)
-    
+
     # Visualize graph
     nx.draw(graph, with_labels=True)
     plt.savefig("dependency_graph.png")
-    
+
     print(f"Built dependency graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges.")
 ```
 
@@ -151,84 +160,89 @@ import json
 import re
 import os
 
+
 def categorize_file(content, filename):
     """Categorize file based on content and filename."""
     categories = {
-        'webgpu_backend': re.compile(r'webgpu.*backend|backend.*webgpu', re.IGNORECASE),
-        'webnn_backend': re.compile(r'webnn.*backend|backend.*webnn', re.IGNORECASE),
-        'hardware_abstraction': re.compile(r'hardware.*abstraction|abstraction.*hardware', re.IGNORECASE),
-        'model_loader': re.compile(r'model.*loader|loader.*model', re.IGNORECASE),
-        'quantization': re.compile(r'quantization|quantize', re.IGNORECASE),
-        'react_hooks': re.compile(r'react.*hooks|hooks.*react', re.IGNORECASE),
-        'shader': re.compile(r'shader|wgsl', re.IGNORECASE),
-        'storage': re.compile(r'storage|cache|persist', re.IGNORECASE),
-        'utils': re.compile(r'util', re.IGNORECASE),
-        'test': re.compile(r'test|spec', re.IGNORECASE),
+        "webgpu_backend": re.compile(r"webgpu.*backend|backend.*webgpu", re.IGNORECASE),
+        "webnn_backend": re.compile(r"webnn.*backend|backend.*webnn", re.IGNORECASE),
+        "hardware_abstraction": re.compile(
+            r"hardware.*abstraction|abstraction.*hardware", re.IGNORECASE
+        ),
+        "model_loader": re.compile(r"model.*loader|loader.*model", re.IGNORECASE),
+        "quantization": re.compile(r"quantization|quantize", re.IGNORECASE),
+        "react_hooks": re.compile(r"react.*hooks|hooks.*react", re.IGNORECASE),
+        "shader": re.compile(r"shader|wgsl", re.IGNORECASE),
+        "storage": re.compile(r"storage|cache|persist", re.IGNORECASE),
+        "utils": re.compile(r"util", re.IGNORECASE),
+        "test": re.compile(r"test|spec", re.IGNORECASE),
     }
-    
+
     for category, pattern in categories.items():
         if pattern.search(content) or pattern.search(filename):
             return category
-    
-    return 'other'
+
+    return "other"
+
 
 def map_to_destination(category, filename):
     """Map file to destination in ipfs_accelerate_js structure."""
     base_dir = "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_js"
-    
+
     category_mapping = {
-        'webgpu_backend': f"{base_dir}/src/hardware/backends",
-        'webnn_backend': f"{base_dir}/src/hardware/backends",
-        'hardware_abstraction': f"{base_dir}/src/hardware",
-        'model_loader': f"{base_dir}/src/model",
-        'quantization': f"{base_dir}/src/quantization",
-        'react_hooks': f"{base_dir}/src/react",
-        'shader': f"{base_dir}/src/worker/webgpu/shaders",
-        'storage': f"{base_dir}/src/storage",
-        'utils': f"{base_dir}/src/utils",
-        'test': f"{base_dir}/test",
-        'other': f"{base_dir}/src/utils"
+        "webgpu_backend": f"{base_dir}/src/hardware/backends",
+        "webnn_backend": f"{base_dir}/src/hardware/backends",
+        "hardware_abstraction": f"{base_dir}/src/hardware",
+        "model_loader": f"{base_dir}/src/model",
+        "quantization": f"{base_dir}/src/quantization",
+        "react_hooks": f"{base_dir}/src/react",
+        "shader": f"{base_dir}/src/worker/webgpu/shaders",
+        "storage": f"{base_dir}/src/storage",
+        "utils": f"{base_dir}/src/utils",
+        "test": f"{base_dir}/test",
+        "other": f"{base_dir}/src/utils",
     }
-    
+
     # Special handling for shaders based on browser-specific patterns
-    if category == 'shader':
-        if 'firefox' in filename.lower():
+    if category == "shader":
+        if "firefox" in filename.lower():
             return f"{base_dir}/src/worker/webgpu/shaders/firefox"
-        elif 'chrome' in filename.lower():
+        elif "chrome" in filename.lower():
             return f"{base_dir}/src/worker/webgpu/shaders/chrome"
-        elif 'edge' in filename.lower():
+        elif "edge" in filename.lower():
             return f"{base_dir}/src/worker/webgpu/shaders/edge"
-        elif 'safari' in filename.lower():
+        elif "safari" in filename.lower():
             return f"{base_dir}/src/worker/webgpu/shaders/safari"
         else:
             return f"{base_dir}/src/worker/webgpu/shaders"
-    
+
     return category_mapping.get(category, f"{base_dir}/src")
+
 
 # Main execution
 if __name__ == "__main__":
-    with open('webgpu_webnn_files.json', 'r') as f:
+    with open("webgpu_webnn_files.json", "r") as f:
         files = json.load(f)
-    
+
     for file in files:
-        category = categorize_file(file['content'], file['filename'])
-        destination = map_to_destination(category, file['filename'])
-        
-        file['category'] = category
-        file['destination'] = destination
-    
+        category = categorize_file(file["content"], file["filename"])
+        destination = map_to_destination(category, file["filename"])
+
+        file["category"] = category
+        file["destination"] = destination
+
     # Output categorized files
-    with open('categorized_files.json', 'w') as f:
+    with open("categorized_files.json", "w") as f:
         json.dump(files, f, indent=2)
-    
+
     # Generate summary
     categories = {}
     for file in files:
-        cat = file['category']
+        cat = file["category"]
         if cat not in categories:
             categories[cat] = 0
         categories[cat] += 1
-    
+
     print("File categorization summary:")
     for cat, count in categories.items():
         print(f"  {cat}: {count} files")
@@ -437,17 +451,14 @@ import json
 import subprocess
 import time
 
+
 def run_typescript_compilation_test(dir_path):
     """Test TypeScript compilation."""
     try:
         result = subprocess.run(
-            ['npx', 'tsc', '--noEmit'],
-            cwd=dir_path,
-            capture_output=True,
-            text=True,
-            check=False
+            ["npx", "tsc", "--noEmit"], cwd=dir_path, capture_output=True, text=True, check=False
         )
-        
+
         if result.returncode == 0:
             return True, "TypeScript compilation successful"
         else:
@@ -455,22 +466,24 @@ def run_typescript_compilation_test(dir_path):
     except Exception as e:
         return False, f"Failed to run TypeScript compilation: {e}"
 
+
 def verify_import_paths(dir_path):
     """Verify import paths are correctly updated."""
     errors = []
-    
+
     for root, _, files in os.walk(dir_path):
         for file in files:
-            if file.endswith(('.ts', '.tsx', '.js', '.jsx')):
+            if file.endswith((".ts", ".tsx", ".js", ".jsx")):
                 file_path = os.path.join(root, file)
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
-                    
+
                     # Check for old style imports
-                    if 'ipfs_accelerate_js_' in content:
+                    if "ipfs_accelerate_js_" in content:
                         errors.append(f"{file_path}: Contains old style imports")
-    
+
     return len(errors) == 0, errors
+
 
 def check_file_existence(base_dir):
     """Check that key files exist in the appropriate locations."""
@@ -481,23 +494,24 @@ def check_file_existence(base_dir):
         "src/model/model_loader.ts",
         "src/index.ts",
         "src/react/hooks.ts",
-        "src/worker/webgpu/shaders/firefox/matmul_4bit.wgsl"
+        "src/worker/webgpu/shaders/firefox/matmul_4bit.wgsl",
     ]
-    
+
     missing = []
     for file in key_files:
         full_path = os.path.join(base_dir, file)
         if not os.path.exists(full_path):
             missing.append(file)
-    
+
     return len(missing) == 0, missing
+
 
 # Main execution
 if __name__ == "__main__":
     base_dir = "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_js"
-    
+
     print("Running migration verification...")
-    
+
     # Check file existence
     files_exist, missing_files = check_file_existence(base_dir)
     if files_exist:
@@ -506,7 +520,7 @@ if __name__ == "__main__":
         print("❌ Some key files are missing:")
         for file in missing_files:
             print(f"  - {file}")
-    
+
     # Verify import paths
     paths_correct, path_errors = verify_import_paths(base_dir)
     if paths_correct:
@@ -515,38 +529,29 @@ if __name__ == "__main__":
         print("❌ Some files have incorrect import paths:")
         for error in path_errors:
             print(f"  - {error}")
-    
+
     # Run TypeScript compilation test
     ts_compile_success, ts_compile_msg = run_typescript_compilation_test(base_dir)
     if ts_compile_success:
         print(f"✅ {ts_compile_msg}")
     else:
         print(f"❌ {ts_compile_msg}")
-    
+
     # Generate overall report
     verification_result = {
         "timestamp": time.time(),
         "date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "tests": {
-            "file_existence": {
-                "success": files_exist,
-                "missing_files": missing_files
-            },
-            "import_paths": {
-                "success": paths_correct,
-                "errors": path_errors
-            },
-            "typescript_compilation": {
-                "success": ts_compile_success,
-                "message": ts_compile_msg
-            }
+            "file_existence": {"success": files_exist, "missing_files": missing_files},
+            "import_paths": {"success": paths_correct, "errors": path_errors},
+            "typescript_compilation": {"success": ts_compile_success, "message": ts_compile_msg},
         },
-        "overall_success": files_exist and paths_correct and ts_compile_success
+        "overall_success": files_exist and paths_correct and ts_compile_success,
     }
-    
-    with open('migration_test_results.json', 'w') as f:
+
+    with open("migration_test_results.json", "w") as f:
         json.dump(verification_result, f, indent=2)
-    
+
     print(f"\nVerification {'passed' if verification_result['overall_success'] else 'failed'}.")
     print("Detailed results saved to migration_test_results.json")
 ```

@@ -178,9 +178,7 @@ class FakeClock:
 def _to_rfc3339(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamp must be timezone-aware")
-    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def parse_rfc3339(value: str) -> datetime:
@@ -258,9 +256,7 @@ def validate_document(document: Mapping[str, Any]) -> Dict[str, Any]:
         )
     version = document.get("schema_version")
     if version not in SUPPORTED_STORE_SCHEMA_VERSIONS:
-        raise SchemaDriftError(
-            "unsupported ledger store schema_version: %r" % (version,)
-        )
+        raise SchemaDriftError("unsupported ledger store schema_version: %r" % (version,))
     contract = document.get("contract_schema_version", SCHEMA_VERSION)
     if contract not in SUPPORTED_SCHEMA_VERSIONS:
         raise SchemaDriftError(
@@ -437,8 +433,7 @@ class InMemoryUsageLedgerStore:
             if fence is not None:
                 if int(fence) < int(current["fence"]):
                     raise StaleFenceError(
-                        "caller fence %s is stale (store fence %s)"
-                        % (fence, current["fence"])
+                        "caller fence %s is stale (store fence %s)" % (fence, current["fence"])
                     )
                 validated["fence"] = int(fence)
             else:
@@ -509,9 +504,7 @@ class InMemoryUsageLedgerStore:
     def _check_capacity(self, document: Mapping[str, Any]) -> None:
         events = document.get("events") or []
         if len(events) > self._max_events:
-            raise StoreExhaustedError(
-                "event log exceeds max_events=%d" % self._max_events
-            )
+            raise StoreExhaustedError("event log exceeds max_events=%d" % self._max_events)
         reservations = document.get("reservations") or {}
         if len(reservations) > self._max_reservations:
             raise StoreExhaustedError(
@@ -531,9 +524,7 @@ class InMemoryUsageLedgerStore:
 
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=".%s." % path.name, dir=str(path.parent)
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=".%s." % path.name, dir=str(path.parent))
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -600,9 +591,7 @@ class DurableUsageLedgerStore:
     def _ensure_initialized(self) -> None:
         with self._exclusive():
             if not self._path.exists():
-                doc = empty_ledger_document(
-                    writer_id=self._writer_id, fence=self._initial_fence
-                )
+                doc = empty_ledger_document(writer_id=self._writer_id, fence=self._initial_fence)
                 self._write_unlocked(doc)
             else:
                 # Touch-validate existing document.
@@ -637,8 +626,7 @@ class DurableUsageLedgerStore:
                 if fence is not None:
                     if int(fence) < int(current["fence"]):
                         raise StaleFenceError(
-                            "caller fence %s is stale (store fence %s)"
-                            % (fence, current["fence"])
+                            "caller fence %s is stale (store fence %s)" % (fence, current["fence"])
                         )
                     validated["fence"] = int(fence)
                 else:
@@ -676,9 +664,7 @@ class DurableUsageLedgerStore:
                     "path": str(self._path),
                     "observed_at": _to_rfc3339(self._clock.now()),
                 }
-                checkpoint_path = self._path.with_suffix(
-                    self._path.suffix + ".checkpoint.json"
-                )
+                checkpoint_path = self._path.with_suffix(self._path.suffix + ".checkpoint.json")
                 payload = canonical_json(receipt).encode("utf-8")
                 _atomic_write_bytes(checkpoint_path, payload)
                 return receipt
@@ -714,9 +700,7 @@ class DurableUsageLedgerStore:
     def _check_capacity(self, document: Mapping[str, Any]) -> None:
         events = document.get("events") or []
         if len(events) > self._max_events:
-            raise StoreExhaustedError(
-                "event log exceeds max_events=%d" % self._max_events
-            )
+            raise StoreExhaustedError("event log exceeds max_events=%d" % self._max_events)
         reservations = document.get("reservations") or {}
         if len(reservations) > self._max_reservations:
             raise StoreExhaustedError(
@@ -774,9 +758,7 @@ class _FileLock:
                 if time.monotonic() >= deadline:
                     self._handle.close()
                     self._handle = None
-                    raise LedgerStoreError(
-                        "timed out acquiring ledger lock at %s" % self._path
-                    )
+                    raise LedgerStoreError("timed out acquiring ledger lock at %s" % self._path)
                 time.sleep(0.01)
 
     def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
@@ -889,9 +871,7 @@ class PartitionedUsageLedgerStore:
     ) -> Dict[str, Any]:
         doc = _deep_copy_document(document)
         doc["partition"] = self._partition.to_dict()
-        return self._inner.compare_and_set(
-            expected_revision, doc, writer_id=writer_id, fence=fence
-        )
+        return self._inner.compare_and_set(expected_revision, doc, writer_id=writer_id, fence=fence)
 
     def checkpoint(self) -> Dict[str, Any]:
         return self._inner.checkpoint()
@@ -957,8 +937,7 @@ def migrate_document(
         # Identity migration: re-validate.
         return validate_document(document)
     raise MigrationError(
-        "no migration path from schema_version %r to %r"
-        % (version, target_schema_version)
+        "no migration path from schema_version %r to %r" % (version, target_schema_version)
     )
 
 

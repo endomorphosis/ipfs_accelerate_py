@@ -244,19 +244,18 @@ The integration creates a coordinated recovery process:
 ```python
 # Create auto recovery manager with circuit breaker integration
 auto_recovery = AutoRecoveryManager(
-    coordinator=coordinator,
-    circuit_breaker=circuit_breaker,
-    recovery_metrics=recovery_metrics
+    coordinator=coordinator, circuit_breaker=circuit_breaker, recovery_metrics=recovery_metrics
 )
 
 # Register with health monitor
 health_monitor.register_observer(auto_recovery)
 
+
 # Recover a failed worker with circuit breaker awareness
 async def recover_worker(worker_id):
     # Get circuit breaker state
     circuit_state = circuit_breaker.get_state()
-    
+
     # Determine recovery level based on circuit state
     if circuit_state == "open":
         recovery_level = RecoveryLevel.HIGH
@@ -270,22 +269,22 @@ async def recover_worker(worker_id):
         recovery_level = RecoveryLevel.LOW
         max_attempts = 3
         retry_interval = 30
-    
+
     # Attempt recovery with appropriate settings
     success = await auto_recovery.recover_worker(
         worker_id=worker_id,
         level=recovery_level,
         max_attempts=max_attempts,
-        retry_interval=retry_interval
+        retry_interval=retry_interval,
     )
-    
+
     # Record outcome in circuit breaker
     if success:
         if circuit_state == "half-open":
             circuit_breaker.record_success()
     else:
         circuit_breaker.record_failure()
-    
+
     return success
 ```
 
@@ -396,19 +395,22 @@ auto_recovery = AutoRecoverySystem(
     coordinator_id="coordinator-1",
     coordinator_addresses=["localhost:8081", "localhost:8082"],
     db_path="./benchmark_db.duckdb",
-    visualization_path="./visualizations"
+    visualization_path="./visualizations",
 )
 
 # Start the system
 auto_recovery.start()
 
+
 # Register callbacks for leader transitions
 def on_become_leader():
     print("This node is now the leader!")
-    
+
+
 def on_leader_changed(old_leader, new_leader):
     print(f"Leader changed from {old_leader} to {new_leader}")
-    
+
+
 auto_recovery.register_become_leader_callback(on_become_leader)
 auto_recovery.register_leader_changed_callback(on_leader_changed)
 
@@ -523,7 +525,7 @@ def detect_webnn_webgpu_capabilities():
     try:
         detector = EnhancedHardwareDetector()
         web_capabilities = detector.detect_capabilities()
-        
+
         # Update capabilities with detected values
         self.web_capabilities = web_capabilities
     except:
@@ -531,7 +533,7 @@ def detect_webnn_webgpu_capabilities():
         self.web_capabilities = {
             "webnn_supported": False,
             "webgpu_supported": False,
-            "browsers": {}
+            "browsers": {},
         }
 ```
 

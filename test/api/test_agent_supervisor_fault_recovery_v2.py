@@ -7,10 +7,22 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     latest_event_cursor,
     read_jsonl_events,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    CAMPAIGN_DURABILITY_REQUIREMENT_ID,
+    LEARNING_CHECKPOINT_BINDING_FIELDS,
+    IncompatibleResumeError,
+    LearningCheckpointBinding,
+    PromotionMutationError,
+    StaleFenceError,
+)
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
+    LearningCheckpointAdapter,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import (
     BOUNDED_RECOVERY_REQUIREMENT_ID,
@@ -81,8 +93,7 @@ def test_partial_event_tail_is_quarantined_from_checkpoint(
         repository_id="repository:current",
         tree_id="tree:merged",
         event_log_path=event_log,
-        verify=lambda restored: restored.checkpoint_id
-        == checkpoint.checkpoint_id,
+        verify=lambda restored: restored.checkpoint_id == checkpoint.checkpoint_id,
     )
 
     assert receipt.disposition is RecoveryDisposition.RECOVERED
@@ -92,9 +103,7 @@ def test_partial_event_tail_is_quarantined_from_checkpoint(
     assert receipt.evidence_claim_ids == (BOUNDED_RECOVERY_REQUIREMENT_ID,)
     assert len(receipt.quarantined_paths) == 1
     assert Path(receipt.quarantined_paths[0]).read_bytes() == b'{"type":"partial"'
-    assert [event["type"] for event in read_jsonl_events(event_log)] == [
-        "task_changed"
-    ]
+    assert [event["type"] for event in read_jsonl_events(event_log)] == ["task_changed"]
 
 
 def test_corrupt_latest_checkpoint_falls_back_to_last_valid(
@@ -194,11 +203,14 @@ def test_receipt_identity_detects_tampering_and_tree_staleness(
         repository_id="repository:current",
         tree_id="tree:merged",
     )
-    assert verify_repair_receipt(
-        receipt,
-        repository_id="repository:current",
-        tree_id="tree:merged",
-    ) is receipt
+    assert (
+        verify_repair_receipt(
+            receipt,
+            repository_id="repository:current",
+            tree_id="tree:merged",
+        )
+        is receipt
+    )
     tampered = receipt.to_dict()
     tampered["reason_code"] = "invented_success"
     with pytest.raises(RecoveryIntegrityError):
@@ -227,9 +239,7 @@ def test_missing_checkpoint_fails_closed_with_exact_receipt(
         repository_id="repository:current",
         tree_id="tree:merged",
     )
-    persisted = json.loads(
-        manager._receipt_path(receipt.incident_id).read_text(encoding="utf-8")
-    )
+    persisted = json.loads(manager._receipt_path(receipt.incident_id).read_text(encoding="utf-8"))
     assert receipt.disposition is RecoveryDisposition.FAILED_CLOSED
     assert receipt.reason_code == "no_valid_checkpoint"
     assert RepairReceipt.from_dict(persisted) == receipt
@@ -287,3 +297,224 @@ def test_concurrent_incident_recovery_collapses_to_one_repair(
 
     assert repair_count == 1
     assert len({receipt.receipt_id for receipt in receipts}) == 1
+
+
+def _learning_binding(**overrides: object) -> LearningCheckpointBinding:
+    payload = {
+        "architecture_id": "arch:v1",
+        "weights_id": "weights:0",
+        "optimizer_id": "opt:adam",
+        "scheduler_id": "sched:cosine",
+        "tokenizer_id": "tok:v1",
+        "vocab_id": "vocab:v1",
+        "cursor_id": "cursor:0",
+        "corpus_id": "corpus:v1",
+        "split_id": "split:v1",
+        "curriculum_id": "curr:v1",
+        "loss_id": "loss:ce",
+        "random_id": "rng:0",
+        "env_id": "env:v1",
+        "code_id": "code:v1",
+        "compiler_id": "compiler:v1",
+        "cursor_step": 0,
+    }
+    payload.update(overrides)
+    return LearningCheckpointBinding.from_dict(payload)
+
+
+def test_learning_checkpoint_binds_required_identities(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    binding = _learning_binding()
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    checkpoint = adapter.save(
+        binding,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    stored = LearningCheckpointBinding.from_dict(checkpoint.state["binding"])
+    assert CAMPAIGN_DURABILITY_REQUIREMENT_ID
+    assert tuple(stored.to_dict())  # identity is complete
+    for name in LEARNING_CHECKPOINT_BINDING_FIELDS:
+        assert getattr(stored, name)
+    assert checkpoint.state["promotion_authority"] is False
+    assert stored.lineage_id == binding.lineage_id
+
+
+def test_incompatible_resume_fails_closed(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    with pytest.raises(IncompatibleResumeError, match="tokenizer_id"):
+        adapter.resume(
+            _learning_binding(tokenizer_id="tok:other"),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+        )
+    advanced = _learning_binding(
+        weights_id="weights:1",
+        cursor_id="cursor:8",
+        random_id="rng:8",
+        cursor_step=8,
+    )
+    adapter.save(
+        advanced,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=2,
+        cursor=cursor,
+        fence=2,
+    )
+    resumed = adapter.resume(
+        advanced,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        fence=2,
+    )
+    assert resumed.compatible
+    assert resumed.promotion_authority is False
+    with pytest.raises(IncompatibleResumeError, match="cursor_step moved backwards"):
+        adapter.save(
+            _learning_binding(cursor_step=0),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=3,
+            cursor=cursor,
+            fence=3,
+        )
+
+
+def test_overwrite_without_current_fence_fails_closed(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=4,
+    )
+    with pytest.raises(StaleFenceError, match="stale fence 3"):
+        adapter.save(
+            _learning_binding(
+                weights_id="weights:1",
+                cursor_id="cursor:1",
+                random_id="rng:1",
+                cursor_step=1,
+            ),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=2,
+            cursor=cursor,
+            fence=3,
+        )
+
+
+def test_learning_crash_restarts_exactly_once(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    first = adapter.recover_crash(
+        incident_id="learning-crash-1",
+        fault=RecoveryFault.PROCESS_CRASH,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    second = adapter.recover_crash(
+        incident_id="learning-crash-1",
+        fault=RecoveryFault.PROCESS_CRASH,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    restarted = LearningCheckpointAdapter(tmp_path / "recovery")
+    third = restarted.recover_crash(
+        incident_id="learning-crash-1",
+        fault=RecoveryFault.PROCESS_CRASH,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    assert first.restart_performed is True
+    assert first.restart_count == 1
+    assert second.restart_performed is False
+    assert second.restart_count == 1
+    assert third.restart_performed is False
+    assert third.restart_count == 1
+    assert first.repair is not None and second.repair is not None
+    assert first.repair.receipt_id == second.repair.receipt_id == third.repair.receipt_id
+    assert first.promotion_authority is False
+
+
+def test_learning_checkpoint_rejects_promotion_authority(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    with pytest.raises(PromotionMutationError):
+        adapter.save(
+            _learning_binding(),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=1,
+            cursor=cursor,
+            fence=1,
+            extra={"promotion_pointer": "current"},
+        )
+    with pytest.raises(PromotionMutationError):
+        adapter.save(
+            _learning_binding(),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=1,
+            cursor=cursor,
+            fence=1,
+            extra={"promotion_authority": True},
+        )
+
+
+def test_integrated_security_matrix_covers_q_rejections_and_safe_restart(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.rescue.security_fault_matrix import (
+        SecurityFaultMatrix,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.integrated_security import (
+        ALL_Q_REJECTIONS,
+        MATERIAL_STAGES,
+        SecurityStage,
+        evaluate_integrated_security,
+        hostile_fixture,
+    )
+
+    matrix = SecurityFaultMatrix(tmp_path / "security-matrix")
+    receipt = matrix.run()
+    assert receipt.closed
+    assert receipt.missing_rejections == ()
+    assert receipt.duplicate_accepted_work == 0
+    assert {item.reason for item in receipt.cases} == set(ALL_Q_REJECTIONS)
+    assert {item.stage for item in receipt.recovery} == set(MATERIAL_STAGES)
+    assert evaluate_integrated_security(hostile_fixture("partial_checkpoint")).admitted is False
+    recovered = matrix.recover_stage(
+        SecurityStage.CHECKPOINT,
+        incident_id="api-partial-checkpoint",
+        evidence_ids=("merged-tree-proof",),
+    )
+    assert "merged-tree-proof" in recovered.preserved_evidence_ids
+    assert recovered.duplicate_accepted_work == 0

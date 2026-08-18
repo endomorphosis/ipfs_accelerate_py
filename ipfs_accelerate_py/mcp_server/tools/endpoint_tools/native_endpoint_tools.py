@@ -25,9 +25,7 @@ def _load_endpoint_tools_api() -> Dict[str, Any]:
 
         return {"_module": _endpoints_mod}
     except Exception:
-        logger.warning(
-            "Source endpoint_tools import unavailable, using in-memory fallback"
-        )
+        logger.warning("Source endpoint_tools import unavailable, using in-memory fallback")
         return {}
 
 
@@ -117,7 +115,9 @@ async def endpoint_remove(endpoint_id: str) -> Dict[str, Any]:
     """Remove a registered inference endpoint."""
     try:
         mod = _get_legacy_module()
-        store = mod.ENDPOINTS if (mod is not None and hasattr(mod, "ENDPOINTS")) else _ENDPOINT_STORE
+        store = (
+            mod.ENDPOINTS if (mod is not None and hasattr(mod, "ENDPOINTS")) else _ENDPOINT_STORE
+        )
         if endpoint_id in store:
             del store[endpoint_id]
             return _normalize_payload({"endpoint_id": endpoint_id, "removed": True})
@@ -136,7 +136,9 @@ async def endpoint_update(
     """Update properties of an existing endpoint."""
     try:
         mod = _get_legacy_module()
-        store = mod.ENDPOINTS if (mod is not None and hasattr(mod, "ENDPOINTS")) else _ENDPOINT_STORE
+        store = (
+            mod.ENDPOINTS if (mod is not None and hasattr(mod, "ENDPOINTS")) else _ENDPOINT_STORE
+        )
         if endpoint_id not in store:
             return _error_result(f"Endpoint {endpoint_id!r} not found", endpoint_id=endpoint_id)
         endpoint = dict(store[endpoint_id])
@@ -158,7 +160,9 @@ async def endpoint_get(endpoint_id: str) -> Dict[str, Any]:
     """Get details of a specific endpoint."""
     try:
         mod = _get_legacy_module()
-        store = mod.ENDPOINTS if (mod is not None and hasattr(mod, "ENDPOINTS")) else _ENDPOINT_STORE
+        store = (
+            mod.ENDPOINTS if (mod is not None and hasattr(mod, "ENDPOINTS")) else _ENDPOINT_STORE
+        )
         if endpoint_id in store:
             return _normalize_payload({"endpoint": store[endpoint_id]})
         return _error_result(f"Endpoint {endpoint_id!r} not found", endpoint_id=endpoint_id)
@@ -270,9 +274,7 @@ def register_native_endpoint_tools(manager: Any) -> None:
         description="Get details of a specific inference endpoint.",
         input_schema={
             "type": "object",
-            "properties": {
-                "endpoint_id": {"type": "string", "description": "Endpoint UUID."}
-            },
+            "properties": {"endpoint_id": {"type": "string", "description": "Endpoint UUID."}},
             "required": ["endpoint_id"],
         },
         runtime="fastapi",

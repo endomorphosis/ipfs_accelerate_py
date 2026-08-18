@@ -112,7 +112,9 @@ MBart-50 has its own tokenizer [`MBart50Tokenizer`].
 from transformers import MBartForConditionalGeneration, MBart50TokenizerFast
 
 model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50")
-tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50", src_lang="en_XX", tgt_lang="ro_RO")
+tokenizer = MBart50TokenizerFast.from_pretrained(
+    "facebook/mbart-large-50", src_lang="en_XX", tgt_lang="ro_RO"
+)
 
 src_text = " UN Chief Says There Is No Military Solution in Syria"
 tgt_text = "Şeful ONU declară că nu există o soluţie militară în Siria"
@@ -142,14 +144,18 @@ tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-t
 # translate Hindi to French
 tokenizer.src_lang = "hi_IN"
 encoded_hi = tokenizer(article_hi, return_tensors="pt")
-generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
+generated_tokens = model.generate(
+    **encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"]
+)
 tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 # => "Le chef de l 'ONU affirme qu 'il n 'y a pas de solution militaire en Syria."
 
 # translate Arabic to English
 tokenizer.src_lang = "ar_AR"
 encoded_ar = tokenizer(article_ar, return_tensors="pt")
-generated_tokens = model.generate(**encoded_ar, forced_bos_token_id=tokenizer.lang_code_to_id["en_XX"])
+generated_tokens = model.generate(
+    **encoded_ar, forced_bos_token_id=tokenizer.lang_code_to_id["en_XX"]
+)
 tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 # => "The Secretary-General of the United Nations says there is no military solution in Syria."
 ```

@@ -11,7 +11,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class CudaHardwareTemplate(BaseHardwareTemplate):
     """CUDA hardware template implementation for NVIDIA GPUs."""
-    
+
     def __init__(self):
         """Initialize the CUDA hardware template."""
         super().__init__()
@@ -22,9 +22,9 @@ class CudaHardwareTemplate(BaseHardwareTemplate):
         self.supports_dynamic_shapes = True
         self.resource_requirements = {
             "vram_minimum": 2048,  # 2GB minimum VRAM
-            "recommended_batch_size": 4
+            "recommended_batch_size": 4,
         }
-    
+
     def get_import_statements(self) -> str:
         """Get CUDA-specific import statements."""
         return """
@@ -33,7 +33,7 @@ import os
 import torch
 import numpy as np
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get CUDA-specific initialization code."""
         return f"""
@@ -62,7 +62,7 @@ model.eval()
 if hasattr(model, "hf_device_map"):
     print(f"Device map: {{model.hf_device_map}}")
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get CUDA-specific handler creation code."""
         return f"""
@@ -75,7 +75,7 @@ handler = self.create_cuda_{task_type}_endpoint_handler(
     tokenizer=tokenizer
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get CUDA-specific inference code."""
         if task_type == "text_embedding":
@@ -128,14 +128,14 @@ predictions = scores.cpu().numpy().tolist()
 # CUDA inference for {task_type}
 outputs = endpoint(**inputs)
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get CUDA-specific cleanup code."""
         return """
 # CUDA cleanup
 torch.cuda.empty_cache()
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get CUDA-specific mock implementation code."""
         return """
@@ -146,7 +146,7 @@ mock_model.to.return_value = mock_model  # Mock the to() method
 mock_model.eval.return_value = mock_model  # Mock the eval() method
 mock_model.device = "cuda"  # Pretend we're on a GPU
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get CUDA-specific hardware detection code."""
         return """
@@ -166,14 +166,14 @@ def is_available():
         print(f"Error checking CUDA availability: {e}")
         return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check CUDA compatibility with architecture type."""
         # CUDA is compatible with most architectures including MoE
         # For MoE models, we'll rely on device_map="auto" to handle multi-GPU distribution
         # or offload to CPU if necessary
         return True
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if CUDA is not available."""
         return "cpu"

@@ -38,7 +38,7 @@ from fixed_web_platform.visualization import (
     PerformanceVisualizer,
     CompatibilityVisualizer,
     MemoryVisualizer,
-    TrendVisualizer
+    TrendVisualizer,
 )
 
 # Create visualizers
@@ -84,6 +84,7 @@ Compare inference throughput across different hardware platforms:
 ```python
 # Create performance visualizer
 from fixed_web_platform.visualization import PerformanceVisualizer
+
 visualizer = PerformanceVisualizer(db_path="./benchmark_db.duckdb")
 
 # Generate throughput comparison chart
@@ -92,7 +93,7 @@ visualizer.compare_hardware(
     metric="throughput_items_per_sec",
     hardware_platforms=["cuda", "rocm", "mps", "webgpu", "qualcomm"],
     batch_sizes=[1, 4, 16],
-    output_path="throughput_comparison.html"
+    output_path="throughput_comparison.html",
 )
 ```
 
@@ -110,7 +111,7 @@ visualizer.compare_hardware(
     hardware_platforms=["cuda", "rocm", "mps", "webgpu", "qualcomm"],
     batch_sizes=[1],
     show_percentiles=True,  # Show p50, p90, p99 latency
-    output_path="latency_comparison.html"
+    output_path="latency_comparison.html",
 )
 ```
 
@@ -125,7 +126,7 @@ visualizer.analyze_batch_size_impact(
     hardware_platform="cuda",
     batch_sizes=[1, 2, 4, 8, 16, 32],
     metric="throughput_items_per_sec",
-    output_path="batch_size_impact.html"
+    output_path="batch_size_impact.html",
 )
 ```
 
@@ -138,13 +139,14 @@ Generate a visual compatibility matrix for models across hardware platforms:
 ```python
 # Create compatibility visualizer
 from fixed_web_platform.visualization import CompatibilityVisualizer
+
 visualizer = CompatibilityVisualizer(db_path="./benchmark_db.duckdb")
 
 # Generate compatibility matrix
 visualizer.generate_matrix(
     model_families=["text", "vision", "audio", "multimodal"],
     hardware_platforms=["cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"],
-    output_path="compatibility_matrix.html"
+    output_path="compatibility_matrix.html",
 )
 ```
 
@@ -162,7 +164,7 @@ visualizer.generate_selection_guide(
     model_type="text_generation",
     model_size="large",
     prioritize="throughput",  # or "latency", "memory", "power_efficiency"
-    output_path="hardware_selection_guide.html"
+    output_path="hardware_selection_guide.html",
 )
 ```
 
@@ -175,6 +177,7 @@ Generate visualizations using custom SQL queries:
 ```python
 # Create SQL-based visualization
 from fixed_web_platform.visualization import SQLVisualizer
+
 sql_viz = SQLVisualizer(db_path="./benchmark_db.duckdb")
 
 # Generate visualization from custom SQL
@@ -193,7 +196,7 @@ sql_viz.visualize_query(
     y_field="avg_throughput",
     color_field="hardware_type",
     title="BERT Model Family Performance Comparison",
-    output_path="bert_family_comparison.html"
+    output_path="bert_family_comparison.html",
 )
 ```
 
@@ -204,6 +207,7 @@ Visualize performance trends over time:
 ```python
 # Generate performance trend chart
 from fixed_web_platform.visualization import TrendVisualizer
+
 trend_viz = TrendVisualizer(db_path="./benchmark_db.duckdb")
 
 # Visualize performance trends over time
@@ -214,7 +218,7 @@ trend_viz.visualize_trend(
     time_range="last_3_months",
     group_by="week",
     include_regression=True,  # Show trend line
-    output_path="performance_trend.html"
+    output_path="performance_trend.html",
 )
 ```
 
@@ -227,6 +231,7 @@ Create an interactive performance dashboard:
 ```python
 # Create performance dashboard
 from fixed_web_platform.visualization.dashboards import PerformanceDashboard
+
 dashboard = PerformanceDashboard(db_path="./benchmark_db.duckdb")
 
 # Generate interactive dashboard
@@ -237,7 +242,7 @@ dashboard.generate(
     metrics=["throughput", "latency", "memory", "power_efficiency"],
     enable_filtering=True,
     enable_comparison=True,
-    output_path="performance_dashboard.html"
+    output_path="performance_dashboard.html",
 )
 ```
 
@@ -248,6 +253,7 @@ Create an interactive compatibility dashboard:
 ```python
 # Create compatibility dashboard
 from fixed_web_platform.visualization.dashboards import CompatibilityDashboard
+
 compatibility_dashboard = CompatibilityDashboard(db_path="./benchmark_db.duckdb")
 
 # Generate interactive dashboard
@@ -256,7 +262,7 @@ compatibility_dashboard.generate(
     default_view="matrix",
     include_model_families=True,
     show_performance_metrics=True,
-    output_path="compatibility_dashboard.html"
+    output_path="compatibility_dashboard.html",
 )
 ```
 
@@ -275,7 +281,7 @@ data_provider = BenchmarkDataProvider(db_path="./benchmark_db.duckdb")
 data = data_provider.get_performance_data(
     model_name="bert-base-uncased",
     hardware_platforms=["cuda", "webgpu"],
-    metric="throughput_items_per_sec"
+    metric="throughput_items_per_sec",
 )
 
 # Create custom plot with matplotlib
@@ -303,7 +309,7 @@ data_provider = BenchmarkDataProvider(db_path="./benchmark_db.duckdb")
 df = data_provider.get_performance_dataframe(
     model_names=["bert-base-uncased", "t5-small", "vit-base"],
     hardware_platforms=["cuda", "webgpu", "qualcomm"],
-    metric="throughput_items_per_sec"
+    metric="throughput_items_per_sec",
 )
 
 # Create interactive plot with plotly
@@ -314,7 +320,7 @@ fig = px.bar(
     color="hardware_platform",
     barmode="group",
     title="Model Performance Across Hardware Platforms",
-    labels={"throughput_items_per_sec": "Throughput (items/sec)"}
+    labels={"throughput_items_per_sec": "Throughput (items/sec)"},
 )
 
 # Save as interactive HTML

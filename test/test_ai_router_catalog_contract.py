@@ -64,11 +64,7 @@ def test_router_exposes_one_typed_side_effect_free_discovery_contract(
 def test_router_snapshots_share_schema_and_canonical_binding_identity() -> None:
     snapshots = tuple(router.get_catalog_snapshot() for router, _name in _ROUTERS)
     schema_versions = {snapshot.schema_version for snapshot in snapshots}
-    binding_ids = [
-        binding.binding_id
-        for snapshot in snapshots
-        for binding in snapshot.bindings
-    ]
+    binding_ids = [binding.binding_id for snapshot in snapshots for binding in snapshot.bindings]
 
     assert len(schema_versions) == 1
     assert all(snapshot.revision for snapshot in snapshots)

@@ -40,17 +40,17 @@ from plotly.subplots import make_subplots
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(f"dashboard_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
+        logging.FileHandler(f"dashboard_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 # Constants
 UPDATE_INTERVAL = 5000  # 5 seconds
-MAX_POINTS = 100       # Maximum number of points in time series charts
+MAX_POINTS = 100  # Maximum number of points in time series charts
 COLORS = {
     "primary": "#2196F3",
     "success": "#4CAF50",
@@ -82,9 +82,7 @@ app = dash.Dash(
     __name__,
     server=server,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
-    meta_tags=[
-        {"name": "viewport", "content": "width=device-width, initial-scale=1.0"}
-    ],
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1.0"}],
     suppress_callback_exceptions=True,
 )
 app.title = "Distributed Testing Dashboard"
@@ -106,16 +104,17 @@ performance_data = {
 # Data Fetching
 # =====================
 
+
 async def fetch_coordinator_status():
     """Fetch status data from the coordinator."""
     global last_update_time
-    
+
     try:
         # Create headers
         headers = {}
         if api_key:
             headers["X-API-Key"] = api_key
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{coordinator_url}/status", headers=headers) as response:
                 if response.status == 200:
@@ -129,6 +128,7 @@ async def fetch_coordinator_status():
         logger.error(f"Error fetching status: {str(e)}")
         return None
 
+
 async def fetch_worker_data():
     """Fetch worker data from the coordinator."""
     try:
@@ -136,7 +136,7 @@ async def fetch_worker_data():
         headers = {}
         if api_key:
             headers["X-API-Key"] = api_key
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{coordinator_url}/workers", headers=headers) as response:
                 if response.status == 200:
@@ -149,6 +149,7 @@ async def fetch_worker_data():
         logger.error(f"Error fetching workers: {str(e)}")
         return []
 
+
 async def fetch_task_data():
     """Fetch task data from the coordinator."""
     try:
@@ -156,7 +157,7 @@ async def fetch_task_data():
         headers = {}
         if api_key:
             headers["X-API-Key"] = api_key
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{coordinator_url}/tasks", headers=headers) as response:
                 if response.status == 200:
@@ -169,6 +170,7 @@ async def fetch_task_data():
         logger.error(f"Error fetching tasks: {str(e)}")
         return []
 
+
 async def fetch_statistics():
     """Fetch statistics data from the coordinator."""
     try:
@@ -176,7 +178,7 @@ async def fetch_statistics():
         headers = {}
         if api_key:
             headers["X-API-Key"] = api_key
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{coordinator_url}/statistics", headers=headers) as response:
                 if response.status == 200:
@@ -189,57 +191,67 @@ async def fetch_statistics():
         logger.error(f"Error fetching statistics: {str(e)}")
         return None
 
+
 async def update_performance_data():
     """Update performance data time series."""
     global performance_data
-    
+
     # Fetch statistics
     statistics = await fetch_statistics()
     if not statistics:
         return
-    
+
     # Fetch worker data
     workers = await fetch_worker_data()
-    
+
     # Current timestamp
     timestamp = datetime.datetime.now()
-    
+
     # Update CPU data
-    cpu_values = [worker.get("hardware_metrics", {}).get("cpu_percent", 0) for worker in workers if worker.get("status") != "offline"]
+    cpu_values = [
+        worker.get("hardware_metrics", {}).get("cpu_percent", 0)
+        for worker in workers
+        if worker.get("status") != "offline"
+    ]
     cpu_avg = sum(cpu_values) / max(len(cpu_values), 1)
     performance_data["cpu"].append((timestamp, cpu_avg))
-    
+
     # Update GPU data if available
     gpu_values = []
     for worker in workers:
         if worker.get("status") == "offline":
             continue
-        
+
         gpu_metrics = worker.get("hardware_metrics", {}).get("gpu", [])
         if gpu_metrics:
             for gpu in gpu_metrics:
                 gpu_values.append(gpu.get("memory_utilization_percent", 0))
-    
+
     gpu_avg = sum(gpu_values) / max(len(gpu_values), 1) if gpu_values else 0
     performance_data["gpu"].append((timestamp, gpu_avg))
-    
+
     # Update memory data
-    memory_values = [worker.get("hardware_metrics", {}).get("memory_percent", 0) for worker in workers if worker.get("status") != "offline"]
+    memory_values = [
+        worker.get("hardware_metrics", {}).get("memory_percent", 0)
+        for worker in workers
+        if worker.get("status") != "offline"
+    ]
     memory_avg = sum(memory_values) / max(len(memory_values), 1)
     performance_data["memory"].append((timestamp, memory_avg))
-    
+
     # Update task data
     tasks_completed = statistics.get("tasks_completed", 0)
     tasks_failed = statistics.get("tasks_failed", 0)
     worker_count = statistics.get("workers_active", 0)
-    
+
     performance_data["tasks_completed"].append((timestamp, tasks_completed))
     performance_data["tasks_failed"].append((timestamp, tasks_failed))
     performance_data["worker_count"].append((timestamp, worker_count))
-    
+
     # Limit the number of data points
     for key in performance_data:
         performance_data[key] = performance_data[key][-MAX_POINTS:]
+
 
 async def data_update_loop():
     """Background task to periodically update data."""
@@ -247,9 +259,11 @@ async def data_update_loop():
         await update_performance_data()
         await anyio.sleep(UPDATE_INTERVAL / 1000)
 
+
 # =====================
 # Dashboard Layout
 # =====================
+
 
 def create_header():
     """Create the dashboard header."""
@@ -282,6 +296,7 @@ def create_header():
         className="mb-4 mt-4",
     )
 
+
 def create_status_cards():
     """Create status summary cards."""
     return dbc.Row(
@@ -292,8 +307,13 @@ def create_status_cards():
                         dbc.CardHeader("Active Workers", className="text-white bg-primary"),
                         dbc.CardBody(
                             [
-                                html.H2(id="active-workers-count", className="card-text text-center"),
-                                html.P("Connected worker nodes", className="card-text text-center text-muted small"),
+                                html.H2(
+                                    id="active-workers-count", className="card-text text-center"
+                                ),
+                                html.P(
+                                    "Connected worker nodes",
+                                    className="card-text text-center text-muted small",
+                                ),
                             ]
                         ),
                     ],
@@ -306,8 +326,13 @@ def create_status_cards():
                         dbc.CardHeader("Pending Tasks", className="text-white bg-warning"),
                         dbc.CardBody(
                             [
-                                html.H2(id="pending-tasks-count", className="card-text text-center"),
-                                html.P("Tasks waiting to be assigned", className="card-text text-center text-muted small"),
+                                html.H2(
+                                    id="pending-tasks-count", className="card-text text-center"
+                                ),
+                                html.P(
+                                    "Tasks waiting to be assigned",
+                                    className="card-text text-center text-muted small",
+                                ),
                             ]
                         ),
                     ],
@@ -320,8 +345,13 @@ def create_status_cards():
                         dbc.CardHeader("Running Tasks", className="text-white bg-info"),
                         dbc.CardBody(
                             [
-                                html.H2(id="running-tasks-count", className="card-text text-center"),
-                                html.P("Tasks currently executing", className="card-text text-center text-muted small"),
+                                html.H2(
+                                    id="running-tasks-count", className="card-text text-center"
+                                ),
+                                html.P(
+                                    "Tasks currently executing",
+                                    className="card-text text-center text-muted small",
+                                ),
                             ]
                         ),
                     ],
@@ -334,8 +364,13 @@ def create_status_cards():
                         dbc.CardHeader("Completed Tasks", className="text-white bg-success"),
                         dbc.CardBody(
                             [
-                                html.H2(id="completed-tasks-count", className="card-text text-center"),
-                                html.P("Successfully completed tasks", className="card-text text-center text-muted small"),
+                                html.H2(
+                                    id="completed-tasks-count", className="card-text text-center"
+                                ),
+                                html.P(
+                                    "Successfully completed tasks",
+                                    className="card-text text-center text-muted small",
+                                ),
                             ]
                         ),
                     ],
@@ -345,6 +380,7 @@ def create_status_cards():
         ],
         className="mb-4",
     )
+
 
 def create_resource_usage_charts():
     """Create resource usage charts."""
@@ -371,6 +407,7 @@ def create_resource_usage_charts():
         className="mb-4",
     )
 
+
 def create_worker_status_section():
     """Create worker status section."""
     return dbc.Row(
@@ -388,7 +425,10 @@ def create_worker_status_section():
                                                 dbc.InputGroup(
                                                     [
                                                         dbc.InputGroupText("Filter:"),
-                                                        dbc.Input(id="worker-filter-input", placeholder="Search workers..."),
+                                                        dbc.Input(
+                                                            id="worker-filter-input",
+                                                            placeholder="Search workers...",
+                                                        ),
                                                     ],
                                                     className="mb-3",
                                                 ),
@@ -406,7 +446,10 @@ def create_worker_status_section():
                                                                 {"label": "All", "value": "all"},
                                                                 {"label": "Idle", "value": "idle"},
                                                                 {"label": "Busy", "value": "busy"},
-                                                                {"label": "Offline", "value": "offline"},
+                                                                {
+                                                                    "label": "Offline",
+                                                                    "value": "offline",
+                                                                },
                                                             ],
                                                             value="all",
                                                         ),
@@ -418,7 +461,10 @@ def create_worker_status_section():
                                         ),
                                     ]
                                 ),
-                                html.Div(id="worker-table-container", style={"maxHeight": "400px", "overflow": "auto"}),
+                                html.Div(
+                                    id="worker-table-container",
+                                    style={"maxHeight": "400px", "overflow": "auto"},
+                                ),
                             ]
                         ),
                     ],
@@ -428,6 +474,7 @@ def create_worker_status_section():
         ],
         className="mb-4",
     )
+
 
 def create_task_queue_section():
     """Create task queue section."""
@@ -446,7 +493,10 @@ def create_task_queue_section():
                                                 dbc.InputGroup(
                                                     [
                                                         dbc.InputGroupText("Filter:"),
-                                                        dbc.Input(id="task-filter-input", placeholder="Search tasks..."),
+                                                        dbc.Input(
+                                                            id="task-filter-input",
+                                                            placeholder="Search tasks...",
+                                                        ),
                                                     ],
                                                     className="mb-3",
                                                 ),
@@ -462,12 +512,30 @@ def create_task_queue_section():
                                                             id="task-status-filter",
                                                             options=[
                                                                 {"label": "All", "value": "all"},
-                                                                {"label": "Pending", "value": "pending"},
-                                                                {"label": "Assigned", "value": "assigned"},
-                                                                {"label": "Running", "value": "running"},
-                                                                {"label": "Completed", "value": "completed"},
-                                                                {"label": "Failed", "value": "failed"},
-                                                                {"label": "Cancelled", "value": "cancelled"},
+                                                                {
+                                                                    "label": "Pending",
+                                                                    "value": "pending",
+                                                                },
+                                                                {
+                                                                    "label": "Assigned",
+                                                                    "value": "assigned",
+                                                                },
+                                                                {
+                                                                    "label": "Running",
+                                                                    "value": "running",
+                                                                },
+                                                                {
+                                                                    "label": "Completed",
+                                                                    "value": "completed",
+                                                                },
+                                                                {
+                                                                    "label": "Failed",
+                                                                    "value": "failed",
+                                                                },
+                                                                {
+                                                                    "label": "Cancelled",
+                                                                    "value": "cancelled",
+                                                                },
                                                             ],
                                                             value="all",
                                                         ),
@@ -479,7 +547,10 @@ def create_task_queue_section():
                                         ),
                                     ]
                                 ),
-                                html.Div(id="task-table-container", style={"maxHeight": "400px", "overflow": "auto"}),
+                                html.Div(
+                                    id="task-table-container",
+                                    style={"maxHeight": "400px", "overflow": "auto"},
+                                ),
                             ]
                         ),
                     ],
@@ -489,6 +560,7 @@ def create_task_queue_section():
         ],
         className="mb-4",
     )
+
 
 def create_performance_charts():
     """Create performance charts section."""
@@ -532,6 +604,7 @@ def create_performance_charts():
         className="mb-4",
     )
 
+
 # Build the layout
 app.layout = dbc.Container(
     [
@@ -555,6 +628,7 @@ app.layout = dbc.Container(
 # Callbacks
 # =====================
 
+
 @app.callback(
     [
         Output("last-update-time", "children"),
@@ -571,10 +645,10 @@ async def update_status_indicators(n):
     """Update status indicators."""
     # Format last update time
     last_update_str = last_update_time.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # Fetch status data
     status_data = await fetch_coordinator_status()
-    
+
     if not status_data:
         return (
             last_update_str,
@@ -585,13 +659,13 @@ async def update_status_indicators(n):
             "N/A",
             "N/A",
         )
-    
+
     # Extract values from status data
     active_workers = status_data.get("statistics", {}).get("workers_active", 0)
     pending_tasks = status_data.get("statistics", {}).get("tasks_pending", 0)
     running_tasks = status_data.get("statistics", {}).get("tasks_running", 0)
     completed_tasks = status_data.get("statistics", {}).get("tasks_completed", 0)
-    
+
     return (
         last_update_str,
         "Connected",
@@ -601,6 +675,7 @@ async def update_status_indicators(n):
         running_tasks,
         completed_tasks,
     )
+
 
 @app.callback(
     Output("resource-usage-chart", "figure"),
@@ -612,10 +687,10 @@ async def update_resource_usage_chart(n):
     cpu_data = performance_data["cpu"]
     memory_data = performance_data["memory"]
     gpu_data = performance_data["gpu"]
-    
+
     # Create figure
     fig = go.Figure()
-    
+
     # Add traces
     if cpu_data:
         times, values = zip(*cpu_data)
@@ -628,7 +703,7 @@ async def update_resource_usage_chart(n):
                 line=dict(color=COLORS["cpu"], width=2),
             )
         )
-    
+
     if memory_data:
         times, values = zip(*memory_data)
         fig.add_trace(
@@ -640,7 +715,7 @@ async def update_resource_usage_chart(n):
                 line=dict(color=COLORS["memory"], width=2),
             )
         )
-    
+
     if gpu_data and any(v > 0 for _, v in gpu_data):
         times, values = zip(*gpu_data)
         fig.add_trace(
@@ -652,7 +727,7 @@ async def update_resource_usage_chart(n):
                 line=dict(color=COLORS["gpu"], width=2),
             )
         )
-    
+
     # Update layout
     fig.update_layout(
         margin=dict(l=10, r=10, t=10, b=10),
@@ -677,8 +752,9 @@ async def update_resource_usage_chart(n):
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
     )
-    
+
     return fig
+
 
 @app.callback(
     Output("worker-table-container", "children"),
@@ -692,31 +768,31 @@ async def update_worker_table(n, filter_value, status_filter):
     """Update worker table."""
     # Fetch worker data
     workers = await fetch_worker_data()
-    
+
     if not workers:
         return html.Div("No worker data available", className="text-muted text-center py-3")
-    
+
     # Apply filters
     filtered_workers = workers
-    
+
     if filter_value:
         filter_value = filter_value.lower()
         filtered_workers = [
-            w for w in filtered_workers
-            if filter_value in w.get("id", "").lower() or
-               filter_value in w.get("hostname", "").lower() or
-               filter_value in str(w.get("capabilities", {})).lower()
+            w
+            for w in filtered_workers
+            if filter_value in w.get("id", "").lower()
+            or filter_value in w.get("hostname", "").lower()
+            or filter_value in str(w.get("capabilities", {})).lower()
         ]
-    
+
     if status_filter and status_filter != "all":
         filtered_workers = [
-            w for w in filtered_workers
-            if w.get("status", "").lower() == status_filter.lower()
+            w for w in filtered_workers if w.get("status", "").lower() == status_filter.lower()
         ]
-    
+
     # Prepare table data
     table_data = []
-    
+
     for worker in filtered_workers:
         worker_id = worker.get("id", "")
         hostname = worker.get("hostname", "")
@@ -724,16 +800,16 @@ async def update_worker_table(n, filter_value, status_filter):
         capabilities = worker.get("capabilities", {})
         hardware_metrics = worker.get("hardware_metrics", {})
         current_task_id = worker.get("current_task_id")
-        
+
         hardware_list = []
-        
+
         # CPU info
         if "cpu" in capabilities:
             cpu_info = capabilities.get("cpu", {})
             cores = cpu_info.get("cores", 0)
             threads = cpu_info.get("threads", 0)
             hardware_list.append(f"CPU: {cores} cores/{threads} threads")
-        
+
         # GPU info
         if "gpu" in capabilities:
             gpu_info = capabilities.get("gpu", {})
@@ -741,31 +817,33 @@ async def update_worker_table(n, filter_value, status_filter):
             name = gpu_info.get("name", "Unknown GPU")
             memory = gpu_info.get("memory_gb", 0)
             hardware_list.append(f"GPU: {count}x {name} ({memory} GB)")
-        
+
         # Memory info
         if "memory" in capabilities:
             memory_info = capabilities.get("memory", {})
             total = memory_info.get("total_gb", 0)
             hardware_list.append(f"Memory: {total} GB")
-        
+
         # Task info
         task_info = "None" if not current_task_id else current_task_id
-        
+
         # Usage info
         cpu_usage = hardware_metrics.get("cpu_percent", 0)
         memory_usage = hardware_metrics.get("memory_percent", 0)
-        
+
         # Add to table data
-        table_data.append({
-            "id": worker_id[:8] + "...",
-            "hostname": hostname,
-            "status": status,
-            "hardware": ", ".join(hardware_list),
-            "task": task_info,
-            "cpu": f"{cpu_usage:.1f}%",
-            "memory": f"{memory_usage:.1f}%",
-        })
-    
+        table_data.append(
+            {
+                "id": worker_id[:8] + "...",
+                "hostname": hostname,
+                "status": status,
+                "hardware": ", ".join(hardware_list),
+                "task": task_info,
+                "cpu": f"{cpu_usage:.1f}%",
+                "memory": f"{memory_usage:.1f}%",
+            }
+        )
+
     # Create table
     if table_data:
         return dash_table.DataTable(
@@ -806,7 +884,10 @@ async def update_worker_table(n, filter_value, status_filter):
             ],
         )
     else:
-        return html.Div("No workers match the current filters", className="text-muted text-center py-3")
+        return html.Div(
+            "No workers match the current filters", className="text-muted text-center py-3"
+        )
+
 
 @app.callback(
     Output("task-table-container", "children"),
@@ -820,31 +901,31 @@ async def update_task_table(n, filter_value, status_filter):
     """Update task table."""
     # Fetch task data
     tasks = await fetch_task_data()
-    
+
     if not tasks:
         return html.Div("No task data available", className="text-muted text-center py-3")
-    
+
     # Apply filters
     filtered_tasks = tasks
-    
+
     if filter_value:
         filter_value = filter_value.lower()
         filtered_tasks = [
-            t for t in filtered_tasks
-            if filter_value in t.get("id", "").lower() or
-               filter_value in t.get("test_path", "").lower() or
-               filter_value in str(t.get("parameters", {})).lower()
+            t
+            for t in filtered_tasks
+            if filter_value in t.get("id", "").lower()
+            or filter_value in t.get("test_path", "").lower()
+            or filter_value in str(t.get("parameters", {})).lower()
         ]
-    
+
     if status_filter and status_filter != "all":
         filtered_tasks = [
-            t for t in filtered_tasks
-            if t.get("status", "").lower() == status_filter.lower()
+            t for t in filtered_tasks if t.get("status", "").lower() == status_filter.lower()
         ]
-    
+
     # Prepare table data
     table_data = []
-    
+
     for task in filtered_tasks:
         task_id = task.get("id", "")
         test_path = task.get("test_path", "")
@@ -854,35 +935,44 @@ async def update_task_table(n, filter_value, status_filter):
         assigned_time = task.get("assigned_time")
         start_time = task.get("start_time")
         end_time = task.get("end_time")
-        
+
         # Format times
         assigned_time_str = format_timestamp(assigned_time) if assigned_time else "N/A"
         start_time_str = format_timestamp(start_time) if start_time else "N/A"
         end_time_str = format_timestamp(end_time) if end_time else "N/A"
-        
+
         # Calculate duration
         duration = "N/A"
         if start_time and end_time:
             duration = f"{end_time - start_time:.2f}s"
-        
+
         # Format parameters
         param_str = ", ".join([f"{k}: {v}" for k, v in parameters.items()])
-        
+
         # Add to table data
-        table_data.append({
-            "id": task_id[:8] + "...",
-            "test_path": test_path,
-            "status": status,
-            "parameters": param_str[:30] + "..." if len(param_str) > 30 else param_str,
-            "worker": worker_id[:8] + "..." if worker_id else "N/A",
-            "assigned": assigned_time_str,
-            "duration": duration,
-        })
-    
+        table_data.append(
+            {
+                "id": task_id[:8] + "...",
+                "test_path": test_path,
+                "status": status,
+                "parameters": param_str[:30] + "..." if len(param_str) > 30 else param_str,
+                "worker": worker_id[:8] + "..." if worker_id else "N/A",
+                "assigned": assigned_time_str,
+                "duration": duration,
+            }
+        )
+
     # Sort tasks by status (pending and running first)
-    status_order = {"pending": 0, "assigned": 1, "running": 2, "completed": 3, "failed": 4, "cancelled": 5}
+    status_order = {
+        "pending": 0,
+        "assigned": 1,
+        "running": 2,
+        "completed": 3,
+        "failed": 4,
+        "cancelled": 5,
+    }
     table_data.sort(key=lambda x: status_order.get(x["status"].lower(), 99))
-    
+
     # Create table
     if table_data:
         return dash_table.DataTable(
@@ -935,7 +1025,10 @@ async def update_task_table(n, filter_value, status_filter):
             ],
         )
     else:
-        return html.Div("No tasks match the current filters", className="text-muted text-center py-3")
+        return html.Div(
+            "No tasks match the current filters", className="text-muted text-center py-3"
+        )
+
 
 @app.callback(
     Output("task-completion-chart", "figure"),
@@ -946,10 +1039,10 @@ async def update_task_completion_chart(n):
     # Create traces
     completed_data = performance_data["tasks_completed"]
     failed_data = performance_data["tasks_failed"]
-    
+
     # Create figure
     fig = go.Figure()
-    
+
     # Add traces
     if completed_data:
         times, values = zip(*completed_data)
@@ -962,7 +1055,7 @@ async def update_task_completion_chart(n):
                 line=dict(color=COLORS["success"], width=2),
             )
         )
-    
+
     if failed_data:
         times, values = zip(*failed_data)
         fig.add_trace(
@@ -974,7 +1067,7 @@ async def update_task_completion_chart(n):
                 line=dict(color=COLORS["danger"], width=2),
             )
         )
-    
+
     # Update layout
     fig.update_layout(
         margin=dict(l=10, r=10, t=10, b=10),
@@ -998,8 +1091,9 @@ async def update_task_completion_chart(n):
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
     )
-    
+
     return fig
+
 
 @app.callback(
     Output("worker-count-chart", "figure"),
@@ -1009,10 +1103,10 @@ async def update_worker_count_chart(n):
     """Update worker count chart."""
     # Create traces
     worker_data = performance_data["worker_count"]
-    
+
     # Create figure
     fig = go.Figure()
-    
+
     # Add traces
     if worker_data:
         times, values = zip(*worker_data)
@@ -1026,7 +1120,7 @@ async def update_worker_count_chart(n):
                 fill="tozeroy",
             )
         )
-    
+
     # Update layout
     fig.update_layout(
         margin=dict(l=10, r=10, t=10, b=10),
@@ -1050,58 +1144,65 @@ async def update_worker_count_chart(n):
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
     )
-    
+
     return fig
+
 
 def format_timestamp(timestamp):
     """Format a timestamp for display."""
     if not timestamp:
         return "N/A"
-    
+
     try:
         dt = datetime.datetime.fromtimestamp(timestamp)
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except:
         return str(timestamp)
 
+
 # =====================
 # Main Entrypoint
 # =====================
+
 
 async def start_background_tasks():
     """Start background tasks."""
     # TODO: Start data update loop with AnyIO task group
 
+
 def main():
     """Main entrypoint."""
     global coordinator_url, api_key
-    
+
     parser = argparse.ArgumentParser(description="Distributed Testing Framework Dashboard")
-    parser.add_argument("--coordinator", default="http://localhost:8080", help="URL of the coordinator server")
+    parser.add_argument(
+        "--coordinator", default="http://localhost:8080", help="URL of the coordinator server"
+    )
     parser.add_argument("--port", type=int, default=8050, help="Port to run the dashboard on")
     parser.add_argument("--api-key", help="API key for authentication with coordinator")
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     parser.add_argument("--open-browser", action="store_true", help="Open browser after starting")
-    
+
     args = parser.parse_args()
-    
+
     coordinator_url = args.coordinator
     api_key = args.api_key
-    
+
     # Print startup message
     print(f"Starting dashboard at http://localhost:{args.port}")
     print(f"Coordinator URL: {coordinator_url}")
-    
+
     # Run app
     if args.open_browser:
         webbrowser.open(f"http://localhost:{args.port}")
-    
+
     app.run_server(
         host="0.0.0.0",
         port=args.port,
         debug=args.debug,
         dev_tools_hot_reload=args.debug,
     )
+
 
 if __name__ == "__main__":
     main()

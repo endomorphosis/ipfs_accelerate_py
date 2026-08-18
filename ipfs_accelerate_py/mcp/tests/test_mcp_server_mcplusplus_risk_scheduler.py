@@ -15,7 +15,9 @@ class TestMCPServerMCPPlusPlusRiskScheduler(unittest.TestCase):
         scheduler = RiskScheduler()
 
         scheduler.record_outcome(actor="did:model:worker", allowed=False)
-        scheduler.record_outcome(actor="did:model:worker", allowed=True, obligations=2, event_cid="cid-1")
+        scheduler.record_outcome(
+            actor="did:model:worker", allowed=True, obligations=2, event_cid="cid-1"
+        )
 
         risk = scheduler.get_actor_risk("did:model:worker")
         self.assertEqual(risk["total_invocations"], 2)

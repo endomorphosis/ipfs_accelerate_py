@@ -25,9 +25,7 @@ from pathlib import PurePosixPath
 from typing import Any, Final
 
 
-CODE_SECURITY_FACT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/code-security-fact@1"
-)
+CODE_SECURITY_FACT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/code-security-fact@1"
 CODE_SECURITY_FACT_SET_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-security-fact-set@1"
 )
@@ -100,9 +98,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise CodeSecurityFactError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise CodeSecurityFactError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise CodeSecurityFactError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise CodeSecurityFactError(f"{name} must not be empty")
     if len(value.encode("utf-8")) > _MAX_TEXT_BYTES:
@@ -142,9 +138,7 @@ def _identity(namespace: str, value: Any) -> str:
 
 
 def _source_sha256(source: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
@@ -176,8 +170,7 @@ def _contract(
     unknown = set(payload) - allowed
     if unknown:
         raise CodeSecurityFactError(
-            f"{name} contains unsupported fields: "
-            + ", ".join(sorted(map(str, unknown)))
+            f"{name} contains unsupported fields: " + ", ".join(sorted(map(str, unknown)))
         )
 
 
@@ -215,9 +208,7 @@ class ChangedCodeDiff:
             value = getattr(self, name)
             if value is not None and not isinstance(value, str):
                 raise CodeSecurityFactError(f"{name} must be text or None")
-        before_blob = _text(
-            self.before_blob_id, "before_blob_id", required=False
-        )
+        before_blob = _text(self.before_blob_id, "before_blob_id", required=False)
         after_blob = _text(self.after_blob_id, "after_blob_id", required=False)
         if self.before_source is not None and not before_blob:
             before_blob = _source_sha256(self.before_source)
@@ -253,8 +244,7 @@ class ChangedCodeDiff:
         unknown = set(payload) - allowed
         if unknown:
             raise CodeSecurityFactError(
-                "changed diff contains unsupported fields: "
-                + ", ".join(sorted(map(str, unknown)))
+                "changed diff contains unsupported fields: " + ", ".join(sorted(map(str, unknown)))
             )
         return cls(
             tree_id=str(payload.get("tree_id") or payload.get("repository_tree_id") or ""),
@@ -302,9 +292,7 @@ class CodeSecurityIdentityBinding:
         return {"binding_id": self.binding_id, **self._payload()}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "CodeSecurityIdentityBinding":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeSecurityIdentityBinding":
         _contract(
             payload,
             schema=CODE_SECURITY_BINDING_SCHEMA,
@@ -353,9 +341,7 @@ class CodeSecuritySourceScope:
             or self.line_end < self.line_start
         ):
             raise CodeSecurityFactError("source scope requires a valid 1-based line range")
-        object.__setattr__(
-            self, "delta", _enum(self.delta, CodeSecurityDelta, "source delta")
-        )
+        object.__setattr__(self, "delta", _enum(self.delta, CodeSecurityDelta, "source delta"))
 
     @property
     def scope_id(self) -> str:
@@ -486,9 +472,7 @@ class CodeSecurityFact:
             "establishes_generated_code_correctness",
         ):
             if payload.get(field_name) not in (None, False):
-                raise CodeSecurityFactError(
-                    f"code-security facts cannot set {field_name}"
-                )
+                raise CodeSecurityFactError(f"code-security facts cannot set {field_name}")
         binding = payload.get("binding")
         scope = payload.get("source_scope")
         if not isinstance(binding, Mapping) or not isinstance(scope, Mapping):
@@ -523,9 +507,7 @@ class CodeSecurityDiagnostic:
         object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id"))
         object.__setattr__(self, "diff_id", _text(self.diff_id, "diff_id"))
         object.__setattr__(self, "path", _path(self.path, "path"))
-        object.__setattr__(
-            self, "symbol", _text(self.symbol, "symbol", required=False)
-        )
+        object.__setattr__(self, "symbol", _text(self.symbol, "symbol", required=False))
         if isinstance(self.line, bool) or not isinstance(self.line, int) or self.line < 0:
             raise CodeSecurityFactError("diagnostic line must be a non-negative integer")
 
@@ -599,9 +581,7 @@ class CodeSecurityFactSet:
         )
         if any(not isinstance(item, CodeSecurityFact) for item in self.facts):
             raise CodeSecurityFactError("fact set contains a non-canonical fact")
-        if any(
-            not isinstance(item, CodeSecurityDiagnostic) for item in self.diagnostics
-        ):
+        if any(not isinstance(item, CodeSecurityDiagnostic) for item in self.diagnostics):
             raise CodeSecurityFactError("fact set contains a non-canonical diagnostic")
         facts = {item.fact_id: item for item in self.facts}
         diagnostics = {item.diagnostic_id: item for item in self.diagnostics}
@@ -609,22 +589,16 @@ class CodeSecurityFactSet:
             raise CodeSecurityFactError("fact set exceeds its hard fact bound")
         for item in (*facts.values(), *diagnostics.values()):
             item_tree_id = (
-                item.tree_id
-                if isinstance(item, CodeSecurityDiagnostic)
-                else item.binding.tree_id
+                item.tree_id if isinstance(item, CodeSecurityDiagnostic) else item.binding.tree_id
             )
             item_diff_id = (
-                item.diff_id
-                if isinstance(item, CodeSecurityDiagnostic)
-                else item.binding.diff_id
+                item.diff_id if isinstance(item, CodeSecurityDiagnostic) else item.binding.diff_id
             )
             if item_tree_id != self.tree_id:
                 raise CodeSecurityFactError("fact-set tree binding mismatch")
             if item_diff_id != self.diff_id:
                 raise CodeSecurityFactError("fact-set diff binding mismatch")
-        object.__setattr__(
-            self, "facts", tuple(facts[key] for key in sorted(facts))
-        )
+        object.__setattr__(self, "facts", tuple(facts[key] for key in sorted(facts)))
         object.__setattr__(
             self,
             "diagnostics",
@@ -669,13 +643,10 @@ class CodeSecurityFactSet:
             CodeSecurityExtractionStatus.AMBIGUOUS,
             CodeSecurityExtractionStatus.PARTIAL,
         } and any(
-            item.code is CodeSecurityDiagnosticCode.DYNAMIC_CALL_TARGET
-            for item in self.diagnostics
+            item.code is CodeSecurityDiagnosticCode.DYNAMIC_CALL_TARGET for item in self.diagnostics
         )
 
-    def by_kind(
-        self, kind: CodeSecurityFactKind | str
-    ) -> tuple[CodeSecurityFact, ...]:
+    def by_kind(self, kind: CodeSecurityFactKind | str) -> tuple[CodeSecurityFact, ...]:
         normalized = _enum(kind, CodeSecurityFactKind, "fact kind")
         return tuple(item for item in self.facts if item.kind is normalized)
 
@@ -767,20 +738,14 @@ class CodeSecurityFactSet:
             "establishes_generated_code_correctness",
         ):
             if payload.get(field_name) not in (None, False):
-                raise CodeSecurityFactError(
-                    f"code-security fact sets cannot set {field_name}"
-                )
+                raise CodeSecurityFactError(f"code-security fact sets cannot set {field_name}")
         result = cls(
             tree_id=str(payload.get("tree_id") or ""),
             diff_id=str(payload.get("diff_id") or ""),
             status=payload.get("status", ""),  # type: ignore[arg-type]
-            facts=tuple(
-                CodeSecurityFact.from_dict(item)
-                for item in payload.get("facts") or ()
-            ),
+            facts=tuple(CodeSecurityFact.from_dict(item) for item in payload.get("facts") or ()),
             diagnostics=tuple(
-                CodeSecurityDiagnostic.from_dict(item)
-                for item in payload.get("diagnostics") or ()
+                CodeSecurityDiagnostic.from_dict(item) for item in payload.get("diagnostics") or ()
             ),
         )
         _verify_claim(payload, "fact_set_id", result.fact_set_id)
@@ -817,9 +782,7 @@ def _ast_identity(tree: ast.AST) -> str:
         "ast",
         {
             "language": "python",
-            "semantic_ast": ast.dump(
-                tree, annotate_fields=True, include_attributes=False
-            ),
+            "semantic_ast": ast.dump(tree, annotate_fields=True, include_attributes=False),
         },
     )
 
@@ -961,9 +924,7 @@ def _capabilities(callee: str) -> tuple[str, ...]:
         ("os.remove", "os.unlink", "os.rename", "os.replace", "pathlib.path.")
     ):
         result.add("filesystem")
-    if value.startswith(
-        ("requests.", "httpx.", "urllib.", "socket.", "aiohttp.")
-    ):
+    if value.startswith(("requests.", "httpx.", "urllib.", "socket.", "aiohttp.")):
         result.add("network")
     if value in {"eval", "exec", "compile"} or value.startswith(
         ("subprocess.", "os.system", "os.exec", "asyncio.create_subprocess")
@@ -1025,9 +986,7 @@ class _UnitFactVisitor(ast.NodeVisitor):
         self.guards: list[str] = []
         self._root_seen = False
 
-    def _visit_function_body(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
-    ) -> None:
+    def _visit_function_body(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         for decorator in node.decorator_list:
             self.visit(decorator)
         for default in (*node.args.defaults, *node.args.kw_defaults):
@@ -1096,9 +1055,7 @@ class _UnitFactVisitor(ast.NodeVisitor):
             self.emit(CodeSecurityFactKind.GUARD, guard, node)
         self.generic_visit(node)
 
-    def _assignment(
-        self, target: ast.AST, value: ast.AST | None, node: ast.AST
-    ) -> None:
+    def _assignment(self, target: ast.AST, value: ast.AST | None, node: ast.AST) -> None:
         target_name = _expression_name(target) or _expression_shape(target)
         self.emit(CodeSecurityFactKind.ACTION, "write", node)
         self.emit(CodeSecurityFactKind.TARGET, target_name, node)
@@ -1258,8 +1215,7 @@ def _extract_one_code_security_facts(
             item
             for item in diagnostics
             if not (
-                item.code is CodeSecurityDiagnosticCode.MISSING_SOURCE
-                and "removed" in item.message
+                item.code is CodeSecurityDiagnosticCode.MISSING_SOURCE and "removed" in item.message
             )
         ]
     if not diff.new_path and diff.after_source is None:
@@ -1267,8 +1223,7 @@ def _extract_one_code_security_facts(
             item
             for item in diagnostics
             if not (
-                item.code is CodeSecurityDiagnosticCode.MISSING_SOURCE
-                and "added" in item.message
+                item.code is CodeSecurityDiagnosticCode.MISSING_SOURCE and "added" in item.message
             )
         ]
 
@@ -1307,6 +1262,7 @@ def _extract_one_code_security_facts(
             source_sha256=_source_sha256(source),
             ast_id=_ast_identity(tree),
         )
+
         def emit(kind: CodeSecurityFactKind, value: str, node: ast.AST) -> None:
             if len(facts) >= _MAX_FACTS:
                 return
@@ -1346,9 +1302,7 @@ def _extract_one_code_security_facts(
                 )
             )
 
-        visitor = _UnitFactVisitor(
-            emit=emit, aliases=unit.imports, diagnostic=dynamic_call
-        )
+        visitor = _UnitFactVisitor(emit=emit, aliases=unit.imports, diagnostic=dynamic_call)
         visitor.visit(unit.node)
 
     for symbol in sorted(changed):
@@ -1403,9 +1357,7 @@ def _extract_one_code_security_facts(
 
 def extract_code_security_facts(
     changed_diff: (
-        ChangedCodeDiff
-        | Mapping[str, Any]
-        | Sequence[ChangedCodeDiff | Mapping[str, Any]]
+        ChangedCodeDiff | Mapping[str, Any] | Sequence[ChangedCodeDiff | Mapping[str, Any]]
     ),
 ) -> CodeSecurityFactSet:
     """Extract one canonical result from a file change or complete multi-file diff.
@@ -1417,9 +1369,7 @@ def extract_code_security_facts(
 
     if isinstance(changed_diff, (ChangedCodeDiff, Mapping)):
         return _extract_one_code_security_facts(changed_diff)
-    if isinstance(changed_diff, (str, bytes, bytearray)) or not isinstance(
-        changed_diff, Sequence
-    ):
+    if isinstance(changed_diff, (str, bytes, bytearray)) or not isinstance(changed_diff, Sequence):
         raise CodeSecurityFactError(
             "changed_diff must be a changed file or a sequence of changed files"
         )
@@ -1428,16 +1378,10 @@ def extract_code_security_facts(
     results = tuple(_extract_one_code_security_facts(item) for item in changed_diff)
     tree_id = results[0].tree_id
     diff_id = results[0].diff_id
-    if any(
-        item.tree_id != tree_id or item.diff_id != diff_id for item in results[1:]
-    ):
-        raise CodeSecurityFactError(
-            "all changed files must bind the same tree_id and diff_id"
-        )
+    if any(item.tree_id != tree_id or item.diff_id != diff_id for item in results[1:]):
+        raise CodeSecurityFactError("all changed files must bind the same tree_id and diff_id")
     facts = tuple(fact for item in results for fact in item.facts)
-    diagnostics = tuple(
-        diagnostic for item in results for diagnostic in item.diagnostics
-    )
+    diagnostics = tuple(diagnostic for item in results for diagnostic in item.diagnostics)
     return CodeSecurityFactSet(
         tree_id=tree_id,
         diff_id=diff_id,
@@ -1470,9 +1414,7 @@ SOFTWARE_VERIFICATION_SECURITY_FACT_COMPAT = (
 
 def security_observation_for_software_verification(
     changed_diff: (
-        ChangedCodeDiff
-        | Mapping[str, Any]
-        | Sequence[ChangedCodeDiff | Mapping[str, Any]]
+        ChangedCodeDiff | Mapping[str, Any] | Sequence[ChangedCodeDiff | Mapping[str, Any]]
     ),
 ) -> CodeSecurityFactSet:
     """Extract non-authoritative security observations for shared IR lowering.
@@ -1501,9 +1443,7 @@ def security_observation_payload(
     elif isinstance(fact_set, Mapping):
         payload = dict(fact_set)
     else:
-        raise CodeSecurityFactError(
-            "fact_set must be a CodeSecurityFactSet or mapping"
-        )
+        raise CodeSecurityFactError("fact_set must be a CodeSecurityFactSet or mapping")
     return {
         "compat": SOFTWARE_VERIFICATION_SECURITY_FACT_COMPAT,
         "authoritative": False,

@@ -50,9 +50,7 @@ FLUENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/formal-plan-fluent@1"
 PRECONDITION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/formal-plan-precondition@1"
 EFFECT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/formal-plan-effect@1"
 NORM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/formal-plan-norm@1"
-TEMPORAL_CONSTRAINT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/formal-plan-temporal-constraint@1"
-)
+TEMPORAL_CONSTRAINT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/formal-plan-temporal-constraint@1"
 EVIDENCE_REQUIREMENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1"
 )
@@ -185,26 +183,20 @@ def _optional_int(value: Any, *, field_name: str) -> Optional[int]:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ContractValidationError(
-            "%s must be a non-negative integer or null" % field_name
-        )
+        raise ContractValidationError("%s must be a non-negative integer or null" % field_name)
     return value
 
 
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContractValidationError(
-            "unsupported schema %r; expected %s" % (supplied, expected)
-        )
+        raise ContractValidationError("unsupported schema %r; expected %s" % (supplied, expected))
 
 
 def _claimed_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
     claimed = payload.get("content_id") or payload.get("identity")
     if claimed and claimed != actual:
-        raise ContractValidationError(
-            "%s content identity does not match payload" % noun
-        )
+        raise ContractValidationError("%s content identity does not match payload" % noun)
 
 
 class PlanningContract(CanonicalContract):
@@ -248,9 +240,7 @@ class Actor(PlanningContract):
             "authority_ids",
             _strings(self.authority_ids, field_name="authority_ids"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -299,21 +289,15 @@ class Goal(PlanningContract):
         object.__setattr__(
             self,
             "evidence_requirement_ids",
-            _strings(
-                self.evidence_requirement_ids, field_name="evidence_requirement_ids"
-            ),
+            _strings(self.evidence_requirement_ids, field_name="evidence_requirement_ids"),
         )
         object.__setattr__(
             self,
             "terminal_states",
             _strings(self.terminal_states, field_name="terminal_states", required=True),
         )
-        object.__setattr__(
-            self, "source_ids", _strings(self.source_ids, field_name="source_ids")
-        )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "source_ids", _strings(self.source_ids, field_name="source_ids"))
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -335,9 +319,7 @@ class Goal(PlanningContract):
             goal_id=payload.get("goal_id", ""),
             owner_actor_id=payload.get("owner_actor_id", ""),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             terminal_states=tuple(payload.get("terminal_states") or ("satisfied",)),
             source_ids=tuple(payload.get("source_ids") or ()),
             metadata=payload.get("metadata") or {},
@@ -374,19 +356,13 @@ class Subgoal(PlanningContract):
             "refinement_mode",
             _enum(self.refinement_mode, RefinementMode, field_name="refinement_mode"),
         )
-        object.__setattr__(
-            self, "depends_on", _strings(self.depends_on, field_name="depends_on")
-        )
+        object.__setattr__(self, "depends_on", _strings(self.depends_on, field_name="depends_on"))
         object.__setattr__(
             self,
             "evidence_requirement_ids",
-            _strings(
-                self.evidence_requirement_ids, field_name="evidence_requirement_ids"
-            ),
+            _strings(self.evidence_requirement_ids, field_name="evidence_requirement_ids"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
         if self.subgoal_id in self.depends_on:
             raise ContractValidationError("a subgoal cannot depend on itself")
         if self.subgoal_id == self.parent_id:
@@ -423,14 +399,10 @@ class Subgoal(PlanningContract):
             subgoal_id=payload.get("subgoal_id", ""),
             goal_id=payload.get("goal_id", ""),
             parent_id=payload.get("parent_id", ""),
-            refinement_mode=payload.get(
-                "refinement_mode", RefinementMode.SUFFICIENT
-            ),
+            refinement_mode=payload.get("refinement_mode", RefinementMode.SUFFICIENT),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             depends_on=tuple(payload.get("depends_on") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             metadata=payload.get("metadata") or {},
         )
         _claimed_identity(payload, result.content_id, "subgoal")
@@ -458,9 +430,7 @@ class PlanTask(PlanningContract):
             object.__setattr__(
                 self, name, _text(getattr(self, name), field_name=name, required=True)
             )
-        object.__setattr__(
-            self, "subgoal_id", _text(self.subgoal_id, field_name="subgoal_id")
-        )
+        object.__setattr__(self, "subgoal_id", _text(self.subgoal_id, field_name="subgoal_id"))
         for name in (
             "actor_ids",
             "depends_on",
@@ -479,9 +449,7 @@ class PlanTask(PlanningContract):
                     required=name in ("actor_ids", "terminal_states"),
                 ),
             )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
         if self.task_id in self.depends_on:
             raise ContractValidationError("a task cannot depend on itself")
 
@@ -514,9 +482,7 @@ class PlanTask(PlanningContract):
             precondition_ids=tuple(payload.get("precondition_ids") or ()),
             effect_ids=tuple(payload.get("effect_ids") or ()),
             event_ids=tuple(payload.get("event_ids") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             terminal_states=tuple(
                 payload.get("terminal_states") or ("completed", "failed", "cancelled")
             ),
@@ -556,9 +522,7 @@ class PlanEvent(PlanningContract):
             "provenance_ids",
             _strings(self.provenance_ids, field_name="provenance_ids"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -619,17 +583,13 @@ class Fluent(PlanningContract):
             and value is not None
             and not isinstance(value, bool)
         ):
-            raise ContractValidationError(
-                "boolean fluent initial_value must be boolean or null"
-            )
+            raise ContractValidationError("boolean fluent initial_value must be boolean or null")
         if (
             self.value_type is FluentValueType.INTEGER
             and value is not None
             and (isinstance(value, bool) or not isinstance(value, int))
         ):
-            raise ContractValidationError(
-                "integer fluent initial_value must be integer or null"
-            )
+            raise ContractValidationError("integer fluent initial_value must be integer or null")
         if (
             self.value_type in (FluentValueType.STRING, FluentValueType.SYMBOL)
             and value is not None
@@ -641,9 +601,7 @@ class Fluent(PlanningContract):
         object.__setattr__(self, "initial_value", value)
         if not isinstance(self.inertial, bool):
             raise ContractValidationError("inertial must be a boolean")
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -685,12 +643,8 @@ class Precondition(PlanningContract):
             object.__setattr__(
                 self, name, _text(getattr(self, name), field_name=name, required=True)
             )
-        object.__setattr__(
-            self, "event_id", _text(self.event_id, field_name="event_id")
-        )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "event_id", _text(self.event_id, field_name="event_id"))
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -739,23 +693,15 @@ class Effect(PlanningContract):
             "operation",
             _enum(self.operation, EffectOperation, field_name="operation"),
         )
-        object.__setattr__(
-            self, "fluent_id", _text(self.fluent_id, field_name="fluent_id")
-        )
-        object.__setattr__(
-            self, "event_id", _text(self.event_id, field_name="event_id")
-        )
+        object.__setattr__(self, "fluent_id", _text(self.fluent_id, field_name="fluent_id"))
+        object.__setattr__(self, "event_id", _text(self.event_id, field_name="event_id"))
         if self.operation is EffectOperation.EMIT:
             if not self.event_id:
                 raise ContractValidationError("emit effects require event_id")
         elif not self.fluent_id:
-            raise ContractValidationError(
-                "%s effects require fluent_id" % self.operation.value
-            )
+            raise ContractValidationError("%s effects require fluent_id" % self.operation.value)
         object.__setattr__(self, "value", _canonical_value(self.value))
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -830,9 +776,7 @@ class Norm(PlanningContract):
             and self.valid_from > self.valid_until
         ):
             raise ContractValidationError("norm valid_from must not exceed valid_until")
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -913,12 +857,8 @@ class TemporalConstraint(PlanningContract):
             and self.upper_bound is not None
             and self.lower_bound > self.upper_bound
         ):
-            raise ContractValidationError(
-                "temporal lower_bound must not exceed upper_bound"
-            )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+            raise ContractValidationError("temporal lower_bound must not exceed upper_bound")
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -1000,9 +940,7 @@ class EvidenceRequirement(PlanningContract):
             "freshness_seconds",
             _optional_int(self.freshness_seconds, field_name="freshness_seconds"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     def _payload(self) -> Dict[str, Any]:
         return self._versioned(
@@ -1026,9 +964,7 @@ class EvidenceRequirement(PlanningContract):
             kind=payload.get("kind", EvidenceRequirementKind.ARTIFACT),
             subject_ids=tuple(payload.get("subject_ids") or ()),
             source_scope_ids=tuple(payload.get("source_scope_ids") or ()),
-            minimum_code_assurance=payload.get(
-                "minimum_code_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            minimum_code_assurance=payload.get("minimum_code_assurance", AssuranceLevel.UNVERIFIED),
             freshness_seconds=payload.get("freshness_seconds"),
             fallback_check_ids=tuple(payload.get("fallback_check_ids") or ()),
             metadata=payload.get("metadata") or {},
@@ -1056,9 +992,7 @@ def _records(
         elif isinstance(value, Mapping):
             record = cls.from_dict(value)  # type: ignore[attr-defined]
         else:
-            raise ContractValidationError(
-                "%s must contain %s records" % (field_name, cls.__name__)
-            )
+            raise ContractValidationError("%s must contain %s records" % (field_name, cls.__name__))
         result.append(record)
     if required and not result:
         raise ContractValidationError("%s must not be empty" % field_name)
@@ -1072,9 +1006,7 @@ def _records(
 def _formula_records(values: Any) -> Tuple[Formula, ...]:
     if values is None:
         values = ()
-    if not isinstance(values, Sequence) or isinstance(
-        values, (str, bytes, bytearray)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray)):
         raise ContractValidationError("formulas must be a sequence")
     result: List[Formula] = []
     for value in values:
@@ -1083,9 +1015,7 @@ def _formula_records(values: Any) -> Tuple[Formula, ...]:
         elif isinstance(value, Mapping):
             formula = Formula.from_dict(value)
         else:
-            raise ContractValidationError(
-                "formulas must contain reviewed Formula records"
-            )
+            raise ContractValidationError("formulas must contain reviewed Formula records")
         result.append(formula)
     result.sort(key=lambda item: item.formula_id)
     identifiers = [item.formula_id for item in result]
@@ -1113,9 +1043,7 @@ def _subgoal_satisfaction_target(formula: Formula) -> Optional[str]:
     return None
 
 
-def _acyclic(
-    nodes: Iterable[str], dependencies: Mapping[str, Tuple[str, ...]], noun: str
-) -> None:
+def _acyclic(nodes: Iterable[str], dependencies: Mapping[str, Tuple[str, ...]], noun: str) -> None:
     node_set = set(nodes)
     visiting = set()
     visited = set()
@@ -1180,9 +1108,7 @@ class FormalWorkPlan(PlanningContract):
             or not isinstance(self.vocabulary_version, int)
             or self.vocabulary_version <= 0
         ):
-            raise ContractValidationError(
-                "vocabulary_version must be a positive integer"
-            )
+            raise ContractValidationError("vocabulary_version must be a positive integer")
         if (
             isinstance(self.trace_bound, bool)
             or not isinstance(self.trace_bound, int)
@@ -1204,9 +1130,7 @@ class FormalWorkPlan(PlanningContract):
             "abstraction_ids",
             _strings(self.abstraction_ids, field_name="abstraction_ids"),
         )
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
         specifications = (
             ("actors", Actor, "actor_id", True),
@@ -1247,24 +1171,19 @@ class FormalWorkPlan(PlanningContract):
         effect_ids = {item.effect_id for item in self.effects}
         requirement_ids = {item.requirement_id for item in self.evidence_requirements}
         formulas_by_id = {item.formula_id: item for item in self.formulas}
-        all_subject_ids = (
-            actor_ids | goal_ids | subgoal_ids | task_ids | event_ids | fluent_ids
-        )
+        all_subject_ids = actor_ids | goal_ids | subgoal_ids | task_ids | event_ids | fluent_ids
         if goal_ids & subgoal_ids:
             raise ContractValidationError(
                 "goal and subgoal identifiers must occupy distinct typed namespaces"
             )
         if self.subgoals and self.vocabulary_version != LOGIC_VOCABULARY_VERSION:
             raise ContractValidationError(
-                "typed subgoals require reviewed vocabulary version %s"
-                % LOGIC_VOCABULARY_VERSION
+                "typed subgoals require reviewed vocabulary version %s" % LOGIC_VOCABULARY_VERSION
             )
 
         def require(value: str, known: set, context: str) -> None:
             if value and value not in known:
-                raise ContractValidationError(
-                    "%s references unknown id %s" % (context, value)
-                )
+                raise ContractValidationError("%s references unknown id %s" % (context, value))
 
         for goal in self.goals:
             require(goal.owner_actor_id, actor_ids, "goal %s" % goal.goal_id)
@@ -1279,19 +1198,15 @@ class FormalWorkPlan(PlanningContract):
             )
             if subgoal.parent_id in goal_ids and subgoal.parent_id != subgoal.goal_id:
                 raise ContractValidationError(
-                    "subgoal %s parent goal does not match goal_id"
-                    % subgoal.subgoal_id
+                    "subgoal %s parent goal does not match goal_id" % subgoal.subgoal_id
                 )
             if subgoal.parent_id in subgoal_ids:
                 parent = next(
-                    item
-                    for item in self.subgoals
-                    if item.subgoal_id == subgoal.parent_id
+                    item for item in self.subgoals if item.subgoal_id == subgoal.parent_id
                 )
                 if parent.goal_id != subgoal.goal_id:
                     raise ContractValidationError(
-                        "subgoal %s parent belongs to a different root goal"
-                        % subgoal.subgoal_id
+                        "subgoal %s parent belongs to a different root goal" % subgoal.subgoal_id
                     )
             for value in subgoal.evidence_requirement_ids:
                 require(value, requirement_ids, "subgoal %s" % subgoal.subgoal_id)
@@ -1305,8 +1220,7 @@ class FormalWorkPlan(PlanningContract):
             if target != subgoal.subgoal_id:
                 raise ContractValidationError(
                     "subgoal %s satisfaction formula must use the reviewed "
-                    "subgoal_satisfied predicate for that subgoal"
-                    % subgoal.subgoal_id
+                    "subgoal_satisfied predicate for that subgoal" % subgoal.subgoal_id
                 )
         _acyclic(
             subgoal_ids,
@@ -1320,11 +1234,7 @@ class FormalWorkPlan(PlanningContract):
                     sorted(
                         {
                             *item.depends_on,
-                            *(
-                                (item.parent_id,)
-                                if item.parent_id in subgoal_ids
-                                else ()
-                            ),
+                            *((item.parent_id,) if item.parent_id in subgoal_ids else ()),
                         }
                     )
                 )
@@ -1336,11 +1246,7 @@ class FormalWorkPlan(PlanningContract):
             require(task.goal_id, goal_ids, "task %s" % task.task_id)
             require(task.subgoal_id, subgoal_ids, "task %s" % task.task_id)
             if task.subgoal_id:
-                subgoal = next(
-                    item
-                    for item in self.subgoals
-                    if item.subgoal_id == task.subgoal_id
-                )
+                subgoal = next(item for item in self.subgoals if item.subgoal_id == task.subgoal_id)
                 if task.goal_id != subgoal.goal_id:
                     raise ContractValidationError(
                         "task %s and subgoal %s belong to different goals"
@@ -1356,16 +1262,12 @@ class FormalWorkPlan(PlanningContract):
                 require(value, event_ids, "task %s" % task.task_id)
             for value in task.evidence_requirement_ids:
                 require(value, requirement_ids, "task %s" % task.task_id)
-        _acyclic(
-            task_ids, {item.task_id: item.depends_on for item in self.tasks}, "task"
-        )
+        _acyclic(task_ids, {item.task_id: item.depends_on for item in self.tasks}, "task")
         for event in self.events:
             require(event.actor_id, actor_ids, "event %s" % event.event_id)
             require(event.task_id, task_ids, "event %s" % event.event_id)
             if event.logical_time > self.trace_bound:
-                raise ContractValidationError(
-                    "event %s is outside trace_bound" % event.event_id
-                )
+                raise ContractValidationError("event %s is outside trace_bound" % event.event_id)
         for precondition in self.preconditions:
             require(
                 precondition.task_id,
@@ -1382,24 +1284,18 @@ class FormalWorkPlan(PlanningContract):
             require(effect.event_id, event_ids, "effect %s" % effect.effect_id)
             require(effect.fluent_id, fluent_ids, "effect %s" % effect.effect_id)
             if effect.fluent_id:
-                fluent = next(
-                    item for item in self.fluents if item.fluent_id == effect.fluent_id
-                )
+                fluent = next(item for item in self.fluents if item.fluent_id == effect.fluent_id)
                 value = effect.value
                 valid_value = (
                     value is None
-                    or (
-                        fluent.value_type is FluentValueType.BOOLEAN
-                        and isinstance(value, bool)
-                    )
+                    or (fluent.value_type is FluentValueType.BOOLEAN and isinstance(value, bool))
                     or (
                         fluent.value_type is FluentValueType.INTEGER
                         and isinstance(value, int)
                         and not isinstance(value, bool)
                     )
                     or (
-                        fluent.value_type
-                        in (FluentValueType.STRING, FluentValueType.SYMBOL)
+                        fluent.value_type in (FluentValueType.STRING, FluentValueType.SYMBOL)
                         and isinstance(value, str)
                     )
                 )
@@ -1414,13 +1310,8 @@ class FormalWorkPlan(PlanningContract):
             require(norm.action_id, task_ids | event_ids, "norm %s" % norm.norm_id)
         for constraint in self.temporal_constraints:
             for value in constraint.subject_ids:
-                require(
-                    value, all_subject_ids, "constraint %s" % constraint.constraint_id
-                )
-            if (
-                constraint.upper_bound is not None
-                and constraint.upper_bound > self.trace_bound
-            ):
+                require(value, all_subject_ids, "constraint %s" % constraint.constraint_id)
+            if constraint.upper_bound is not None and constraint.upper_bound > self.trace_bound:
                 raise ContractValidationError(
                     "constraint %s exceeds trace_bound" % constraint.constraint_id
                 )
@@ -1438,17 +1329,12 @@ class FormalWorkPlan(PlanningContract):
                 *(item.satisfaction_formula_id for item in self.subgoals),
                 *(item.formula_id for item in self.preconditions),
                 *(item.formula_id for item in self.temporal_constraints),
-                *(
-                    item.activation_formula_id
-                    for item in self.norms
-                    if item.activation_formula_id
-                ),
+                *(item.activation_formula_id for item in self.norms if item.activation_formula_id),
             }
             unknown_formula_ids = referenced_formula_ids.difference(formulas_by_id)
             if unknown_formula_ids:
                 raise ContractValidationError(
-                    "plan references unknown formula %s"
-                    % sorted(unknown_formula_ids)[0]
+                    "plan references unknown formula %s" % sorted(unknown_formula_ids)[0]
                 )
 
         assignments: Dict[Tuple[str, str], Any] = {}
@@ -1458,8 +1344,7 @@ class FormalWorkPlan(PlanningContract):
                 key = (transition, effect.fluent_id)
                 if key in assignments and assignments[key] != effect.value:
                     raise ContractValidationError(
-                        "conflicting effects assign %s at %s"
-                        % (effect.fluent_id, transition)
+                        "conflicting effects assign %s at %s" % (effect.fluent_id, transition)
                     )
                 assignments[key] = effect.value
 
@@ -1514,19 +1399,13 @@ class FormalWorkPlan(PlanningContract):
             norms=tuple(payload.get("norms") or ()),
             temporal_constraints=tuple(payload.get("temporal_constraints") or ()),
             evidence_requirements=tuple(payload.get("evidence_requirements") or ()),
-            formulas=tuple(
-                payload.get("formulas")
-                or payload.get("reviewed_formulas")
-                or ()
-            ),
+            formulas=tuple(payload.get("formulas") or payload.get("reviewed_formulas") or ()),
             abstraction_ids=tuple(payload.get("abstraction_ids") or ()),
             metadata=payload.get("metadata") or {},
         )
         claimed = payload.get("plan_id") or payload.get("content_id")
         if claimed and claimed != result.plan_id:
-            raise ContractValidationError(
-                "formal work-plan identity does not match payload"
-            )
+            raise ContractValidationError("formal work-plan identity does not match payload")
         return result
 
 
@@ -1574,16 +1453,12 @@ class PlanAssurance(PlanningContract):
             "conformance_receipt_ids",
             "code_proof_receipt_ids",
         ):
-            object.__setattr__(
-                self, name, _strings(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _strings(getattr(self, name), field_name=name))
         if (
             self.consistency is not PlanConsistencyLevel.UNCHECKED
             and not self.consistency_receipt_ids
         ):
-            raise ContractValidationError(
-                "checked plan consistency requires a consistency receipt"
-            )
+            raise ContractValidationError("checked plan consistency requires a consistency receipt")
         if (
             self.conformance is not PlanConformanceLevel.UNOBSERVED
             and not self.conformance_receipt_ids
@@ -1598,17 +1473,13 @@ class PlanAssurance(PlanningContract):
             raise ContractValidationError(
                 "generated-code assurance requires an independent code-proof receipt"
             )
-        planning_receipts = set(self.consistency_receipt_ids) | set(
-            self.conformance_receipt_ids
-        )
+        planning_receipts = set(self.consistency_receipt_ids) | set(self.conformance_receipt_ids)
         if planning_receipts & set(self.code_proof_receipt_ids):
             raise ContractValidationError(
                 "plan receipts cannot be promoted or reused as code-proof receipts"
             )
         object.__setattr__(self, "bounds", _mapping(self.bounds, field_name="bounds"))
-        object.__setattr__(
-            self, "metadata", _mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _mapping(self.metadata, field_name="metadata"))
 
     @property
     def plan_consistency(self) -> PlanConsistencyLevel:

@@ -47,9 +47,7 @@ def _residual(
             f"test/api/test_{slug.replace('-', '_')}.py",
         ),
         "predicted_symbols": (f"repair_{slug.replace('-', '_')}",),
-        "validation_commands": (
-            f"python -m pytest test/api/test_{slug.replace('-', '_')}.py -q",
-        ),
+        "validation_commands": (f"python -m pytest test/api/test_{slug.replace('-', '_')}.py -q",),
         "confidence": 0.9,
         "estimated_tokens": 1_000,
         "depth": 1,
@@ -191,10 +189,12 @@ def test_goal_quality_lint_and_unsupported_dependencies_fail_closed() -> None:
     )
 
     assert result.accepted == ()
-    assert sorted(_reason_values(result)) == sorted([
-        "goal-quality-lint",
-        "unsupported-dependency",
-    ])
+    assert sorted(_reason_values(result)) == sorted(
+        [
+            "goal-quality-lint",
+            "unsupported-dependency",
+        ]
+    )
     details = {item.reason.value: item.detail for item in result.rejected}
     assert "missing_" in details["goal-quality-lint"]
     assert "capability:gpu-profiler" in details["unsupported-dependency"]
@@ -225,10 +225,12 @@ def test_confidence_and_semantic_novelty_are_independent_finite_gates() -> None:
     )
 
     assert result.accepted == ()
-    assert sorted(_reason_values(result)) == sorted([
-        "low-confidence",
-        "low-semantic-novelty",
-    ])
+    assert sorted(_reason_values(result)) == sorted(
+        [
+            "low-confidence",
+            "low-semantic-novelty",
+        ]
+    )
 
 
 def test_exact_identity_historical_identity_and_cooldown_are_distinct() -> None:
@@ -424,10 +426,7 @@ def test_input_and_rejection_overflow_are_bounded_and_typed() -> None:
     assert len(result.rejected) <= 3
     assert "input-budget" in _reason_values(result)
     assert result.rejection_overflow_count > 0
-    assert all(
-        isinstance(item.reason, V2SuccessorRejectionReason)
-        for item in result.rejected
-    )
+    assert all(isinstance(item.reason, V2SuccessorRejectionReason) for item in result.rejected)
     assert all(len(item.detail.encode("utf-8")) <= 512 for item in result.rejected)
     payload = result.to_dict()
     assert payload["rejection_overflow_count"] == result.rejection_overflow_count

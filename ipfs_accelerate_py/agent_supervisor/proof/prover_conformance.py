@@ -41,21 +41,13 @@ from .logic_translation_validation import (
 
 
 PROVER_CONFORMANCE_VERSION = 1
-CONFORMANCE_FIXTURE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prover-conformance-fixture@1"
-)
+CONFORMANCE_FIXTURE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-conformance-fixture@1"
 CONFORMANCE_FIXTURE_SET_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prover-conformance-fixture-set@1"
 )
-CONFORMANCE_CASE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prover-conformance-case@1"
-)
-CONFORMANCE_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prover-conformance-report@1"
-)
-CONFORMANCE_GATE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prover-conformance-gate@1"
-)
+CONFORMANCE_CASE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-conformance-case@1"
+CONFORMANCE_REPORT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-conformance-report@1"
+CONFORMANCE_GATE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-conformance-gate@1"
 DEFAULT_MAX_CONFORMANCE_CASES = 256
 DEFAULT_CONFORMANCE_TIMEOUT_SECONDS = 30.0
 
@@ -115,9 +107,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     return value
 
 
-def _strings(
-    values: Iterable[Any] | None, name: str, *, required: bool = False
-) -> tuple[str, ...]:
+def _strings(values: Iterable[Any] | None, name: str, *, required: bool = False) -> tuple[str, ...]:
     if values is None:
         result: tuple[str, ...] = ()
     elif isinstance(values, (str, bytes, bytearray)):
@@ -141,11 +131,7 @@ def _strict_mapping(value: Mapping[str, Any] | None, name: str) -> dict[str, Any
 
 
 def _timestamp(clock: Callable[[], float]) -> str:
-    return (
-        datetime.fromtimestamp(clock(), tz=timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.fromtimestamp(clock(), tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _digest(value: Any) -> str:
@@ -162,14 +148,10 @@ def _digest(value: Any) -> str:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContractValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise ContractValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
-def _claimed_identity(
-    payload: Mapping[str, Any], actual: str, noun: str
-) -> None:
+def _claimed_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
     claimed = payload.get("content_id") or payload.get("identity")
     if claimed and claimed != actual:
         raise ContractValidationError(f"{noun} content identity does not match payload")
@@ -200,19 +182,13 @@ class ConformanceFixture(CanonicalContract):
     def __post_init__(self) -> None:
         for name in ("fixture_id", "source_text", "semantic_profile_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ConformanceTestKind, "kind")
-        )
-        object.__setattr__(
-            self, "source_form", _enum(self.source_form, LogicForm, "source_form")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ConformanceTestKind, "kind"))
+        object.__setattr__(self, "source_form", _enum(self.source_form, LogicForm, "source_form"))
         inventory = self.source_inventory
         if isinstance(inventory, Mapping):
             inventory = SemanticInventory.from_dict(inventory)
         if not isinstance(inventory, SemanticInventory):
-            raise ContractValidationError(
-                "source_inventory must be a SemanticInventory"
-            )
+            raise ContractValidationError("source_inventory must be a SemanticInventory")
         object.__setattr__(self, "source_inventory", inventory)
         dimensions = tuple(
             sorted(
@@ -243,9 +219,7 @@ class ConformanceFixture(CanonicalContract):
             "source_text": self.source_text,
             "source_inventory": self.source_inventory,
             "semantic_profile_id": self.semantic_profile_id,
-            "required_dimensions": tuple(
-                value.value for value in self.required_dimensions
-            ),
+            "required_dimensions": tuple(value.value for value in self.required_dimensions),
             "expected_outcome": self.expected_outcome,
             "mutation": self.mutation,
             "metadata": self.metadata,
@@ -287,9 +261,7 @@ class ConformanceFixtureSet(CanonicalContract):
         object.__setattr__(self, "version", _text(self.version, "version"))
         fixtures = tuple(self.fixtures)
         if not fixtures or any(not isinstance(item, ConformanceFixture) for item in fixtures):
-            raise ContractValidationError(
-                "fixture set must contain ConformanceFixture values"
-            )
+            raise ContractValidationError("fixture set must contain ConformanceFixture values")
         ids = [item.fixture_id for item in fixtures]
         if len(ids) != len(set(ids)):
             raise ContractValidationError("fixture ids must be unique")
@@ -317,15 +289,11 @@ class ConformanceFixtureSet(CanonicalContract):
         cross_product: bool = True,
     ) -> bool:
         expected_forms = {_enum(item, LogicForm, "form") for item in forms}
-        expected_kinds = {
-            _enum(item, ConformanceTestKind, "kind") for item in kinds
-        }
+        expected_kinds = {_enum(item, ConformanceTestKind, "kind") for item in kinds}
         observed = {(item.source_form, item.kind) for item in self.fixtures}
         if cross_product:
             return all(
-                (form, kind) in observed
-                for form in expected_forms
-                for kind in expected_kinds
+                (form, kind) in observed for form in expected_forms for kind in expected_kinds
             )
         return expected_forms <= self.forms and expected_kinds <= self.kinds
 
@@ -350,9 +318,7 @@ class ConformanceFixtureSet(CanonicalContract):
             name=payload.get("name", ""),
             version=payload.get("version", ""),
             fixtures=tuple(
-                item
-                if isinstance(item, ConformanceFixture)
-                else ConformanceFixture.from_dict(item)
+                item if isinstance(item, ConformanceFixture) else ConformanceFixture.from_dict(item)
                 for item in (payload.get("fixtures") or ())
             ),
         )
@@ -375,22 +341,18 @@ class ConformanceObservation:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.artifact is not None and not isinstance(
-            self.artifact, TranslationArtifact
-        ):
-            raise ContractValidationError(
-                "observation artifact must be a TranslationArtifact"
-            )
+        if self.artifact is not None and not isinstance(self.artifact, TranslationArtifact):
+            raise ContractValidationError("observation artifact must be a TranslationArtifact")
         inventory = self.round_trip_inventory
         if isinstance(inventory, Mapping):
             inventory = SemanticInventory.from_dict(inventory)
             object.__setattr__(self, "round_trip_inventory", inventory)
         if inventory is not None and not isinstance(inventory, SemanticInventory):
-            raise ContractValidationError(
-                "round_trip_inventory must be a SemanticInventory"
-            )
+            raise ContractValidationError("round_trip_inventory must be a SemanticInventory")
         object.__setattr__(
-            self, "candidate_outcome", _text(self.candidate_outcome, "candidate_outcome", required=False)
+            self,
+            "candidate_outcome",
+            _text(self.candidate_outcome, "candidate_outcome", required=False),
         )
         object.__setattr__(
             self, "oracle_outcome", _text(self.oracle_outcome, "oracle_outcome", required=False)
@@ -443,15 +405,9 @@ class ConformanceCaseResult(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ConformanceTestKind, "kind")
-        )
-        object.__setattr__(
-            self, "source_form", _enum(self.source_form, LogicForm, "source_form")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, ConformanceStatus, "status")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ConformanceTestKind, "kind"))
+        object.__setattr__(self, "source_form", _enum(self.source_form, LogicForm, "source_form"))
+        object.__setattr__(self, "status", _enum(self.status, ConformanceStatus, "status"))
         object.__setattr__(self, "reason", _text(self.reason, "reason"))
         if (
             isinstance(self.duration_ms, bool)
@@ -571,15 +527,11 @@ class ConformanceReport(CanonicalContract):
             _enum(self.permitted_assurance, AssuranceLevel, "permitted_assurance"),
         )
         if not self.complete and self.permitted_assurance is not AssuranceLevel.UNVERIFIED:
-            raise ContractValidationError(
-                "incomplete conformance cannot permit assurance"
-            )
+            raise ContractValidationError("incomplete conformance cannot permit assurance")
         if any(not case.passed for case in self.cases) and (
             self.permitted_assurance is not AssuranceLevel.UNVERIFIED
         ):
-            raise ContractValidationError(
-                "failed conformance cases cannot permit assurance"
-            )
+            raise ContractValidationError("failed conformance cases cannot permit assurance")
 
     @property
     def passed(self) -> bool:
@@ -610,9 +562,7 @@ class ConformanceReport(CanonicalContract):
             for form in forms
             for kind in kinds
         }
-        passed = {
-            (case.source_form, case.kind) for case in self.cases if case.passed
-        }
+        passed = {(case.source_form, case.kind) for case in self.cases if case.passed}
         return expected <= passed
 
     def _payload(self) -> dict[str, Any]:
@@ -641,14 +591,8 @@ class ConformanceReport(CanonicalContract):
             raise ContractValidationError("conformance report must be an object")
         _schema(payload, cls.SCHEMA)
         timeout_ms = payload.get("timeout_milliseconds")
-        if (
-            isinstance(timeout_ms, bool)
-            or not isinstance(timeout_ms, int)
-            or timeout_ms < 1
-        ):
-            raise ContractValidationError(
-                "timeout_milliseconds must be a positive integer"
-            )
+        if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or timeout_ms < 1:
+            raise ContractValidationError("timeout_milliseconds must be a positive integer")
         result = cls(
             prover_id=payload.get("prover_id", ""),
             path_id=payload.get("path_id", ""),
@@ -667,9 +611,7 @@ class ConformanceReport(CanonicalContract):
             complete=payload.get("complete", False),
             required_forms=tuple(payload.get("required_forms") or ()),
             required_kinds=tuple(payload.get("required_kinds") or ()),
-            permitted_assurance=payload.get(
-                "permitted_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            permitted_assurance=payload.get("permitted_assurance", AssuranceLevel.UNVERIFIED),
         )
         _claimed_identity(payload, result.content_id, "conformance report")
         return result
@@ -678,8 +620,7 @@ class ConformanceReport(CanonicalContract):
 class FixtureRunner(Protocol):
     def __call__(
         self, fixture: ConformanceFixture, contract: TranslationContract
-    ) -> ConformanceObservation | TranslationArtifact | Mapping[str, Any]:
-        ...
+    ) -> ConformanceObservation | TranslationArtifact | Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -707,9 +648,7 @@ class ProverConformanceRunner:
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
         if not isinstance(fixture_set, ConformanceFixtureSet):
-            raise ContractValidationError(
-                "fixture_set must be a ConformanceFixtureSet"
-            )
+            raise ContractValidationError("fixture_set must be a ConformanceFixtureSet")
         self.fixture_set = fixture_set
         self.config = config or ConformanceRunConfig()
         self._monotonic = monotonic
@@ -722,8 +661,7 @@ class ProverConformanceRunner:
         dimensions: Iterable[SemanticDimension],
     ) -> bool:
         return all(
-            expected.values(dimension) == actual.values(dimension)
-            for dimension in dimensions
+            expected.values(dimension) == actual.values(dimension) for dimension in dimensions
         )
 
     def _evaluate(
@@ -799,9 +737,7 @@ class ProverConformanceRunner:
         passed = observation.rejected is True
         return (
             passed,
-            "negative fixture was rejected"
-            if passed
-            else "negative fixture was accepted",
+            "negative fixture was rejected" if passed else "negative fixture was accepted",
             validation,
         )
 
@@ -858,10 +794,7 @@ class ProverConformanceRunner:
             raise ContractValidationError("fixture_runner must be callable")
         selected_forms = tuple(
             sorted(
-                {
-                    _enum(item, LogicForm, "forms")
-                    for item in (forms or (contract.source_form,))
-                },
+                {_enum(item, LogicForm, "forms") for item in (forms or (contract.source_form,))},
                 key=lambda item: item.value,
             )
         )
@@ -921,14 +854,8 @@ class ProverConformanceRunner:
                 if not call_succeeded:
                     raise raw
                 observation = ConformanceObservation.from_value(raw)
-                passed, reason, validation = self._evaluate(
-                    fixture, fixture_contract, observation
-                )
-                status = (
-                    ConformanceStatus.PASSED
-                    if passed
-                    else ConformanceStatus.FAILED
-                )
+                passed, reason, validation = self._evaluate(fixture, fixture_contract, observation)
+                status = ConformanceStatus.PASSED if passed else ConformanceStatus.FAILED
                 observation_identity = _digest(
                     {
                         "artifact": (
@@ -983,8 +910,7 @@ class ProverConformanceRunner:
             and expected_count <= self.config.max_cases
             and len(results) == expected_count
             and all(
-                item.status
-                in (ConformanceStatus.PASSED, ConformanceStatus.FAILED)
+                item.status in (ConformanceStatus.PASSED, ConformanceStatus.FAILED)
                 for item in results
             )
             and self._monotonic() <= deadline
@@ -1022,9 +948,7 @@ class QuarantineRule:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path_id", _text(self.path_id, "path_id"))
-        object.__setattr__(
-            self, "reason", _enum(self.reason, QuarantineReason, "reason")
-        )
+        object.__setattr__(self, "reason", _enum(self.reason, QuarantineReason, "reason"))
         object.__setattr__(self, "detail", _text(self.detail, "detail"))
         object.__setattr__(
             self,
@@ -1050,9 +974,7 @@ class QuarantineRule:
             ),
         )
         if not self.required_forms or not self.required_kinds:
-            raise ContractValidationError(
-                "quarantine release requires forms and test kinds"
-            )
+            raise ContractValidationError("quarantine release requires forms and test kinds")
         if not isinstance(self.degraded, bool):
             raise ContractValidationError("degraded must be boolean")
 
@@ -1071,9 +993,7 @@ class ConformanceGateDecision(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path_id", _text(self.path_id, "path_id"))
-        object.__setattr__(
-            self, "health", _enum(self.health, RouteHealth, "health")
-        )
+        object.__setattr__(self, "health", _enum(self.health, RouteHealth, "health"))
         object.__setattr__(
             self,
             "maximum_assurance",
@@ -1095,18 +1015,13 @@ class ConformanceGateDecision(CanonicalContract):
             _strings(self.retained_authorities, "retained_authorities"),
         )
         if self.report_id is not None:
-            object.__setattr__(
-                self, "report_id", _text(self.report_id, "report_id")
-            )
+            object.__setattr__(self, "report_id", _text(self.report_id, "report_id"))
         if not isinstance(self.promotion_allowed, bool):
             raise ContractValidationError("promotion_allowed must be boolean")
         if not self.promotion_allowed and (
-            self.maximum_assurance is not AssuranceLevel.UNVERIFIED
-            or self.retained_authorities
+            self.maximum_assurance is not AssuranceLevel.UNVERIFIED or self.retained_authorities
         ):
-            raise ContractValidationError(
-                "blocked paths cannot retain assurance or authorities"
-            )
+            raise ContractValidationError("blocked paths cannot retain assurance or authorities")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1129,14 +1044,10 @@ class ConformanceGateDecision(CanonicalContract):
             path_id=payload.get("path_id", ""),
             health=payload.get("health", ""),
             promotion_allowed=payload.get("promotion_allowed", False),
-            maximum_assurance=payload.get(
-                "maximum_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            maximum_assurance=payload.get("maximum_assurance", AssuranceLevel.UNVERIFIED),
             reasons=tuple(payload.get("reasons") or ()),
             report_id=payload.get("report_id"),
-            retained_authorities=tuple(
-                payload.get("retained_authorities") or ()
-            ),
+            retained_authorities=tuple(payload.get("retained_authorities") or ()),
         )
         _claimed_identity(payload, result.content_id, "conformance gate")
         return result
@@ -1149,9 +1060,7 @@ LEGACY_TDFOL_PROOF_CACHE = "ipfs_datasets_py.logic.TDFOL.tdfol_proof_cache"
 LEGACY_DCEC_TO_TDFOL_TRANSLATOR = (
     "ipfs_datasets_py.logic.TDFOL.tdfol_converter.DCECToTDFOLConverter"
 )
-LEGACY_TDFOL_TO_FOL_TRANSLATOR = (
-    "ipfs_datasets_py.logic.TDFOL.tdfol_converter.TDFOLToFOLConverter"
-)
+LEGACY_TDFOL_TO_FOL_TRANSLATOR = "ipfs_datasets_py.logic.TDFOL.tdfol_converter.TDFOLToFOLConverter"
 
 DEFAULT_QUARANTINE_RULES: tuple[QuarantineRule, ...] = (
     QuarantineRule(
@@ -1214,9 +1123,7 @@ DEFAULT_QUARANTINE_RULES: tuple[QuarantineRule, ...] = (
 class ProverQuarantineRegistry:
     """Evaluate immutable built-in and caller-supplied quarantine rules."""
 
-    def __init__(
-        self, rules: Iterable[QuarantineRule] = DEFAULT_QUARANTINE_RULES
-    ) -> None:
+    def __init__(self, rules: Iterable[QuarantineRule] = DEFAULT_QUARANTINE_RULES) -> None:
         values = tuple(rules)
         if any(not isinstance(item, QuarantineRule) for item in values):
             raise ContractValidationError("rules must be QuarantineRule values")
@@ -1272,9 +1179,7 @@ class ProverQuarantineRegistry:
         if rule is not None:
             reasons.append(rule.reason)
         if report is not None:
-            if any(
-                item.status is ConformanceStatus.TIMED_OUT for item in report.cases
-            ):
+            if any(item.status is ConformanceStatus.TIMED_OUT for item in report.cases):
                 reasons.append(QuarantineReason.TIMEOUT)
             elif not report.complete:
                 reasons.append(QuarantineReason.INCOMPLETE_FIXTURE_COVERAGE)
@@ -1327,9 +1232,7 @@ def _fixture_inventory(form: LogicForm, kind: ConformanceTestKind) -> SemanticIn
     )
 
 
-def _default_fixture(
-    form: LogicForm, kind: ConformanceTestKind
-) -> ConformanceFixture:
+def _default_fixture(form: LogicForm, kind: ConformanceTestKind) -> ConformanceFixture:
     slug = form.value.replace("+", "plus").replace("-", "_")
     source = {
         LogicForm.AST: '{"operator":"obligation","actor":"agent-a","time":7}',
@@ -1368,15 +1271,11 @@ DEFAULT_CONFORMANCE_FIXTURE_SET = ConformanceFixtureSet(
     name="supervisor-logic-translation-conformance",
     version="1",
     fixtures=tuple(
-        _default_fixture(form, kind)
-        for form in LogicForm
-        for kind in ConformanceTestKind
+        _default_fixture(form, kind) for form in LogicForm for kind in ConformanceTestKind
     ),
 )
 DEFAULT_CONFORMANCE_FIXTURES = DEFAULT_CONFORMANCE_FIXTURE_SET.fixtures
-DEFAULT_CONFORMANCE_FIXTURE_SET_ID = (
-    DEFAULT_CONFORMANCE_FIXTURE_SET.fixture_set_id
-)
+DEFAULT_CONFORMANCE_FIXTURE_SET_ID = DEFAULT_CONFORMANCE_FIXTURE_SET.fixture_set_id
 REQUIRED_CONFORMANCE_FORMS = frozenset(LogicForm)
 REQUIRED_CONFORMANCE_KINDS = frozenset(ConformanceTestKind)
 

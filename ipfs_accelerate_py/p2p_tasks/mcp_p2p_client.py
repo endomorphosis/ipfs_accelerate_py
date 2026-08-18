@@ -94,10 +94,14 @@ class MCPP2PClient:
     ) -> None:
         self._stream = stream
         self._max_frame_bytes = int(max_frame_bytes)
-        self._max_outbound_frame_bytes = int(max_outbound_frame_bytes) if max_outbound_frame_bytes is not None else _env_int_compat(
-            "IPFS_ACCELERATE_PY_MCP_P2P_CLIENT_MAX_OUTBOUND_FRAME_BYTES",
-            "IPFS_DATASETS_PY_MCP_P2P_CLIENT_MAX_OUTBOUND_FRAME_BYTES",
-            self._max_frame_bytes,
+        self._max_outbound_frame_bytes = (
+            int(max_outbound_frame_bytes)
+            if max_outbound_frame_bytes is not None
+            else _env_int_compat(
+                "IPFS_ACCELERATE_PY_MCP_P2P_CLIENT_MAX_OUTBOUND_FRAME_BYTES",
+                "IPFS_DATASETS_PY_MCP_P2P_CLIENT_MAX_OUTBOUND_FRAME_BYTES",
+                self._max_frame_bytes,
+            )
         )
         if self._max_outbound_frame_bytes < 1:
             self._max_outbound_frame_bytes = 1
@@ -108,7 +112,9 @@ class MCPP2PClient:
         self._next_id = i + 1
         return i
 
-    async def request(self, method: str, params: Optional[dict[str, Any]] = None, *, id_value: Any = None) -> dict[str, Any]:
+    async def request(
+        self, method: str, params: Optional[dict[str, Any]] = None, *, id_value: Any = None
+    ) -> dict[str, Any]:
         if id_value is None:
             id_value = self._alloc_id()
         try:

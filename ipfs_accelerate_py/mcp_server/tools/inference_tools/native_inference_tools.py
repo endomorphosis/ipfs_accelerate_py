@@ -14,6 +14,7 @@ def _load_inference_tools_api() -> Dict[str, Any]:
         from ipfs_accelerate_py.mcp.tools.inference import (  # type: ignore
             register_tools as _register_tools_inference,
         )
+
         # Import standalone functions that exist outside register_tools
         inference_module = __import__(
             "ipfs_accelerate_py.mcp.tools.inference",
@@ -118,15 +119,15 @@ async def inference_get_model_list(
         if manager_factory is not None:
             mgr = manager_factory()
             models = mgr.list_models(task=task_filter)
-            return _normalize_payload({"models": models, "count": len(models) if isinstance(models, list) else 0})
+            return _normalize_payload(
+                {"models": models, "count": len(models) if isinstance(models, list) else 0}
+            )
         return _normalize_payload({"models": [], "count": 0, "backend_available": False})
     except Exception as exc:
         return _error_result(str(exc))
 
 
-async def inference_download_model(
-    model_name: str, force: bool = False
-) -> Dict[str, Any]:
+async def inference_download_model(model_name: str, force: bool = False) -> Dict[str, Any]:
     """Download a model for local inference."""
     try:
         try:
@@ -134,7 +135,11 @@ async def inference_download_model(
 
             mgr = get_model_manager()
             result = mgr.download_model(model_name=model_name, force=force)
-            return _normalize_payload(result if isinstance(result, dict) else {"model_name": model_name, "downloaded": result})
+            return _normalize_payload(
+                result
+                if isinstance(result, dict)
+                else {"model_name": model_name, "downloaded": result}
+            )
         except Exception:
             pass
         return _normalize_payload(
@@ -183,7 +188,9 @@ async def inference_get_endpoint_status(
                 status = mgr.get_endpoint_status(endpoint_id=endpoint_id)
             else:
                 status = mgr.get_all_endpoint_status()
-            return _normalize_payload(status if isinstance(status, dict) else {"status_data": status})
+            return _normalize_payload(
+                status if isinstance(status, dict) else {"status_data": status}
+            )
         return _normalize_payload({"endpoints": {}, "backend_available": False})
     except Exception as exc:
         return _error_result(str(exc), endpoint_id=endpoint_id)
@@ -219,7 +226,9 @@ async def inference_configure_api_provider(
             result = mgr.configure_provider(
                 provider=provider, api_key=api_key, base_url=base_url, **kwargs
             )
-            return _normalize_payload(result if isinstance(result, dict) else {"provider": provider, "configured": result})
+            return _normalize_payload(
+                result if isinstance(result, dict) else {"provider": provider, "configured": result}
+            )
         return _normalize_payload(
             {"provider": provider, "configured": False, "backend_available": False}
         )

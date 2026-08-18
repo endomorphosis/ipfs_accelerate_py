@@ -237,7 +237,12 @@ def _load_logic_tools_api() -> Dict[str, Any]:
 
         async def _cec_validate_formula_fallback(formula: str) -> Dict[str, Any]:
             if not str(formula or "").strip():
-                return {"success": False, "valid": False, "errors": ["'formula' is required."], "warnings": []}
+                return {
+                    "success": False,
+                    "valid": False,
+                    "errors": ["'formula' is required."],
+                    "warnings": [],
+                }
             return {
                 "success": False,
                 "valid": False,
@@ -311,8 +316,14 @@ async def _await_maybe(result: Any) -> Any:
 
 def _normalize_result(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dictionary envelopes."""
-    normalized: Dict[str, Any] = dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
-    failed = normalized.get("success") is False or bool(normalized.get("error")) or bool(normalized.get("errors"))
+    normalized: Dict[str, Any] = (
+        dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
+    )
+    failed = (
+        normalized.get("success") is False
+        or bool(normalized.get("error"))
+        or bool(normalized.get("errors"))
+    )
     if failed:
         normalized["status"] = "error"
         normalized["success"] = False
@@ -342,7 +353,8 @@ def _local_kb_query() -> Dict[str, Any]:
         "stats": {
             "axiom_count": len(_LOCAL_TDFOL_KB_STATE["axioms"]),
             "theorem_count": len(_LOCAL_TDFOL_KB_STATE["theorems"]),
-            "total_count": len(_LOCAL_TDFOL_KB_STATE["axioms"]) + len(_LOCAL_TDFOL_KB_STATE["theorems"]),
+            "total_count": len(_LOCAL_TDFOL_KB_STATE["axioms"])
+            + len(_LOCAL_TDFOL_KB_STATE["theorems"]),
         },
         "axioms": list(_LOCAL_TDFOL_KB_STATE["axioms"]),
         "theorems": list(_LOCAL_TDFOL_KB_STATE["theorems"]),
@@ -370,7 +382,9 @@ def _normalize_non_empty_string(value: Any, field_name: str) -> str | None:
 def _normalize_string_list(value: Any, field_name: str) -> List[str] | None:
     if value is None:
         return None
-    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
         return []
     return [str(item).strip() for item in value]
 
@@ -469,7 +483,9 @@ async def tdfol_prove(
     if not normalized_formula:
         return _error_result("'formula' is required.")
     if axioms is not None:
-        if not isinstance(axioms, list) or any(not isinstance(a, str) or not a.strip() for a in axioms):
+        if not isinstance(axioms, list) or any(
+            not isinstance(a, str) or not a.strip() for a in axioms
+        ):
             return _error_result("'axioms' must be a list of non-empty strings when provided.")
 
     normalized_strategy = "auto" if strategy is None else str(strategy).strip()
@@ -610,7 +626,9 @@ async def cec_check_theorem(
     if axioms is not None and normalized_axioms == []:
         return _error_result("'axioms' must be a list of non-empty strings when provided.")
     try:
-        payload = await _await_maybe(_API["cec_check_theorem"](formula=normalized_formula, axioms=normalized_axioms))
+        payload = await _await_maybe(
+            _API["cec_check_theorem"](formula=normalized_formula, axioms=normalized_axioms)
+        )
     except Exception as exc:
         return _error_result(f"cec_check_theorem failed: {exc}", {"formula": normalized_formula})
     normalized = _normalize_result(payload)
@@ -661,7 +679,9 @@ async def cec_validate_formula(formula: str) -> Dict[str, Any]:
     try:
         payload = await _await_maybe(_API["cec_validate_formula"](formula=normalized_formula))
     except Exception as exc:
-        return _error_result(f"cec_validate_formula failed: {exc}", {"formula": normalized_formula, "valid": False})
+        return _error_result(
+            f"cec_validate_formula failed: {exc}", {"formula": normalized_formula, "valid": False}
+        )
     normalized = _normalize_result(payload)
     normalized.setdefault("formula", normalized_formula)
     normalized.setdefault("valid", False)
@@ -692,7 +712,9 @@ async def cec_formula_complexity(formula: str) -> Dict[str, Any]:
     try:
         payload = await _await_maybe(_API["cec_formula_complexity"](formula=normalized_formula))
     except Exception as exc:
-        return _error_result(f"cec_formula_complexity failed: {exc}", {"formula": normalized_formula})
+        return _error_result(
+            f"cec_formula_complexity failed: {exc}", {"formula": normalized_formula}
+        )
     normalized = _normalize_result(payload)
     normalized.setdefault("formula", normalized_formula)
     return normalized

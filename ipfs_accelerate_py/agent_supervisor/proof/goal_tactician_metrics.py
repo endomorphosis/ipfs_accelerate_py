@@ -230,15 +230,11 @@ def _text(value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES) -> str:
     if "\x00" in result:
         raise GoalTacticianMetricsError(f"{name} contains a NUL byte")
     if len(result.encode("utf-8")) > maximum:
-        raise GoalTacticianMetricsError(
-            f"{name} exceeds its {maximum}-byte bound"
-        )
+        raise GoalTacticianMetricsError(f"{name} exceeds its {maximum}-byte bound")
     return result
 
 
-def _optional_text(
-    value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES
-) -> str:
+def _optional_text(value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES) -> str:
     if value in (None, ""):
         return ""
     return _text(value, name, maximum=maximum)
@@ -248,9 +244,7 @@ def _nonnegative_int(value: Any, name: str, *, maximum: int = MAX_COUNTER) -> in
     if isinstance(value, bool) or not isinstance(value, int):
         raise GoalTacticianMetricsError(f"{name} must be a non-negative integer")
     if value < 0 or value > maximum:
-        raise GoalTacticianMetricsError(
-            f"{name} must be in [0, {maximum}]"
-        )
+        raise GoalTacticianMetricsError(f"{name} must be in [0, {maximum}]")
     return value
 
 
@@ -298,9 +292,7 @@ def _reject_private_material(value: Any, *, path: str = "$") -> None:
         for key, item in value.items():
             key_text = str(key)
             if _is_private_key(key_text):
-                raise GoalTacticianMetricsError(
-                    f"private material forbidden at {path}.{key_text}"
-                )
+                raise GoalTacticianMetricsError(f"private material forbidden at {path}.{key_text}")
             _reject_private_material(item, path=f"{path}.{key_text}")
     elif isinstance(value, (list, tuple)):
         for index, item in enumerate(value):
@@ -404,12 +396,8 @@ class GoalTacticianRunReceipt:
         object.__setattr__(
             self, "receipt_id", _text(self.receipt_id, "receipt_id", maximum=MAX_ID_BYTES)
         )
-        object.__setattr__(
-            self, "run_id", _text(self.run_id, "run_id", maximum=MAX_ID_BYTES)
-        )
-        object.__setattr__(
-            self, "goal_id", _text(self.goal_id, "goal_id", maximum=MAX_ID_BYTES)
-        )
+        object.__setattr__(self, "run_id", _text(self.run_id, "run_id", maximum=MAX_ID_BYTES))
+        object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id", maximum=MAX_ID_BYTES))
         object.__setattr__(
             self,
             "repository_tree_id",
@@ -431,9 +419,7 @@ class GoalTacticianRunReceipt:
                 else EvidenceClass(str(self.evidence_class))
             )
         except ValueError as exc:
-            raise GoalTacticianMetricsError(
-                "unsupported evidence_class"
-            ) from exc
+            raise GoalTacticianMetricsError("unsupported evidence_class") from exc
         object.__setattr__(self, "evidence_class", evidence)
 
         for name in (
@@ -479,18 +465,14 @@ class GoalTacticianRunReceipt:
             )
 
         if self.plan_steps_solvable > self.plan_steps_total:
-            raise GoalTacticianMetricsError(
-                "plan_steps_solvable cannot exceed plan_steps_total"
-            )
+            raise GoalTacticianMetricsError("plan_steps_solvable cannot exceed plan_steps_total")
         for reduced_name, total_name in (
             ("counterexample_replayable_count", "counterexample_count"),
             ("counterexample_reduced_count", "counterexample_count"),
             ("counterexample_explained_count", "counterexample_count"),
         ):
             if getattr(self, reduced_name) > getattr(self, total_name):
-                raise GoalTacticianMetricsError(
-                    f"{reduced_name} cannot exceed {total_name}"
-                )
+                raise GoalTacticianMetricsError(f"{reduced_name} cannot exceed {total_name}")
 
         object.__setattr__(
             self,
@@ -510,9 +492,7 @@ class GoalTacticianRunReceipt:
         _assurance_rank(self.authoritative_assurance)
 
         # Authority cannot be upgraded by a claim above independent assurance.
-        if _assurance_rank(self.claimed_assurance) > _assurance_rank(
-            self.authoritative_assurance
-        ):
+        if _assurance_rank(self.claimed_assurance) > _assurance_rank(self.authoritative_assurance):
             # Not automatically a violation flag — callers set the flag — but
             # we refuse inconsistent receipts that claim authority they lack
             # without declaring the violation.
@@ -542,9 +522,7 @@ class GoalTacticianRunReceipt:
             not self.cache_authority_preserved or not self.cache_identity_preserved
         ):
             # Hits that drop authority or identity are rejected measurements.
-            raise GoalTacticianMetricsError(
-                "cache hits must preserve authority and exact identity"
-            )
+            raise GoalTacticianMetricsError("cache hits must preserve authority and exact identity")
 
         object.__setattr__(
             self,
@@ -555,13 +533,8 @@ class GoalTacticianRunReceipt:
                 maximum=MAX_ID_BYTES,
             ),
         )
-        if (
-            self.evidence_class is EvidenceClass.CALIBRATED
-            and not self.calibration_receipt_id
-        ):
-            raise GoalTacticianMetricsError(
-                "calibrated receipts require calibration_receipt_id"
-            )
+        if self.evidence_class is EvidenceClass.CALIBRATED and not self.calibration_receipt_id:
+            raise GoalTacticianMetricsError("calibrated receipts require calibration_receipt_id")
 
         def _id_tuple(
             values: Sequence[str] | tuple[str, ...],
@@ -590,9 +563,7 @@ class GoalTacticianRunReceipt:
         object.__setattr__(
             self,
             "providers_agreeing",
-            _id_tuple(
-                self.providers_agreeing, "providers_agreeing", maximum=MAX_PROVIDER_IDS
-            ),
+            _id_tuple(self.providers_agreeing, "providers_agreeing", maximum=MAX_PROVIDER_IDS),
         )
         agreeing = set(self.providers_agreeing)
         queried = set(self.providers_queried)
@@ -604,9 +575,7 @@ class GoalTacticianRunReceipt:
         object.__setattr__(
             self,
             "unresolved_hole_ids",
-            _id_tuple(
-                self.unresolved_hole_ids, "unresolved_hole_ids", maximum=MAX_HOLES
-            ),
+            _id_tuple(self.unresolved_hole_ids, "unresolved_hole_ids", maximum=MAX_HOLES),
         )
         object.__setattr__(
             self,
@@ -712,21 +681,15 @@ class GoalTacticianRunReceipt:
             plan_steps_solvable=int(payload.get("plan_steps_solvable", 0) or 0),
             plan_admitted=bool(payload.get("plan_admitted", False)),
             claimed_assurance=str(payload.get("claimed_assurance", "unverified")),
-            authoritative_assurance=str(
-                payload.get("authoritative_assurance", "unverified")
-            ),
-            authority_boundary_violation=bool(
-                payload.get("authority_boundary_violation", False)
-            ),
+            authoritative_assurance=str(payload.get("authoritative_assurance", "unverified")),
+            authority_boundary_violation=bool(payload.get("authority_boundary_violation", False)),
             false_completion=bool(payload.get("false_completion", False)),
             privacy_violation=bool(payload.get("privacy_violation", False)),
             counterexample_count=int(payload.get("counterexample_count", 0) or 0),
             counterexample_replayable_count=int(
                 payload.get("counterexample_replayable_count", 0) or 0
             ),
-            counterexample_reduced_count=int(
-                payload.get("counterexample_reduced_count", 0) or 0
-            ),
+            counterexample_reduced_count=int(payload.get("counterexample_reduced_count", 0) or 0),
             counterexample_explained_count=int(
                 payload.get("counterexample_explained_count", 0) or 0
             ),
@@ -740,23 +703,13 @@ class GoalTacticianRunReceipt:
             calibration_receipt_id=str(payload.get("calibration_receipt_id") or ""),
             cache_outcome=payload.get("cache_outcome", CacheOutcome.MISS.value),
             cache_key=str(payload.get("cache_key") or ""),
-            cache_authority_preserved=bool(
-                payload.get("cache_authority_preserved", True)
-            ),
-            cache_identity_preserved=bool(
-                payload.get("cache_identity_preserved", True)
-            ),
+            cache_authority_preserved=bool(payload.get("cache_authority_preserved", True)),
+            cache_identity_preserved=bool(payload.get("cache_identity_preserved", True)),
             unresolved_hole_ids=tuple(payload.get("unresolved_hole_ids") or ()),
             witness_ids=tuple(payload.get("witness_ids") or ()),
-            critical_path_step_ids=tuple(
-                payload.get("critical_path_step_ids") or ()
-            ),
-            budget_cpu_ms_remaining=int(
-                payload.get("budget_cpu_ms_remaining", 0) or 0
-            ),
-            budget_memory_bytes_remaining=int(
-                payload.get("budget_memory_bytes_remaining", 0) or 0
-            ),
+            critical_path_step_ids=tuple(payload.get("critical_path_step_ids") or ()),
+            budget_cpu_ms_remaining=int(payload.get("budget_cpu_ms_remaining", 0) or 0),
+            budget_memory_bytes_remaining=int(payload.get("budget_memory_bytes_remaining", 0) or 0),
             budget_token_remaining=int(payload.get("budget_token_remaining", 0) or 0),
             next_actions=tuple(payload.get("next_actions") or ()),
         )
@@ -864,19 +817,14 @@ class GoalTacticianMetrics:
     def __post_init__(self) -> None:
         if self.synthetic_distributions:
             raise GoalTacticianMetricsError(
-                "synthetic distributions are forbidden; metrics must derive "
-                "from cohort receipts"
+                "synthetic distributions are forbidden; metrics must derive from cohort receipts"
             )
         if self.source != "cohort_receipts":
-            raise GoalTacticianMetricsError(
-                "metrics source must be cohort_receipts"
-            )
+            raise GoalTacticianMetricsError("metrics source must be cohort_receipts")
 
     @property
     def formalization_success_bps(self) -> int:
-        return _rate_bps(
-            self.formalization_succeeded_count, self.formalization_required_count
-        )
+        return _rate_bps(self.formalization_succeeded_count, self.formalization_required_count)
 
     @property
     def proof_gap_precision_bps(self) -> int:
@@ -898,21 +846,15 @@ class GoalTacticianMetrics:
 
     @property
     def counterexample_replay_bps(self) -> int:
-        return _rate_bps(
-            self.counterexample_replayable_count, self.counterexample_count
-        )
+        return _rate_bps(self.counterexample_replayable_count, self.counterexample_count)
 
     @property
     def counterexample_reduction_bps(self) -> int:
-        return _rate_bps(
-            self.counterexample_reduced_count, self.counterexample_count
-        )
+        return _rate_bps(self.counterexample_reduced_count, self.counterexample_count)
 
     @property
     def counterexample_explanation_bps(self) -> int:
-        return _rate_bps(
-            self.counterexample_explained_count, self.counterexample_count
-        )
+        return _rate_bps(self.counterexample_explained_count, self.counterexample_count)
 
     @property
     def provider_agreement_bps(self) -> int:
@@ -966,19 +908,13 @@ class GoalTacticianMetrics:
                 "steps_solvable": self.plan_steps_solvable,
                 "admitted_count": self.plan_admitted_count,
                 "solvability_bps": self.plan_solvability_bps,
-                "solvability_rate": _ratio(
-                    self.plan_steps_solvable, self.plan_steps_total
-                ),
+                "solvability_rate": _ratio(self.plan_steps_solvable, self.plan_steps_total),
             },
             "proof_authority": {
-                "authority_boundary_violation_count": (
-                    self.authority_boundary_violation_count
-                ),
+                "authority_boundary_violation_count": (self.authority_boundary_violation_count),
                 "false_completion_count": self.false_completion_count,
                 "privacy_violation_count": self.privacy_violation_count,
-                "authoritative_kernel_or_above_count": (
-                    self.authoritative_kernel_or_above_count
-                ),
+                "authoritative_kernel_or_above_count": (self.authoritative_kernel_or_above_count),
             },
             "counterexamples": {
                 "count": self.counterexample_count,
@@ -993,9 +929,7 @@ class GoalTacticianMetrics:
                 "query_pairs": self.provider_query_pairs,
                 "agreement_pairs": self.provider_agreement_pairs,
                 "agreement_bps": self.provider_agreement_bps,
-                "agreement_rate": _ratio(
-                    self.provider_agreement_pairs, self.provider_query_pairs
-                ),
+                "agreement_rate": _ratio(self.provider_agreement_pairs, self.provider_query_pairs),
             },
             "resources": {
                 "wall_time_total_ms": self.wall_time_total_ms,
@@ -1007,9 +941,7 @@ class GoalTacticianMetrics:
                 "cancellation_honor_bps": self.cancellation_honor_bps,
                 "calibrated_timing": self.calibrated_timing,
                 "timing_role": (
-                    "calibrated_gate_eligible"
-                    if self.calibrated_timing
-                    else "observational"
+                    "calibrated_gate_eligible" if self.calibrated_timing else "observational"
                 ),
                 "observational_fields": list(OBSERVATIONAL_METRIC_NAMES),
             },
@@ -1019,18 +951,13 @@ class GoalTacticianMetrics:
                 "miss_count": self.cache_miss_count,
                 "rejection_count": self.cache_rejection_count,
                 "hit_rate_bps": self.cache_hit_rate_bps,
-                "hit_authority_preserved_count": (
-                    self.cache_hit_authority_preserved_count
-                ),
-                "hit_identity_preserved_count": (
-                    self.cache_hit_identity_preserved_count
-                ),
+                "hit_authority_preserved_count": (self.cache_hit_authority_preserved_count),
+                "hit_identity_preserved_count": (self.cache_hit_identity_preserved_count),
                 "hits_preserve_authority_and_identity": (
                     self.cache_hit_count == 0
                     or (
                         self.cache_hit_authority_preserved_count == self.cache_hit_count
-                        and self.cache_hit_identity_preserved_count
-                        == self.cache_hit_count
+                        and self.cache_hit_identity_preserved_count == self.cache_hit_count
                     )
                 ),
             },
@@ -1096,8 +1023,7 @@ def derive_goal_tactician_metrics(
     kernel_or_above = sum(
         1
         for r in typed
-        if _assurance_rank(r.authoritative_assurance)
-        >= _ASSURANCE_RANK["kernel_verified"]
+        if _assurance_rank(r.authoritative_assurance) >= _ASSURANCE_RANK["kernel_verified"]
     )
 
     cx_total = sum(r.counterexample_count for r in typed)
@@ -1120,31 +1046,22 @@ def derive_goal_tactician_metrics(
     cpu_total = sum(r.cpu_time_ms for r in typed)
     memory_max = max(r.memory_peak_bytes for r in typed)
     cancelled = sum(1 for r in typed if r.cancelled)
-    cancellation_honored = sum(
-        1 for r in typed if r.cancelled and r.cancellation_honored
-    )
+    cancellation_honored = sum(1 for r in typed if r.cancelled and r.cancellation_honored)
     calibrated = all(
-        r.evidence_class is EvidenceClass.CALIBRATED
-        and bool(r.calibration_receipt_id)
+        r.evidence_class is EvidenceClass.CALIBRATED and bool(r.calibration_receipt_id)
         for r in typed
     ) and bool(typed)
 
     cache_hits = sum(1 for r in typed if r.cache_outcome is CacheOutcome.HIT)
     cache_misses = sum(1 for r in typed if r.cache_outcome is CacheOutcome.MISS)
-    cache_rejections = sum(
-        1 for r in typed if r.cache_outcome is CacheOutcome.REJECTED
-    )
+    cache_rejections = sum(1 for r in typed if r.cache_outcome is CacheOutcome.REJECTED)
     # Lookups include hits, misses, rejections (not pure bypass).
     cache_lookups = cache_hits + cache_misses + cache_rejections
     hit_authority = sum(
-        1
-        for r in typed
-        if r.cache_outcome is CacheOutcome.HIT and r.cache_authority_preserved
+        1 for r in typed if r.cache_outcome is CacheOutcome.HIT and r.cache_authority_preserved
     )
     hit_identity = sum(
-        1
-        for r in typed
-        if r.cache_outcome is CacheOutcome.HIT and r.cache_identity_preserved
+        1 for r in typed if r.cache_outcome is CacheOutcome.HIT and r.cache_identity_preserved
     )
 
     # Hard gates: 100% or fail.  Correctness = no false completions.
@@ -1153,9 +1070,7 @@ def derive_goal_tactician_metrics(
     privacy_bps = BASIS_POINTS if privacy_violations == 0 else 0
     authority_bps = BASIS_POINTS if authority_violations == 0 else 0
     # Cache hits already enforced at receipt construction; double-check aggregate.
-    if cache_hits and (
-        hit_authority != cache_hits or hit_identity != cache_hits
-    ):
+    if cache_hits and (hit_authority != cache_hits or hit_identity != cache_hits):
         authority_bps = 0
     hard_passed = (
         correctness_bps == BASIS_POINTS
@@ -1280,13 +1195,9 @@ class GoalTacticianBenchmarkReport(Mapping[str, Any]):
         if copied.get("metrics_interface") != GOAL_TACTICIAN_METRICS_INTERFACE:
             raise GoalTacticianMetricsError("metrics interface mismatch")
         if copied.get("synthetic_distributions") is not False:
-            raise GoalTacticianMetricsError(
-                "benchmark report cannot use synthetic distributions"
-            )
+            raise GoalTacticianMetricsError("benchmark report cannot use synthetic distributions")
         if copied.get("source") != "cohort_receipts":
-            raise GoalTacticianMetricsError(
-                "benchmark report source must be cohort_receipts"
-            )
+            raise GoalTacticianMetricsError("benchmark report source must be cohort_receipts")
         metrics = copied.get("metrics")
         if not isinstance(metrics, Mapping):
             raise GoalTacticianMetricsError("benchmark report metrics missing")
@@ -1296,24 +1207,18 @@ class GoalTacticianBenchmarkReport(Mapping[str, Any]):
         for name in HARD_GATE_NAMES:
             key = f"{name}_bps"
             if hard.get(key) != BASIS_POINTS and hard.get("passed") is True:
-                raise GoalTacticianMetricsError(
-                    f"hard gate {name} cannot pass below 100 percent"
-                )
+                raise GoalTacticianMetricsError(f"hard gate {name} cannot pass below 100 percent")
         resources = metrics.get("resources")
         if not isinstance(resources, Mapping):
             raise GoalTacticianMetricsError("resources missing from metrics")
         if resources.get("calibrated_timing") is not True:
             if resources.get("timing_role") != "observational":
-                raise GoalTacticianMetricsError(
-                    "uncalibrated timing must remain observational"
-                )
+                raise GoalTacticianMetricsError("uncalibrated timing must remain observational")
         cache = metrics.get("cache")
         if not isinstance(cache, Mapping):
             raise GoalTacticianMetricsError("cache section missing")
         if cache.get("hits_preserve_authority_and_identity") is not True:
-            raise GoalTacticianMetricsError(
-                "cache hits must preserve authority and exact identity"
-            )
+            raise GoalTacticianMetricsError("cache hits must preserve authority and exact identity")
         progress = metrics.get("progress")
         if not isinstance(progress, Mapping):
             raise GoalTacticianMetricsError("progress section missing")
@@ -1325,9 +1230,7 @@ class GoalTacticianBenchmarkReport(Mapping[str, Any]):
             "next_actions",
         ):
             if required not in progress:
-                raise GoalTacticianMetricsError(
-                    f"progress must expose {required}"
-                )
+                raise GoalTacticianMetricsError(f"progress must expose {required}")
         _reject_private_material(copied)
         if not copied.get("report_id"):
             identity = {k: v for k, v in copied.items() if k != "report_id"}
@@ -1367,7 +1270,9 @@ def build_goal_tactician_benchmark_report(
     metrics = derive_goal_tactician_metrics(receipts)
     metrics_dict = metrics.to_dict()
     typed_receipts = [
-        item if isinstance(item, GoalTacticianRunReceipt) else GoalTacticianRunReceipt.from_dict(item)
+        item
+        if isinstance(item, GoalTacticianRunReceipt)
+        else GoalTacticianRunReceipt.from_dict(item)
         for item in receipts
     ]
     receipt_ids = [r.receipt_id for r in typed_receipts]
@@ -1391,8 +1296,7 @@ def build_goal_tactician_benchmark_report(
             "hard_correctness_privacy_authority_100_percent": metrics.hard_gates_passed,
             "timing_observational_unless_calibrated": (
                 metrics.calibrated_timing is False
-                or metrics_dict["resources"]["timing_role"]
-                == "calibrated_gate_eligible"
+                or metrics_dict["resources"]["timing_role"] == "calibrated_gate_eligible"
             ),
             "cache_hits_preserve_authority_and_identity": metrics_dict["cache"][
                 "hits_preserve_authority_and_identity"
@@ -1436,8 +1340,7 @@ def build_goal_tactician_benchmark_report(
             "tool_availability": {
                 "status": GateStatus.NOT_APPLICABLE.value,
                 "reason": (
-                    "tool availability is not a correctness gate for this "
-                    "benchmark surface"
+                    "tool availability is not a correctness gate for this benchmark surface"
                 ),
             },
         },

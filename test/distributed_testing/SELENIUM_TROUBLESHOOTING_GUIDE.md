@@ -370,7 +370,7 @@ This guide provides solutions for common issues encountered when using the Selen
        failure_threshold=5,  # Higher for less stable environments
        recovery_timeout=30.0,  # Longer for slower systems
        half_open_max_calls=2,
-       success_threshold=3
+       success_threshold=3,
    )
    ```
 3. Match browsers to model types (Edge for text, Chrome for vision, Firefox for audio).
@@ -388,11 +388,7 @@ This guide provides solutions for common issues encountered when using the Selen
 6. Consider using smaller model variants for testing.
 7. For multimodal models, optimize for memory:
    ```python
-   bridge.set_resource_settings(
-       max_batch_size=1,
-       optimize_for="memory",
-       progressive_loading=True
-   )
+   bridge.set_resource_settings(max_batch_size=1, optimize_for="memory", progressive_loading=True)
    ```
 
 ## Advanced Diagnostics

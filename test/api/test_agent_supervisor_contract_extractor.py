@@ -153,9 +153,7 @@ def _signature_read(
             "returns": returns,
             "raises": ["NotFound", "PathEscapeError"],
             "async": async_mode,
-            "side_effects": [
-                {"kind": "filesystem", "polarity": "allowed", "target": "path"}
-            ],
+            "side_effects": [{"kind": "filesystem", "polarity": "allowed", "target": "path"}],
         },
         repository_id=REPO,
         tree_id=TREE,
@@ -186,9 +184,7 @@ def _contract_test_read(
         payload={
             "kind": "contract_test",
             "asserts": {
-                "parameters": [
-                    {"name": "path", "type": "str", "optional": False}
-                ],
+                "parameters": [{"name": "path", "type": "str", "optional": False}],
                 "returns": returns,
                 "errors": [{"name": "NotFound", "code": "NOT_FOUND"}],
                 "async": False,
@@ -293,9 +289,7 @@ def _observation_read(
             "returns": returns,
             "errors": [{"name": "NotFound", "code": "NOT_FOUND"}],
             "async": False,
-            "side_effects": [
-                {"kind": "filesystem", "polarity": "observed", "target": "path"}
-            ],
+            "side_effects": [{"kind": "filesystem", "polarity": "observed", "target": "path"}],
             "capabilities": [{"name": "vfs.read", "mode": "observed"}],
         },
         repository_id=REPO,
@@ -319,9 +313,7 @@ def test_extractor_version_and_closed_vocabularies() -> None:
     ranks = [source_precedence_rank(kind) for kind in expectation_source_kinds()]
     assert ranks == list(range(len(SOURCE_PRECEDENCE)))
     assert may_define_expectation(ContractSourceKind.REVIEWED_INTERFACE)
-    assert not may_define_expectation(
-        ContractSourceKind.IMPLEMENTATION_OBSERVATION
-    )
+    assert not may_define_expectation(ContractSourceKind.IMPLEMENTATION_OBSERVATION)
     classes = {item.value for item in all_artifact_classes()}
     assert classes == {
         "normative",
@@ -344,18 +336,13 @@ def test_classify_artifact_path_distinguishes_roles() -> None:
     assert classify_artifact_path("test/mocks/fake_vfs.py") is SourceArtifactClass.MOCK
     assert classify_artifact_path("test/fixtures/vfs_read.json") is SourceArtifactClass.FIXTURE
     assert classify_artifact_path("sdk/generated/vfs_client.py") is SourceArtifactClass.GENERATED
-    assert (
-        classify_artifact_path("ipfs_kit_py/vfs.py.deprecated")
-        is SourceArtifactClass.DEPRECATED
-    )
+    assert classify_artifact_path("ipfs_kit_py/vfs.py.deprecated") is SourceArtifactClass.DEPRECATED
     assert (
         classify_artifact_path("ipfs_kit_py/mcp/tools/vfs_read.json")
         is SourceArtifactClass.NORMATIVE
     )
     assert (
-        classify_artifact_path(
-            "anything", explicit=SourceArtifactClass.FIXTURE
-        )
+        classify_artifact_path("anything", explicit=SourceArtifactClass.FIXTURE)
         is SourceArtifactClass.FIXTURE
     )
 
@@ -508,15 +495,11 @@ def test_extract_precedence_prefers_reviewed_idl_over_weaker_sources() -> None:
         assert source.sha256.startswith("sha256:")
         assert source.role is ProgramContractRole.EXPECTED
     # Weaker signature disagrees on returns → conflict retained.
-    assert any(
-        conflict.aspect is SemanticAspect.OUTPUTS for conflict in expected.conflicts
-    ) or any(
+    assert any(conflict.aspect is SemanticAspect.OUTPUTS for conflict in expected.conflicts) or any(
         conflict.aspect is SemanticAspect.OUTPUTS for conflict in result.conflicts
     )
     # Generated manifest shadowed by reviewed IDL.
-    assert any(
-        item.reason is SkipReason.GENERATED_SHADOWED for item in result.skipped
-    )
+    assert any(item.reason is SkipReason.GENERATED_SHADOWED for item in result.skipped)
 
 
 def test_extract_emits_source_spans_cids_rules_and_confidence() -> None:
@@ -618,13 +601,8 @@ def test_deprecated_variant_shadowed_by_normative_peer() -> None:
         tree_id=TREE,
     )
     assert len(result.expected) == 1
-    assert (
-        result.expected[0].returns.type_shape.constructor
-        is TypeConstructor.STRING
-    )
-    assert any(
-        item.reason is SkipReason.DEPRECATED_SHADOWED for item in result.skipped
-    )
+    assert result.expected[0].returns.type_shape.constructor is TypeConstructor.STRING
+    assert any(item.reason is SkipReason.DEPRECATED_SHADOWED for item in result.skipped)
 
 
 def test_generated_copy_alone_may_define_low_authority_expectation() -> None:
@@ -632,18 +610,12 @@ def test_generated_copy_alone_may_define_low_authority_expectation() -> None:
     result = extract_contracts([generated], repository_id=REPO, tree_id=TREE)
     assert len(result.expected) == 1
     expected = result.expected[0]
-    assert (
-        expected.primary_source_kind
-        is ContractSourceKind.COMPATIBILITY_MANIFEST
-    )
+    assert expected.primary_source_kind is ContractSourceKind.COMPATIBILITY_MANIFEST
     assert any(
         source.confidence in {ConfidenceClass.MEDIUM, ConfidenceClass.LOW}
         for source in expected.sources
     )
-    assert any(
-        "generated" in assumption.statement.lower()
-        for assumption in expected.assumptions
-    )
+    assert any("generated" in assumption.statement.lower() for assumption in expected.assumptions)
 
 
 # ---------------------------------------------------------------------------
@@ -659,8 +631,7 @@ def test_contradictory_equal_precedence_idl_sources_emit_conflict() -> None:
     expected = result.expected[0]
     assert expected.has_conflicts
     assert any(
-        conflict.kind
-        in {ConflictKind.PRECEDENCE_COLLISION, ConflictKind.TYPE_MISMATCH}
+        conflict.kind in {ConflictKind.PRECEDENCE_COLLISION, ConflictKind.TYPE_MISMATCH}
         and conflict.aspect is SemanticAspect.OUTPUTS
         for conflict in expected.conflicts
     )
@@ -708,10 +679,7 @@ def test_missing_schema_ref_emits_unsupported_clause() -> None:
     result = extract_contracts([unit], repository_id=REPO, tree_id=TREE)
     expected = result.expected[0]
     assert expected.unsupported or result.unsupported
-    reasons = {
-        item.reason
-        for item in (expected.unsupported + result.unsupported)
-    }
+    reasons = {item.reason for item in (expected.unsupported + result.unsupported)}
     assert "missing_schema_ref" in reasons
     # Inputs/returns still present with unsupported reference shapes.
     assert expected.inputs
@@ -750,8 +718,7 @@ def test_overload_set_marks_unsupported_disambiguation() -> None:
     result = extract_contracts([unit], repository_id=REPO, tree_id=TREE)
     expected = result.expected[0]
     assert any(
-        item.reason == "overload_set_requires_disambiguation"
-        for item in expected.unsupported
+        item.reason == "overload_set_requires_disambiguation" for item in expected.unsupported
     )
     assert expected.inputs
     assert expected.returns is not None
@@ -885,9 +852,7 @@ def test_version_negotiation_and_optional_capability() -> None:
     expected = result.expected[0]
     modes = {cap.capability_name: cap.mode for cap in expected.capabilities}
     assert modes.get("vfs.streaming") is CapabilityMode.OPTIONAL
-    assert any(
-        cap.mode is CapabilityMode.NEGOTIATED for cap in expected.capabilities
-    )
+    assert any(cap.mode is CapabilityMode.NEGOTIATED for cap in expected.capabilities)
     assert expected.applicability is not None
     assert "1.0" in expected.applicability.versions
     assert expected.applicability.always is False
@@ -929,10 +894,7 @@ def test_observation_plus_idl_keeps_roles_separate() -> None:
     assert result.observed[0].role.value == "observed"
     # Observed returns must not rewrite expected returns.
     assert result.expected[0].returns is not None
-    assert (
-        result.expected[0].returns.type_shape.constructor
-        is TypeConstructor.STRING
-    )
+    assert result.expected[0].returns.type_shape.constructor is TypeConstructor.STRING
 
 
 def test_circular_self_expectation_conflict_when_observation_paired() -> None:
@@ -948,10 +910,10 @@ def test_circular_self_expectation_conflict_when_observation_paired() -> None:
         tree_id=TREE,
     )
     # Self-expectation guard runs for observation units.
-    assert any(
-        conflict.kind is ConflictKind.SELF_EXPECTATION
-        for conflict in result.conflicts
-    ) or result.expected  # expected still formed from IDL
+    assert (
+        any(conflict.kind is ConflictKind.SELF_EXPECTATION for conflict in result.conflicts)
+        or result.expected
+    )  # expected still formed from IDL
 
 
 # ---------------------------------------------------------------------------
@@ -1147,10 +1109,7 @@ def test_evidence_terms_cover_contract_ir_and_source_precedence() -> None:
 
     bundle_record = result.to_bundle().to_record()
     assert bundle_record["evidence_contract_ir"] == CONTRACT_IR_EVIDENCE
-    assert (
-        bundle_record["evidence_source_precedence"]
-        == CONTRACT_SOURCE_PRECEDENCE_EVIDENCE
-    )
+    assert bundle_record["evidence_source_precedence"] == CONTRACT_SOURCE_PRECEDENCE_EVIDENCE
 
 
 def test_objective_validation_repair_evidence_term_discoverable() -> None:
@@ -1167,12 +1126,8 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert IR_REPAIR_EVIDENCE == OBJECTIVE_VALIDATION_REPAIR_EVIDENCE
     assert OBJECTIVE_GOAL_ID == "VFS-G050"
     assert IR_OBJECTIVE_GOAL_ID == OBJECTIVE_GOAL_ID
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
-    assert ir_objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
+    assert ir_objective_validation_repair_evidence_terms() == ("objective validation repair",)
     # Domain envelope evidence remains IR/precedence-only.
     assert program_contract_evidence_terms() == (
         "vfs/contract-ir@1",
@@ -1399,16 +1354,7 @@ def test_semantic_fields_authorization_idempotence_atomicity_degradation() -> No
     assert expected.fallback is not None
     assert expected.fallback.mode is DegradationMode.FAIL_CLOSED
     # Aspect support must mark source precedence and core fields supported.
-    assert (
-        expected.aspect_support(SemanticAspect.SOURCE_PRECEDENCE)
-        is SupportStatus.SUPPORTED
-    )
-    assert (
-        expected.aspect_support(SemanticAspect.AUTHORIZATION)
-        is SupportStatus.SUPPORTED
-    )
-    assert (
-        expected.aspect_support(SemanticAspect.FALLBACK_DEGRADATION)
-        is SupportStatus.SUPPORTED
-    )
+    assert expected.aspect_support(SemanticAspect.SOURCE_PRECEDENCE) is SupportStatus.SUPPORTED
+    assert expected.aspect_support(SemanticAspect.AUTHORIZATION) is SupportStatus.SUPPORTED
+    assert expected.aspect_support(SemanticAspect.FALLBACK_DEGRADATION) is SupportStatus.SUPPORTED
     assert expected.to_record()["evidence_contract_ir"] == "vfs/contract-ir@1"

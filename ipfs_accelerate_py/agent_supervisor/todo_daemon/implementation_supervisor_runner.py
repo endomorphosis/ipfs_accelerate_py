@@ -54,7 +54,9 @@ SupervisorBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapFactory = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence[SupervisorRunHook]]
 SupervisorBootstrapOutputPathFactory = Callable[[Mapping[str, Path | str]], str | None]
-SupervisorBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
+SupervisorBootstrapExtraKwargsFactory = Callable[
+    [Mapping[str, Path | str]], Mapping[str, Any] | None
+]
 SupervisorMergeResolverCommand = str | Callable[[], str]
 
 
@@ -79,11 +81,7 @@ def _diagnostic_list(value: Any) -> list[str]:
     else:
         values = (value,)
     return sorted(
-        {
-            " ".join(str(item or "").strip().split())
-            for item in values
-            if str(item or "").strip()
-        },
+        {" ".join(str(item or "").strip().split()) for item in values if str(item or "").strip()},
         key=lambda item: (item.casefold(), item),
     )
 
@@ -130,14 +128,10 @@ def normalize_goal_completion_diagnostic(
         or raw.get("uncovered_acceptance_criteria")
     )
     stale = _diagnostic_list(
-        raw.get("stale_evidence")
-        or raw.get("stale_evidence_ids")
-        or raw.get("expired_evidence")
+        raw.get("stale_evidence") or raw.get("stale_evidence_ids") or raw.get("expired_evidence")
     )
     reopen_reasons = _diagnostic_list(
-        raw.get("reopen_reasons")
-        or raw.get("reopening_reasons")
-        or raw.get("contradictions")
+        raw.get("reopen_reasons") or raw.get("reopening_reasons") or raw.get("contradictions")
     )
     analyzer_health = raw.get("analyzer_health")
     if analyzer_health is None:
@@ -207,9 +201,7 @@ def build_goal_completion_projection(
     elif isinstance(diagnostics, Sequence) and not isinstance(diagnostics, (str, bytes)):
         entries = (
             (
-                str(
-                    (item.to_dict() if hasattr(item, "to_dict") else item).get("goal_id", "")
-                ),
+                str((item.to_dict() if hasattr(item, "to_dict") else item).get("goal_id", "")),
                 item,
             )
             for item in diagnostics
@@ -545,7 +537,9 @@ class ConfiguredSupervisorRuntime:
 
         return self.operations.is_running(state_dir, state_prefix)
 
-    def ensure_running(self, argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+    def ensure_running(
+        self, argv: Sequence[str], *, state_dir: Path, state_prefix: str
+    ) -> dict[str, Any]:
         """Ensure this supervisor wrapper is running in the background."""
 
         return self.operations.ensure_running(argv, state_dir=state_dir, state_prefix=state_prefix)
@@ -1262,7 +1256,9 @@ def build_objective_refill_defaults_from_paths(
     """Build reusable objective-refill defaults from resolved wrapper paths."""
 
     return ObjectiveRefillDefaults(
-        objective_path=_optional_path_from_mapping(paths, key=objective_path_key, value=objective_path),
+        objective_path=_optional_path_from_mapping(
+            paths, key=objective_path_key, value=objective_path
+        ),
         objective_graph_path=_optional_path_from_mapping(
             paths,
             key=objective_graph_path_key,
@@ -1453,16 +1449,12 @@ def build_objective_refill_defaults_factory(
             objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
             objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
             objective_goal_completion_todo_boards=objective_goal_completion_todo_boards,
-            objective_goal_completion_gate_path_key=(
-                objective_goal_completion_gate_path_key
-            ),
+            objective_goal_completion_gate_path_key=(objective_goal_completion_gate_path_key),
             objective_goal_completion_gate_path=objective_goal_completion_gate_path,
             objective_goal_completion_evidence_path_key=(
                 objective_goal_completion_evidence_path_key
             ),
-            objective_goal_completion_evidence_path=(
-                objective_goal_completion_evidence_path
-            ),
+            objective_goal_completion_evidence_path=(objective_goal_completion_evidence_path),
             objective_goal_completion_artifact_refresh_command=(
                 objective_goal_completion_artifact_refresh_command
             ),
@@ -1663,9 +1655,13 @@ def apply_portal_implementation_supervisor_defaults(
     args = with_default(args, "--supervisor-script-path", str(defaults.supervisor_script_path))
     args = with_default(args, "--max-restarts", str(defaults.max_restarts))
     if defaults.llm_merge_resolver_command:
-        args = with_default(args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command)
+        args = with_default(
+            args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command
+        )
     if defaults.worktree_submodule_paths:
-        args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
+        args = with_repeated_default(
+            args, "--worktree-submodule-path", defaults.worktree_submodule_paths
+        )
     if defaults.generated_dirty_repair_enabled:
         args = with_flag_default(args, "--auto-commit-generated-dirty")
     if defaults.generated_dirty_repair_commit_subject:
@@ -1717,10 +1713,18 @@ def apply_portal_implementation_supervisor_defaults(
             objective.objective_max_launch_readiness_goals,
         )
         args = _with_optional_default(args, "--objective-path", objective.objective_path)
-        args = _with_optional_default(args, "--objective-graph-path", objective.objective_graph_path)
-        args = _with_optional_default(args, "--objective-bundle-dir", objective.objective_bundle_dir)
-        args = _with_optional_default(args, "--objective-dataset-dir", objective.objective_dataset_dir)
-        args = _with_optional_default(args, "--objective-discovery-dir", objective.objective_discovery_dir)
+        args = _with_optional_default(
+            args, "--objective-graph-path", objective.objective_graph_path
+        )
+        args = _with_optional_default(
+            args, "--objective-bundle-dir", objective.objective_bundle_dir
+        )
+        args = _with_optional_default(
+            args, "--objective-dataset-dir", objective.objective_dataset_dir
+        )
+        args = _with_optional_default(
+            args, "--objective-discovery-dir", objective.objective_discovery_dir
+        )
         args = _with_optional_default(
             args,
             "--objective-discovery-output-path",
@@ -1908,11 +1912,7 @@ def _ordered_refill_entries(
     if order is None:
         return list(entries)
     by_name = {name: callback for name, callback in entries}
-    ordered: list[RefillHookEntry] = [
-        (name, by_name[name])
-        for name in order
-        if name in by_name
-    ]
+    ordered: list[RefillHookEntry] = [(name, by_name[name]) for name in order if name in by_name]
     ordered_names = {name for name, _callback in ordered}
     ordered.extend((name, callback) for name, callback in entries if name not in ordered_names)
     return ordered
@@ -2203,8 +2203,12 @@ def build_supervisor_objective_refill_callback(
             min_open_tasks=getattr(ctx.parsed, "objective_scan_min_open_tasks", None),
             max_findings=getattr(ctx.parsed, "objective_scan_max_findings", None),
             cooldown_seconds=getattr(ctx.parsed, "objective_scan_cooldown_seconds", None),
-            surplus_findings_per_goal=getattr(ctx.parsed, "objective_surplus_findings_per_goal", None),
-            surplus_min_terms_per_todo=getattr(ctx.parsed, "objective_surplus_min_terms_per_todo", None),
+            surplus_findings_per_goal=getattr(
+                ctx.parsed, "objective_surplus_findings_per_goal", None
+            ),
+            surplus_min_terms_per_todo=getattr(
+                ctx.parsed, "objective_surplus_min_terms_per_todo", None
+            ),
         )
         return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
 
@@ -2510,10 +2514,7 @@ def _run_hooks(
         result = hook.callback(context)
         if isinstance(result, RefillScanResult) and hook.scan_kind:
             config = context.config
-            state_dir = Path(
-                getattr(config, "state_dir", None)
-                or context.strategy_path.parent
-            )
+            state_dir = Path(getattr(config, "state_dir", None) or context.strategy_path.parent)
             state_prefix = str(
                 getattr(config, "state_prefix", None)
                 or getattr(context.parsed, "state_prefix", None)
@@ -2529,9 +2530,7 @@ def _run_hooks(
                 events_path=context.events_path,
             )
         should_log = (
-            result.generated_count > 0
-            if isinstance(result, RefillScanResult)
-            else bool(result)
+            result.generated_count > 0 if isinstance(result, RefillScanResult) else bool(result)
         )
         if should_log:
             logger.log(hook.log_level, hook.message, result)
@@ -2622,7 +2621,8 @@ def run_configured_portal_implementation_supervisor(
         parsed,
         repo_root=repo_root,
         daemon_script_path=getattr(parsed, "daemon_script_path", None) or daemon_script_path,
-        worktree_submodule_paths=getattr(parsed, "worktree_submodule_path", None) or worktree_submodule_paths,
+        worktree_submodule_paths=getattr(parsed, "worktree_submodule_path", None)
+        or worktree_submodule_paths,
     )
     return run_portal_implementation_supervisor(
         supervisor,

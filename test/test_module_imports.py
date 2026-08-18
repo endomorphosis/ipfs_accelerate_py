@@ -17,7 +17,9 @@ def _import_module(name: str):
 def test_generator_module_imports(monkeypatch) -> None:
     monkeypatch.syspath_prepend(str(REPO_ROOT))
 
-    sample_test_generator = _import_module("scripts.generators.test_generators.sample_test_generator")
+    sample_test_generator = _import_module(
+        "scripts.generators.test_generators.sample_test_generator"
+    )
     skill_hf_bert = _import_module("scripts.generators.models.skill_hf_bert")
     model_templates = _import_module("scripts.generators.templates.model_templates")
 

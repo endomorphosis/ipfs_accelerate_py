@@ -68,17 +68,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 THREAT_MODEL = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "agent_supervisor_codebase_proof_zk_threat_model.md"
+    REPO_ROOT / "docs" / "architecture" / "agent_supervisor_codebase_proof_zk_threat_model.md"
 )
-ZK_POLICY = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "agent_supervisor_codebase_proof_zk_policy.md"
-)
+ZK_POLICY = REPO_ROOT / "docs" / "architecture" / "agent_supervisor_codebase_proof_zk_policy.md"
 
 NOW = "2026-07-28T12:00:00Z"
 EXPIRES = "2026-07-28T13:00:00Z"
@@ -136,9 +128,7 @@ def _policy(
 ) -> AttestationBackendPolicy:
     return AttestationBackendPolicy(
         backend_id=(
-            "backend:simulated"
-            if mode is AttestationBackendMode.SIMULATED
-            else "backend:provekit"
+            "backend:simulated" if mode is AttestationBackendMode.SIMULATED else "backend:provekit"
         ),
         backend_version="0.2.0",
         circuit_id="circuit:receipt-binding",
@@ -225,23 +215,17 @@ def test_policy_records_not_applicable_without_blocking_core_cbp() -> None:
     assert decision.qualifying_cross_trust_boundary is False
 
     # Round-trip the reviewed decision as a public artifact.
-    assert (
-        ZkUseCaseDecisionRecord.from_dict(decision.to_public_artifact()) == decision
-    )
+    assert ZkUseCaseDecisionRecord.from_dict(decision.to_public_artifact()) == decision
 
 
 def test_backend_selection_requires_approved_use_case_decision() -> None:
     decision = core_cbp_zk_use_case_decision()
     with pytest.raises(AttestationValidationError, match="not applicable"):
-        require_zk_backend_selection_authorized(
-            decision, backend_family=ZkBackendFamily.GROTH16
-        )
+        require_zk_backend_selection_authorized(decision, backend_family=ZkBackendFamily.GROTH16)
     with pytest.raises(AttestationValidationError, match="not applicable"):
         require_zk_backend_selection_authorized(decision, backend_family="plonk")
     with pytest.raises(AttestationValidationError, match="simulated"):
-        require_zk_backend_selection_authorized(
-            decision, backend_family="simulated"
-        )
+        require_zk_backend_selection_authorized(decision, backend_family="simulated")
 
     with pytest.raises(AttestationValidationError, match="cannot block core CBP"):
         ZkUseCaseDecisionRecord(
@@ -278,13 +262,9 @@ def test_backend_selection_requires_approved_use_case_decision() -> None:
         qualifying_cross_trust_boundary=True,
         approved_backend_families=("plonk", "groth16"),
     )
-    assert require_zk_backend_selection_authorized(
-        approved, backend_family="plonk"
-    ) is approved
+    assert require_zk_backend_selection_authorized(approved, backend_family="plonk") is approved
     with pytest.raises(AttestationValidationError, match="not authorized"):
-        require_zk_backend_selection_authorized(
-            approved, backend_family="halo2"
-        )
+        require_zk_backend_selection_authorized(approved, backend_family="halo2")
 
 
 def test_simulated_attestation_cannot_satisfy_attested() -> None:
@@ -416,13 +396,9 @@ def test_private_witnesses_rejected_from_public_receipts_and_cache_entries() -> 
         public_attestation_cache_entry(request)
 
     with pytest.raises(WitnessDisclosureError, match="private witness"):
-        reject_private_witness_from_public_payload(
-            {"receipt_id": "r1", "private_witness": secret}
-        )
+        reject_private_witness_from_public_payload({"receipt_id": "r1", "private_witness": secret})
     with pytest.raises(WitnessDisclosureError):
-        public_attestation_cache_entry(
-            {"nested": {"hidden_witness": "leak"}, "ok": True}
-        )
+        public_attestation_cache_entry({"nested": {"hidden_witness": "leak"}, "ok": True})
 
     # Redaction marker alone is safe; live secrets are not.
     reject_private_witness_from_public_payload({"private_witness_redacted": True})
@@ -489,9 +465,7 @@ def test_real_attestation_reverify_and_fail_closed_on_drift() -> None:
             verifier=lambda _envelope: True,
             checked_at=EXPIRES,
         )
-    assert (
-        record.effective_assurance_at(EXPIRES) is AssuranceLevel.KERNEL_VERIFIED
-    )
+    assert record.effective_assurance_at(EXPIRES) is AssuranceLevel.KERNEL_VERIFIED
 
     # Binding drift: wrong receipt id fails closed.
     other = _receipt()

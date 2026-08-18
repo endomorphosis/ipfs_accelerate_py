@@ -28,6 +28,7 @@ try:
     from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
+
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
@@ -35,90 +36,90 @@ except ImportError:
 
 class BenchmarkRunner:
     """Runs WebGPU optimizer benchmarks in real browsers"""
-    
-    BROWSERS = ['chrome', 'firefox', 'edge']
+
+    BROWSERS = ["chrome", "firefox", "edge"]
     BENCHMARK_TYPES = [
-        'general',
-        'memory-layout',
-        'browser-specific',
-        'operation-fusion',
-        'neural-network'
+        "general",
+        "memory-layout",
+        "browser-specific",
+        "operation-fusion",
+        "neural-network",
     ]
-    
+
     def __init__(self, args):
         """Initialize the benchmark runner with command line arguments"""
         self.args = args
         self.output_dir = Path(args.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.results = []
-        
+
         # Verify TypeScript files exist
-        self.ts_benchmark_dir = Path('../ipfs_accelerate_js/test/performance/webgpu_optimizer')
+        self.ts_benchmark_dir = Path("../ipfs_accelerate_js/test/performance/webgpu_optimizer")
         if not self.ts_benchmark_dir.exists():
             print(f"Error: Benchmark directory not found: {self.ts_benchmark_dir}")
             sys.exit(1)
-            
+
         # Create results directory
         self.results_dir = self.output_dir / f"benchmark_results_{self.timestamp}"
         self.results_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _get_benchmark_files(self, benchmark_type=None):
         """Get TypeScript benchmark files based on the benchmark type"""
-        if benchmark_type == 'general':
-            pattern = 'test_webgpu_optimizer_benchmark.ts'
-        elif benchmark_type == 'memory-layout':
-            pattern = 'test_memory_layout_optimization.ts'
-        elif benchmark_type == 'browser-specific':
-            pattern = 'test_browser_specific_optimizations.ts'
-        elif benchmark_type == 'operation-fusion':
-            pattern = 'test_operation_fusion.ts'
-        elif benchmark_type == 'neural-network':
-            pattern = 'test_neural_network_pattern_recognition.ts'
+        if benchmark_type == "general":
+            pattern = "test_webgpu_optimizer_benchmark.ts"
+        elif benchmark_type == "memory-layout":
+            pattern = "test_memory_layout_optimization.ts"
+        elif benchmark_type == "browser-specific":
+            pattern = "test_browser_specific_optimizations.ts"
+        elif benchmark_type == "operation-fusion":
+            pattern = "test_operation_fusion.ts"
+        elif benchmark_type == "neural-network":
+            pattern = "test_neural_network_pattern_recognition.ts"
         else:
-            pattern = 'test_*.ts'
-            
+            pattern = "test_*.ts"
+
         benchmark_files = list(self.ts_benchmark_dir.glob(pattern))
         if not benchmark_files:
             print(f"Error: No benchmark files found matching pattern: {pattern}")
             return []
-            
+
         return benchmark_files
-    
+
     def _setup_browser_driver(self, browser_name):
         """Set up WebDriver for the specified browser"""
         if not SELENIUM_AVAILABLE:
             print("Error: Selenium is not installed. Install it with 'pip install selenium'")
             return None
-            
-        if browser_name == 'chrome':
+
+        if browser_name == "chrome":
             options = ChromeOptions()
             if self.args.headless:
-                options.add_argument('--headless')
-            options.add_argument('--enable-features=WebGPU')
+                options.add_argument("--headless")
+            options.add_argument("--enable-features=WebGPU")
             return webdriver.Chrome(options=options)
-        elif browser_name == 'firefox':
+        elif browser_name == "firefox":
             options = FirefoxOptions()
             if self.args.headless:
-                options.add_argument('--headless')
+                options.add_argument("--headless")
             # Enable WebGPU in Firefox
-            options.set_preference('dom.webgpu.enabled', True)
+            options.set_preference("dom.webgpu.enabled", True)
             return webdriver.Firefox(options=options)
-        elif browser_name == 'edge':
+        elif browser_name == "edge":
             options = EdgeOptions()
             if self.args.headless:
-                options.add_argument('--headless')
-            options.add_argument('--enable-features=WebGPU')
+                options.add_argument("--headless")
+            options.add_argument("--enable-features=WebGPU")
             return webdriver.Edge(options=options)
         else:
             print(f"Error: Unsupported browser: {browser_name}")
             return None
-    
+
     def _build_benchmark_html(self, benchmark_file):
         """Build an HTML file that loads and runs the benchmark"""
         benchmark_name = benchmark_file.stem
         html_path = self.results_dir / f"{benchmark_name}_{self.timestamp}.html"
-        
+
         # Simple HTML template for running the benchmark
         html_content = f"""
         <!DOCTYPE html>
@@ -215,12 +216,12 @@ class BenchmarkRunner:
         </body>
         </html>
         """
-        
-        with open(html_path, 'w') as f:
+
+        with open(html_path, "w") as f:
             f.write(html_content)
-            
+
         return html_path
-    
+
     def _extract_results(self, driver):
         """Extract benchmark results from the browser"""
         try:
@@ -228,7 +229,7 @@ class BenchmarkRunner:
             WebDriverWait(driver, self.args.timeout).until(
                 EC.presence_of_element_located((By.ID, "benchmark-complete"))
             )
-            
+
             # Extract the results from the window object
             results = driver.execute_script("return window.benchmarkResults;")
             return results
@@ -241,73 +242,78 @@ class BenchmarkRunner:
         except WebDriverException as e:
             print(f"WebDriver error while extracting benchmark results: {e}")
             return None
-    
+
     def run_benchmarks(self):
         """Run the benchmarks in the specified browsers"""
         if not SELENIUM_AVAILABLE and not self.args.generate_only:
             print("Error: Selenium is required for browser benchmarking.")
             print("Install it with 'pip install selenium' or use --generate-only flag.")
             return
-            
+
         # Get benchmark files
         benchmark_files = []
         for benchmark_type in self.args.benchmark_types:
             benchmark_files.extend(self._get_benchmark_files(benchmark_type))
-            
+
         if not benchmark_files:
             print("No benchmark files found. Exiting.")
             return
-            
+
         print(f"Found {len(benchmark_files)} benchmark files to run")
-        
+
         # Run benchmarks in each browser
         for browser_name in self.args.browsers:
             print(f"\nRunning benchmarks in {browser_name}...")
-            
+
             if self.args.generate_only:
                 print("Generate-only mode: Skipping actual browser tests")
                 continue
-                
+
             driver = self._setup_browser_driver(browser_name)
             if not driver:
                 continue
-                
+
             try:
                 for benchmark_file in benchmark_files:
                     print(f"  - Running {benchmark_file.name}...")
                     html_path = self._build_benchmark_html(benchmark_file)
-                    
+
                     # Load the HTML file in the browser
                     driver.get(f"file://{html_path.absolute()}")
-                    
+
                     # Wait for and extract results
                     results = self._extract_results(driver)
                     if results:
                         # Save results to a JSON file
-                        results_file = self.results_dir / f"{benchmark_file.stem}_{browser_name}_{self.timestamp}.json"
-                        with open(results_file, 'w') as f:
+                        results_file = (
+                            self.results_dir
+                            / f"{benchmark_file.stem}_{browser_name}_{self.timestamp}.json"
+                        )
+                        with open(results_file, "w") as f:
                             json.dump(results, f, indent=2)
-                            
-                        self.results.append({
-                            'benchmark': benchmark_file.stem,
-                            'browser': browser_name,
-                            'timestamp': self.timestamp,
-                            'results_file': str(results_file)
-                        })
-                        
+
+                        self.results.append(
+                            {
+                                "benchmark": benchmark_file.stem,
+                                "browser": browser_name,
+                                "timestamp": self.timestamp,
+                                "results_file": str(results_file),
+                            }
+                        )
+
                         print(f"    ✓ Results saved to {results_file}")
                     else:
                         print(f"    ✗ Failed to get results")
             finally:
                 driver.quit()
-                
+
         # Generate the combined report
         self.generate_combined_report()
-    
+
     def generate_combined_report(self):
         """Generate a combined HTML report of all benchmark results"""
         report_file = self.results_dir / f"combined_report_{self.timestamp}.html"
-        
+
         # Simple HTML template for the combined report
         html_content = f"""
         <!DOCTYPE html>
@@ -339,16 +345,16 @@ class BenchmarkRunner:
                     <th>Results File</th>
                 </tr>
         """
-        
+
         for result in self.results:
             html_content += f"""
                 <tr>
-                    <td>{result['benchmark']}</td>
-                    <td>{result['browser']}</td>
-                    <td><a href="{os.path.basename(result['results_file'])}">{os.path.basename(result['results_file'])}</a></td>
+                    <td>{result["benchmark"]}</td>
+                    <td>{result["browser"]}</td>
+                    <td><a href="{os.path.basename(result["results_file"])}">{os.path.basename(result["results_file"])}</a></td>
                 </tr>
             """
-            
+
         html_content += """
             </table>
             
@@ -396,13 +402,13 @@ class BenchmarkRunner:
             
             <h2>Results by Browser</h2>
         """
-        
+
         # For each browser, show a section with its results
         for browser in self.args.browsers:
-            browser_results = [r for r in self.results if r['browser'] == browser]
+            browser_results = [r for r in self.results if r["browser"] == browser]
             if not browser_results:
                 continue
-                
+
             html_content += f"""
             <div class="browser-section">
                 <h3>{browser.capitalize()}</h3>
@@ -449,17 +455,17 @@ class BenchmarkRunner:
                 </script>
             </div>
             """
-        
+
         html_content += """
         </body>
         </html>
         """
-        
-        with open(report_file, 'w') as f:
+
+        with open(report_file, "w") as f:
             f.write(html_content)
-            
+
         print(f"\nCombined report generated: {report_file}")
-        
+
         if self.args.open_report:
             print("Opening report in browser...")
             webbrowser.open(f"file://{report_file.absolute()}")
@@ -467,29 +473,46 @@ class BenchmarkRunner:
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description='WebGPU Optimizer Benchmark Runner')
-    
-    parser.add_argument('--browsers', nargs='+', choices=BenchmarkRunner.BROWSERS, 
-                       default=['chrome'], help='Browsers to run benchmarks in')
-    
-    parser.add_argument('--benchmark-types', nargs='+', choices=BenchmarkRunner.BENCHMARK_TYPES,
-                       default=['general'], help='Types of benchmarks to run')
-    
-    parser.add_argument('--output-dir', default='./benchmark_results',
-                       help='Directory to store benchmark results')
-    
-    parser.add_argument('--timeout', type=int, default=60,
-                       help='Timeout in seconds for each benchmark')
-    
-    parser.add_argument('--headless', action='store_true',
-                       help='Run browsers in headless mode')
-    
-    parser.add_argument('--generate-only', action='store_true',
-                       help='Only generate HTML files, do not run benchmarks')
-    
-    parser.add_argument('--open-report', action='store_true',
-                       help='Open the report in the default browser after generation')
-    
+    parser = argparse.ArgumentParser(description="WebGPU Optimizer Benchmark Runner")
+
+    parser.add_argument(
+        "--browsers",
+        nargs="+",
+        choices=BenchmarkRunner.BROWSERS,
+        default=["chrome"],
+        help="Browsers to run benchmarks in",
+    )
+
+    parser.add_argument(
+        "--benchmark-types",
+        nargs="+",
+        choices=BenchmarkRunner.BENCHMARK_TYPES,
+        default=["general"],
+        help="Types of benchmarks to run",
+    )
+
+    parser.add_argument(
+        "--output-dir", default="./benchmark_results", help="Directory to store benchmark results"
+    )
+
+    parser.add_argument(
+        "--timeout", type=int, default=60, help="Timeout in seconds for each benchmark"
+    )
+
+    parser.add_argument("--headless", action="store_true", help="Run browsers in headless mode")
+
+    parser.add_argument(
+        "--generate-only",
+        action="store_true",
+        help="Only generate HTML files, do not run benchmarks",
+    )
+
+    parser.add_argument(
+        "--open-report",
+        action="store_true",
+        help="Open the report in the default browser after generation",
+    )
+
     return parser.parse_args()
 
 
@@ -500,5 +523,5 @@ def main():
     runner.run_benchmarks()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

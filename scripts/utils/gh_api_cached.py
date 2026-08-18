@@ -123,7 +123,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("endpoint", help="GitHub API endpoint, like 'user' or '/user'")
     parser.add_argument("--jq", dest="jq", default=None, help="jq expression to apply")
-    parser.add_argument("-i", "--include", action="store_true", help="Include HTTP response headers (pass-through)")
+    parser.add_argument(
+        "-i", "--include", action="store_true", help="Include HTTP response headers (pass-through)"
+    )
     parser.add_argument("--ttl", type=int, default=None, help="Cache TTL override in seconds")
     parser.add_argument(
         "rest",

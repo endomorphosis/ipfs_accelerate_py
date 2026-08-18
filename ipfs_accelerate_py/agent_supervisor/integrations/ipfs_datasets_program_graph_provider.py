@@ -78,9 +78,7 @@ from ..proof.formal_verification_contracts import content_identity
 # Public schema / identity constants
 # ---------------------------------------------------------------------------
 
-IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_ID: Final = (
-    "ipfs_datasets_py.program_graph_projection"
-)
+IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_ID: Final = "ipfs_datasets_py.program_graph_projection"
 IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_VERSION: Final = "1.0.0"
 IPFS_DATASETS_PROGRAM_GRAPH_PROTOCOL_VERSION: Final = 1
 
@@ -96,32 +94,25 @@ assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G144"
 assert OBJECTIVE_GOAL_PACKET_IDS == ("VFS-G041", "VFS-G144")
 
 PROVIDER_CAPABILITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-capability@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-capability@1"
 )
 PROVIDER_PROJECTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-projection@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-projection@1"
 )
 PROVIDER_CHUNK_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-chunk-projection@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-chunk-projection@1"
 )
 PROVIDER_QUERY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-query@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-query@1"
 )
 PROVIDER_RESULT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-query-result@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-query-result@1"
 )
 PROVIDER_REFERENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-reference@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-reference@1"
 )
 PROVIDER_PROVENANCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-graph-provenance-link@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-graph-provenance-link@1"
 )
 
 DEFAULT_OPTIONAL_ROOT: Final = "ipfs_datasets_py"
@@ -315,15 +306,11 @@ def _canonical_value(value: Any, *, name: str = "value", depth: int = 0) -> Any:
             for key, item in sorted(value.items())
         }
     if isinstance(value, (list, tuple)):
-        return [
-            _canonical_value(item, name=name, depth=depth + 1) for item in value
-        ]
+        return [_canonical_value(item, name=name, depth=depth + 1) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
         return _canonical_value(converter(), name=name, depth=depth + 1)
-    raise ProgramGraphProviderError(
-        f"{name} contains unsupported {type(value).__name__}"
-    )
+    raise ProgramGraphProviderError(f"{name} contains unsupported {type(value).__name__}")
 
 
 def _json_bytes(value: Any, *, name: str = "value") -> bytes:
@@ -375,28 +362,14 @@ def _text(
 
 
 def _positive_int(value: Any, name: str, *, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 1
-        or value > maximum
-    ):
-        raise ProgramGraphProviderError(
-            f"{name} must be an integer between 1 and {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
+        raise ProgramGraphProviderError(f"{name} must be an integer between 1 and {maximum}")
     return value
 
 
 def _non_negative_int(value: Any, name: str, *, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 0
-        or value > maximum
-    ):
-        raise ProgramGraphProviderError(
-            f"{name} must be an integer between 0 and {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > maximum:
+        raise ProgramGraphProviderError(f"{name} must be an integer between 0 and {maximum}")
     return value
 
 
@@ -460,14 +433,18 @@ def _find_forbidden(value: Any, *, depth: int = 0) -> str | None:
                 return "non_string_key"
             if key in _FORBIDDEN_RESULT_FIELDS:
                 return key
-            if key in {
-                "creates_calls",
-                "creates_contracts",
-                "creates_findings",
-                "creates_proofs",
-                "completion_authority",
-                "mutation_authority",
-            } and item is True:
+            if (
+                key
+                in {
+                    "creates_calls",
+                    "creates_contracts",
+                    "creates_findings",
+                    "creates_proofs",
+                    "completion_authority",
+                    "mutation_authority",
+                }
+                and item is True
+            ):
                 return f"authority:{key}"
             found = _find_forbidden(item, depth=depth + 1)
             if found:
@@ -484,9 +461,7 @@ def _signature_params(func: Any) -> frozenset[str]:
     try:
         signature = inspect.signature(func)
     except (TypeError, ValueError) as exc:
-        raise ProgramGraphProviderError(
-            f"cannot inspect signature: {exc}"
-        ) from exc
+        raise ProgramGraphProviderError(f"cannot inspect signature: {exc}") from exc
     return frozenset(signature.parameters)
 
 
@@ -536,17 +511,11 @@ class GraphProjectionBounds:
                 _positive_int(getattr(self, name), name, maximum=maximum),
             )
         if self.max_query_bytes > self.max_bytes:
-            raise ProgramGraphProviderError(
-                "max_query_bytes cannot exceed max_bytes"
-            )
+            raise ProgramGraphProviderError("max_query_bytes cannot exceed max_bytes")
         if self.max_results > self.max_items:
-            raise ProgramGraphProviderError(
-                "max_results cannot exceed max_items"
-            )
+            raise ProgramGraphProviderError("max_results cannot exceed max_items")
         if self.max_hops > self.max_depth:
-            raise ProgramGraphProviderError(
-                "max_hops cannot exceed max_depth"
-            )
+            raise ProgramGraphProviderError("max_hops cannot exceed max_depth")
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -575,9 +544,7 @@ class GraphProjectionBounds:
             raise ProgramGraphProviderError("bounds must be an object")
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
-            raise ProgramGraphProviderError(
-                "unknown bounds: " + ", ".join(sorted(unknown))
-            )
+            raise ProgramGraphProviderError("unknown bounds: " + ", ".join(sorted(unknown)))
         return cls(**dict(value))
 
     def intersect(self, other: "GraphProjectionBounds") -> "GraphProjectionBounds":
@@ -591,9 +558,7 @@ class GraphProjectionBounds:
             max_chunk_nodes=min(self.max_chunk_nodes, other.max_chunk_nodes),
             max_chunk_edges=min(self.max_chunk_edges, other.max_chunk_edges),
             max_chunk_count=min(self.max_chunk_count, other.max_chunk_count),
-            max_provenance_links=min(
-                self.max_provenance_links, other.max_provenance_links
-            ),
+            max_provenance_links=min(self.max_provenance_links, other.max_provenance_links),
             timeout_ms=min(self.timeout_ms, other.timeout_ms),
         )
 
@@ -614,17 +579,13 @@ class GraphProjectionPolicy:
         if not isinstance(self.prefer_backend, bool):
             raise ProgramGraphProviderError("prefer_backend must be a boolean")
         if not isinstance(self.allow_local_fallback, bool):
-            raise ProgramGraphProviderError(
-                "allow_local_fallback must be a boolean"
-            )
+            raise ProgramGraphProviderError("allow_local_fallback must be a boolean")
         object.__setattr__(
             self,
             "module_root",
             _text(self.module_root, "module_root", max_bytes=255),
         )
-        object.__setattr__(
-            self, "bounds", GraphProjectionBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", GraphProjectionBounds.from_value(self.bounds))
 
     @property
     def policy_id(self) -> str:
@@ -651,9 +612,7 @@ class GraphProjectionPolicy:
             raise ProgramGraphProviderError("policy must be an object")
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
-            raise ProgramGraphProviderError(
-                "unknown policy fields: " + ", ".join(sorted(unknown))
-            )
+            raise ProgramGraphProviderError("unknown policy fields: " + ", ".join(sorted(unknown)))
         return cls(
             enabled=value.get("enabled", True),
             module_root=value.get("module_root", DEFAULT_OPTIONAL_ROOT),
@@ -678,15 +637,11 @@ class GraphProjectionCapability:
 
     def __post_init__(self) -> None:
         if not isinstance(self.health, CapabilityHealth):
-            object.__setattr__(
-                self, "health", CapabilityHealth(str(self.health))
-            )
+            object.__setattr__(self, "health", CapabilityHealth(str(self.health)))
         if not isinstance(self.mode, ProjectionMode):
             object.__setattr__(self, "mode", ProjectionMode(str(self.mode)))
         if not isinstance(self.reason_code, ReasonCode):
-            object.__setattr__(
-                self, "reason_code", ReasonCode(str(self.reason_code))
-            )
+            object.__setattr__(self, "reason_code", ReasonCode(str(self.reason_code)))
         if not isinstance(self.imported, bool):
             raise ProgramGraphProviderError("imported must be a boolean")
         object.__setattr__(
@@ -716,9 +671,7 @@ class GraphProjectionCapability:
         if len(surfaces) > 64:
             raise ProgramGraphProviderError("too many capability surfaces")
         object.__setattr__(self, "surfaces", surfaces)
-        object.__setattr__(
-            self, "bounds", GraphProjectionBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", GraphProjectionBounds.from_value(self.bounds))
 
     @property
     def available(self) -> bool:
@@ -797,15 +750,9 @@ class ProvenanceLink:
     component_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "source_cid", _text(self.source_cid, "source_cid", max_bytes=256)
-        )
-        object.__setattr__(
-            self, "target_cid", _text(self.target_cid, "target_cid", max_bytes=256)
-        )
-        object.__setattr__(
-            self, "kind", _text(self.kind, "kind", max_bytes=128)
-        )
+        object.__setattr__(self, "source_cid", _text(self.source_cid, "source_cid", max_bytes=256))
+        object.__setattr__(self, "target_cid", _text(self.target_cid, "target_cid", max_bytes=256))
+        object.__setattr__(self, "kind", _text(self.kind, "kind", max_bytes=128))
         object.__setattr__(
             self,
             "producer",
@@ -814,9 +761,7 @@ class ProvenanceLink:
         object.__setattr__(
             self,
             "component_id",
-            _text(
-                self.component_id, "component_id", required=False, max_bytes=256
-            ),
+            _text(self.component_id, "component_id", required=False, max_bytes=256),
         )
 
     @property
@@ -854,18 +799,10 @@ class ProjectedChunk:
     blob_cids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "chunk_key", _text(self.chunk_key, "chunk_key", max_bytes=512)
-        )
-        object.__setattr__(
-            self, "chunk_id", _text(self.chunk_id, "chunk_id", max_bytes=256)
-        )
-        object.__setattr__(
-            self, "chunk_cid", _text(self.chunk_cid, "chunk_cid", max_bytes=256)
-        )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", max_bytes=512)
-        )
+        object.__setattr__(self, "chunk_key", _text(self.chunk_key, "chunk_key", max_bytes=512))
+        object.__setattr__(self, "chunk_id", _text(self.chunk_id, "chunk_id", max_bytes=256))
+        object.__setattr__(self, "chunk_cid", _text(self.chunk_cid, "chunk_cid", max_bytes=256))
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", max_bytes=512))
         object.__setattr__(
             self,
             "component_ids",
@@ -883,24 +820,14 @@ class ProjectedChunk:
             self,
             "node_ids",
             tuple(
-                sorted(
-                    {
-                        _text(item, "node_id", max_bytes=512)
-                        for item in (self.node_ids or ())
-                    }
-                )
+                sorted({_text(item, "node_id", max_bytes=512) for item in (self.node_ids or ())})
             ),
         )
         object.__setattr__(
             self,
             "edge_ids",
             tuple(
-                sorted(
-                    {
-                        _text(item, "edge_id", max_bytes=512)
-                        for item in (self.edge_ids or ())
-                    }
-                )
+                sorted({_text(item, "edge_id", max_bytes=512) for item in (self.edge_ids or ())})
             ),
         )
         object.__setattr__(
@@ -920,9 +847,7 @@ class ProjectedChunk:
         links = tuple(self.provenance_links or ())
         for link in links:
             if not isinstance(link, ProvenanceLink):
-                raise ProgramGraphProviderError(
-                    "provenance_links must contain ProvenanceLink"
-                )
+                raise ProgramGraphProviderError("provenance_links must contain ProvenanceLink")
         object.__setattr__(self, "provenance_links", links)
         object.__setattr__(
             self,
@@ -975,22 +900,14 @@ class GraphProjection:
     elapsed_ms: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", max_bytes=512)
-        )
-        object.__setattr__(
-            self, "graph_id", _text(self.graph_id, "graph_id", max_bytes=256)
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", max_bytes=512))
+        object.__setattr__(self, "graph_id", _text(self.graph_id, "graph_id", max_bytes=256))
         if not isinstance(self.mode, ProjectionMode):
             object.__setattr__(self, "mode", ProjectionMode(str(self.mode)))
         if not isinstance(self.status, ProjectionStatus):
-            object.__setattr__(
-                self, "status", ProjectionStatus(str(self.status))
-            )
+            object.__setattr__(self, "status", ProjectionStatus(str(self.status)))
         if not isinstance(self.reason_code, ReasonCode):
-            object.__setattr__(
-                self, "reason_code", ReasonCode(str(self.reason_code))
-            )
+            object.__setattr__(self, "reason_code", ReasonCode(str(self.reason_code)))
         object.__setattr__(
             self,
             "reason",
@@ -1001,9 +918,7 @@ class GraphProjection:
                 max_bytes=DEFAULT_MAX_REASON_BYTES,
             ),
         )
-        object.__setattr__(
-            self, "bounds", GraphProjectionBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", GraphProjectionBounds.from_value(self.bounds))
         object.__setattr__(
             self,
             "index_cid",
@@ -1024,13 +939,9 @@ class GraphProjection:
         chunks = tuple(self.chunks or ())
         for chunk in chunks:
             if not isinstance(chunk, ProjectedChunk):
-                raise ProgramGraphProviderError(
-                    "chunks must contain ProjectedChunk values"
-                )
+                raise ProgramGraphProviderError("chunks must contain ProjectedChunk values")
             if chunk.forest_id != self.forest_id:
-                raise ProgramGraphProviderError(
-                    "chunk forest_id must match projection forest_id"
-                )
+                raise ProgramGraphProviderError("chunk forest_id must match projection forest_id")
         # Deterministic order by chunk_key.
         object.__setattr__(
             self,
@@ -1040,9 +951,7 @@ class GraphProjection:
         links = tuple(self.provenance_links or ())
         for link in links:
             if not isinstance(link, ProvenanceLink):
-                raise ProgramGraphProviderError(
-                    "provenance_links must contain ProvenanceLink"
-                )
+                raise ProgramGraphProviderError("provenance_links must contain ProvenanceLink")
         object.__setattr__(self, "provenance_links", links)
         object.__setattr__(
             self,
@@ -1052,9 +961,7 @@ class GraphProjection:
         if self.capability is not None and not isinstance(
             self.capability, GraphProjectionCapability
         ):
-            raise ProgramGraphProviderError(
-                "capability must be GraphProjectionCapability"
-            )
+            raise ProgramGraphProviderError("capability must be GraphProjectionCapability")
 
     @property
     def projection_id(self) -> str:
@@ -1182,14 +1089,10 @@ class GraphProjectionQuery:
             raise ProgramGraphProviderError("payload must be an object")
         payload = _canonical_value(dict(self.payload), name="payload")
         if _find_forbidden(payload):
-            raise ProgramGraphProviderError(
-                "query payload contains forbidden fields"
-            )
+            raise ProgramGraphProviderError("query payload contains forbidden fields")
         object.__setattr__(self, "payload", MappingProxyType(payload))
         if not self.text and not self.seed_node_ids:
-            raise ProgramGraphProviderError(
-                "query requires text and/or seed_node_ids"
-            )
+            raise ProgramGraphProviderError("query requires text and/or seed_node_ids")
 
     @property
     def query_id(self) -> str:
@@ -1246,20 +1149,14 @@ class RankedGraphReference:
     rank: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "node_id", _text(self.node_id, "node_id", max_bytes=512)
-        )
-        object.__setattr__(
-            self, "chunk_cid", _text(self.chunk_cid, "chunk_cid", max_bytes=256)
-        )
+        object.__setattr__(self, "node_id", _text(self.node_id, "node_id", max_bytes=512))
+        object.__setattr__(self, "chunk_cid", _text(self.chunk_cid, "chunk_cid", max_bytes=256))
         try:
             score = float(self.score)
         except (TypeError, ValueError) as exc:
             raise ProgramGraphProviderError("score must be numeric") from exc
         if not math.isfinite(score) or score < 0.0:
-            raise ProgramGraphProviderError(
-                "score must be a finite non-negative number"
-            )
+            raise ProgramGraphProviderError("score must be a finite non-negative number")
         object.__setattr__(self, "score", round(score, 6))
         object.__setattr__(
             self,
@@ -1349,25 +1246,17 @@ class GraphQueryResult:
     capability: GraphProjectionCapability | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "query_id", _text(self.query_id, "query_id", max_bytes=256)
-        )
+        object.__setattr__(self, "query_id", _text(self.query_id, "query_id", max_bytes=256))
         object.__setattr__(
             self,
             "projection_id",
             _text(self.projection_id, "projection_id", max_bytes=256),
         )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", max_bytes=512)
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", max_bytes=512))
         if not isinstance(self.status, ProjectionStatus):
-            object.__setattr__(
-                self, "status", ProjectionStatus(str(self.status))
-            )
+            object.__setattr__(self, "status", ProjectionStatus(str(self.status)))
         if not isinstance(self.reason_code, ReasonCode):
-            object.__setattr__(
-                self, "reason_code", ReasonCode(str(self.reason_code))
-            )
+            object.__setattr__(self, "reason_code", ReasonCode(str(self.reason_code)))
         if not isinstance(self.mode, ProjectionMode):
             object.__setattr__(self, "mode", ProjectionMode(str(self.mode)))
         object.__setattr__(
@@ -1388,13 +1277,9 @@ class GraphQueryResult:
         refs = tuple(self.references or ())
         for ref in refs:
             if not isinstance(ref, RankedGraphReference):
-                raise ProgramGraphProviderError(
-                    "references must contain RankedGraphReference"
-                )
+                raise ProgramGraphProviderError("references must contain RankedGraphReference")
         object.__setattr__(self, "references", refs)
-        object.__setattr__(
-            self, "bounds", GraphProjectionBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", GraphProjectionBounds.from_value(self.bounds))
         if not isinstance(self.truncated, bool):
             raise ProgramGraphProviderError("truncated must be a boolean")
         object.__setattr__(
@@ -1410,9 +1295,7 @@ class GraphQueryResult:
         object.__setattr__(
             self,
             "considered_count",
-            _non_negative_int(
-                self.considered_count, "considered_count", maximum=10**9
-            ),
+            _non_negative_int(self.considered_count, "considered_count", maximum=10**9),
         )
         object.__setattr__(
             self,
@@ -1513,13 +1396,9 @@ def _project_chunk(
     bounds: GraphProjectionBounds,
 ) -> ProjectedChunk:
     if len(chunk.nodes) > bounds.max_chunk_nodes:
-        raise ProgramGraphProviderBoundsError(
-            f"chunk {chunk.chunk_key!r} exceeds max_chunk_nodes"
-        )
+        raise ProgramGraphProviderBoundsError(f"chunk {chunk.chunk_key!r} exceeds max_chunk_nodes")
     if len(chunk.edges) > bounds.max_chunk_edges:
-        raise ProgramGraphProviderBoundsError(
-            f"chunk {chunk.chunk_key!r} exceeds max_chunk_edges"
-        )
+        raise ProgramGraphProviderBoundsError(f"chunk {chunk.chunk_key!r} exceeds max_chunk_edges")
 
     node_bodies = [_node_reference_body(node) for node in chunk.nodes]
     edge_bodies = [_edge_reference_body(edge) for edge in chunk.edges]
@@ -1595,9 +1474,7 @@ def project_program_graph_local(
         if isinstance(graph, Mapping):
             graph = ProgramGraph.from_dict(graph)
         else:
-            raise ProgramGraphProviderError(
-                "graph must be a ProgramGraph or mapping"
-            )
+            raise ProgramGraphProviderError("graph must be a ProgramGraph or mapping")
 
     selected = GraphProjectionBounds.from_value(bounds)
     started = time.monotonic()
@@ -1665,15 +1542,9 @@ def project_program_graph_local(
     }
     index_cid = _chunk_cid(index_body)
 
-    status = (
-        ProjectionStatus.PARTIAL
-        if truncated
-        else ProjectionStatus.LOCAL_FALLBACK
-    )
+    status = ProjectionStatus.PARTIAL if truncated else ProjectionStatus.LOCAL_FALLBACK
     reason_code = (
-        ReasonCode.PARTIAL_TRUNCATION
-        if truncated
-        else ReasonCode.LOCAL_FALLBACK_PROJECTION
+        ReasonCode.PARTIAL_TRUNCATION if truncated else ReasonCode.LOCAL_FALLBACK_PROJECTION
     )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     return GraphProjection(
@@ -1736,9 +1607,7 @@ def _score_node(
             # Normalize by query size so scores stay in [0, 1] for lexical part.
             lexical = min(1.0, overlap_total / max(1, len(query_tokens)))
             score += lexical
-            reasons.append(
-                "lexical_match:" + ",".join(sorted(matched_fields))
-            )
+            reasons.append("lexical_match:" + ",".join(sorted(matched_fields)))
         elif node.node_id not in seed_ids:
             return None
 
@@ -1763,7 +1632,7 @@ def rank_projection_local(
 ) -> GraphQueryResult:
     """Rank only nodes present in ``projection`` (canonical evidence)."""
 
-    selected = (bounds or projection.bounds)
+    selected = bounds or projection.bounds
     if query.max_results is not None:
         selected = GraphProjectionBounds(
             **{
@@ -1903,16 +1772,8 @@ def rank_projection_local(
         truncated = True
         truncation_reason = truncation_reason or "max_bytes"
 
-    status = (
-        ProjectionStatus.PARTIAL
-        if truncated
-        else ProjectionStatus.LOCAL_FALLBACK
-    )
-    reason_code = (
-        ReasonCode.PARTIAL_TRUNCATION
-        if truncated
-        else ReasonCode.DETERMINISTIC_RANKING
-    )
+    status = ProjectionStatus.PARTIAL if truncated else ProjectionStatus.LOCAL_FALLBACK
+    reason_code = ReasonCode.PARTIAL_TRUNCATION if truncated else ReasonCode.DETERMINISTIC_RANKING
     elapsed_ms = int((time.monotonic() - started) * 1000)
     return GraphQueryResult(
         query_id=query.query_id,
@@ -1949,9 +1810,7 @@ class _BackendSurface:
     parameters: tuple[str, ...]
 
 
-def _probe_module_surface(
-    module: Any, module_name: str
-) -> _BackendSurface | None:
+def _probe_module_surface(module: Any, module_name: str) -> _BackendSurface | None:
     for attr_name in _QUERY_CLASS_NAMES:
         target = getattr(module, attr_name, None)
         if target is None:
@@ -2024,8 +1883,10 @@ def _sanitize_backend_hits(
             "graph_results",
             "vector_results",
         ):
-            if key in raw and isinstance(raw[key], Sequence) and not isinstance(
-                raw[key], (str, bytes)
+            if (
+                key in raw
+                and isinstance(raw[key], Sequence)
+                and not isinstance(raw[key], (str, bytes))
             ):
                 items = raw[key]
                 break
@@ -2038,9 +1899,7 @@ def _sanitize_backend_hits(
         return (), "unsupported_backend_payload"
 
     allowed_nodes = projection.allowed_node_ids()
-    node_map = {
-        node.node_id: node for node in graph.nodes if node.node_id in allowed_nodes
-    }
+    node_map = {node.node_id: node for node in graph.nodes if node.node_id in allowed_nodes}
     refs: list[RankedGraphReference] = []
     for item in items:
         if not isinstance(item, Mapping):
@@ -2102,9 +1961,12 @@ def _sanitize_backend_hits(
             or "backend_rank"
         ).strip()
         if len(reason.encode("utf-8")) > DEFAULT_MAX_REASON_BYTES:
-            reason = reason.encode("utf-8")[: DEFAULT_MAX_REASON_BYTES - 3].decode(
-                "utf-8", errors="ignore"
-            ) + "..."
+            reason = (
+                reason.encode("utf-8")[: DEFAULT_MAX_REASON_BYTES - 3].decode(
+                    "utf-8", errors="ignore"
+                )
+                + "..."
+            )
 
         refs.append(
             RankedGraphReference(
@@ -2174,13 +2036,9 @@ class IpfsDatasetsProgramGraphProvider:
         bounds: GraphProjectionBounds | Mapping[str, Any] | None = None,
     ) -> None:
         selected = GraphProjectionPolicy.from_value(policy)
-        overrides = any(
-            item is not None for item in (enabled, module_root, bounds)
-        )
+        overrides = any(item is not None for item in (enabled, module_root, bounds))
         if policy is not None and overrides:
-            raise ProgramGraphProviderError(
-                "policy cannot be combined with policy field overrides"
-            )
+            raise ProgramGraphProviderError("policy cannot be combined with policy field overrides")
         if overrides:
             selected = GraphProjectionPolicy(
                 enabled=True if enabled is None else enabled,
@@ -2215,9 +2073,7 @@ class IpfsDatasetsProgramGraphProvider:
             if self._backend is None:
                 self._cached_backend = None
 
-    def probe(
-        self, *, force: bool = False
-    ) -> GraphProjectionCapability:
+    def probe(self, *, force: bool = False) -> GraphProjectionCapability:
         """Probe optional graph/IPLD/index/query APIs under a time budget."""
 
         if not self.policy.enabled:
@@ -2259,9 +2115,7 @@ class IpfsDatasetsProgramGraphProvider:
                     mode=ProjectionMode.LOCAL_FALLBACK,
                     imported=True,
                     reason_code=ReasonCode.OPTIONAL_API_INCOMPATIBLE,
-                    reason=(
-                        f"{surface.symbol}.{surface.method} lacks bound parameters"
-                    ),
+                    reason=(f"{surface.symbol}.{surface.method} lacks bound parameters"),
                     surfaces=(f"{surface.module}:{surface.symbol}",),
                     bounds=self.policy.bounds,
                     provider_version="injected",
@@ -2271,10 +2125,7 @@ class IpfsDatasetsProgramGraphProvider:
                 mode=ProjectionMode.GRAPHRAG,
                 imported=True,
                 reason_code=ReasonCode.BOUNDED_QUERY,
-                reason=(
-                    f"injected backend exposes bounded "
-                    f"{surface.symbol}.{surface.method}"
-                ),
+                reason=(f"injected backend exposes bounded {surface.symbol}.{surface.method}"),
                 surfaces=(f"{surface.module}:{surface.symbol}",),
                 bounds=self.policy.bounds,
                 provider_version="injected",
@@ -2286,9 +2137,7 @@ class IpfsDatasetsProgramGraphProvider:
         best: _BackendSurface | None = None
         deadline = self._clock() + (self.policy.bounds.timeout_ms / 1000.0)
         # Use a tighter probe budget than query budget.
-        probe_timeout = min(
-            self.policy.bounds.timeout_ms, DEFAULT_PROBE_TIMEOUT_MS
-        ) / 1000.0
+        probe_timeout = min(self.policy.bounds.timeout_ms, DEFAULT_PROBE_TIMEOUT_MS) / 1000.0
 
         for relative in _GRAPH_API_CANDIDATES:
             if self._clock() > deadline:
@@ -2329,9 +2178,7 @@ class IpfsDatasetsProgramGraphProvider:
             surface = _probe_module_surface(module, module_name)
             if surface is None:
                 continue
-            surfaces_found.append(
-                f"{surface.module}:{surface.symbol}.{surface.method}"
-            )
+            surfaces_found.append(f"{surface.module}:{surface.symbol}.{surface.method}")
             if surface.bounded and best is None:
                 best = surface
                 self._cached_backend = module
@@ -2343,10 +2190,7 @@ class IpfsDatasetsProgramGraphProvider:
                 mode=ProjectionMode.GRAPHRAG,
                 imported=True,
                 reason_code=ReasonCode.BOUNDED_QUERY,
-                reason=(
-                    f"compatible bounded query surface "
-                    f"{best.symbol}.{best.method}"
-                ),
+                reason=(f"compatible bounded query surface {best.symbol}.{best.method}"),
                 surfaces=tuple(surfaces_found),
                 bounds=self.policy.bounds,
             )
@@ -2358,8 +2202,7 @@ class IpfsDatasetsProgramGraphProvider:
                 imported=True,
                 reason_code=ReasonCode.OPTIONAL_API_PARTIAL,
                 reason=(
-                    "optional modules imported but no compatible bounded "
-                    "query surface was found"
+                    "optional modules imported but no compatible bounded query surface was found"
                 ),
                 surfaces=tuple(surfaces_found),
                 bounds=self.policy.bounds,
@@ -2381,9 +2224,7 @@ class IpfsDatasetsProgramGraphProvider:
             try:
                 return future.result(timeout=timeout)
             except FuturesTimeoutError as exc:
-                raise TimeoutError(
-                    f"import of {module_name} exceeded {timeout}s"
-                ) from exc
+                raise TimeoutError(f"import of {module_name} exceeded {timeout}s") from exc
 
     def _surface_from_backend(self, backend: Any) -> _BackendSurface | None:
         if inspect.isclass(type(backend)) and not inspect.isclass(backend):
@@ -2457,22 +2298,16 @@ class IpfsDatasetsProgramGraphProvider:
 
         selected = self.policy.bounds
         if bounds is not None:
-            selected = selected.intersect(
-                GraphProjectionBounds.from_value(bounds)
-            )
+            selected = selected.intersect(GraphProjectionBounds.from_value(bounds))
 
         if isinstance(graph, Mapping):
             graph = ProgramGraph.from_dict(graph)
         if not isinstance(graph, ProgramGraph):
-            raise ProgramGraphProviderError(
-                "graph must be a ProgramGraph or mapping"
-            )
+            raise ProgramGraphProviderError("graph must be a ProgramGraph or mapping")
 
         local = project_program_graph_local(graph, bounds=selected)
         capability = (
-            self.probe()
-            if probe
-            else inspect_program_graph_provider_capability(self.policy)
+            self.probe() if probe else inspect_program_graph_provider_capability(self.policy)
         )
 
         # Local projection is always the evidence set.  Backend mode is
@@ -2486,9 +2321,7 @@ class IpfsDatasetsProgramGraphProvider:
             if not local.truncated:
                 status = ProjectionStatus.COMPLETED
                 reason_code = ReasonCode.BOUNDED_PROJECTION
-                reason = (
-                    "local deterministic projection with compatible GraphRAG surface"
-                )
+                reason = "local deterministic projection with compatible GraphRAG surface"
         elif capability.health is CapabilityHealth.PARTIAL:
             mode = ProjectionMode.MIXED
             status = ProjectionStatus.PARTIAL
@@ -2502,9 +2335,7 @@ class IpfsDatasetsProgramGraphProvider:
             else:
                 status = ProjectionStatus.LOCAL_FALLBACK
                 reason_code = ReasonCode.LOCAL_FALLBACK_PROJECTION
-                reason = (
-                    f"incompatible optional API; local fallback: {capability.reason}"
-                )
+                reason = f"incompatible optional API; local fallback: {capability.reason}"
         elif capability.health is CapabilityHealth.UNAVAILABLE:
             if not self.policy.allow_local_fallback:
                 status = ProjectionStatus.UNAVAILABLE
@@ -2513,9 +2344,7 @@ class IpfsDatasetsProgramGraphProvider:
             else:
                 status = ProjectionStatus.LOCAL_FALLBACK
                 reason_code = ReasonCode.LOCAL_FALLBACK_PROJECTION
-                reason = (
-                    f"optional module unavailable; local fallback: {capability.reason}"
-                )
+                reason = f"optional module unavailable; local fallback: {capability.reason}"
 
         return GraphProjection(
             forest_id=local.forest_id,
@@ -2550,9 +2379,7 @@ class IpfsDatasetsProgramGraphProvider:
         if isinstance(graph, Mapping):
             graph = ProgramGraph.from_dict(graph)
         if not isinstance(graph, ProgramGraph):
-            raise ProgramGraphProviderError(
-                "graph must be a ProgramGraph or mapping"
-            )
+            raise ProgramGraphProviderError("graph must be a ProgramGraph or mapping")
         query_obj = GraphProjectionQuery.from_value(query)
         if len(_json_bytes(query_obj.to_dict(), name="query")) > (
             self.policy.bounds.max_query_bytes
@@ -2561,19 +2388,13 @@ class IpfsDatasetsProgramGraphProvider:
 
         selected = self.policy.bounds
         if bounds is not None:
-            selected = selected.intersect(
-                GraphProjectionBounds.from_value(bounds)
-            )
+            selected = selected.intersect(GraphProjectionBounds.from_value(bounds))
         if projection is None:
             projection = self.project(graph, bounds=selected, probe=True)
         elif projection.forest_id != graph.forest_id:
-            raise ProgramGraphProviderError(
-                "projection forest_id does not match graph forest_id"
-            )
+            raise ProgramGraphProviderError("projection forest_id does not match graph forest_id")
 
-        prefer_backend = (
-            self.policy.prefer_backend if use_backend is None else use_backend
-        )
+        prefer_backend = self.policy.prefer_backend if use_backend is None else use_backend
         capability = projection.capability or self.probe()
 
         if prefer_backend and capability.health is CapabilityHealth.HEALTHY:
@@ -2588,9 +2409,7 @@ class IpfsDatasetsProgramGraphProvider:
                 return backend_result
 
         # Local deterministic ranking is always available as fallback.
-        result = rank_projection_local(
-            graph, projection, query_obj, bounds=selected
-        )
+        result = rank_projection_local(graph, projection, query_obj, bounds=selected)
         # Re-stamp capability and mode awareness.
         status = result.status
         reason_code = result.reason_code
@@ -2636,11 +2455,7 @@ class IpfsDatasetsProgramGraphProvider:
         elif capability.health is CapabilityHealth.HEALTHY:
             # Backend was preferred but did not produce a usable result —
             # still a valid local ranking over the same evidence.
-            status = (
-                ProjectionStatus.PARTIAL
-                if result.truncated
-                else ProjectionStatus.COMPLETED
-            )
+            status = ProjectionStatus.PARTIAL if result.truncated else ProjectionStatus.COMPLETED
             reason_code = (
                 ReasonCode.PARTIAL_TRUNCATION
                 if result.truncated
@@ -2719,9 +2534,7 @@ class IpfsDatasetsProgramGraphProvider:
                 forest_id=projection.forest_id,
                 status=ProjectionStatus.INCONCLUSIVE,
                 reason_code=ReasonCode.INCONCLUSIVE_BACKEND,
-                reason=f"backend error: {type(exc).__name__}: {exc}"[
-                    : DEFAULT_MAX_REASON_BYTES
-                ],
+                reason=f"backend error: {type(exc).__name__}: {exc}"[:DEFAULT_MAX_REASON_BYTES],
                 mode=ProjectionMode.GRAPHRAG,
                 references=(),
                 bounds=bounds,
@@ -2742,9 +2555,7 @@ class IpfsDatasetsProgramGraphProvider:
                 forest_id=projection.forest_id,
                 status=ProjectionStatus.POISONED,
                 reason_code=ReasonCode.POISONED_BACKEND_RESULT,
-                reason=f"backend result rejected: {poison}"[
-                    : DEFAULT_MAX_REASON_BYTES
-                ],
+                reason=f"backend result rejected: {poison}"[:DEFAULT_MAX_REASON_BYTES],
                 mode=ProjectionMode.GRAPHRAG,
                 references=(),
                 bounds=bounds,
@@ -2782,14 +2593,8 @@ class IpfsDatasetsProgramGraphProvider:
         query: GraphProjectionQuery,
         bounds: GraphProjectionBounds,
     ) -> Any:
-        max_results = (
-            query.max_results
-            if query.max_results is not None
-            else bounds.max_results
-        )
-        max_hops = (
-            query.max_hops if query.max_hops is not None else bounds.max_hops
-        )
+        max_results = query.max_results if query.max_results is not None else bounds.max_results
+        max_hops = query.max_hops if query.max_hops is not None else bounds.max_hops
         kwargs_candidates = (
             {
                 "query_text": query.text,
@@ -2845,9 +2650,7 @@ class IpfsDatasetsProgramGraphProvider:
                 filtered = {
                     key: value
                     for key, value in kwargs.items()
-                    if not params or key in params or any(
-                        p.startswith("*") for p in params
-                    )
+                    if not params or key in params or any(p.startswith("*") for p in params)
                 }
                 # Always try to pass the query text positionally if needed.
                 try:
@@ -2857,11 +2660,14 @@ class IpfsDatasetsProgramGraphProvider:
                         return method(**filtered)
                     if "text" in filtered:
                         return method(**filtered)
-                    return method(query.text, **{
-                        k: v
-                        for k, v in filtered.items()
-                        if k not in {"query_text", "query", "text"}
-                    })
+                    return method(
+                        query.text,
+                        **{
+                            k: v
+                            for k, v in filtered.items()
+                            if k not in {"query_text", "query", "text"}
+                        },
+                    )
                 except TypeError as exc:
                     last_error = exc
                     continue
@@ -2898,9 +2704,7 @@ class IpfsDatasetsProgramGraphProvider:
 
         if last_error is not None:
             raise last_error
-        raise ProgramGraphProviderError(
-            "backend has no dispatchable query method"
-        )
+        raise ProgramGraphProviderError("backend has no dispatchable query method")
 
     def project_and_query(
         self,

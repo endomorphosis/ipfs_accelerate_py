@@ -156,9 +156,7 @@ def _ids(
         source: Sequence[Any] = ()
     elif isinstance(value, str):
         source = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
         source = value
     else:
         raise ContractValidationError(f"{field_name} must be an array of strings")
@@ -200,9 +198,7 @@ def _strict_object(text: str) -> dict[str, Any]:
             "Leanstral goal-development output must be strict JSON"
         ) from exc
     if not isinstance(value, dict):
-        raise ContractValidationError(
-            "Leanstral goal-development output must be a JSON object"
-        )
+        raise ContractValidationError("Leanstral goal-development output must be a JSON object")
     return value
 
 
@@ -237,9 +233,7 @@ class ImmutableGoalRecord:
 
     def __post_init__(self) -> None:
         for name in ("goal_id", "content_id", "satisfaction_formula_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "title",
@@ -275,9 +269,7 @@ class ImmutableGoalRecord:
             raise ContractValidationError("goal record has the wrong kind")
         return cls(
             goal_id=value.get("goal_id", ""),
-            content_id=value.get(
-                "content_id", value.get("root_goal_content_id", "")
-            ),
+            content_id=value.get("content_id", value.get("root_goal_content_id", "")),
             satisfaction_formula_id=value.get("satisfaction_formula_id", ""),
             title=value.get("title", ""),
         )
@@ -300,9 +292,7 @@ class EvidenceGapRecord:
                 required=True,
             ),
         )
-        object.__setattr__(
-            self, "reason_code", _text(self.reason_code, field_name="reason_code")
-        )
+        object.__setattr__(self, "reason_code", _text(self.reason_code, field_name="reason_code"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -330,10 +320,7 @@ class EvidenceGapRecord:
         return cls(
             gap_id=value.get("gap_id", ""),
             evidence_requirement_ids=tuple(
-                value.get(
-                    "evidence_requirement_ids", value.get("evidence_ids", ())
-                )
-                or ()
+                value.get("evidence_requirement_ids", value.get("evidence_ids", ())) or ()
             ),
             reason_code=value.get("reason_code", "missing_evidence"),
         )
@@ -363,9 +350,7 @@ class ASTGraphRAGReferenceRecord:
                 str(getattr(self.reference_kind, "value", self.reference_kind))
             )
         except ValueError as exc:
-            raise ContractValidationError(
-                "reference_kind must be ast or graphrag"
-            ) from exc
+            raise ContractValidationError("reference_kind must be ast or graphrag") from exc
         object.__setattr__(self, "reference_kind", kind)
         object.__setattr__(
             self,
@@ -375,9 +360,7 @@ class ASTGraphRAGReferenceRecord:
         object.__setattr__(
             self, "scope_ids", _ids(self.scope_ids, field_name="scope_ids", required=True)
         )
-        object.__setattr__(
-            self, "symbol_ids", _ids(self.symbol_ids, field_name="symbol_ids")
-        )
+        object.__setattr__(self, "symbol_ids", _ids(self.symbol_ids, field_name="symbol_ids"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -425,9 +408,7 @@ class CapabilityRecord:
         object.__setattr__(
             self, "capability_id", _text(self.capability_id, field_name="capability_id")
         )
-        object.__setattr__(
-            self, "resource_ids", _ids(self.resource_ids, field_name="resource_ids")
-        )
+        object.__setattr__(self, "resource_ids", _ids(self.resource_ids, field_name="resource_ids"))
         object.__setattr__(
             self,
             "validation_check_ids",
@@ -481,12 +462,8 @@ class PriorCounterexampleRecord:
             "counterexample_id",
             _text(self.counterexample_id, field_name="counterexample_id"),
         )
-        object.__setattr__(
-            self, "reason_code", _text(self.reason_code, field_name="reason_code")
-        )
-        object.__setattr__(
-            self, "proposal_ids", _ids(self.proposal_ids, field_name="proposal_ids")
-        )
+        object.__setattr__(self, "reason_code", _text(self.reason_code, field_name="reason_code"))
+        object.__setattr__(self, "proposal_ids", _ids(self.proposal_ids, field_name="proposal_ids"))
         object.__setattr__(
             self,
             "validation_check_ids",
@@ -516,9 +493,7 @@ class PriorCounterexampleRecord:
             field_name="prior-counterexample record",
         )
         if value.get("record_kind", "prior_counterexample") != "prior_counterexample":
-            raise ContractValidationError(
-                "prior-counterexample record has the wrong kind"
-            )
+            raise ContractValidationError("prior-counterexample record has the wrong kind")
         return cls(
             counterexample_id=value.get("counterexample_id", ""),
             reason_code=value.get("reason_code", ""),
@@ -535,9 +510,7 @@ class ReusableReceiptRecord:
     scope_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "receipt_id", _text(self.receipt_id, field_name="receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _text(self.receipt_id, field_name="receipt_id"))
         object.__setattr__(
             self,
             "evidence_requirement_ids",
@@ -582,10 +555,7 @@ class ReusableReceiptRecord:
         return cls(
             receipt_id=value.get("receipt_id", ""),
             evidence_requirement_ids=tuple(
-                value.get(
-                    "evidence_requirement_ids", value.get("evidence_ids", ())
-                )
-                or ()
+                value.get("evidence_requirement_ids", value.get("evidence_ids", ())) or ()
             ),
             assurance_id=value.get("assurance_id", ""),
             scope_ids=tuple(value.get("scope_ids") or ()),
@@ -606,9 +576,7 @@ class GoalDevelopmentTemplate:
 
     def __post_init__(self) -> None:
         for name in ("template_id", "satisfaction_formula_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         for name in (
             "evidence_requirement_ids",
             "assurance_ids",
@@ -657,10 +625,7 @@ class GoalDevelopmentTemplate:
             template_id=value.get("template_id", ""),
             satisfaction_formula_id=value.get("satisfaction_formula_id", ""),
             evidence_requirement_ids=tuple(
-                value.get(
-                    "evidence_requirement_ids", value.get("evidence_ids", ())
-                )
-                or ()
+                value.get("evidence_requirement_ids", value.get("evidence_ids", ())) or ()
             ),
             assurance_ids=tuple(value.get("assurance_ids") or ()),
             resource_ids=tuple(value.get("resource_ids") or ()),
@@ -678,9 +643,7 @@ def _records(
 ) -> tuple[Any, ...]:
     if values is None:
         values = ()
-    if not isinstance(values, Sequence) or isinstance(
-        values, (str, bytes, bytearray, memoryview)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray, memoryview)):
         raise ContractValidationError(f"{field_name} must be an array")
     if len(values) > maximum:
         raise ContractValidationError(f"{field_name} exceeds its record limit")
@@ -691,9 +654,7 @@ def _records(
         elif isinstance(item, Mapping):
             normalized.append(record_type.from_dict(item))
         else:
-            raise ContractValidationError(
-                f"{field_name} entries must be objects"
-            )
+            raise ContractValidationError(f"{field_name} entries must be objects")
     result = tuple(normalized)
     return tuple(sorted(result, key=lambda item: canonical_json_bytes(item.to_dict())))
 
@@ -715,9 +676,7 @@ class GoalDevelopmentContext:
     def __post_init__(self) -> None:
         if self.schema != LEANSTRAL_GOAL_DEVELOPMENT_CONTEXT_SCHEMA:
             raise ContractValidationError("unsupported goal-development context schema")
-        maximum = _positive_int(
-            self.max_records_per_kind, field_name="max_records_per_kind"
-        )
+        maximum = _positive_int(self.max_records_per_kind, field_name="max_records_per_kind")
         goal = (
             self.goal
             if isinstance(self.goal, ImmutableGoalRecord)
@@ -756,58 +715,30 @@ class GoalDevelopmentContext:
     def allowed_evidence_ids(self) -> tuple[str, ...]:
         return tuple(
             sorted(
-                {
-                    item
-                    for template in self.templates
-                    for item in template.evidence_requirement_ids
-                }
+                {item for template in self.templates for item in template.evidence_requirement_ids}
             )
         )
 
     @property
     def allowed_assurance_ids(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {
-                    item
-                    for template in self.templates
-                    for item in template.assurance_ids
-                }
-            )
+            sorted({item for template in self.templates for item in template.assurance_ids})
         )
 
     @property
     def allowed_resource_ids(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {
-                    item
-                    for template in self.templates
-                    for item in template.resource_ids
-                }
-            )
+            sorted({item for template in self.templates for item in template.resource_ids})
         )
 
     @property
     def allowed_scope_ids(self) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                {
-                    item for template in self.templates for item in template.scope_ids
-                }
-            )
-        )
+        return tuple(sorted({item for template in self.templates for item in template.scope_ids}))
 
     @property
     def allowed_validation_check_ids(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {
-                    item
-                    for template in self.templates
-                    for item in template.validation_check_ids
-                }
-            )
+            sorted({item for template in self.templates for item in template.validation_check_ids})
         )
 
     def validate_request(self, request: GoalDevelopmentRequest) -> None:
@@ -822,15 +753,11 @@ class GoalDevelopmentContext:
             self.goal.satisfaction_formula_id,
         )
         if actual_goal != expected_goal:
-            raise ContractValidationError(
-                "context goal does not match the immutable request root"
-            )
+            raise ContractValidationError("context goal does not match the immutable request root")
         request_evidence = set(request.evidence_requirement_ids)
         request_scopes = set(request.scope_ids)
         if not set(self.allowed_evidence_ids).issubset(request_evidence):
-            raise ContractValidationError(
-                "context templates escape request evidence requirements"
-            )
+            raise ContractValidationError("context templates escape request evidence requirements")
         if not set(self.allowed_scope_ids).issubset(request_scopes):
             raise ContractValidationError("context templates escape request scope")
         for gap in self.evidence_gaps:
@@ -840,9 +767,7 @@ class GoalDevelopmentContext:
                 )
         for reference in self.code_references:
             if reference.repository_tree_id != request.repository_tree_id:
-                raise ContractValidationError(
-                    "code reference uses a different repository tree"
-                )
+                raise ContractValidationError("code reference uses a different repository tree")
             if not set(reference.scope_ids).issubset(request_scopes):
                 raise ContractValidationError("code reference escapes request scope")
         allowed_resources = set(self.allowed_resource_ids)
@@ -857,9 +782,7 @@ class GoalDevelopmentContext:
                     "capability record contains a non-allowlisted validation-check ID"
                 )
         for counterexample in self.prior_counterexamples:
-            if not set(counterexample.validation_check_ids).issubset(
-                allowed_checks
-            ):
+            if not set(counterexample.validation_check_ids).issubset(allowed_checks):
                 raise ContractValidationError(
                     "counterexample record contains a non-allowlisted validation-check ID"
                 )
@@ -871,15 +794,14 @@ class GoalDevelopmentContext:
             if not set(receipt.scope_ids).issubset(request_scopes):
                 raise ContractValidationError("reusable receipt escapes request scope")
             if receipt.assurance_id not in self.allowed_assurance_ids:
-                raise ContractValidationError(
-                    "reusable receipt assurance ID is not allowlisted"
-                )
+                raise ContractValidationError("reusable receipt assurance ID is not allowlisted")
 
     @property
     def context_id(self) -> str:
-        return "leanstral-goal-context-" + hashlib.sha256(
-            canonical_json_bytes(self.to_dict())
-        ).hexdigest()
+        return (
+            "leanstral-goal-context-"
+            + hashlib.sha256(canonical_json_bytes(self.to_dict())).hexdigest()
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -888,12 +810,8 @@ class GoalDevelopmentContext:
             "evidence_gaps": [item.to_dict() for item in self.evidence_gaps],
             "code_references": [item.to_dict() for item in self.code_references],
             "capabilities": [item.to_dict() for item in self.capabilities],
-            "prior_counterexamples": [
-                item.to_dict() for item in self.prior_counterexamples
-            ],
-            "reusable_receipts": [
-                item.to_dict() for item in self.reusable_receipts
-            ],
+            "prior_counterexamples": [item.to_dict() for item in self.prior_counterexamples],
+            "reusable_receipts": [item.to_dict() for item in self.reusable_receipts],
             "templates": [item.to_dict() for item in self.templates],
             "allowlists": {
                 "template_ids": list(self.allowed_template_ids),
@@ -901,9 +819,7 @@ class GoalDevelopmentContext:
                 "assurance_ids": list(self.allowed_assurance_ids),
                 "resource_ids": list(self.allowed_resource_ids),
                 "scope_ids": list(self.allowed_scope_ids),
-                "validation_check_ids": list(
-                    self.allowed_validation_check_ids
-                ),
+                "validation_check_ids": list(self.allowed_validation_check_ids),
             },
         }
 
@@ -934,15 +850,10 @@ class GoalDevelopmentContext:
             templates=tuple(value.get("templates") or ()),
             evidence_gaps=tuple(value.get("evidence_gaps") or ()),
             code_references=tuple(
-                value.get(
-                    "code_references", value.get("ast_graphrag_references", ())
-                )
-                or ()
+                value.get("code_references", value.get("ast_graphrag_references", ())) or ()
             ),
             capabilities=tuple(value.get("capabilities") or ()),
-            prior_counterexamples=tuple(
-                value.get("prior_counterexamples") or ()
-            ),
+            prior_counterexamples=tuple(value.get("prior_counterexamples") or ()),
             reusable_receipts=tuple(value.get("reusable_receipts") or ()),
             max_records_per_kind=value.get(
                 "max_records_per_kind",
@@ -971,13 +882,9 @@ def build_leanstral_goal_development_context(
     templates: Sequence[GoalDevelopmentTemplate | Mapping[str, Any]],
     goal: ImmutableGoalRecord | Mapping[str, Any] | None = None,
     evidence_gaps: Sequence[EvidenceGapRecord | Mapping[str, Any]] = (),
-    code_references: Sequence[
-        ASTGraphRAGReferenceRecord | Mapping[str, Any]
-    ] = (),
+    code_references: Sequence[ASTGraphRAGReferenceRecord | Mapping[str, Any]] = (),
     capabilities: Sequence[CapabilityRecord | Mapping[str, Any]] = (),
-    prior_counterexamples: Sequence[
-        PriorCounterexampleRecord | Mapping[str, Any]
-    ] = (),
+    prior_counterexamples: Sequence[PriorCounterexampleRecord | Mapping[str, Any]] = (),
     reusable_receipts: Sequence[ReusableReceiptRecord | Mapping[str, Any]] = (),
     max_records_per_kind: int = DEFAULT_GOAL_DEVELOPMENT_MAX_RECORDS_PER_KIND,
 ) -> GoalDevelopmentContext:
@@ -996,9 +903,7 @@ def build_leanstral_goal_development_context(
         )
         if goal is None
         else (
-            goal
-            if isinstance(goal, ImmutableGoalRecord)
-            else ImmutableGoalRecord.from_dict(goal)
+            goal if isinstance(goal, ImmutableGoalRecord) else ImmutableGoalRecord.from_dict(goal)
         )
     )
     context = GoalDevelopmentContext(
@@ -1032,9 +937,7 @@ class LeanstralGoalDevelopmentInvocation:
         if self.schema != LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA:
             raise ContractValidationError("unsupported goal-development request schema")
         if self.operation != LEANSTRAL_GOAL_DEVELOPMENT_OPERATION:
-            raise ContractValidationError(
-                "unsupported Leanstral goal-development operation"
-            )
+            raise ContractValidationError("unsupported Leanstral goal-development operation")
         request = (
             self.request
             if isinstance(self.request, GoalDevelopmentRequest)
@@ -1061,15 +964,11 @@ class LeanstralGoalDevelopmentInvocation:
             or not isinstance(self.deadline_unix_ms, int)
             or self.deadline_unix_ms < 0
         ):
-            raise ContractValidationError(
-                "deadline_unix_ms must be a non-negative integer or null"
-            )
+            raise ContractValidationError("deadline_unix_ms must be a non-negative integer or null")
         object.__setattr__(self, "request", request)
         object.__setattr__(self, "policy", policy)
         object.__setattr__(self, "context", context)
-        object.__setattr__(
-            self, "resource_budget", _resource_budget(self.resource_budget)
-        )
+        object.__setattr__(self, "resource_budget", _resource_budget(self.resource_budget))
 
     @property
     def request_id(self) -> str:
@@ -1088,13 +987,9 @@ class LeanstralGoalDevelopmentInvocation:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "LeanstralGoalDevelopmentInvocation":
+    def from_dict(cls, value: Mapping[str, Any]) -> "LeanstralGoalDevelopmentInvocation":
         if not isinstance(value, Mapping):
-            raise ContractValidationError(
-                "goal-development invocation must be an object"
-            )
+            raise ContractValidationError("goal-development invocation must be an object")
         _reject_unknown(
             value,
             {
@@ -1112,9 +1007,7 @@ class LeanstralGoalDevelopmentInvocation:
         )
         return cls(
             schema=value.get("schema", LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA),
-            operation=value.get(
-                "operation", LEANSTRAL_GOAL_DEVELOPMENT_OPERATION
-            ),
+            operation=value.get("operation", LEANSTRAL_GOAL_DEVELOPMENT_OPERATION),
             request=GoalDevelopmentRequest.from_dict(
                 value.get("request", value.get("goal_request")) or {}
             ),
@@ -1158,9 +1051,7 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "request_id", _text(self.request_id, field_name="request_id")
-        )
+        object.__setattr__(self, "request_id", _text(self.request_id, field_name="request_id"))
         status = (
             self.status
             if isinstance(self.status, GoalDevelopmentResultStatus)
@@ -1177,9 +1068,7 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
         )
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "fallback_reason", reason)
-        if self.batch_result is not None and not isinstance(
-            self.batch_result, ProviderBatchResult
-        ):
+        if self.batch_result is not None and not isinstance(self.batch_result, ProviderBatchResult):
             object.__setattr__(
                 self,
                 "batch_result",
@@ -1208,9 +1097,10 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
 
     @property
     def result_id(self) -> str:
-        return "leanstral-goal-result-" + hashlib.sha256(
-            canonical_json_bytes(self.to_dict(include_id=False))
-        ).hexdigest()
+        return (
+            "leanstral-goal-result-"
+            + hashlib.sha256(canonical_json_bytes(self.to_dict(include_id=False))).hexdigest()
+        )
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -1224,9 +1114,7 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
             "fallback_reason": (
                 None if self.fallback_reason is None else self.fallback_reason.value
             ),
-            "failure_code": (
-                None if self.fallback_reason is None else self.fallback_reason.value
-            ),
+            "failure_code": (None if self.fallback_reason is None else self.fallback_reason.value),
             "draft": None if self.draft is None else self.draft.to_dict(),
             "assurance": AssuranceLevel.UNVERIFIED.value,
             "authoritative": False,
@@ -1254,13 +1142,9 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
         return len(self.to_dict())
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "GoalDevelopmentProviderResult":
+    def from_dict(cls, value: Mapping[str, Any]) -> "GoalDevelopmentProviderResult":
         if not isinstance(value, Mapping):
-            raise ContractValidationError(
-                "goal-development result must be an object"
-            )
+            raise ContractValidationError("goal-development result must be an object")
         _reject_unknown(
             value,
             {
@@ -1299,32 +1183,24 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
             "can_execute_commands",
         ):
             if value.get(name, False) is not False:
-                raise ContractValidationError(
-                    "goal-development result cannot claim authority"
-                )
+                raise ContractValidationError("goal-development result cannot claim authority")
         if value.get("assurance", AssuranceLevel.UNVERIFIED.value) != (
             AssuranceLevel.UNVERIFIED.value
         ):
-            raise ContractValidationError(
-                "goal-development result cannot claim proof assurance"
-            )
+            raise ContractValidationError("goal-development result cannot claim proof assurance")
         reason = value.get("fallback_reason", value.get("failure_code"))
         if (
             value.get("failure_code") not in (None, reason)
             or value.get("provider_id", LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID)
             != LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID
-            or value.get(
-                "provider_version", LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_VERSION
-            )
+            or value.get("provider_version", LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_VERSION)
             != LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_VERSION
             or value.get("operation", LEANSTRAL_GOAL_DEVELOPMENT_OPERATION)
             != LEANSTRAL_GOAL_DEVELOPMENT_OPERATION
             or value.get("schema", LEANSTRAL_GOAL_DEVELOPMENT_RESULT_SCHEMA)
             != LEANSTRAL_GOAL_DEVELOPMENT_RESULT_SCHEMA
         ):
-            raise ContractValidationError(
-                "goal-development result bindings are invalid"
-            )
+            raise ContractValidationError("goal-development result bindings are invalid")
         result = cls(
             request_id=value.get("request_id", ""),
             status=value.get("status", ""),
@@ -1340,16 +1216,10 @@ class GoalDevelopmentProviderResult(Mapping[str, Any]):
                 else ProviderBatchResult.from_dict(value["batch_result"])
             ),
         )
-        if value.get("deterministic_fallback", result.used_fallback) is not (
-            result.used_fallback
-        ):
-            raise ContractValidationError(
-                "goal-development fallback marker is invalid"
-            )
+        if value.get("deterministic_fallback", result.used_fallback) is not (result.used_fallback):
+            raise ContractValidationError("goal-development fallback marker is invalid")
         if value.get("result_id") not in (None, "", result.result_id):
-            raise ContractValidationError(
-                "goal-development result identity is invalid"
-            )
+            raise ContractValidationError("goal-development result identity is invalid")
         return result
 
 
@@ -1425,9 +1295,7 @@ class LeanstralGoalDevelopmentProviderConfig:
             or not math.isfinite(float(self.timeout_seconds))
             or float(self.timeout_seconds) <= 0
         ):
-            raise ContractValidationError(
-                "timeout_seconds must be finite and positive"
-            )
+            raise ContractValidationError("timeout_seconds must be finite and positive")
         object.__setattr__(self, "timeout_seconds", float(self.timeout_seconds))
         for name in (
             "max_new_tokens",
@@ -1444,21 +1312,13 @@ class LeanstralGoalDevelopmentProviderConfig:
             or not math.isfinite(float(self.temperature))
             or float(self.temperature) < 0
         ):
-            raise ContractValidationError(
-                "temperature must be finite and non-negative"
-            )
+            raise ContractValidationError("temperature must be finite and non-negative")
         object.__setattr__(self, "temperature", float(self.temperature))
-        object.__setattr__(
-            self, "vibe_agent", _text(self.vibe_agent, field_name="vibe_agent")
-        )
+        object.__setattr__(self, "vibe_agent", _text(self.vibe_agent, field_name="vibe_agent"))
         if not isinstance(self.network_access_required, bool):
-            raise ContractValidationError(
-                "network_access_required must be a boolean"
-            )
+            raise ContractValidationError("network_access_required must be a boolean")
         if not isinstance(self.resource_isolation, LeanstralResourceIsolation):
-            raise ContractValidationError(
-                "resource_isolation must be LeanstralResourceIsolation"
-            )
+            raise ContractValidationError("resource_isolation must be LeanstralResourceIsolation")
 
     @property
     def model_resource_class(self) -> str:
@@ -1519,17 +1379,11 @@ class LeanstralGoalDevelopmentProvider:
         self.config = config or LeanstralGoalDevelopmentProviderConfig()
         if llm_generate is not None and not callable(llm_generate):
             raise ContractValidationError("llm_generate must be callable")
-        if batch_scheduler is not None and not isinstance(
-            batch_scheduler, ProviderBatchScheduler
-        ):
-            raise ContractValidationError(
-                "batch_scheduler must be ProviderBatchScheduler"
-            )
+        if batch_scheduler is not None and not isinstance(batch_scheduler, ProviderBatchScheduler):
+            raise ContractValidationError("batch_scheduler must be ProviderBatchScheduler")
         self._llm_generate = llm_generate
         self._batch_scheduler = batch_scheduler
-        self._capacity = threading.BoundedSemaphore(
-            self.config.max_concurrent_requests
-        )
+        self._capacity = threading.BoundedSemaphore(self.config.max_concurrent_requests)
 
     @property
     def batch_scheduler(self) -> ProviderBatchScheduler | None:
@@ -1544,9 +1398,7 @@ class LeanstralGoalDevelopmentProvider:
         return self.config.resource_isolation.kernel_resource_class
 
     def capabilities(self) -> LeanstralGoalDevelopmentCapability:
-        return LeanstralGoalDevelopmentCapability(
-            resource_isolation=self.config.resource_isolation
-        )
+        return LeanstralGoalDevelopmentCapability(resource_isolation=self.config.resource_isolation)
 
     def capability(self, _request: Any = None) -> LeanstralGoalDevelopmentCapability:
         return self.capabilities()
@@ -1555,9 +1407,7 @@ class LeanstralGoalDevelopmentProvider:
 
     def _coerce_invocation(
         self,
-        invocation: LeanstralGoalDevelopmentInvocation
-        | GoalDevelopmentRequest
-        | Mapping[str, Any],
+        invocation: LeanstralGoalDevelopmentInvocation | GoalDevelopmentRequest | Mapping[str, Any],
         *,
         policy: GoalDevelopmentPolicy | Mapping[str, Any] | None,
         context: GoalDevelopmentContext | Mapping[str, Any] | None,
@@ -1566,22 +1416,17 @@ class LeanstralGoalDevelopmentProvider:
         deadline_unix_ms: int | None,
     ) -> LeanstralGoalDevelopmentInvocation:
         if isinstance(invocation, LeanstralGoalDevelopmentInvocation):
-            if any(
-                item is not None
-                for item in (policy, context, resource_budget, deadline_unix_ms)
-            ) or network_allowed:
-                raise ContractValidationError(
-                    "invocation options cannot be supplied twice"
-                )
-            return invocation
-        if isinstance(invocation, Mapping) and not isinstance(
-            invocation, GoalDevelopmentRequest
-        ):
             if (
-                "request" in invocation
-                or "goal_request" in invocation
-                or "operation" in invocation
+                any(
+                    item is not None
+                    for item in (policy, context, resource_budget, deadline_unix_ms)
+                )
+                or network_allowed
             ):
+                raise ContractValidationError("invocation options cannot be supplied twice")
+            return invocation
+        if isinstance(invocation, Mapping) and not isinstance(invocation, GoalDevelopmentRequest):
+            if "request" in invocation or "goal_request" in invocation or "operation" in invocation:
                 return LeanstralGoalDevelopmentInvocation.from_dict(invocation)
             request = GoalDevelopmentRequest.from_dict(invocation)
         elif isinstance(invocation, GoalDevelopmentRequest):
@@ -1611,9 +1456,7 @@ class LeanstralGoalDevelopmentProvider:
             deadline_unix_ms=deadline_unix_ms,
         )
 
-    def build_prompt(
-        self, invocation: LeanstralGoalDevelopmentInvocation
-    ) -> str:
+    def build_prompt(self, invocation: LeanstralGoalDevelopmentInvocation) -> str:
         for name in (
             "templates",
             "evidence_gaps",
@@ -1622,9 +1465,7 @@ class LeanstralGoalDevelopmentProvider:
             "prior_counterexamples",
             "reusable_receipts",
         ):
-            if len(getattr(invocation.context, name)) > (
-                self.config.max_records_per_kind
-            ):
+            if len(getattr(invocation.context, name)) > (self.config.max_records_per_kind):
                 raise ContractValidationError(
                     f"goal-development {name} exceed the provider record limit"
                 )
@@ -1685,9 +1526,7 @@ class LeanstralGoalDevelopmentProvider:
             )
         return prompt
 
-    def _effective_timeout(
-        self, invocation: LeanstralGoalDevelopmentInvocation
-    ) -> float:
+    def _effective_timeout(self, invocation: LeanstralGoalDevelopmentInvocation) -> float:
         timeout = self.config.timeout_seconds
         budget = invocation.resource_budget
         if budget.wall_time_ms:
@@ -1699,9 +1538,7 @@ class LeanstralGoalDevelopmentProvider:
             )
         return max(0.0, timeout)
 
-    def _effective_tokens(
-        self, invocation: LeanstralGoalDevelopmentInvocation
-    ) -> int:
+    def _effective_tokens(self, invocation: LeanstralGoalDevelopmentInvocation) -> int:
         tokens = self.config.max_new_tokens
         if invocation.resource_budget.model_token_limit:
             tokens = min(tokens, invocation.resource_budget.model_token_limit)
@@ -1743,10 +1580,7 @@ class LeanstralGoalDevelopmentProvider:
         scheduler = self._batch_scheduler
         if scheduler is None:  # pragma: no cover - guarded by the caller
             raise RuntimeError("shared provider scheduler is not configured")
-        member_id = (
-            f"leanstral-goal:{invocation.request.request_id}:"
-            f"{uuid.uuid4().hex}"
-        )
+        member_id = f"leanstral-goal:{invocation.request.request_id}:{uuid.uuid4().hex}"
 
         def _execute() -> ProviderBatchResult:
             return scheduler.execute(
@@ -1763,9 +1597,7 @@ class LeanstralGoalDevelopmentProvider:
                         "output_schema": LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA,
                         "policy_digest": invocation.policy.policy_digest,
                         "network_allowed": invocation.network_allowed,
-                        "network_access_required": (
-                            self.config.network_access_required
-                        ),
+                        "network_access_required": (self.config.network_access_required),
                         "provider_version": self.provider_version,
                     },
                     generation_settings={
@@ -1779,9 +1611,7 @@ class LeanstralGoalDevelopmentProvider:
                     provenance={
                         "logical_request_id": invocation.request.request_id,
                         "root_goal_id": invocation.request.root_goal_id,
-                        "repository_tree_id": (
-                            invocation.request.repository_tree_id
-                        ),
+                        "repository_tree_id": (invocation.request.repository_tree_id),
                         "policy_digest": invocation.policy.policy_digest,
                         "resource_budget": invocation.resource_budget.to_dict(),
                         "provider_id": self.provider_id,
@@ -1792,9 +1622,9 @@ class LeanstralGoalDevelopmentProvider:
                 )
             )
 
-        mode_raw = str(
-            os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
-        ).strip().casefold()
+        mode_raw = (
+            str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
+        )
         if mode_raw in {"", "off"}:
             return _execute()
 
@@ -1821,14 +1651,10 @@ class LeanstralGoalDevelopmentProvider:
             stage="leanstral_goal_development",
             task_id=str(invocation.request.request_id),
             goal_id=str(
-                getattr(invocation.request, "root_goal_id", "")
-                or "goal:leanstral-goal-development"
+                getattr(invocation.request, "root_goal_id", "") or "goal:leanstral-goal-development"
             ),
             objective_id="leanstral_goal_development",
-            tree_id=str(
-                getattr(invocation.request, "repository_tree_id", "")
-                or "tree:unknown"
-            ),
+            tree_id=str(getattr(invocation.request, "repository_tree_id", "") or "tree:unknown"),
             estimated_output_tokens=max(0, int(token_budget or 0)),
             metadata={
                 "route": LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
@@ -1840,9 +1666,7 @@ class LeanstralGoalDevelopmentProvider:
             invoke=_invoke_text,
             mode=mode,
         )
-        retain_last_call_result(
-            ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT, migrated
-        )
+        retain_last_call_result(ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT, migrated)
         if holder["result"] is None:
             raise RuntimeError("shared provider dispatch produced no batch result")
         return holder["result"]
@@ -1935,24 +1759,18 @@ class LeanstralGoalDevelopmentProvider:
         token_budget: int,
     ) -> GoalDecompositionDraft:
         if not isinstance(output, str) or not output.strip():
-            raise ContractValidationError(
-                "llm_router returned an empty or non-text response"
-            )
+            raise ContractValidationError("llm_router returned an empty or non-text response")
         output = output.strip()
         output_limit = self.config.max_output_bytes
         if invocation.resource_budget.max_output_bytes:
-            output_limit = min(
-                output_limit, invocation.resource_budget.max_output_bytes
-            )
+            output_limit = min(output_limit, invocation.resource_budget.max_output_bytes)
         if len(output.encode("utf-8")) > output_limit:
             raise OverflowError("goal-development output exceeds byte budget")
         if estimate_context_tokens(output) > token_budget:
             raise OverflowError("goal-development output exceeds token budget")
         value = _strict_object(output)
         if _FORBIDDEN_RESPONSE_KEYS.intersection(value):
-            raise ContractValidationError(
-                "goal-development output attempted a forbidden operation"
-            )
+            raise ContractValidationError("goal-development output attempted a forbidden operation")
         _reject_unknown(
             value,
             {"schema", "operation", "request_id", "proposals"},
@@ -1961,9 +1779,7 @@ class LeanstralGoalDevelopmentProvider:
         if value.get("schema") != LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA:
             raise ContractValidationError("goal-development output used the wrong schema")
         if value.get("operation") != LEANSTRAL_GOAL_DEVELOPMENT_OPERATION:
-            raise ContractValidationError(
-                "goal-development output used the wrong operation"
-            )
+            raise ContractValidationError("goal-development output used the wrong operation")
         request = invocation.request
         if value.get("request_id") != request.request_id:
             raise ContractValidationError(
@@ -1974,16 +1790,11 @@ class LeanstralGoalDevelopmentProvider:
             raise ContractValidationError("proposals must be an array")
         if len(raw_proposals) > invocation.policy.max_proposals:
             raise OverflowError("goal-development output exceeds proposal count")
-        templates = {
-            template.template_id: template
-            for template in invocation.context.templates
-        }
+        templates = {template.template_id: template for template in invocation.context.templates}
         proposals: list[GoalDecompositionProposal] = []
         for index, raw in enumerate(raw_proposals):
             if not isinstance(raw, Mapping):
-                raise ContractValidationError(
-                    f"proposals[{index}] must be an object"
-                )
+                raise ContractValidationError(f"proposals[{index}] must be an object")
             if _FORBIDDEN_RESPONSE_KEYS.intersection(raw):
                 raise ContractValidationError(
                     "goal-development proposal attempted a forbidden operation"
@@ -2002,9 +1813,7 @@ class LeanstralGoalDevelopmentProvider:
             }
             _reject_unknown(raw, required, field_name=f"proposals[{index}]")
             if set(raw) != required:
-                raise ContractValidationError(
-                    f"proposals[{index}] is missing required fields"
-                )
+                raise ContractValidationError(f"proposals[{index}] is missing required fields")
             template_id = _text(
                 raw.get("template_id"),
                 field_name=f"proposals[{index}].template_id",
@@ -2046,9 +1855,7 @@ class LeanstralGoalDevelopmentProvider:
             )
             for selected, allowed, kind in selections:
                 if not set(selected).issubset(allowed):
-                    raise ContractValidationError(
-                        f"proposal selected an unknown {kind} ID"
-                    )
+                    raise ContractValidationError(f"proposal selected an unknown {kind} ID")
             proposals.append(
                 GoalDecompositionProposal(
                     proposal_id=_text(
@@ -2084,9 +1891,7 @@ class LeanstralGoalDevelopmentProvider:
 
     def develop(
         self,
-        invocation: LeanstralGoalDevelopmentInvocation
-        | GoalDevelopmentRequest
-        | Mapping[str, Any],
+        invocation: LeanstralGoalDevelopmentInvocation | GoalDevelopmentRequest | Mapping[str, Any],
         *,
         policy: GoalDevelopmentPolicy | Mapping[str, Any] | None = None,
         context: GoalDevelopmentContext | Mapping[str, Any] | None = None,
@@ -2158,9 +1963,7 @@ class LeanstralGoalDevelopmentProvider:
                         )
                         else GoalDevelopmentFallbackReason.UNAVAILABLE
                     )
-                    return self._fallback(
-                        call, reason, batch_result=batch_result
-                    )
+                    return self._fallback(call, reason, batch_result=batch_result)
                 draft = self._parse_response(
                     batch_result.output,
                     call,
@@ -2198,9 +2001,7 @@ class LeanstralGoalDevelopmentProvider:
                     reason = GoalDevelopmentFallbackReason.OVERLOADED
                 else:
                     reason = GoalDevelopmentFallbackReason.UNAVAILABLE
-                return self._fallback(
-                    call, reason, batch_result=batch_result
-                )
+                return self._fallback(call, reason, batch_result=batch_result)
             return GoalDevelopmentProviderResult(
                 request_id=call.request.request_id,
                 status=GoalDevelopmentResultStatus.DRAFT,
@@ -2219,13 +2020,9 @@ class LeanstralGoalDevelopmentProvider:
                     token_budget=token_budget,
                     cancellation=cancellation,
                 )
-                draft = self._parse_response(
-                    output, call, token_budget=token_budget
-                )
+                draft = self._parse_response(output, call, token_budget=token_budget)
             except OverflowError:
-                return self._fallback(
-                    call, GoalDevelopmentFallbackReason.OVERLOADED
-                )
+                return self._fallback(call, GoalDevelopmentFallbackReason.OVERLOADED)
             except ProofProviderError as exc:
                 reason = {
                     ProviderFailureCode.CANCELLED: GoalDevelopmentFallbackReason.CANCELLED,
@@ -2239,9 +2036,7 @@ class LeanstralGoalDevelopmentProvider:
             except (asyncio.CancelledError,):
                 return self._fallback(call, GoalDevelopmentFallbackReason.CANCELLED)
             except (ContractValidationError, ValueError, TypeError, json.JSONDecodeError):
-                return self._fallback(
-                    call, GoalDevelopmentFallbackReason.MALFORMED_OUTPUT
-                )
+                return self._fallback(call, GoalDevelopmentFallbackReason.MALFORMED_OUTPUT)
             except (ImportError, ModuleNotFoundError):
                 return self._fallback(call, GoalDevelopmentFallbackReason.UNAVAILABLE)
             except BaseException as exc:
@@ -2249,8 +2044,7 @@ class LeanstralGoalDevelopmentProvider:
                 reason = (
                     GoalDevelopmentFallbackReason.OVERLOADED
                     if any(
-                        marker in message
-                        for marker in ("overload", "capacity", "too many", "429")
+                        marker in message for marker in ("overload", "capacity", "too many", "429")
                     )
                     else GoalDevelopmentFallbackReason.UNAVAILABLE
                 )
@@ -2301,11 +2095,7 @@ def build_leanstral_goal_development_batch_dispatch(
         prompts = tuple(str(item.payload) for item in members)
         token_limit = max(item.token_budget for item in members)
         timeout = max(
-            (
-                item.timeout_ms / 1_000
-                for item in members
-                if item.timeout_ms
-            ),
+            (item.timeout_ms / 1_000 for item in members if item.timeout_ms),
             default=resolved.timeout_seconds,
         )
         kwargs = {
@@ -2334,9 +2124,7 @@ def build_leanstral_goal_development_batch_dispatch(
             batch_kwargs = dict(kwargs)
             batch_kwargs["timeout_s"] = timeout
             outputs = batch_generate(prompts, **batch_kwargs)
-            if isinstance(outputs, (str, bytes)) or not isinstance(
-                outputs, Sequence
-            ):
+            if isinstance(outputs, (str, bytes)) or not isinstance(outputs, Sequence):
                 raise ProofProviderError(
                     ProviderFailureCode.MALFORMED_RESPONSE,
                     "batch generator returned a non-sequence result",

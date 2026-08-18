@@ -127,29 +127,21 @@ def _canonical_bytes(value: Any) -> bytes:
 def _plain(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _plain(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_plain(item) for item in value]
     return value
 
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {str(key): _freeze(item) for key, item in sorted(value.items())}
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        return MappingProxyType({str(key): _freeze(item) for key, item in sorted(value.items())})
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return tuple(_freeze(item) for item in value)
     return value
 
 
 def _identity(namespace: str, value: Any) -> str:
-    return f"{namespace}:sha256:" + hashlib.sha256(
-        _canonical_bytes(value)
-    ).hexdigest()
+    return f"{namespace}:sha256:" + hashlib.sha256(_canonical_bytes(value)).hexdigest()
 
 
 def _text(value: Any, name: str) -> str:
@@ -311,9 +303,7 @@ class SecurityRequestContext:
             target=target,
             data_flow=data_flow,
             expected_effect=expected_effect,
-            current_state=(
-                self.current_state if current_state is _MISSING else current_state
-            ),
+            current_state=(self.current_state if current_state is _MISSING else current_state),
             state_version=self.state_version,
             requested_authority=requested_authority or self.requested_authority,
             evaluated_at_ms=self.evaluated_at_ms,
@@ -358,13 +348,9 @@ class SecurityRequestMapping:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "stream", SecurityFactStream(self.stream))
-        object.__setattr__(
-            self, "status", SecurityRequestMappingStatus(self.status)
-        )
+        object.__setattr__(self, "status", SecurityRequestMappingStatus(self.status))
         object.__setattr__(self, "source_id", _text(self.source_id, "source_id"))
-        object.__setattr__(
-            self, "evidence_ids", _strings(self.evidence_ids, "evidence_id")
-        )
+        object.__setattr__(self, "evidence_ids", _strings(self.evidence_ids, "evidence_id"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -495,16 +481,11 @@ def _intent_constraints(
     if isinstance(value, IntentConstraintSet):
         constraints = value
     elif isinstance(value, IntentConstraintCompilationResult):
-        if (
-            value.status is not IntentCompilationStatus.COMPILED
-            or value.constraint_set is None
-        ):
+        if value.status is not IntentCompilationStatus.COMPILED or value.constraint_set is None:
             return None, CVESecurityGateFindingCode.UNSUPPORTED_INTENT
         constraints = value.constraint_set
     else:
-        raise CVESecurityGateError(
-            "intent must be an IntentConstraintSet or compilation result"
-        )
+        raise CVESecurityGateError("intent must be an IntentConstraintSet or compilation result")
     if (
         constraints.unsupported_node_ids
         or constraints.contradictory_effect_groups
@@ -569,17 +550,13 @@ def map_intent_security_requests(
     mappings: list[SecurityRequestMapping] = []
     for action_constraint in constraints.actions:
         expression = dict(action_constraint.expression)
-        action, action_conflict = _select(
-            expression, ("action", "operation"), fallback=_MISSING
-        )
+        action, action_conflict = _select(expression, ("action", "operation"), fallback=_MISSING)
         if action is _MISSING and len(action_constraint.action_ids) == 1:
             action = action_constraint.action_ids[0]
         target, target_conflict = _select(
             expression, ("target", "resource", "resource_id"), fallback=_MISSING
         )
-        data_flow, flow_conflict = _select(
-            expression, ("data_flow", "flow"), fallback=_MISSING
-        )
+        data_flow, flow_conflict = _select(expression, ("data_flow", "flow"), fallback=_MISSING)
         expected_effect, effect_conflict = _select(
             expression,
             ("expected_effect", "result_effect", "effect_manifest"),
@@ -589,17 +566,13 @@ def map_intent_security_requests(
         if expected_effect is _MISSING:
             expected_effect, linked_ids, linked_conflict = _effect_for_action(
                 constraints,
-                action_constraint.action_ids[0]
-                if len(action_constraint.action_ids) == 1
-                else "",
+                action_constraint.action_ids[0] if len(action_constraint.action_ids) == 1 else "",
             )
             effect_conflict = effect_conflict or linked_conflict
         principal, principal_conflict = _select(
             expression, ("principal", "subject"), fallback=context.principal
         )
-        tool, tool_conflict = _select(
-            expression, ("tool", "tool_id"), fallback=context.tool
-        )
+        tool, tool_conflict = _select(expression, ("tool", "tool_id"), fallback=context.tool)
         current_state, state_conflict = _select(
             expression,
             ("current_state", "state"),
@@ -635,10 +608,7 @@ def map_intent_security_requests(
                 )
             )
             continue
-        if any(
-            item is _MISSING
-            for item in (action, target, data_flow, expected_effect)
-        ):
+        if any(item is _MISSING for item in (action, target, data_flow, expected_effect)):
             mappings.append(
                 _unknown(
                     SecurityFactStream.INTENT,
@@ -740,9 +710,7 @@ def map_code_security_requests(
     }
     for (binding_id, scope_id), group in sorted(groups.items()):
         values = {
-            name: tuple(
-                sorted({item.value for item in group if item.kind is kind})
-            )
+            name: tuple(sorted({item.value for item in group if item.kind is kind}))
             for name, kind in dimensions.items()
         }
         # LANGUAGE, SOURCE_SCOPE, GUARD, and CAPABILITY facts qualify an
@@ -839,30 +807,21 @@ def correlate_security_requests(
             SecurityCorrelationFinding(
                 code=mapping.reason_codes[0],
                 code_mapping_ids=(
-                    (mapping.mapping_id,)
-                    if mapping.stream is SecurityFactStream.CODE
-                    else ()
+                    (mapping.mapping_id,) if mapping.stream is SecurityFactStream.CODE else ()
                 ),
                 intent_mapping_ids=(
-                    (mapping.mapping_id,)
-                    if mapping.stream is SecurityFactStream.INTENT
-                    else ()
+                    (mapping.mapping_id,) if mapping.stream is SecurityFactStream.INTENT else ()
                 ),
             )
         )
 
-    intent_dimensions = {
-        item.mapping_id: _request_dimensions(item) for item in exact_intent
-    }
+    intent_dimensions = {item.mapping_id: _request_dimensions(item) for item in exact_intent}
     for code_mapping in (item for item in code if item.exact):
-        code_action, code_target, code_flow, code_effect = _request_dimensions(
-            code_mapping
-        )
+        code_action, code_target, code_flow, code_effect = _request_dimensions(code_mapping)
         exact_matches = [
             item_id
             for item_id, dimensions in intent_dimensions.items()
-            if dimensions
-            == (code_action, code_target, code_flow, code_effect)
+            if dimensions == (code_action, code_target, code_flow, code_effect)
         ]
         if exact_matches:
             continue
@@ -928,20 +887,14 @@ class CVESecurityGateResult:
             ("code_mappings", self.code_mappings, SecurityFactStream.CODE),
         ):
             if any(
-                not isinstance(item, SecurityRequestMapping)
-                or item.stream is not stream
+                not isinstance(item, SecurityRequestMapping) or item.stream is not stream
                 for item in values
             ):
                 raise CVESecurityGateError(f"{name} contains an invalid mapping")
-            object.__setattr__(
-                self, name, tuple(sorted(values, key=lambda item: item.mapping_id))
-            )
+            object.__setattr__(self, name, tuple(sorted(values, key=lambda item: item.mapping_id)))
         if any(not isinstance(item, SecurityMappedDecision) for item in self.decisions):
             raise CVESecurityGateError("decisions contain an invalid record")
-        if any(
-            not isinstance(item, SecurityCorrelationFinding)
-            for item in self.findings
-        ):
+        if any(not isinstance(item, SecurityCorrelationFinding) for item in self.findings):
             raise CVESecurityGateError("findings contain an invalid record")
         object.__setattr__(
             self,
@@ -1021,9 +974,7 @@ def evaluate_cve_security_gate(
         context.security_root_supervisor_digest,
     )
     if policy_root != context_root:
-        raise CVESecurityGateError(
-            "request context must bind the evaluated Security IR root"
-        )
+        raise CVESecurityGateError("request context must bind the evaluated Security IR root")
 
     intent_mappings = map_intent_security_requests(intent, context)
     code_mappings = map_code_security_requests(code_facts, context)
@@ -1037,9 +988,7 @@ def evaluate_cve_security_gate(
             continue
         assert mapping.request is not None
         decision = evaluate_security_authorization(policy, mapping.request)
-        decisions.append(
-            SecurityMappedDecision(mapping.mapping_id, mapping.stream, decision)
-        )
+        decisions.append(SecurityMappedDecision(mapping.mapping_id, mapping.stream, decision))
         if decision.outcome in {
             SecurityDecisionOutcome.DENY,
             SecurityDecisionOutcome.CONFLICT,
@@ -1053,14 +1002,10 @@ def evaluate_cve_security_gate(
                         else CVESecurityGateFindingCode.CODE_SECURITY_REJECTED
                     ),
                     intent_mapping_ids=(
-                        (mapping.mapping_id,)
-                        if mapping.stream is SecurityFactStream.INTENT
-                        else ()
+                        (mapping.mapping_id,) if mapping.stream is SecurityFactStream.INTENT else ()
                     ),
                     code_mapping_ids=(
-                        (mapping.mapping_id,)
-                        if mapping.stream is SecurityFactStream.CODE
-                        else ()
+                        (mapping.mapping_id,) if mapping.stream is SecurityFactStream.CODE else ()
                     ),
                     details={"decision_outcome": decision.outcome.value},
                 )
@@ -1071,14 +1016,10 @@ def evaluate_cve_security_gate(
                 SecurityCorrelationFinding(
                     code=CVESecurityGateFindingCode.SECURITY_DECISION_UNKNOWN,
                     intent_mapping_ids=(
-                        (mapping.mapping_id,)
-                        if mapping.stream is SecurityFactStream.INTENT
-                        else ()
+                        (mapping.mapping_id,) if mapping.stream is SecurityFactStream.INTENT else ()
                     ),
                     code_mapping_ids=(
-                        (mapping.mapping_id,)
-                        if mapping.stream is SecurityFactStream.CODE
-                        else ()
+                        (mapping.mapping_id,) if mapping.stream is SecurityFactStream.CODE else ()
                     ),
                 )
             )

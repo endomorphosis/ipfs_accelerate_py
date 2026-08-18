@@ -336,43 +336,35 @@ ServerConfig(
     host="0.0.0.0",
     port=8000,
     workers=1,
-    
     # Discovery (Phase 1)
     auto_discover=True,
     skill_directories=["ipfs_accelerate_py"],
     skill_pattern="hf_*.py",
-    
     # Hardware (Phase 1)
     preferred_hardware=["cuda", "rocm", "mps", "openvino", "cpu"],
     enable_hardware_detection=True,
-    
     # Model Loading (Phase 3)
     max_loaded_models=3,
     model_load_timeout_seconds=300,
     enable_model_caching=True,
-    
     # Request Batching (Phase 3)
     enable_batching=True,
     batch_max_size=32,
     batch_timeout_ms=100,
-    
     # Response Caching (Phase 3)
     enable_caching=True,
     cache_ttl_seconds=3600,
     cache_max_size=1000,
-    
     # Circuit Breaker (Phase 3)
     enable_circuit_breaker=True,
     circuit_breaker_threshold=5,
     circuit_breaker_timeout_seconds=60,
-    
     # Monitoring (Phase 4)
     enable_metrics=True,
     metrics_port=9090,
     enable_health_checks=True,
     log_level="INFO",
     log_format="json",
-    
     # Authentication (Phase 5)
     api_key="your-api-key",
     enable_cors=True,

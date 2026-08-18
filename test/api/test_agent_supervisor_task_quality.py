@@ -361,16 +361,11 @@ def test_over_broad_task_splits_deterministically_and_preserves_dependencies():
     assert [item.semantic_identity for item in first] == [
         item.semantic_identity for item in repeated
     ]
-    assert set().union(*(set(item.acceptance) for item in first)) == set(
-        broad.acceptance
-    )
+    assert set().union(*(set(item.acceptance) for item in first)) == set(broad.acceptance)
     assert set().union(*(set(item.predicted_paths) for item in first)) == (
         set(broad.predicted_paths) | set(broad.outputs)
     )
-    assert all(
-        set(item.dependencies).issuperset(broad.dependencies)
-        for item in first
-    )
+    assert all(set(item.dependencies).issuperset(broad.dependencies) for item in first)
     assert all(item.goal_id == broad.goal_id for item in first)
 
 
@@ -402,13 +397,10 @@ def test_split_recomputes_child_contracts_and_preserves_full_source_coverage():
 
     assert len(children) == 2
     assert len({child.work_contract_id for child in children}) == len(children)
-    assert source.work_contract_id not in {
-        child.work_contract_id for child in children
-    }
+    assert source.work_contract_id not in {child.work_contract_id for child in children}
     assert all(child.predicted_costs_complete for child in children)
     assert all(
-        TaskCandidate.from_dict(child.to_dict()).work_contract_id
-        == child.work_contract_id
+        TaskCandidate.from_dict(child.to_dict()).work_contract_id == child.work_contract_id
         for child in children
     )
 
@@ -421,10 +413,7 @@ def test_split_recomputes_child_contracts_and_preserves_full_source_coverage():
         ) == set(source.work_contract["acceptance_effect_subset"][subset_key])
     for scope_key in ("paths", "symbols", "context_paths"):
         assert set().union(
-            *(
-                set(child.work_contract["predicted_scope"][scope_key])
-                for child in children
-            )
+            *(set(child.work_contract["predicted_scope"][scope_key]) for child in children)
         ) == set(source.work_contract["predicted_scope"][scope_key])
     for boundary_key in (
         "preconditions",
@@ -433,10 +422,7 @@ def test_split_recomputes_child_contracts_and_preserves_full_source_coverage():
         "validation_commands",
     ):
         assert set().union(
-            *(
-                set(child.work_contract["execution_boundary"][boundary_key])
-                for child in children
-            )
+            *(set(child.work_contract["execution_boundary"][boundary_key]) for child in children)
         ) == set(source.work_contract["execution_boundary"][boundary_key])
     assert all(
         child.work_contract["execution_boundary"]["merge_fate"]
@@ -446,12 +432,8 @@ def test_split_recomputes_child_contracts_and_preserves_full_source_coverage():
 
     child_costs = [child.work_contract["predicted_costs"] for child in children]
     source_costs = source.work_contract["predicted_costs"]
-    assert sum(cost["context_tokens"] for cost in child_costs) == (
-        source_costs["context_tokens"]
-    )
-    assert sum(cost["task_tokens"] for cost in child_costs) == (
-        source_costs["task_tokens"]
-    )
+    assert sum(cost["context_tokens"] for cost in child_costs) == (source_costs["context_tokens"])
+    assert sum(cost["task_tokens"] for cost in child_costs) == (source_costs["task_tokens"])
     assert {cost["validation_seconds"] for cost in child_costs} == {
         source_costs["validation_seconds"]
     }
@@ -557,15 +539,10 @@ def test_coalesce_recomputes_contract_and_preserves_all_source_contract_coverage
                 for contract in source_contracts
             )
         )
-        assert set(
-            merged.work_contract["acceptance_effect_subset"][subset_key]
-        ) == expected
+        assert set(merged.work_contract["acceptance_effect_subset"][subset_key]) == expected
     for scope_key in ("paths", "symbols", "context_paths"):
         expected = set().union(
-            *(
-                set(contract["predicted_scope"][scope_key])
-                for contract in source_contracts
-            )
+            *(set(contract["predicted_scope"][scope_key]) for contract in source_contracts)
         )
         assert set(merged.work_contract["predicted_scope"][scope_key]) == expected
     for boundary_key in (
@@ -575,14 +552,9 @@ def test_coalesce_recomputes_contract_and_preserves_all_source_contract_coverage
         "validation_commands",
     ):
         expected = set().union(
-            *(
-                set(contract["execution_boundary"][boundary_key])
-                for contract in source_contracts
-            )
+            *(set(contract["execution_boundary"][boundary_key]) for contract in source_contracts)
         )
-        assert set(
-            merged.work_contract["execution_boundary"][boundary_key]
-        ) == expected
+        assert set(merged.work_contract["execution_boundary"][boundary_key]) == expected
 
     merged_costs = merged.work_contract["predicted_costs"]
     assert merged_costs["context_tokens"] == 600
@@ -611,9 +583,7 @@ def test_refinement_rejects_existing_semantic_duplicate_and_bounds_open_work():
         current_open_work=0,
     )
     duplicate_codes = {
-        reason.code
-        for rejection in duplicate_result.rejected
-        for reason in rejection.rejections
+        reason.code for rejection in duplicate_result.rejected for reason in rejection.rejections
     }
     assert "historical_duplicate" in duplicate_codes
     assert novel.semantic_identity in {
@@ -650,17 +620,14 @@ def test_refinement_projection_retains_canonical_source_lineage_after_resizing()
 
     assert len(result.accepted) == 2
     assert all(
-        decision.source_identities == (broad.semantic_identity,)
-        for decision in result.decisions
+        decision.source_identities == (broad.semantic_identity,) for decision in result.decisions
     )
     projection = result.to_dict()
     assert {
-        item["candidate"]["canonical_semantic_identity"]
-        for item in projection["decisions"]
+        item["candidate"]["canonical_semantic_identity"] for item in projection["decisions"]
     } == {item.semantic_identity for item in result.accepted}
     assert all(
-        item["source_identities"] == [broad.semantic_identity]
-        for item in projection["decisions"]
+        item["source_identities"] == [broad.semantic_identity] for item in projection["decisions"]
     )
 
 
@@ -696,9 +663,7 @@ def test_refinement_projection_retains_all_sources_when_tiny_tasks_coalesce():
         left.semantic_identity,
         right.semantic_identity,
     }
-    assert result.to_dict()["decisions"][0]["source_identities"] == list(
-        decision.source_identities
-    )
+    assert result.to_dict()["decisions"][0]["source_identities"] == list(decision.source_identities)
 
 
 def test_broad_split_refill_evidence_proves_zero_duplicate_admission():
@@ -740,26 +705,18 @@ def test_broad_split_refill_evidence_proves_zero_duplicate_admission():
 
     assert evidence.verify_integrity()
     assert evidence.evidence_id == repeated.evidence_id
-    assert evidence.proved_requirement_ids == (
-        TASK_SPLIT_REFILL_REQUIREMENT_ID,
-    )
+    assert evidence.proved_requirement_ids == (TASK_SPLIT_REFILL_REQUIREMENT_ID,)
     first = evidence.first_admission
     refill = evidence.refill_admission
     assert len(first["accepted"]) == 3
     assert refill["accepted"] == []
     assert refill["initial_open_work"] == first["final_open_work"]
     assert refill["final_open_work"] == first["final_open_work"]
-    assert {
-        item["candidate"]["canonical_task_cid"]
-        for item in refill["decisions"]
-    } == {
+    assert {item["candidate"]["canonical_task_cid"] for item in refill["decisions"]} == {
         item["canonical_task_cid"] for item in first["accepted"]
     }
     assert all(
-        {
-            rejection["reason"]
-            for rejection in item["rejections"]
-        }
+        {rejection["reason"] for rejection in item["rejections"]}
         & {"historical_duplicate", "duplicate_semantic_identity"}
         for item in refill["decisions"]
     )
@@ -857,9 +814,7 @@ def test_broad_split_refill_evidence_fails_closed_for_partial_or_forged_receipts
     assert "receipt_producer_authority_missing" in forged_decision.reason_codes
 
     tampered = copy.deepcopy(valid.to_dict())
-    tampered["refill_admission"]["accepted"].append(
-        tampered["first_admission"]["accepted"][0]
-    )
+    tampered["refill_admission"]["accepted"].append(tampered["first_admission"]["accepted"][0])
     with pytest.raises(ValueError, match="digest mismatch"):
         TaskSplitRefillEvidence.from_dict(tampered)
 
@@ -886,41 +841,59 @@ def test_legacy_heading_prefix_is_normalized_once_and_ids_remain_monotonic():
         "ASI-007",
         "ASI-010",
     ]
-    assert next_task_id(
-        todo,
-        task_prefix="## ASI-",
-        reserved_task_ids=("## ASI-011", "OTHER-1000"),
-    ) == "ASI-012"
+    assert (
+        next_task_id(
+            todo,
+            task_prefix="## ASI-",
+            reserved_task_ids=("## ASI-011", "OTHER-1000"),
+        )
+        == "ASI-012"
+    )
     assert normalize_objective_task_id_prefix("## ## ASI-") == "ASI-"
     assert task_markdown_heading_prefix("## ## ASI-") == "## ASI-"
-    assert next_objective_task_id(
-        todo,
-        task_prefix="## ASI-",
-        reserved_task_ids=("## ASI-011", "OTHER-1000"),
-    ) == "ASI-012"
+    assert (
+        next_objective_task_id(
+            todo,
+            task_prefix="## ASI-",
+            reserved_task_ids=("## ASI-011", "OTHER-1000"),
+        )
+        == "ASI-012"
+    )
 
 
 def test_refill_capacity_bounds_open_work_pressure():
-    assert refill_open_task_capacity(
-        current_open=0,
-        min_open_tasks=5,
-        max_findings=20,
-    ) == 6
-    assert refill_open_task_capacity(
-        current_open=5,
-        min_open_tasks=5,
-        max_findings=20,
-    ) == 1
-    assert refill_open_task_capacity(
-        current_open=6,
-        min_open_tasks=5,
-        max_findings=20,
-    ) == 0
-    assert refill_open_task_capacity(
-        current_open=0,
-        min_open_tasks=5,
-        max_findings=3,
-    ) == 3
+    assert (
+        refill_open_task_capacity(
+            current_open=0,
+            min_open_tasks=5,
+            max_findings=20,
+        )
+        == 6
+    )
+    assert (
+        refill_open_task_capacity(
+            current_open=5,
+            min_open_tasks=5,
+            max_findings=20,
+        )
+        == 1
+    )
+    assert (
+        refill_open_task_capacity(
+            current_open=6,
+            min_open_tasks=5,
+            max_findings=20,
+        )
+        == 0
+    )
+    assert (
+        refill_open_task_capacity(
+            current_open=0,
+            min_open_tasks=5,
+            max_findings=3,
+        )
+        == 3
+    )
 
 
 def test_refill_deduplicates_semantic_aliases_and_normalizes_block_heading(tmp_path):

@@ -25,16 +25,12 @@ Changed the test to run the MCP dashboard directly instead of using the CLI:
 ```python
 # Before:
 server_process = subprocess.Popen(
-    [sys.executable, "-m", "ipfs_accelerate_py.cli", "mcp", "start"],
-    ...
+    [sys.executable, "-m", "ipfs_accelerate_py.cli", "mcp", "start"], ...
 )
 
 # After:
 mcp_dashboard_path = Path(__file__).parent.parent / "ipfs_accelerate_py" / "mcp_dashboard.py"
-server_process = subprocess.Popen(
-    [sys.executable, str(mcp_dashboard_path)],
-    ...
-)
+server_process = subprocess.Popen([sys.executable, str(mcp_dashboard_path)], ...)
 ```
 
 ### 3. Port Configuration
@@ -54,10 +50,10 @@ Fixed the model name extraction to use the correct Playwright API:
 model_card = download_btn.locator("xpath=ancestor::div[@class='model-result']")
 
 # After:
-model_results = page.query_selector_all('.model-result')
+model_results = page.query_selector_all(".model-result")
 if model_results:
     first_model = model_results[0]
-    model_title_elem = first_model.query_selector('.model-title')
+    model_title_elem = first_model.query_selector(".model-title")
     model_name = model_title_elem.inner_text() if model_title_elem else "unknown"
 ```
 

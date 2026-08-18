@@ -15,12 +15,13 @@ import re
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Try to import model lookup
 try:
     from find_models import get_recommended_default_model, query_huggingface_api
+
     HAS_MODEL_LOOKUP = True
     logger.info("Model lookup integration available")
 except ImportError:
@@ -34,8 +35,9 @@ DEFAULT_MODELS = {
     "t5": "t5-small",
     "vit": "google/vit-base-patch16-224",
     "gpt-j": "EleutherAI/gpt-j-6b",
-    "whisper": "openai/whisper-base.en"
+    "whisper": "openai/whisper-base.en",
 }
+
 
 def get_model_from_registry(model_type):
     """Get the best default model for a model type."""
@@ -47,35 +49,37 @@ def get_model_from_registry(model_type):
         except Exception as e:
             logger.warning(f"Error getting recommended model for {model_type}: {e}")
             # Fall back to registry lookup
-    
+
     # Use static defaults
     if model_type in DEFAULT_MODELS:
         return DEFAULT_MODELS[model_type]
-    
+
     # For unknown models, use a heuristic approach
     return f"{model_type}-base" if "-base" not in model_type else model_type
+
 
 def to_valid_identifier(text):
     """Convert text to a valid Python identifier."""
     # Replace hyphens with underscores
     text = text.replace("-", "_")
     # Remove any other invalid characters
-    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
+    text = re.sub(r"[^a-zA-Z0-9_]", "", text)
     # Ensure it doesn't start with a number
     if text and text[0].isdigit():
-        text = '_' + text
+        text = "_" + text
     return text
+
 
 def generate_minimal_test(model_type, output_dir="."):
     """Generate a minimal test file for a model type."""
     logger.info(f"Generating minimal test for {model_type}")
-    
+
     # Get default model
     default_model = get_model_from_registry(model_type)
-    
+
     # Convert model type to valid Python identifier
     model_type_valid = to_valid_identifier(model_type)
-    
+
     # Determine model class and task
     if model_type == "bert":
         model_class = "BertForMaskedLM"
@@ -97,7 +101,7 @@ def generate_minimal_test(model_type, output_dir="."):
         model_class = "AutoModel"
         task = "feature-extraction"
         input_text = f"{model_type} is a model that"
-    
+
     # Create test file content
     content = f'''#!/usr/bin/env python3
 
@@ -265,55 +269,68 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     # Create output directory if needed
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Write test file
     output_path = os.path.join(output_dir, f"test_hf_{model_type_valid}.py")
     with open(output_path, "w") as f:
         f.write(content)
-    
+
     # Verify syntax
     try:
-        compile(content, output_path, 'exec')
+        compile(content, output_path, "exec")
         logger.info(f"✅ Syntax is valid for {output_path}")
         return True
     except SyntaxError as e:
         logger.error(f"❌ Syntax error in generated file: {e}")
-        if hasattr(e, 'lineno') and e.lineno is not None:
-            lines = content.split('\n')
+        if hasattr(e, "lineno") and e.lineno is not None:
+            lines = content.split("\n")
             line_no = e.lineno - 1  # 0-based index
             if 0 <= line_no < len(lines):
                 logger.error(f"Problematic line {e.lineno}: {lines[line_no].rstrip()}")
         return False
 
+
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Generate minimal test files for HuggingFace models")
-    parser.add_argument("model_type", nargs="?", default="bert", help="Model type to generate test for")
-    parser.add_argument("--output-dir", type=str, default="ultra_simple_tests", help="Output directory for test files")
-    parser.add_argument("--all", action="store_true", help="Generate tests for all common model types")
-    
+    parser = argparse.ArgumentParser(
+        description="Generate minimal test files for HuggingFace models"
+    )
+    parser.add_argument(
+        "model_type", nargs="?", default="bert", help="Model type to generate test for"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="ultra_simple_tests",
+        help="Output directory for test files",
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Generate tests for all common model types"
+    )
+
     args = parser.parse_args()
-    
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     if args.all:
         # Generate tests for all common model types
         model_types = ["bert", "gpt2", "t5", "vit"]
         success_count = 0
-        
+
         for model_type in model_types:
             if generate_minimal_test(model_type, args.output_dir):
                 success_count += 1
-        
+
         logger.info(f"Generated {success_count} of {len(model_types)} test files successfully")
         return 0 if success_count == len(model_types) else 1
     else:
         # Generate test for single model type
         return 0 if generate_minimal_test(args.model_type, args.output_dir) else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

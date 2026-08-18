@@ -89,27 +89,27 @@ Performance tests should use the `PerformanceTestUtils` helper:
 @pytest.mark.model_test
 @pytest.mark.benchmark
 class TestModelPerformance:
-    def test_performance_with_baseline(self, model_and_tokenizer, 
-                                       sample_inputs, pytest_config):
+    def test_performance_with_baseline(self, model_and_tokenizer, sample_inputs, pytest_config):
         model, _ = model_and_tokenizer
-        
+
         # Measure performance
         timing_stats = ModelTestUtils.measure_inference_time(
             model, inputs, warmup_runs=3, test_runs=10
         )
-        
+
         # Check for regressions
         result = PerformanceTestUtils.check_performance_regression(
             model_name="MyModel",
             timing_stats=timing_stats,
             device="cpu",
             tolerance=pytest_config.baseline_tolerance,
-            update_baseline=pytest_config.update_baselines
+            update_baseline=pytest_config.update_baselines,
         )
-        
+
         # Log results
-        if result.get('regressions'):
+        if result.get("regressions"):
             import warnings
+
             warnings.warn(f"Performance regressions: {result['message']}")
 ```
 

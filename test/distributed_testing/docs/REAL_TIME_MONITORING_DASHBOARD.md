@@ -182,7 +182,7 @@ monitoring_system = MonitoringSystem(coordinator=coordinator)
 # Enable real-time metrics collection
 monitoring_system.enable_real_time_metrics(
     collection_interval=10,  # seconds
-    metrics=['cpu', 'memory', 'network', 'tasks', 'hardware']
+    metrics=["cpu", "memory", "network", "tasks", "hardware"],
 )
 
 # Start the monitoring system
@@ -255,27 +255,29 @@ On the server side, WebSocket connections are handled using Flask-SocketIO:
 
 ```python
 if SOCKETIO_AVAILABLE:
-    @socketio.on('connect')
+
+    @socketio.on("connect")
     def handle_connect():
         """Handle SocketIO connection."""
         logger.info(f"Client connected: {request.sid}")
 
-    @socketio.on('disconnect')
+    @socketio.on("disconnect")
     def handle_disconnect():
         """Handle SocketIO disconnect."""
         logger.info(f"Client disconnected: {request.sid}")
-    
-    @socketio.on('subscribe_to_monitoring')
+
+    @socketio.on("subscribe_to_monitoring")
     def handle_subscribe_monitoring(data):
         """Handle monitoring subscription."""
         logger.info(f"Client {request.sid} subscribed to monitoring updates")
         # Join a room for monitoring updates
         from flask_socketio import join_room
-        join_room('monitoring_subscribers')
+
+        join_room("monitoring_subscribers")
         # Send initial data
         emit_monitoring_data()
-    
-    @socketio.on('request_monitoring_update')
+
+    @socketio.on("request_monitoring_update")
     def handle_request_monitoring_update(data):
         """Handle request for immediate monitoring data update."""
         logger.info(f"Client {request.sid} requested monitoring data update")
@@ -291,7 +293,7 @@ A background thread continuously updates connected clients:
 def background_monitoring_thread(interval=5):
     """Background thread for emitting monitoring data periodically."""
     logger.info(f"Starting background monitoring thread with interval {interval} seconds")
-    
+
     while True:
         try:
             # Emit monitoring data to all subscribed clients
@@ -302,12 +304,11 @@ def background_monitoring_thread(interval=5):
             logger.error(f"Error in background monitoring thread: {e}")
             time.sleep(5)  # Sleep and retry after error
 
+
 # Start background monitoring thread if SocketIO is available
 if SOCKETIO_AVAILABLE:
     monitoring_thread = threading.Thread(
-        target=background_monitoring_thread,
-        args=(args.update_interval,),
-        daemon=True
+        target=background_monitoring_thread, args=(args.update_interval,), daemon=True
     )
     monitoring_thread.start()
 ```

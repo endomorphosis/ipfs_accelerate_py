@@ -141,10 +141,7 @@ This ensures that:
 Validation hashes are computed from the validation fields to detect stale data:
 
 ```python
-validation_hash = multiformats_multihash.wrap(
-    sorted_fields_bytes,
-    'sha2-256'
-)
+validation_hash = multiformats_multihash.wrap(sorted_fields_bytes, "sha2-256")
 ```
 
 When cached data is retrieved:
@@ -288,11 +285,11 @@ cache.clear()
 ```python
 @dataclass
 class CacheEntry:
-    data: Any                          # Cached data
-    timestamp: float                   # Cache creation time
-    ttl: int                           # Time-to-live in seconds
-    validation_hash: Optional[str]     # Hash of validation fields
-    p2p_shared: bool = False          # Whether entry was shared via P2P
+    data: Any  # Cached data
+    timestamp: float  # Cache creation time
+    ttl: int  # Time-to-live in seconds
+    validation_hash: Optional[str]  # Hash of validation fields
+    p2p_shared: bool = False  # Whether entry was shared via P2P
 ```
 
 ### P2P Message Structure

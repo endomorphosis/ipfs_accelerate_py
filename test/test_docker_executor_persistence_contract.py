@@ -28,20 +28,24 @@ class _FakeDatasetsManager:
         self.provenance = []
 
     def log_event(self, event_type, data, level="INFO", category="GENERAL"):
-        self.events.append({
-            "event_type": event_type,
-            "data": data,
-            "level": level,
-            "category": category,
-        })
+        self.events.append(
+            {
+                "event_type": event_type,
+                "data": data,
+                "level": level,
+                "category": category,
+            }
+        )
         return True
 
     def track_provenance(self, operation, data, record_type="TRANSFORMATION"):
-        self.provenance.append({
-            "operation": operation,
-            "data": data,
-            "record_type": record_type,
-        })
+        self.provenance.append(
+            {
+                "operation": operation,
+                "data": data,
+                "record_type": record_type,
+            }
+        )
         return "cid-prov"
 
 
@@ -50,12 +54,14 @@ class _FakeProvenanceLogger:
         self.records = []
 
     def log_transformation(self, operation, data, input_cid=None, output_cid=None):
-        self.records.append({
-            "operation": operation,
-            "data": data,
-            "input_cid": input_cid,
-            "output_cid": output_cid,
-        })
+        self.records.append(
+            {
+                "operation": operation,
+                "data": data,
+                "input_cid": input_cid,
+                "output_cid": output_cid,
+            }
+        )
         return "cid-prov"
 
 
@@ -230,8 +236,12 @@ def test_docker_executor_required_model_artifact_policy_fails_fast(monkeypatch):
     assert storage.retrieve_calls == ["cid-missing"]
     assert called["build"] is False
     assert any(event["event_type"] == "container_execution_failed" for event in datasets.events)
-    assert any(event["event_type"] == "model_artifact_materialization_failed" for event in datasets.events)
-    assert any(item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance)
+    assert any(
+        event["event_type"] == "model_artifact_materialization_failed" for event in datasets.events
+    )
+    assert any(
+        item["operation"] == "model_artifact_materialization_failed" for item in datasets.provenance
+    )
 
 
 def test_docker_executor_optional_model_artifact_policy_emits_degraded_event(monkeypatch):
@@ -271,7 +281,12 @@ def test_docker_executor_optional_model_artifact_policy_emits_degraded_event(mon
     )
 
     assert result.success is True
-    degraded_events = [e for e in datasets.events if e["event_type"] == "model_artifact_materialization_degraded"]
+    degraded_events = [
+        e for e in datasets.events if e["event_type"] == "model_artifact_materialization_degraded"
+    ]
     assert degraded_events
     assert degraded_events[0]["level"] == "WARNING"
-    assert any(item["operation"] == "model_artifact_materialization_degraded" for item in datasets.provenance)
+    assert any(
+        item["operation"] == "model_artifact_materialization_degraded"
+        for item in datasets.provenance
+    )

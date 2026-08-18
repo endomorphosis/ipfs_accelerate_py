@@ -12,13 +12,15 @@ import logging
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Try to import duckdb
 try:
     import duckdb
+
     DUCKDB_AVAILABLE = True
 except ImportError:
     DUCKDB_AVAILABLE = False
@@ -31,8 +33,9 @@ from enhanced_templates.template_system_enhancement import (
     extract_placeholders,
     validate_template_syntax,
     validate_hardware_support,
-    validate_template
+    validate_template,
 )
+
 
 class TestTemplateEnhancements(unittest.TestCase):
     """Test the template system enhancements."""
@@ -42,7 +45,7 @@ class TestTemplateEnhancements(unittest.TestCase):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.temp_dir, "test_template_db.duckdb")
-        
+
         # Create a test database
         try:
             conn = duckdb.connect(self.db_path)
@@ -54,14 +57,17 @@ class TestTemplateEnhancements(unittest.TestCase):
                 hardware_platform VARCHAR
             )
             """)
-            
+
             # Add a test template
-            conn.execute("""
+            conn.execute(
+                """
             INSERT INTO templates 
             (model_type, template_type, template, hardware_platform)
             VALUES (?, ?, ?, NULL)
-            """, ["test_model", "test", "Template for {model_name}", None])
-            
+            """,
+                ["test_model", "test", "Template for {model_name}", None],
+            )
+
             conn.close()
         except Exception as e:
             logger.error(f"Error creating test database: {e}")
@@ -78,12 +84,12 @@ class TestTemplateEnhancements(unittest.TestCase):
         template = "Template for {model_name} with {normalized_name} and {generated_at}"
         placeholders = extract_placeholders(template)
         self.assertEqual(placeholders, {"model_name", "normalized_name", "generated_at"})
-        
+
         # Test a template with no placeholders
         template = "Template with no placeholders"
         placeholders = extract_placeholders(template)
         self.assertEqual(placeholders, set())
-        
+
         # Test a template with duplicate placeholders
         template = "Template with {model_name} and {model_name} and {normalized_name}"
         placeholders = extract_placeholders(template)
@@ -106,7 +112,7 @@ def test_function():
         success, errors = validate_template_syntax(template)
         self.assertTrue(success)
         self.assertEqual(errors, [])
-        
+
         # Test a template with unbalanced braces
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -122,7 +128,7 @@ def test_function():
         success, errors = validate_template_syntax(template)
         self.assertFalse(success)
         self.assertTrue(any("Unbalanced braces" in error for error in errors))
-        
+
         # Test a template with Python syntax errors
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -138,7 +144,7 @@ def test_function()
         success, errors = validate_template_syntax(template)
         self.assertFalse(success)
         self.assertTrue(any("Python syntax error" in error for error in errors))
-        
+
         # Test a template with double braces
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -165,7 +171,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
         self.assertTrue(success)
         self.assertTrue(hardware_support["cpu"])
         self.assertTrue(hardware_support["cuda"])
-        
+
         # Test a template with MPS support
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -180,7 +186,7 @@ device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.assertTrue(success)
         self.assertTrue(hardware_support["cpu"])
         self.assertTrue(hardware_support["mps"])
-        
+
         # Test a template with OpenVINO support
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -193,7 +199,7 @@ import openvino
         self.assertTrue(success)
         self.assertTrue(hardware_support["cpu"])
         self.assertTrue(hardware_support["openvino"])
-        
+
         # Test validating support for a specific hardware platform
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -206,7 +212,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 """
         success, hardware_support = validate_hardware_support(template, "cuda")
         self.assertTrue(success)
-        
+
         template = """#!/usr/bin/env python3
 \"\"\"
 Test template with no specific hardware support
@@ -245,7 +251,7 @@ class Test{normalized_name}:
         self.assertTrue(results["syntax"]["success"])
         self.assertTrue(results["hardware"]["success"])
         self.assertTrue(results["placeholders"]["success"])
-        
+
         # Test a template with missing placeholders
         template = """#!/usr/bin/env python3
 \"\"\"
@@ -264,6 +270,7 @@ def test_function():
         self.assertTrue(results["hardware"]["success"])
         self.assertFalse(results["placeholders"]["success"])
         self.assertTrue(len(results["placeholders"]["missing"]) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()

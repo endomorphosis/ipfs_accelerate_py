@@ -30,12 +30,8 @@ from ..task_sources.task_identity import (
 
 
 TASK_QUALITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-quality@1"
-TASK_SEMANTIC_IDENTITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/task-semantic-identity@1"
-)
-TASK_WORK_CONTRACT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
-)
+TASK_SEMANTIC_IDENTITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-semantic-identity@1"
+TASK_WORK_CONTRACT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
 TASK_GRANULARITY_MEASUREMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-granularity-measurement@1"
 )
@@ -45,9 +41,7 @@ TASK_GRANULARITY_CALIBRATION_SCHEMA: Final = (
 TASK_COMPLETION_PROPAGATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-propagation@1"
 )
-TASK_GRANULARITY_RUN_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-granularity-run@1"
-)
+TASK_GRANULARITY_RUN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-granularity-run@1"
 TASK_QUALITY_EVALUATOR_VERSION = "task-quality/v1"
 TASK_GENERATION_OBJECTIVE_ID: Final = "ASI-G050"
 TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
@@ -67,9 +61,7 @@ TASK_GENERATION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     "bundles preserve critical-path width and serialize conflicts",
     "model calls per accepted work item improve without increasing merge conflicts",
 )
-TASK_SPLIT_REFILL_REQUIREMENT_ID: Final = (
-    "127990245919649912156052660092678945998"
-)
+TASK_SPLIT_REFILL_REQUIREMENT_ID: Final = "127990245919649912156052660092678945998"
 TASK_SPLIT_REFILL_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-split-refill-evidence@1"
 )
@@ -132,8 +124,7 @@ def _strings(value: Any, *, paths: bool = False) -> tuple[str, ...]:
 
 def _mapping_value(payload: Mapping[str, Any], *names: str, default: Any = "") -> Any:
     normalized = {
-        str(key).strip().casefold().replace("_", " "): value
-        for key, value in payload.items()
+        str(key).strip().casefold().replace("_", " "): value for key, value in payload.items()
     }
     for name in names:
         value = normalized.get(name.casefold().replace("_", " "))
@@ -181,10 +172,7 @@ def _evidence_hash_material(value: Any) -> Any:
             raise ValueError("task-quality evidence cannot contain non-finite floats")
         return {"$finite_float": format(value, ".17g")}
     if isinstance(value, Mapping):
-        return {
-            str(key): _evidence_hash_material(child)
-            for key, child in value.items()
-        }
+        return {str(key): _evidence_hash_material(child) for key, child in value.items()}
     if isinstance(value, (list, tuple)):
         return [_evidence_hash_material(child) for child in value]
     return value
@@ -229,27 +217,16 @@ def _task_work_contract_material(candidate: "TaskCandidate") -> dict[str, Any]:
         "schema": TASK_WORK_CONTRACT_SCHEMA,
         "goal_id": _normalized_text(candidate.goal_id),
         "acceptance_effect_subset": {
-            "acceptance": sorted(
-                _normalized_text(item) for item in candidate.acceptance
-            ),
-            "effects": sorted(
-                _normalized_text(item) for item in candidate.effects
-            ),
-            "evidence_subset": sorted(
-                _normalized_text(item) for item in candidate.evidence_subset
-            ),
+            "acceptance": sorted(_normalized_text(item) for item in candidate.acceptance),
+            "effects": sorted(_normalized_text(item) for item in candidate.effects),
+            "evidence_subset": sorted(_normalized_text(item) for item in candidate.evidence_subset),
         },
         "predicted_scope": {
             "paths": sorted(
-                path.casefold()
-                for path in set(candidate.outputs) | set(candidate.predicted_paths)
+                path.casefold() for path in set(candidate.outputs) | set(candidate.predicted_paths)
             ),
-            "symbols": sorted(
-                _normalized_text(item) for item in candidate.predicted_symbols
-            ),
-            "context_paths": sorted(
-                path.casefold() for path in candidate.context_paths
-            ),
+            "symbols": sorted(_normalized_text(item) for item in candidate.predicted_symbols),
+            "context_paths": sorted(path.casefold() for path in candidate.context_paths),
         },
         "predicted_costs": {
             "context_tokens": candidate.estimated_context_tokens,
@@ -261,18 +238,13 @@ def _task_work_contract_material(candidate: "TaskCandidate") -> dict[str, Any]:
             "conflict_count": len(candidate.conflicts),
         },
         "execution_boundary": {
-            "preconditions": sorted(
-                _normalized_text(item) for item in candidate.preconditions
-            ),
+            "preconditions": sorted(_normalized_text(item) for item in candidate.preconditions),
             "dependencies": sorted(
                 _normalized_display_text(item) for item in candidate.dependencies
             ),
-            "conflicts": sorted(
-                _normalized_display_text(item) for item in candidate.conflicts
-            ),
+            "conflicts": sorted(_normalized_display_text(item) for item in candidate.conflicts),
             "validation_commands": sorted(
-                _normalized_display_text(item)
-                for item in candidate.validation_commands
+                _normalized_display_text(item) for item in candidate.validation_commands
             ),
             "merge_fate": _normalized_text(candidate.merge_fate),
         },
@@ -286,21 +258,15 @@ def _task_work_contract_material(candidate: "TaskCandidate") -> dict[str, Any]:
         )
     if candidate.proof_obligations or candidate.proof_commands:
         result["predicted_proof"] = {
-            "obligations": sorted(
-                _normalized_text(item) for item in candidate.proof_obligations
-            ),
-            "commands": sorted(
-                _normalized_display_text(item) for item in candidate.proof_commands
-            ),
+            "obligations": sorted(_normalized_text(item) for item in candidate.proof_obligations),
+            "commands": sorted(_normalized_display_text(item) for item in candidate.proof_commands),
             "estimated_seconds": candidate.estimated_proof_seconds,
         }
     if candidate.estimated_merge_risk_millionths:
         result["predicted_costs"]["merge_risk_millionths"] = (
             candidate.estimated_merge_risk_millionths
         )
-    shard = _normalized_display_text(
-        candidate.metadata.get("granularity_shard")
-    )
+    shard = _normalized_display_text(candidate.metadata.get("granularity_shard"))
     if shard:
         result["execution_boundary"]["granularity_shard"] = shard
     return result
@@ -319,13 +285,9 @@ def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, 
         "acceptance": sorted(_normalized_text(item) for item in candidate.acceptance),
         "preconditions": sorted(_normalized_text(item) for item in candidate.preconditions),
         "effects": sorted(_normalized_text(item) for item in candidate.effects),
-        "evidence_subset": sorted(
-            _normalized_text(item) for item in candidate.evidence_subset
-        ),
+        "evidence_subset": sorted(_normalized_text(item) for item in candidate.evidence_subset),
         "outputs": sorted(path.casefold() for path in candidate.outputs),
-        "predicted_symbols": sorted(
-            _normalized_text(item) for item in candidate.predicted_symbols
-        ),
+        "predicted_symbols": sorted(_normalized_text(item) for item in candidate.predicted_symbols),
         "validation_commands": sorted(
             _normalized_display_text(item) for item in candidate.validation_commands
         ),
@@ -342,17 +304,13 @@ def _semantic_material(value: "TaskCandidate | Mapping[str, Any]") -> dict[str, 
         material["proof_commands"] = sorted(
             _normalized_display_text(item) for item in candidate.proof_commands
         )
-    shard = _normalized_display_text(
-        candidate.metadata.get("granularity_shard")
-    )
+    shard = _normalized_display_text(candidate.metadata.get("granularity_shard"))
     if shard:
         material["granularity_shard"] = shard
     # Context changes execution cost, but not the work's purpose.  It is used
     # as identity material only when there is no concrete output/symbol surface.
     if not material["outputs"] and not material["predicted_symbols"]:
-        material["context_paths"] = sorted(
-            path.casefold() for path in candidate.context_paths
-        )
+        material["context_paths"] = sorted(path.casefold() for path in candidate.context_paths)
     if not any(
         material[name]
         for name in ("acceptance", "effects", "evidence_subset", "outputs", "predicted_symbols")
@@ -413,9 +371,7 @@ class TaskCandidate:
     metadata: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        normalized_acceptance = _strings(
-            self.acceptance or self.acceptance_criteria
-        )
+        normalized_acceptance = _strings(self.acceptance or self.acceptance_criteria)
         normalized_context = _strings(
             self.context_paths or self.context_keys,
             paths=True,
@@ -473,9 +429,7 @@ class TaskCandidate:
         expected = canonical_semantic_identity(self)
         supplied = str(self.semantic_identity or "").strip()
         if supplied and supplied != expected:
-            raise ValueError(
-                "semantic_identity does not match canonical semantic task content"
-            )
+            raise ValueError("semantic_identity does not match canonical semantic task content")
         object.__setattr__(self, "semantic_identity", expected)
 
     @classmethod
@@ -507,9 +461,7 @@ class TaskCandidate:
             preconditions=_strings(
                 _mapping_value(payload, "preconditions", "required preconditions")
             ),
-            effects=_strings(
-                _mapping_value(payload, "effects", "expected effects")
-            ),
+            effects=_strings(_mapping_value(payload, "effects", "expected effects")),
             evidence_subset=_strings(
                 _mapping_value(
                     payload,
@@ -559,18 +511,10 @@ class TaskCandidate:
                     "proof subset",
                 )
             ),
-            proof_commands=_strings(
-                _mapping_value(payload, "proof commands", "proof validation")
-            ),
-            dependencies=_strings(
-                _mapping_value(payload, "dependencies", "depends on")
-            ),
-            conflicts=_strings(
-                _mapping_value(payload, "conflicts", "conflict keys")
-            ),
-            resources=_strings(
-                _mapping_value(payload, "resources", "required resources")
-            ),
+            proof_commands=_strings(_mapping_value(payload, "proof commands", "proof validation")),
+            dependencies=_strings(_mapping_value(payload, "dependencies", "depends on")),
+            conflicts=_strings(_mapping_value(payload, "conflicts", "conflict keys")),
+            resources=_strings(_mapping_value(payload, "resources", "required resources")),
             resource_class=_mapping_value(payload, "resource class"),
             token_class=_mapping_value(payload, "token class", "token budget class"),
             merge_fate=_mapping_value(payload, "merge fate", "merge family", "merge key"),
@@ -593,9 +537,7 @@ class TaskCandidate:
                 "proof cost",
                 default=0,
             ),
-            estimated_tokens=_mapping_value(
-                payload, "estimated tokens", "token cost", default=0
-            ),
+            estimated_tokens=_mapping_value(payload, "estimated tokens", "token cost", default=0),
             estimated_merge_risk_millionths=_mapping_value(
                 payload,
                 "estimated merge risk millionths",
@@ -614,9 +556,7 @@ class TaskCandidate:
                 "failure similarity",
                 default=0.0,
             ),
-            source_id=_mapping_value(
-                payload, "source id", "task id", "finding id", "proposal id"
-            ),
+            source_id=_mapping_value(payload, "source id", "task id", "finding id", "proposal id"),
             semantic_identity=(
                 _mapping_value(
                     payload,
@@ -634,22 +574,11 @@ class TaskCandidate:
                     not isinstance(supplied_contract, Mapping)
                     or dict(supplied_contract) != candidate.work_contract
                 ):
-                    raise ValueError(
-                        "work_contract does not match canonical task work content"
-                    )
-            supplied_contract_id = str(
-                _mapping_value(payload, "work contract id") or ""
-            ).strip()
-            if (
-                supplied_contract_id
-                and supplied_contract_id != candidate.work_contract_id
-            ):
-                raise ValueError(
-                    "work_contract_id does not match canonical task work content"
-                )
-            supplied_key = str(
-                _mapping_value(payload, "canonical task key") or ""
-            ).strip()
+                    raise ValueError("work_contract does not match canonical task work content")
+            supplied_contract_id = str(_mapping_value(payload, "work contract id") or "").strip()
+            if supplied_contract_id and supplied_contract_id != candidate.work_contract_id:
+                raise ValueError("work_contract_id does not match canonical task work content")
+            supplied_key = str(_mapping_value(payload, "canonical task key") or "").strip()
             supplied_cid = str(
                 _mapping_value(payload, "canonical task cid", "task cid") or ""
             ).strip()
@@ -707,17 +636,13 @@ class TaskCandidate:
     def canonical_task_key(self) -> str:
         """Return the repository-wide canonical task key for this candidate."""
 
-        return canonical_task_identity(
-            {"dedupe_key": self.semantic_identity}
-        ).canonical_task_key
+        return canonical_task_identity({"dedupe_key": self.semantic_identity}).canonical_task_key
 
     @property
     def canonical_task_cid(self) -> str:
         """Return the repository-wide canonical task CID for this candidate."""
 
-        return canonical_task_identity(
-            {"dedupe_key": self.semantic_identity}
-        ).canonical_task_cid
+        return canonical_task_identity({"dedupe_key": self.semantic_identity}).canonical_task_cid
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -866,9 +791,7 @@ class TaskQualityPolicy:
     def policy_id(self) -> str:
         """Return the content identity of every sizing and admission threshold."""
 
-        digest = hashlib.sha256(
-            _task_quality_evidence_bytes(asdict(self))
-        ).hexdigest()
+        digest = hashlib.sha256(_task_quality_evidence_bytes(asdict(self))).hexdigest()
         return f"task-quality-policy/v1/{digest}"
 
 
@@ -902,9 +825,7 @@ class TaskCostMeasurement:
 
     def __post_init__(self) -> None:
         for name in ("fixture_id", "repository_tree", "policy_id"):
-            object.__setattr__(
-                self, name, _normalized_display_text(getattr(self, name))
-            )
+            object.__setattr__(self, name, _normalized_display_text(getattr(self, name)))
             if not getattr(self, name):
                 raise ValueError(f"{name} is required")
         features = _strings(self.toolchain_features)
@@ -925,23 +846,17 @@ class TaskCostMeasurement:
             "accepted_criteria",
         ):
             object.__setattr__(self, name, _positive_int(getattr(self, name), name))
-        object.__setattr__(
-            self, "model_calls", _non_negative_int(self.model_calls, "model_calls")
-        )
+        object.__setattr__(self, "model_calls", _non_negative_int(self.model_calls, "model_calls"))
         if self.accepted_criteria > self.acceptance_count:
             raise ValueError("accepted_criteria cannot exceed acceptance_count")
-        risk = _non_negative_int(
-            self.merge_risk_millionths, "merge_risk_millionths"
-        )
+        risk = _non_negative_int(self.merge_risk_millionths, "merge_risk_millionths")
         if risk > 1_000_000:
             raise ValueError("merge_risk_millionths cannot exceed 1000000")
         object.__setattr__(self, "merge_risk_millionths", risk)
         expected = _task_quality_evidence_cid(self._material())
         supplied = str(self.measurement_id or "").strip()
         if supplied and supplied != expected:
-            raise ValueError(
-                "measurement_id does not match canonical task cost measurement"
-            )
+            raise ValueError("measurement_id does not match canonical task cost measurement")
         object.__setattr__(self, "measurement_id", expected)
 
     def _material(self) -> dict[str, Any]:
@@ -1019,12 +934,7 @@ class TaskCostMeasurement:
             )
         if str(payload.get("schema") or "") != TASK_GRANULARITY_MEASUREMENT_SCHEMA:
             raise ValueError("task cost measurement schema mismatch")
-        return cls(
-            **{
-                name: payload.get(name)
-                for name in cls.__dataclass_fields__
-            }
-        )
+        return cls(**{name: payload.get(name) for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -1060,9 +970,7 @@ class TaskGranularityCalibration:
         expected = _task_quality_evidence_cid(self._identity_material())
         supplied = str(self.calibration_id or "").strip()
         if supplied and supplied != expected:
-            raise ValueError(
-                "calibration_id does not match canonical task granularity calibration"
-            )
+            raise ValueError("calibration_id does not match canonical task granularity calibration")
         object.__setattr__(self, "calibration_id", expected)
 
     def _identity_material(self) -> dict[str, Any]:
@@ -1114,9 +1022,7 @@ def calibrate_task_granularity(
     selected = policy or TaskQualityPolicy()
     requested_features = _strings(toolchain_features)
     history = tuple(
-        item
-        if isinstance(item, TaskCostMeasurement)
-        else TaskCostMeasurement.from_dict(item)
+        item if isinstance(item, TaskCostMeasurement) else TaskCostMeasurement.from_dict(item)
         for item in measurements
     )
     matching = tuple(
@@ -1135,8 +1041,7 @@ def calibrate_task_granularity(
     )
     if not matching:
         raise ValueError(
-            "no task cost measurements match repository tree, policy, and "
-            "toolchain features"
+            "no task cost measurements match repository tree, policy, and toolchain features"
         )
 
     def observed_max(name: str, policy_limit: int) -> int:
@@ -1144,36 +1049,20 @@ def calibrate_task_granularity(
 
     effective = replace(
         selected,
-        max_acceptance_criteria=observed_max(
-            "acceptance_count", selected.max_acceptance_criteria
-        ),
-        max_context_paths=observed_max(
-            "context_path_count", selected.max_context_paths
-        ),
-        max_context_tokens=observed_max(
-            "context_tokens", selected.max_context_tokens
-        ),
-        max_predicted_paths=observed_max(
-            "predicted_file_count", selected.max_predicted_paths
-        ),
+        max_acceptance_criteria=observed_max("acceptance_count", selected.max_acceptance_criteria),
+        max_context_paths=observed_max("context_path_count", selected.max_context_paths),
+        max_context_tokens=observed_max("context_tokens", selected.max_context_tokens),
+        max_predicted_paths=observed_max("predicted_file_count", selected.max_predicted_paths),
         max_predicted_symbols=observed_max(
             "predicted_symbol_count", selected.max_predicted_symbols
         ),
         max_predicted_interfaces=observed_max(
             "predicted_interface_count", selected.max_predicted_interfaces
         ),
-        max_validation_seconds=observed_max(
-            "validation_seconds", selected.max_validation_seconds
-        ),
-        max_proof_items=observed_max(
-            "proof_item_count", selected.max_proof_items
-        ),
-        max_proof_seconds=observed_max(
-            "proof_seconds", selected.max_proof_seconds
-        ),
-        max_estimated_tokens=observed_max(
-            "task_tokens", selected.max_estimated_tokens
-        ),
+        max_validation_seconds=observed_max("validation_seconds", selected.max_validation_seconds),
+        max_proof_items=observed_max("proof_item_count", selected.max_proof_items),
+        max_proof_seconds=observed_max("proof_seconds", selected.max_proof_seconds),
+        max_estimated_tokens=observed_max("task_tokens", selected.max_estimated_tokens),
         max_merge_risk_millionths=min(
             selected.max_merge_risk_millionths,
             max(item.merge_risk_millionths for item in matching),
@@ -1182,11 +1071,7 @@ def calibrate_task_granularity(
     matching_ids = tuple(item.measurement_id for item in matching)
     matching_set = set(matching_ids)
     excluded_ids = tuple(
-        sorted(
-            item.measurement_id
-            for item in history
-            if item.measurement_id not in matching_set
-        )
+        sorted(item.measurement_id for item in history if item.measurement_id not in matching_set)
     )
     return TaskGranularityCalibration(
         repository_tree=repository_tree,
@@ -1263,9 +1148,7 @@ class TaskQualityScore:
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
         result["rationale"] = list(self.rationale)
-        result["rejection_reasons"] = [
-            item.to_dict() for item in self.rejection_reasons
-        ]
+        result["rejection_reasons"] = [item.to_dict() for item in self.rejection_reasons]
         result["accepted"] = self.accepted
         result["dimensions"] = self.dimensions
         result["total_millionths"] = self.total_millionths
@@ -1429,8 +1312,7 @@ def _history(
     default_outcome: str,
 ) -> tuple[HistoricalTask, ...]:
     return tuple(
-        HistoricalTask.from_value(value, default_outcome=default_outcome)
-        for value in values
+        HistoricalTask.from_value(value, default_outcome=default_outcome) for value in values
     )
 
 
@@ -1457,9 +1339,7 @@ def _acceptance_coverage(candidate: TaskCandidate) -> float:
 def _effect_coherence(candidate: TaskCandidate) -> float:
     if not candidate.effects:
         return 0.0
-    effect_tokens = set(
-        re.findall(r"[a-z0-9]+", " ".join(candidate.effects).casefold())
-    )
+    effect_tokens = set(re.findall(r"[a-z0-9]+", " ".join(candidate.effects).casefold()))
     surface_tokens = set(
         re.findall(
             r"[a-z0-9]+",
@@ -1571,8 +1451,7 @@ def score_task_candidate(
     }
     total = sum(dimensions[name] * weights[name] for name in weights)
     rationale = tuple(
-        f"{name}={dimensions[name]:.6f} weight={weights[name]:.6f}"
-        for name in weights
+        f"{name}={dimensions[name]:.6f} weight={weights[name]:.6f}" for name in weights
     )
     raw_score = TaskQualityScore(
         **dimensions,
@@ -1644,10 +1523,7 @@ def _task_rejections(
     for reason, value, detail in required:
         if not value:
             reject(reason, detail)
-    if (
-        candidate.resource_class
-        and candidate.resource_class.casefold() not in RESOURCE_CLASSES
-    ):
+    if candidate.resource_class and candidate.resource_class.casefold() not in RESOURCE_CLASSES:
         reject(
             "invalid_resource_class",
             f"unsupported resource class {candidate.resource_class!r}",
@@ -1720,14 +1596,12 @@ def _task_rejections(
     if len(candidate.proof_obligations) > policy.max_proof_items:
         reject(
             "proof_breadth",
-            f"{len(candidate.proof_obligations)} proof obligations exceed "
-            f"{policy.max_proof_items}",
+            f"{len(candidate.proof_obligations)} proof obligations exceed {policy.max_proof_items}",
         )
     if candidate.estimated_proof_seconds > policy.max_proof_seconds:
         reject(
             "proof_cost",
-            f"{candidate.estimated_proof_seconds}s exceeds "
-            f"{policy.max_proof_seconds}s",
+            f"{candidate.estimated_proof_seconds}s exceeds {policy.max_proof_seconds}s",
         )
     if candidate.estimated_tokens > policy.max_estimated_tokens:
         reject(
@@ -1744,10 +1618,7 @@ def _task_rejections(
             "conflict_cost",
             f"{len(candidate.conflicts)} conflicts exceed {policy.max_conflicts}",
         )
-    if (
-        candidate.estimated_merge_risk_millionths
-        > policy.max_merge_risk_millionths
-    ):
+    if candidate.estimated_merge_risk_millionths > policy.max_merge_risk_millionths:
         reject(
             "merge_risk",
             f"{candidate.estimated_merge_risk_millionths} exceeds "
@@ -1796,11 +1667,7 @@ def admit_task_candidate(
     return TaskAdmissionDecision(
         candidate=item,
         score=score,
-        status=(
-            TaskAdmissionStatus.REJECTED
-            if rejections
-            else TaskAdmissionStatus.ACCEPTED
-        ),
+        status=(TaskAdmissionStatus.REJECTED if rejections else TaskAdmissionStatus.ACCEPTED),
         rejections=rejections,
         source_identities=(item.semantic_identity,),
     )
@@ -1817,20 +1684,17 @@ def is_over_broad(
     return (
         candidate.predicted_path_breadth > selected.max_predicted_paths
         or candidate.predicted_symbol_breadth > selected.max_predicted_symbols
-        or candidate.predicted_interface_breadth
-        > selected.max_predicted_interfaces
+        or candidate.predicted_interface_breadth > selected.max_predicted_interfaces
         or len(candidate.acceptance) > selected.max_acceptance_criteria
         or len(candidate.effects) > selected.max_effects
         or len(candidate.evidence_subset) > selected.max_evidence_items
         or len(candidate.context_paths) > selected.max_context_paths
         or candidate.estimated_context_tokens > selected.max_context_tokens
-        or candidate.estimated_validation_seconds
-        > selected.max_validation_seconds
+        or candidate.estimated_validation_seconds > selected.max_validation_seconds
         or len(candidate.proof_obligations) > selected.max_proof_items
         or candidate.estimated_proof_seconds > selected.max_proof_seconds
         or candidate.estimated_tokens > selected.max_estimated_tokens
-        or candidate.estimated_merge_risk_millionths
-        > selected.max_merge_risk_millionths
+        or candidate.estimated_merge_risk_millionths > selected.max_merge_risk_millionths
     )
 
 
@@ -1878,9 +1742,7 @@ def split_task_candidate(
         1,
         math.ceil(len(paths) / path_limit),
         math.ceil(len(symbols) / symbol_limit),
-        math.ceil(
-            len(item.predicted_interfaces) / selected.max_predicted_interfaces
-        ),
+        math.ceil(len(item.predicted_interfaces) / selected.max_predicted_interfaces),
         math.ceil(len(item.acceptance) / selected.max_acceptance_criteria),
         math.ceil(len(item.effects) / selected.max_effects),
         math.ceil(len(item.evidence_subset) / selected.max_evidence_items),
@@ -1895,26 +1757,15 @@ def split_task_candidate(
             else 1
         ),
         (
-            math.ceil(
-                item.estimated_validation_seconds
-                / selected.max_validation_seconds
-            )
+            math.ceil(item.estimated_validation_seconds / selected.max_validation_seconds)
             if selected.max_validation_seconds
-            else (
-                selected.max_split_parts + 1
-                if item.estimated_validation_seconds
-                else 1
-            )
+            else (selected.max_split_parts + 1 if item.estimated_validation_seconds else 1)
         ),
         math.ceil(len(item.proof_obligations) / selected.max_proof_items),
         (
             math.ceil(item.estimated_proof_seconds / selected.max_proof_seconds)
             if selected.max_proof_seconds
-            else (
-                selected.max_split_parts + 1
-                if item.estimated_proof_seconds
-                else 1
-            )
+            else (selected.max_split_parts + 1 if item.estimated_proof_seconds else 1)
         ),
         (
             math.ceil(item.estimated_tokens / selected.max_estimated_tokens)
@@ -1922,16 +1773,9 @@ def split_task_candidate(
             else 1
         ),
         (
-            math.ceil(
-                item.estimated_merge_risk_millionths
-                / selected.max_merge_risk_millionths
-            )
+            math.ceil(item.estimated_merge_risk_millionths / selected.max_merge_risk_millionths)
             if selected.max_merge_risk_millionths
-            else (
-                selected.max_split_parts + 1
-                if item.estimated_merge_risk_millionths
-                else 1
-            )
+            else (selected.max_split_parts + 1 if item.estimated_merge_risk_millionths else 1)
         ),
     )
     part_count = min(required_parts, selected.max_split_parts)
@@ -1940,27 +1784,13 @@ def split_task_candidate(
 
     path_chunks = [paths[index::part_count] for index in range(part_count)]
     symbol_chunks = [symbols[index::part_count] for index in range(part_count)]
-    interface_chunks = [
-        item.predicted_interfaces[index::part_count]
-        for index in range(part_count)
-    ]
-    acceptance_chunks = [
-        item.acceptance[index::part_count] for index in range(part_count)
-    ]
+    interface_chunks = [item.predicted_interfaces[index::part_count] for index in range(part_count)]
+    acceptance_chunks = [item.acceptance[index::part_count] for index in range(part_count)]
     effect_chunks = [item.effects[index::part_count] for index in range(part_count)]
-    evidence_chunks = [
-        item.evidence_subset[index::part_count] for index in range(part_count)
-    ]
-    proof_chunks = [
-        item.proof_obligations[index::part_count]
-        for index in range(part_count)
-    ]
+    evidence_chunks = [item.evidence_subset[index::part_count] for index in range(part_count)]
+    proof_chunks = [item.proof_obligations[index::part_count] for index in range(part_count)]
     context_chunks: list[list[str]] = [[] for _ in range(part_count)]
-    path_part = {
-        path: index
-        for index, chunk in enumerate(path_chunks)
-        for path in chunk
-    }
+    path_part = {path: index for index, chunk in enumerate(path_chunks) for path in chunk}
     residual_context_index = 0
     for path in item.context_paths:
         target = path_part.get(path)
@@ -1974,15 +1804,11 @@ def split_task_candidate(
         quotient, remainder = divmod(total, part_count)
         return quotient + (1 if index < remainder else 0)
 
-    split_validation_cost = (
-        item.estimated_validation_seconds > selected.max_validation_seconds
-    )
+    split_validation_cost = item.estimated_validation_seconds > selected.max_validation_seconds
     split_proof_cost = item.estimated_proof_seconds > selected.max_proof_seconds
-    split_merge_risk = (
-        item.estimated_merge_risk_millionths
-        > selected.max_merge_risk_millionths
-    )
+    split_merge_risk = item.estimated_merge_risk_millionths > selected.max_merge_risk_millionths
     for index in range(part_count):
+
         def exact_subset(
             chunk: Sequence[str],
             source: Sequence[str],
@@ -2007,35 +1833,21 @@ def split_task_candidate(
             paths=True,
         )
         child_metadata = dict(item.metadata)
-        child_metadata["granularity_shard"] = (
-            f"{item.semantic_identity}:{index + 1}/{part_count}"
-        )
+        child_metadata["granularity_shard"] = f"{item.semantic_identity}:{index + 1}/{part_count}"
         child = replace(
             item,
             title=f"{item.title} [{index + 1}/{part_count}]",
             outputs=outputs,
             predicted_paths=child_paths,
-            predicted_symbols=exact_subset(
-                symbol_chunks[index], item.predicted_symbols
-            ),
-            predicted_interfaces=exact_subset(
-                interface_chunks[index], item.predicted_interfaces
-            ),
-            acceptance=exact_subset(
-                acceptance_chunks[index], item.acceptance
-            ),
+            predicted_symbols=exact_subset(symbol_chunks[index], item.predicted_symbols),
+            predicted_interfaces=exact_subset(interface_chunks[index], item.predicted_interfaces),
+            acceptance=exact_subset(acceptance_chunks[index], item.acceptance),
             effects=exact_subset(effect_chunks[index], item.effects),
-            evidence_subset=exact_subset(
-                evidence_chunks[index], item.evidence_subset
-            ),
-            proof_obligations=exact_subset(
-                proof_chunks[index], item.proof_obligations
-            ),
+            evidence_subset=exact_subset(evidence_chunks[index], item.evidence_subset),
+            proof_obligations=exact_subset(proof_chunks[index], item.proof_obligations),
             dependencies=item.dependencies,
             context_paths=contexts,
-            estimated_context_tokens=partitioned(
-                item.estimated_context_tokens, index
-            ),
+            estimated_context_tokens=partitioned(item.estimated_context_tokens, index),
             estimated_validation_seconds=(
                 partitioned(item.estimated_validation_seconds, index)
                 if split_validation_cost
@@ -2091,8 +1903,7 @@ def can_coalesce_tasks(
     if not compatible:
         return False
     return (
-        len(set(first.acceptance) | set(second.acceptance))
-        <= selected.max_acceptance_criteria
+        len(set(first.acceptance) | set(second.acceptance)) <= selected.max_acceptance_criteria
         and len(set(first.effects) | set(second.effects)) <= selected.max_effects
         and len(set(first.evidence_subset) | set(second.evidence_subset))
         <= selected.max_evidence_items
@@ -2100,14 +1911,11 @@ def can_coalesce_tasks(
         <= selected.max_predicted_paths
         and len(set(first.predicted_symbols) | set(second.predicted_symbols))
         <= selected.max_predicted_symbols
-        and len(
-            set(first.predicted_interfaces) | set(second.predicted_interfaces)
-        )
+        and len(set(first.predicted_interfaces) | set(second.predicted_interfaces))
         <= selected.max_predicted_interfaces
         and len(set(first.proof_obligations) | set(second.proof_obligations))
         <= selected.max_proof_items
-        and first.estimated_tokens + second.estimated_tokens
-        <= selected.max_estimated_tokens
+        and first.estimated_tokens + second.estimated_tokens <= selected.max_estimated_tokens
         and max(
             first.estimated_context_tokens,
             second.estimated_context_tokens,
@@ -2123,8 +1931,7 @@ def can_coalesce_tasks(
             second.estimated_proof_seconds,
         )
         <= selected.max_proof_seconds
-        and first.estimated_merge_risk_millionths
-        + second.estimated_merge_risk_millionths
+        and first.estimated_merge_risk_millionths + second.estimated_merge_risk_millionths
         <= selected.max_merge_risk_millionths
     )
 
@@ -2137,19 +1944,21 @@ def coalesce_task_candidates(
 ) -> TaskCandidate:
     """Coalesce compatible tiny candidates into one task or fail closed."""
 
-    items = tuple(sorted((
-        item if isinstance(item, TaskCandidate) else TaskCandidate.from_mapping(item)
-        for item in candidates
-    ), key=lambda item: item.semantic_identity))
+    items = tuple(
+        sorted(
+            (
+                item if isinstance(item, TaskCandidate) else TaskCandidate.from_mapping(item)
+                for item in candidates
+            ),
+            key=lambda item: item.semantic_identity,
+        )
+    )
     if not items:
         raise ValueError("at least one task candidate is required")
     source_policy = policy or TaskQualityPolicy()
     selected = _effective_granularity_policy(source_policy, calibration)
     anchor = items[0]
-    if any(
-        not can_coalesce_tasks(anchor, item, policy=selected)
-        for item in items[1:]
-    ):
+    if any(not can_coalesce_tasks(anchor, item, policy=selected) for item in items[1:]):
         raise ValueError(
             "tiny candidates may coalesce only with shared goal, context, outputs, "
             "validation, resource/token class, and merge fate"
@@ -2166,11 +1975,7 @@ def coalesce_task_candidates(
         effects=union("effects"),
         evidence_subset=union("evidence_subset"),
         predicted_paths=_strings(
-            (
-                path
-                for item in items
-                for path in item.predicted_paths
-            ),
+            (path for item in items for path in item.predicted_paths),
             paths=True,
         ),
         predicted_symbols=union("predicted_symbols"),
@@ -2180,16 +1985,10 @@ def coalesce_task_candidates(
         conflicts=union("conflicts"),
         resources=union("resources"),
         estimated_context_tokens=max(item.estimated_context_tokens for item in items),
-        estimated_validation_seconds=max(
-            item.estimated_validation_seconds for item in items
-        ),
-        estimated_proof_seconds=max(
-            item.estimated_proof_seconds for item in items
-        ),
+        estimated_validation_seconds=max(item.estimated_validation_seconds for item in items),
+        estimated_proof_seconds=max(item.estimated_proof_seconds for item in items),
         estimated_tokens=sum(item.estimated_tokens for item in items),
-        estimated_merge_risk_millionths=sum(
-            item.estimated_merge_risk_millionths for item in items
-        ),
+        estimated_merge_risk_millionths=sum(item.estimated_merge_risk_millionths for item in items),
         source_id=",".join(item.source_id for item in items if item.source_id),
         semantic_identity="",
     )
@@ -2223,9 +2022,7 @@ def _coalesce_tiny_groups(
             result.append((anchor, (anchor.semantic_identity,)))
             continue
         compatible_ids = {item.semantic_identity for item in compatible}
-        remaining = [
-            item for item in remaining if item.semantic_identity not in compatible_ids
-        ]
+        remaining = [item for item in remaining if item.semantic_identity not in compatible_ids]
         merged = coalesce_task_candidates(
             group,
             policy=policy,
@@ -2236,9 +2033,7 @@ def _coalesce_tiny_groups(
 
 
 def _granularity_source_identity(candidate: TaskCandidate) -> str:
-    shard = _normalized_display_text(
-        candidate.metadata.get("granularity_shard")
-    )
+    shard = _normalized_display_text(candidate.metadata.get("granularity_shard"))
     return shard.rpartition(":")[0] if shard else ""
 
 
@@ -2279,9 +2074,7 @@ def refine_task_candidates(
             toolchain_features=(requested_features or None),
         )
     ):
-        raise ValueError(
-            "task granularity calibration does not match requested execution features"
-        )
+        raise ValueError("task granularity calibration does not match requested execution features")
     selected = _effective_granularity_policy(source_policy, calibration)
     provided_existing = tuple(existing_tasks)
     if existing is not None:
@@ -2290,9 +2083,7 @@ def refine_task_candidates(
         provided_existing = tuple(existing)
     if open_work_count is not None:
         if current_open_work:
-            raise ValueError(
-                "pass either current_open_work or open_work_count, not both"
-            )
+            raise ValueError("pass either current_open_work or open_work_count, not both")
         current_open_work = open_work_count
     open_count = _non_negative_int(current_open_work, "current_open_work")
     open_limit = (
@@ -2344,8 +2135,7 @@ def refine_task_candidates(
             prior
             for prior in observed_candidates
             if not (
-                granularity_source
-                and _granularity_source_identity(prior) == granularity_source
+                granularity_source and _granularity_source_identity(prior) == granularity_source
             )
         )
         score = score_task_candidate(
@@ -2406,9 +2196,7 @@ def refine_task_candidates(
         initial_open_work=open_count,
         max_open_work=open_limit,
         candidate_count=len(raw),
-        granularity_calibration_id=(
-            calibration.calibration_id if calibration is not None else ""
-        ),
+        granularity_calibration_id=(calibration.calibration_id if calibration is not None else ""),
     )
 
 
@@ -2437,8 +2225,7 @@ def _resolve_completed_task_identities(
             resolved.add(identity)
     if unknown:
         raise ValueError(
-            "completion names unknown or unaccepted tasks: "
-            + ", ".join(sorted(unknown))
+            "completion names unknown or unaccepted tasks: " + ", ".join(sorted(unknown))
         )
     return tuple(sorted(resolved))
 
@@ -2463,9 +2250,7 @@ class TaskCompletionPropagation:
             "completed_acceptance",
         ):
             object.__setattr__(self, name, _strings(getattr(self, name)))
-        if set(self.completed_source_identities) & set(
-            self.incomplete_source_identities
-        ):
+        if set(self.completed_source_identities) & set(self.incomplete_source_identities):
             raise ValueError("source completion populations must be disjoint")
         expected = _task_quality_evidence_cid(self._material())
         supplied = str(self.propagation_id or "").strip()
@@ -2479,9 +2264,7 @@ class TaskCompletionPropagation:
             "completed_task_identities": list(self.completed_task_identities),
             "completed_task_cids": list(self.completed_task_cids),
             "completed_source_identities": list(self.completed_source_identities),
-            "incomplete_source_identities": list(
-                self.incomplete_source_identities
-            ),
+            "incomplete_source_identities": list(self.incomplete_source_identities),
             "completed_acceptance": list(self.completed_acceptance),
         }
 
@@ -2497,13 +2280,9 @@ def propagate_task_completion(
 ) -> TaskCompletionPropagation:
     """Propagate completion only through explicit admission source bindings."""
 
-    accepted_decisions = tuple(
-        decision for decision in result.decisions if decision.accepted
-    )
+    accepted_decisions = tuple(decision for decision in result.decisions if decision.accepted)
     accepted_tasks = tuple(decision.candidate for decision in accepted_decisions)
-    completed = set(
-        _resolve_completed_task_identities(accepted_tasks, completed_tasks)
-    )
+    completed = set(_resolve_completed_task_identities(accepted_tasks, completed_tasks))
     completed_cids = tuple(
         sorted(
             task.canonical_task_cid
@@ -2515,9 +2294,7 @@ def propagate_task_completion(
     criterion_owners: dict[str, set[str]] = {}
     for task in accepted_tasks:
         for criterion in task.acceptance:
-            criterion_owners.setdefault(criterion, set()).add(
-                task.semantic_identity
-            )
+            criterion_owners.setdefault(criterion, set()).add(task.semantic_identity)
     completed_acceptance = tuple(
         sorted(
             criterion
@@ -2534,8 +2311,7 @@ def propagate_task_completion(
     incomplete_sources: list[str] = []
     for source, decisions in source_decisions.items():
         if decisions and all(
-            decision.accepted
-            and decision.candidate.semantic_identity in completed
+            decision.accepted and decision.candidate.semantic_identity in completed
             for decision in decisions
         ):
             completed_sources.append(source)
@@ -2569,9 +2345,7 @@ class TaskGranularityRun:
         normalized_tasks = tuple(
             sorted(
                 (
-                    item
-                    if isinstance(item, TaskCandidate)
-                    else TaskCandidate.from_mapping(item)
+                    item if isinstance(item, TaskCandidate) else TaskCandidate.from_mapping(item)
                     for item in self.tasks
                 ),
                 key=lambda item: item.canonical_task_cid,
@@ -2581,9 +2355,7 @@ class TaskGranularityRun:
         object.__setattr__(
             self,
             "completed_tasks",
-            _resolve_completed_task_identities(
-                normalized_tasks, self.completed_tasks
-            ),
+            _resolve_completed_task_identities(normalized_tasks, self.completed_tasks),
         )
         object.__setattr__(
             self,
@@ -2598,9 +2370,7 @@ class TaskGranularityRun:
 
     @property
     def acceptance_surface(self) -> tuple[str, ...]:
-        return _strings(
-            criterion for task in self.tasks for criterion in task.acceptance
-        )
+        return _strings(criterion for task in self.tasks for criterion in task.acceptance)
 
     @property
     def completed_acceptance(self) -> tuple[str, ...]:
@@ -2644,12 +2414,8 @@ class TaskGranularityRun:
                 "run_id": self.run_id,
                 "acceptance_surface": list(self.acceptance_surface),
                 "completed_acceptance": list(self.completed_acceptance),
-                "duplicate_semantic_task_count": (
-                    self.duplicate_semantic_task_count
-                ),
-                "calls_per_accepted_criterion": (
-                    self.calls_per_accepted_criterion
-                ),
+                "duplicate_semantic_task_count": (self.duplicate_semantic_task_count),
+                "calls_per_accepted_criterion": (self.calls_per_accepted_criterion),
             }
         )
         return result
@@ -2699,8 +2465,7 @@ def compare_task_granularity_runs(
     fewer_calls = (
         baseline_count > 0
         and candidate_count > 0
-        and candidate.model_calls * baseline_count
-        < baseline.model_calls * candidate_count
+        and candidate.model_calls * baseline_count < baseline.model_calls * candidate_count
     )
     return TaskGranularityComparison(
         fixture_id=baseline.fixture_id,
@@ -2708,9 +2473,7 @@ def compare_task_granularity_runs(
         candidate_run_id=candidate.run_id,
         source_coverage_preserved=same_surface,
         completion_exact=same_completion,
-        zero_duplicate_semantic_tasks=(
-            candidate.duplicate_semantic_task_count == 0
-        ),
+        zero_duplicate_semantic_tasks=(candidate.duplicate_semantic_task_count == 0),
         fewer_model_calls_per_accepted_criterion=fewer_calls,
     )
 
@@ -2775,13 +2538,10 @@ def _task_split_refill_qualifies(material: Mapping[str, Any]) -> bool:
         expected_semantic_ids = tuple(
             sorted(child.semantic_identity for child in expected_children)
         )
-        expected_task_cids = tuple(
-            sorted(child.canonical_task_cid for child in expected_children)
-        )
-        if (
-            len(set(expected_semantic_ids)) != len(expected_semantic_ids)
-            or len(set(expected_task_cids)) != len(expected_task_cids)
-        ):
+        expected_task_cids = tuple(sorted(child.canonical_task_cid for child in expected_children))
+        if len(set(expected_semantic_ids)) != len(expected_semantic_ids) or len(
+            set(expected_task_cids)
+        ) != len(expected_task_cids):
             return False
 
         first = refine_task_candidates(
@@ -2821,29 +2581,27 @@ def _task_split_refill_qualifies(material: Mapping[str, Any]) -> bool:
 
         # Splitting must cover the complete work surface and retain external
         # prerequisites without creating sibling dependencies.
-        if {
-            value for child in expected_children for value in child.acceptance
-        } != set(source.acceptance):
+        if {value for child in expected_children for value in child.acceptance} != set(
+            source.acceptance
+        ):
             return False
-        if {
-            value for child in expected_children for value in child.effects
-        } != set(source.effects):
+        if {value for child in expected_children for value in child.effects} != set(source.effects):
             return False
-        if {
-            value for child in expected_children for value in child.evidence_subset
-        } != set(source.evidence_subset):
+        if {value for child in expected_children for value in child.evidence_subset} != set(
+            source.evidence_subset
+        ):
             return False
-        if {
-            value for child in expected_children for value in child.predicted_paths
-        } != set(source.outputs) | set(source.predicted_paths):
+        if {value for child in expected_children for value in child.predicted_paths} != set(
+            source.outputs
+        ) | set(source.predicted_paths):
             return False
-        if {
-            value for child in expected_children for value in child.predicted_symbols
-        } != set(source.predicted_symbols):
+        if {value for child in expected_children for value in child.predicted_symbols} != set(
+            source.predicted_symbols
+        ):
             return False
-        if {
-            value for child in expected_children for value in child.context_paths
-        } != set(source.context_paths):
+        if {value for child in expected_children for value in child.context_paths} != set(
+            source.context_paths
+        ):
             return False
         if any(
             child.goal_id != source.goal_id
@@ -2962,11 +2720,9 @@ class TaskSplitRefillEvidence:
 
     def verify_integrity(self) -> bool:
         material = self._material()
-        return (
-            self.integrity_digest
-            == hashlib.sha256(_task_quality_evidence_bytes(material)).hexdigest()
-            and self.evidence_id == _task_quality_evidence_cid(material)
-        )
+        return self.integrity_digest == hashlib.sha256(
+            _task_quality_evidence_bytes(material)
+        ).hexdigest() and self.evidence_id == _task_quality_evidence_cid(material)
 
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
@@ -3150,8 +2906,7 @@ class GoalQualityLintPolicy:
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise ValueError(
-                "successor goal quality policy contains unknown fields: "
-                + ", ".join(unknown)
+                "successor goal quality policy contains unknown fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != SUCCESSOR_GOAL_QUALITY_POLICY_SCHEMA:
             raise ValueError("unsupported successor goal quality policy schema")
@@ -3219,8 +2974,7 @@ class GoalQualityIssue:
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise ValueError(
-                "successor goal quality issue contains unknown fields: "
-                + ", ".join(unknown)
+                "successor goal quality issue contains unknown fields: " + ", ".join(unknown)
             )
         result = cls(
             code=payload.get("code", ""),
@@ -3312,8 +3066,7 @@ class GoalQualityLintResult:
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise ValueError(
-                "successor goal quality result contains unknown fields: "
-                + ", ".join(unknown)
+                "successor goal quality result contains unknown fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != SUCCESSOR_GOAL_QUALITY_SCHEMA:
             raise ValueError("unsupported successor goal quality result schema")
@@ -3372,9 +3125,7 @@ def _successor_finite(value: Any) -> float | None:
 def _successor_integer(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, float) and (
-        not math.isfinite(value) or not value.is_integer()
-    ):
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
         return None
     if isinstance(value, str) and not re.fullmatch(r"\+?[0-9]+", value.strip()):
         return None
@@ -3411,15 +3162,11 @@ def lint_successor_goal_candidate(
     parent_goal = _normalized_display_text(
         _successor_value(candidate, "parent_goal_id", "parent_objective_id", "goal_id")
     )
-    outcome = _normalized_display_text(
-        _successor_value(candidate, "outcome", "expected_outcome")
-    )
+    outcome = _normalized_display_text(_successor_value(candidate, "outcome", "expected_outcome"))
     raw_scope = _successor_value(candidate, "scope", "scope_include")
     scope = _successor_strings(raw_scope)
     assumptions = _successor_strings(_successor_value(candidate, "assumptions"))
-    non_goals = _successor_strings(
-        _successor_value(candidate, "non_goals", "excluded_outcomes")
-    )
+    non_goals = _successor_strings(_successor_value(candidate, "non_goals", "excluded_outcomes"))
     acceptance = _successor_strings(
         _successor_value(
             candidate,
@@ -3444,33 +3191,21 @@ def lint_successor_goal_candidate(
     outputs = _successor_strings(
         _successor_value(candidate, "predicted_files", "outputs", "predicted_paths")
     )
-    dependencies = _successor_strings(
-        _successor_value(candidate, "dependencies", "depends_on")
-    )
+    dependencies = _successor_strings(_successor_value(candidate, "dependencies", "depends_on"))
     explicit_unsupported = _successor_strings(
         _successor_value(candidate, "unsupported_dependencies")
     )
     kind = _normalized_display_text(
         _successor_value(candidate, "kind", "work_kind", "proposal_kind") or "goal"
     ).casefold()
-    confidence = _successor_finite(
-        _successor_value(candidate, "confidence", "goal_confidence")
-    )
-    novelty = _successor_finite(
-        _successor_value(candidate, "novelty", "semantic_novelty")
-    )
-    depth = _successor_integer(
-        _successor_value(candidate, "depth", "graph_depth")
-    )
+    confidence = _successor_finite(_successor_value(candidate, "confidence", "goal_confidence"))
+    novelty = _successor_finite(_successor_value(candidate, "novelty", "semantic_novelty"))
+    depth = _successor_integer(_successor_value(candidate, "depth", "graph_depth"))
     estimated_tokens = _successor_integer(
         _successor_value(candidate, "estimated_tokens", "token_cost")
     )
-    raw_goal_count = _successor_value(
-        candidate, "goal_count", "requested_goal_count"
-    )
-    goal_count = _successor_integer(
-        1 if raw_goal_count is None else raw_goal_count
-    )
+    raw_goal_count = _successor_value(candidate, "goal_count", "requested_goal_count")
+    goal_count = _successor_integer(1 if raw_goal_count is None else raw_goal_count)
     tasks_value = _successor_value(candidate, "tasks", "task_candidates")
     raw_task_count = _successor_value(candidate, "task_count", "estimated_task_count")
     if raw_task_count is None and tasks_value is not None:
@@ -3506,12 +3241,12 @@ def lint_successor_goal_candidate(
         "outputs": outputs,
         "dependencies": dependencies,
         "kind": kind,
-        "confidence": confidence if confidence is not None else str(
-            _successor_value(candidate, "confidence", "goal_confidence")
-        ),
-        "novelty": novelty if novelty is not None else str(
-            _successor_value(candidate, "novelty", "semantic_novelty")
-        ),
+        "confidence": confidence
+        if confidence is not None
+        else str(_successor_value(candidate, "confidence", "goal_confidence")),
+        "novelty": novelty
+        if novelty is not None
+        else str(_successor_value(candidate, "novelty", "semantic_novelty")),
         "depth": depth,
         "estimated_tokens": estimated_tokens,
         "goal_count": goal_count,
@@ -3526,22 +3261,16 @@ def lint_successor_goal_candidate(
         detail: str,
         related: Iterable[str] = (),
     ) -> None:
-        bounded_detail = detail.encode("utf-8")[:1_024].decode(
-            "utf-8", errors="ignore"
-        )
+        bounded_detail = detail.encode("utf-8")[:1_024].decode("utf-8", errors="ignore")
         related_values = tuple(
             sorted(
                 {
-                    str(item).encode("utf-8")[:256].decode(
-                        "utf-8", errors="ignore"
-                    )
+                    str(item).encode("utf-8")[:256].decode("utf-8", errors="ignore")
                     for item in related
                 }
             )
         )[:8]
-        findings.append(
-            GoalQualityIssue(code, field_name, bounded_detail, related_values)
-        )
+        findings.append(GoalQualityIssue(code, field_name, bounded_detail, related_values))
 
     for missing, code, field_name, detail in (
         (not title, GoalQualityIssueCode.MISSING_TITLE, "title", "title is required"),
@@ -3712,8 +3441,7 @@ def lint_successor_goal_candidate(
         reject(
             GoalQualityIssueCode.OPEN_WORK_BUDGET_EXCEEDED,
             "open_work_count",
-            f"{current_open_work} open plus {task_count or 0} new exceeds "
-            f"{selected.max_open_work}",
+            f"{current_open_work} open plus {task_count or 0} new exceeds {selected.max_open_work}",
         )
 
     unsupported = set(explicit_unsupported)
@@ -3721,9 +3449,7 @@ def lint_successor_goal_candidate(
         supported = set(_strings(supported_dependencies))
         unsupported.update(item for item in dependencies if item not in supported)
     if unsupported:
-        unsupported_values = tuple(
-            sorted(unsupported, key=lambda item: (item.casefold(), item))
-        )
+        unsupported_values = tuple(sorted(unsupported, key=lambda item: (item.casefold(), item)))
         reject(
             GoalQualityIssueCode.UNSUPPORTED_DEPENDENCY,
             "dependencies",

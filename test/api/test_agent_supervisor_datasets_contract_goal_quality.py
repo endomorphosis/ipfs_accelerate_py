@@ -46,11 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 OBJECTIVE_PATH = REPO_ROOT / "docs" / "planning" / "DATASETS_CONTRACT_ANALYSIS_OBJECTIVES.md"
 GOAL_QUALITY_PATH = (
-    REPO_ROOT
-    / "data"
-    / "datasets_contract_analysis"
-    / "agent_supervisor"
-    / "goal-quality.json"
+    REPO_ROOT / "data" / "datasets_contract_analysis" / "agent_supervisor" / "goal-quality.json"
 )
 
 
@@ -113,9 +109,7 @@ def test_structured_markdown_fields_are_preserved_not_dropped() -> None:
     assert goal.refinement_budget.bounded
     assert goal.uncertainties[0].disposition.value == "mitigated"
     assert goal.unsupported_semantics[0].fallback
-    child = next(
-        item for item in lint_objective_markdown(markdown) if item.goal_id == "goal:child"
-    )
+    child = next(item for item in lint_objective_markdown(markdown) if item.goal_id == "goal:child")
     assert child.accepted
     assert not any(item.severity is DebtSeverity.ERROR for item in child.debt)
 
@@ -135,9 +129,7 @@ def test_current_heap_migrates_to_lossless_typed_sidecar_without_error_debt() ->
     assert len(reports) == len(document.goals)
     assert all(report.accepted for report in reports)
     assert not any(
-        debt.severity is DebtSeverity.ERROR
-        for report in reports
-        for debt in report.debt
+        debt.severity is DebtSeverity.ERROR for report in reports for debt in report.debt
     )
 
     for goal in document.goals:
@@ -177,10 +169,7 @@ def test_typed_overlay_and_tracker_sidecar_bind_exact_heap_cid(
 
     overlaid = project_objective_markdown(text, typed_overlay=loaded)
     assert {goal.goal_id for goal in overlaid} == {goal.goal_id for goal in loaded.goals}
-    assert all(
-        report.accepted
-        for report in lint_objective_markdown(text, typed_overlay=loaded)
-    )
+    assert all(report.accepted for report in lint_objective_markdown(text, typed_overlay=loaded))
 
     objective_path.write_text(text + "\n<!-- changed -->\n", encoding="utf-8")
     with pytest.raises(ValueError, match="stale"):
@@ -192,8 +181,7 @@ def test_validation_repair_child_cannot_be_dropped_from_typed_sidecar(
 ) -> None:
     text = _objective_text()
     validation_path = (
-        "ipfs_accelerate_py/test/api/"
-        "test_agent_supervisor_datasets_contract_goal_quality.py"
+        "ipfs_accelerate_py/test/api/test_agent_supervisor_datasets_contract_goal_quality.py"
     )
     if not any(goal.goal_id == "DSCON-G733" for goal in parse_goal_heap(text)):
         text += f"""
@@ -215,19 +203,14 @@ def test_validation_repair_child_cannot_be_dropped_from_typed_sidecar(
     assert validation_path in {
         producer.producer_id for producer in validation_goal.evidence_producers
     }
-    assert any(
-        validation_path in rule.command
-        for rule in validation_goal.validation_rules
-    )
+    assert any(validation_path in rule.command for rule in validation_goal.validation_rules)
 
     # Matching the heap CID is necessary but not sufficient: a partial
     # sidecar must not remove this refined validation goal from the
     # supervisor-fed backlog.
     truncated = ObjectiveTypedGoals(
         objective_heap_id=heap_id,
-        goals=tuple(
-            goal for goal in document.goals if goal.goal_id != "DSCON-G733"
-        ),
+        goals=tuple(goal for goal in document.goals if goal.goal_id != "DSCON-G733"),
     )
     objective_path = tmp_path / "objectives.md"
     truncated_path = tmp_path / "truncated-typed-goals.json"
@@ -236,20 +219,12 @@ def test_validation_repair_child_cannot_be_dropped_from_typed_sidecar(
         json.dumps(truncated.to_dict(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    with pytest.raises(
-        GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"
-    ):
+    with pytest.raises(GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"):
         validate_objective_typed_goals(text, truncated)
-    with pytest.raises(
-        GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"
-    ):
+    with pytest.raises(GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"):
         project_objective_markdown(text, typed_overlay=truncated)
-    with pytest.raises(
-        GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"
-    ):
-        load_objective_typed_goals(
-            truncated_path, objective_path=objective_path
-        )
+    with pytest.raises(GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"):
+        load_objective_typed_goals(truncated_path, objective_path=objective_path)
 
 
 def test_launcher_summary_defaults_to_structural_legacy_and_reports_debt() -> None:
@@ -268,9 +243,7 @@ def test_launcher_summary_defaults_to_structural_legacy_and_reports_debt() -> No
     restored = ObjectiveLaunchQualitySummary.from_dict(summary.to_dict())
     assert restored == summary
 
-    claimed = build_objective_launch_quality_summary(
-        text, claim_typed_admission=True
-    )
+    claimed = build_objective_launch_quality_summary(text, claim_typed_admission=True)
     assert claimed.admission_path == "typed_sidecar"
     assert claimed.typed_admission_claimed is True
     assert claimed.strict_typed_rejected == 0
@@ -286,19 +259,13 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap(
     assert is_datasets_contract_goal_quality_evidence_path(
         DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
     )
-    assert GOAL_QUALITY_PATH.as_posix().endswith(
-        DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
-    )
+    assert GOAL_QUALITY_PATH.as_posix().endswith(DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH)
 
     # Validation-repair path: missing or stale durable evidence must rewrite
     # to the exact current heap so proposal changed_paths stay non-empty and
     # the declared validation plan can bind. Fail-closed load is preserved.
-    ensured = ensure_objective_goal_quality_report(
-        OBJECTIVE_PATH, GOAL_QUALITY_PATH
-    )
-    report = load_objective_goal_quality_report(
-        GOAL_QUALITY_PATH, objective_path=OBJECTIVE_PATH
-    )
+    ensured = ensure_objective_goal_quality_report(OBJECTIVE_PATH, GOAL_QUALITY_PATH)
+    report = load_objective_goal_quality_report(GOAL_QUALITY_PATH, objective_path=OBJECTIVE_PATH)
     assert report == ensured.report
     assert report.objective_heap_id == heap_id
     assert report.quality_records
@@ -311,10 +278,7 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap(
     assert set(by_goal_id) == expected_goal_ids
 
     gap_record = by_goal_id["DSCON-G732"]
-    assert (
-        DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
-        in gap_record.evidence_producer_ids
-    )
+    assert DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH in gap_record.evidence_producer_ids
     assert DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND in gap_record.validation_ids
 
     # Rewrite is deterministic and heap-bound; a second ensure is a no-op.
@@ -334,9 +298,7 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap(
     truncated = ObjectiveGoalQualityReport(
         objective_heap_id=heap_id,
         quality_records=tuple(
-            record
-            for record in report.quality_records
-            if record.goal_id != "DSCON-G732"
+            record for record in report.quality_records if record.goal_id != "DSCON-G732"
         ),
     )
     truncated_path.write_text(
@@ -344,13 +306,9 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap(
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="goal coverage.*DSCON-G732"):
-        load_objective_goal_quality_report(
-            truncated_path, objective_path=OBJECTIVE_PATH
-        )
+        load_objective_goal_quality_report(truncated_path, objective_path=OBJECTIVE_PATH)
     # ensure rewrites truncated/stale evidence instead of accepting it.
-    repaired = ensure_objective_goal_quality_report(
-        OBJECTIVE_PATH, truncated_path
-    )
+    repaired = ensure_objective_goal_quality_report(OBJECTIVE_PATH, truncated_path)
     assert repaired.refreshed is True
     assert repaired.report.objective_heap_id == heap_id
     assert {item.goal_id for item in repaired.report.quality_records} == expected_goal_ids
@@ -379,17 +337,13 @@ def test_ensure_refreshes_stale_goal_quality_report_without_weakening_load(
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="stale for the current heap"):
-        load_objective_goal_quality_report(
-            report_path, objective_path=OBJECTIVE_PATH
-        )
+        load_objective_goal_quality_report(report_path, objective_path=OBJECTIVE_PATH)
 
     ensured = ensure_objective_goal_quality_report(OBJECTIVE_PATH, report_path)
     assert ensured.refreshed is True
     assert ensured.report.objective_heap_id == heap_id
     assert ensured.report.content_id == current.content_id
-    reloaded = load_objective_goal_quality_report(
-        report_path, objective_path=OBJECTIVE_PATH
-    )
+    reloaded = load_objective_goal_quality_report(report_path, objective_path=OBJECTIVE_PATH)
     assert reloaded == current
 
 

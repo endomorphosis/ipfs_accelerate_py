@@ -1,7 +1,7 @@
 """
 Plugins package for the Distributed Testing Framework.
 
-This package contains plugins that extend the functionality of the distributed 
+This package contains plugins that extend the functionality of the distributed
 testing framework without modifying its core code.
 """
 

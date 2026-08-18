@@ -76,15 +76,19 @@ def _records(
         labels={"locality": "local"},
     )
     bindings = (
-        RouterBinding(
-            router="test_router",
-            provider_id=provider.provider_id,
-            model_id=model.model_id,
-            operations=(operation,),
-            state=OperationalState(configured=configured),
-            provenance=provenance,
-        ),
-    ) if binding else ()
+        (
+            RouterBinding(
+                router="test_router",
+                provider_id=provider.provider_id,
+                model_id=model.model_id,
+                operations=(operation,),
+                state=OperationalState(configured=configured),
+                provenance=provenance,
+            ),
+        )
+        if binding
+        else ()
+    )
     return CatalogSnapshot(
         providers=(provider,),
         models=(model,),
@@ -164,9 +168,7 @@ def test_router_adapter_reads_only_discovery_snapshot_and_enforces_bound():
     snapshot = _records("router-provider", "router-model", source="router.static")
     router = FakeRouter(snapshot)
 
-    result = RouterCatalogSource(
-        router, source="routers.fake", max_records=3
-    ).load()
+    result = RouterCatalogSource(router, source="routers.fake", max_records=3).load()
 
     assert result.snapshot == snapshot
     assert result.precedence == 30
@@ -174,9 +176,7 @@ def test_router_adapter_reads_only_discovery_snapshot_and_enforces_bound():
     assert router.list_calls == 0
     assert router.resolve_calls == 0
     with pytest.raises(ValueError, match="maximum record count"):
-        RouterCatalogSource(
-            router, source="routers.too-small", max_records=2
-        ).load()
+        RouterCatalogSource(router, source="routers.too-small", max_records=2).load()
 
 
 def test_sources_merge_by_identity_with_explicit_precedence_and_provenance():
@@ -233,9 +233,7 @@ def test_sources_merge_by_identity_with_explicit_precedence_and_provenance():
         "routers.text",
     }
     assert {
-        operation
-        for capability in provider.capabilities
-        for operation in capability.operations
+        operation for capability in provider.capabilities for operation in capability.operations
     } == {Operation.TEXT_CHAT, Operation.TEXT_GENERATE}
     claims = catalog.claims(provider.provider_id, record_type="providers")
     assert [(item.source, item.precedence) for item in claims] == [
@@ -287,9 +285,7 @@ def test_catalog_accepts_persistent_and_static_source_adapters():
         "adapter.persistent",
     }
     assert {
-        operation
-        for capability in model.capabilities
-        for operation in capability.operations
+        operation for capability in model.capabilities for operation in capability.operations
     } == {Operation.TEXT_CHAT, Operation.TEXT_GENERATE}
 
 
@@ -334,9 +330,7 @@ def test_registration_precedence_override_is_authoritative():
     )
 
     assert state.precedence == 77
-    assert {
-        claim.precedence for claim in catalog.claims(source=source.source)
-    } == {77}
+    assert {claim.precedence for claim in catalog.claims(source=source.source)} == {77}
 
 
 def test_explicit_refresh_is_named_and_policy_gates_before_any_source_runs():
@@ -388,12 +382,8 @@ def test_partial_failure_retains_old_claims_and_publishes_healthy_source():
     old_snapshot = catalog.snapshot()
 
     failing.fail = True
-    failing.current = _records(
-        "erased-if-published", "v2", source="source.failing", binding=False
-    )
-    healthy.current = _records(
-        "updated", "v2", source="source.healthy", binding=False
-    )
+    failing.current = _records("erased-if-published", "v2", source="source.failing", binding=False)
+    healthy.current = _records("updated", "v2", source="source.healthy", binding=False)
     result = catalog.refresh((failing.source, healthy.source))
 
     assert result.failed == (failing.source,)
@@ -423,9 +413,7 @@ def test_source_diagnostics_are_bounded_and_healthy_rows_remain_queryable():
     catalog = AIServiceCatalog({source.source: source})
 
     assert catalog.list_models().total == 1
-    diagnostic = next(
-        item for item in catalog.diagnostics() if item.code == "malformed_row"
-    )
+    diagnostic = next(item for item in catalog.diagnostics() if item.code == "malformed_row")
     assert diagnostic.source == source.source
     assert diagnostic.record_id == "bad-row"
 
@@ -488,15 +476,11 @@ def test_deterministic_filter_order_and_snapshot_bound_pagination():
         )
         for name in ("charlie", "alpha", "bravo")
     }
-    catalog = AIServiceCatalog(
-        {source.source: source for source in sources.values()}
-    )
+    catalog = AIServiceCatalog({source.source: source for source in sources.values()})
     isolated = catalog.snapshot()
 
     first = catalog.list_providers(limit=2, snapshot=isolated)
-    second = catalog.list_providers(
-        limit=2, cursor=first.next_cursor, snapshot=isolated
-    )
+    second = catalog.list_providers(limit=2, cursor=first.next_cursor, snapshot=isolated)
 
     # Stable IDs, rather than insertion order, are the canonical order.
     assert first.items + second.items == isolated.providers
@@ -541,12 +525,8 @@ def test_concurrent_readers_observe_only_complete_refresh_generations():
         release=release,
     )
     catalog = AIServiceCatalog({first.source: first, second.source: second})
-    first.current = _records(
-        "first-new", "model", source="atomic.first", binding=False
-    )
-    second.current = _records(
-        "second-new", "model", source="atomic.second", binding=False
-    )
+    first.current = _records("first-new", "model", source="atomic.first", binding=False)
+    second.current = _records("second-new", "model", source="atomic.second", binding=False)
     observed = set()
     stopped = threading.Event()
 
@@ -556,9 +536,7 @@ def test_concurrent_readers_observe_only_complete_refresh_generations():
             time.sleep(0.0005)
 
     reader = threading.Thread(target=read_catalog)
-    worker = threading.Thread(
-        target=lambda: catalog.refresh((first.source, second.source))
-    )
+    worker = threading.Thread(target=lambda: catalog.refresh((first.source, second.source)))
     reader.start()
     worker.start()
     assert entered.wait(timeout=5)

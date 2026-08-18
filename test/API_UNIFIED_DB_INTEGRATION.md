@@ -193,19 +193,14 @@ You can provide a JSON configuration file with the `--config` option:
 import requests
 
 # API key for authentication
-headers = {
-    "X-API-Key": "your-api-key"
-}
+headers = {"X-API-Key": "your-api-key"}
 
 # Base URL of the Unified API Server
 base_url = "http://localhost:8080"
 
 # Get model unified data
 model_name = "bert-base-uncased"
-response = requests.get(
-    f"{base_url}/api/db/model/{model_name}", 
-    headers=headers
-)
+response = requests.get(f"{base_url}/api/db/model/{model_name}", headers=headers)
 unified_data = response.json()
 print(f"Model: {model_name}")
 print(f"Total test runs: {unified_data['overview']['total_test_runs']}")
@@ -214,9 +209,7 @@ print(f"Total benchmark runs: {unified_data['overview']['total_benchmark_runs']}
 
 # Search across all databases
 response = requests.post(
-    f"{base_url}/api/db/search",
-    params={"query": "bert-base", "limit": 10},
-    headers=headers
+    f"{base_url}/api/db/search", params={"query": "bert-base", "limit": 10}, headers=headers
 )
 search_results = response.json()
 print(f"Search results: {search_results['result_counts']['total']} total matches")
@@ -344,10 +337,7 @@ To increase log verbosity, modify the logging level in the server:
 ```python
 logging.basicConfig(
     level=logging.DEBUG,  # Change from INFO to DEBUG
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("unified_api_server.log")
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler("unified_api_server.log")],
 )
 ```

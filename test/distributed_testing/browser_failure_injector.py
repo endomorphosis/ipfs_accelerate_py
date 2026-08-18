@@ -11,19 +11,19 @@ and circuit breaker pattern to provide comprehensive fault tolerance testing.
 
 Usage:
     from browser_failure_injector import BrowserFailureInjector
-    
+
     # Create injector
     injector = BrowserFailureInjector(bridge)
-    
+
     # Inject specific failure
     await injector.inject_failure(FailureType.CONNECTION_FAILURE)
-    
+
     # Inject specific failure with intensity
     await injector.inject_failure(FailureType.RESOURCE_EXHAUSTION, intensity="severe")
-    
+
     # Inject random failure
     await injector.inject_random_failure()
-    
+
     # Get failure statistics
     stats = injector.get_failure_stats()
 """
@@ -40,8 +40,7 @@ from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("browser_failure_injector")
 
@@ -56,18 +55,15 @@ if os.environ.get("BROWSER_FAILURE_INJECTOR_LOG_LEVEL", "").upper() == "DEBUG":
 
 # Import recovery strategies if available
 try:
-    from .browser_recovery_strategies import (
-        BrowserType, ModelType, FailureType, RecoveryLevel
-    )
+    from .browser_recovery_strategies import BrowserType, ModelType, FailureType, RecoveryLevel
 except ImportError:
     try:
-        from browser_recovery_strategies import (
-            BrowserType, ModelType, FailureType, RecoveryLevel
-        )
+        from browser_recovery_strategies import BrowserType, ModelType, FailureType, RecoveryLevel
     except ImportError:
         # Define fallback enums if recovery strategies not available
         class FailureType(Enum):
             """Types of browser failures."""
+
             CONNECTION_FAILURE = "connection_failure"
             RESOURCE_EXHAUSTION = "resource_exhaustion"
             GPU_ERROR = "gpu_error"
@@ -77,31 +73,38 @@ except ImportError:
             INTERNAL_ERROR = "internal_error"
             UNKNOWN = "unknown"
 
+
 # Import circuit breaker if available
 try:
     from .circuit_breaker import CircuitBreaker
+
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:
         from circuit_breaker import CircuitBreaker
+
         CIRCUIT_BREAKER_AVAILABLE = True
     except ImportError:
-        logger.warning("CircuitBreaker not available. Circuit breaker integration will be disabled.")
+        logger.warning(
+            "CircuitBreaker not available. Circuit breaker integration will be disabled."
+        )
         CIRCUIT_BREAKER_AVAILABLE = False
+
 
 class BrowserFailureInjector:
     """
     Utility class for injecting artificial failures into Selenium browser instances.
-    
+
     This class provides methods to simulate various types of browser failures, allowing
     thorough testing of recovery strategies and fault tolerance mechanisms.
     """
-    
-    def __init__(self, bridge: Any, circuit_breaker: Optional[Any] = None, 
-                 use_circuit_breaker: bool = True):
+
+    def __init__(
+        self, bridge: Any, circuit_breaker: Optional[Any] = None, use_circuit_breaker: bool = True
+    ):
         """
         Initialize the failure injector.
-        
+
         Args:
             bridge: SeleniumBrowserBridge instance to inject failures into
             circuit_breaker: Optional CircuitBreaker instance for failure tracking
@@ -109,10 +112,10 @@ class BrowserFailureInjector:
         """
         self.bridge = bridge
         self.use_circuit_breaker = use_circuit_breaker and CIRCUIT_BREAKER_AVAILABLE
-        
+
         # Track injected failures
         self.injected_failures = []
-        
+
         # Initialize circuit breaker or use provided one
         self.circuit_breaker = None
         if self.use_circuit_breaker:
@@ -125,20 +128,22 @@ class BrowserFailureInjector:
                     failure_threshold=5,
                     recovery_timeout=60,
                     half_open_after=30,
-                    name="browser_failure_injector"
+                    name="browser_failure_injector",
                 )
                 logger.info("Created new circuit breaker")
-        
+
         logger.info("Browser failure injector initialized")
-    
-    async def inject_failure(self, failure_type: FailureType, intensity: str = "moderate") -> Dict[str, Any]:
+
+    async def inject_failure(
+        self, failure_type: FailureType, intensity: str = "moderate"
+    ) -> Dict[str, Any]:
         """
         Inject a specific type of failure into the browser.
-        
+
         Args:
             failure_type: Type of failure to inject
             intensity: Failure intensity (mild, moderate, severe)
-            
+
         Returns:
             Dictionary with failure information
         """
@@ -146,7 +151,9 @@ class BrowserFailureInjector:
         if self.use_circuit_breaker and self.circuit_breaker:
             circuit_state = self.circuit_breaker.get_state()
             if circuit_state == "open":
-                logger.warning(f"Circuit breaker is OPEN. Too many failures detected. Refusing to inject more failures.")
+                logger.warning(
+                    f"Circuit breaker is OPEN. Too many failures detected. Refusing to inject more failures."
+                )
                 return {
                     "timestamp": time.time(),
                     "failure_type": failure_type.value,
@@ -155,9 +162,9 @@ class BrowserFailureInjector:
                     "platform": getattr(self.bridge, "platform", "unknown"),
                     "success": False,
                     "circuit_breaker_open": True,
-                    "error": "Circuit breaker is open due to too many failures"
+                    "error": "Circuit breaker is open due to too many failures",
                 }
-        
+
         # Record failure attempt
         failure_info = {
             "timestamp": time.time(),
@@ -165,9 +172,9 @@ class BrowserFailureInjector:
             "intensity": intensity,
             "browser": getattr(self.bridge, "browser_name", "unknown"),
             "platform": getattr(self.bridge, "platform", "unknown"),
-            "success": False
+            "success": False,
         }
-        
+
         try:
             # Inject the specific failure type
             if failure_type == FailureType.CONNECTION_FAILURE:
@@ -186,11 +193,11 @@ class BrowserFailureInjector:
                 success = await self._inject_internal_error(intensity)
             else:
                 success = await self._inject_unknown_failure(intensity)
-            
+
             # Update failure information
             failure_info["success"] = success
             self.injected_failures.append(failure_info)
-            
+
             # Notify circuit breaker if enabled and injection was successful
             if self.use_circuit_breaker and self.circuit_breaker and success:
                 # For severe intensity, record as a failure in the circuit breaker
@@ -198,41 +205,44 @@ class BrowserFailureInjector:
                     self.circuit_breaker.record_failure()
                     failure_info["circuit_breaker_updated"] = True
                     logger.info(f"Recorded severe failure in circuit breaker")
-                
+
                 # For crash failures, always record in circuit breaker
                 if failure_type == FailureType.CRASH:
                     self.circuit_breaker.record_failure()
                     failure_info["circuit_breaker_updated"] = True
                     logger.info(f"Recorded crash failure in circuit breaker")
-            
+
             if success:
-                logger.info(f"Successfully injected {failure_type.value} failure with {intensity} intensity")
+                logger.info(
+                    f"Successfully injected {failure_type.value} failure with {intensity} intensity"
+                )
             else:
                 logger.warning(f"Failed to inject {failure_type.value} failure")
-            
+
             return failure_info
-            
+
         except Exception as e:
             logger.error(f"Error during failure injection: {str(e)}")
-            
+
             # Record as failure in circuit breaker
             if self.use_circuit_breaker and self.circuit_breaker:
                 self.circuit_breaker.record_failure()
-            
+
             failure_info["success"] = False
             failure_info["error"] = str(e)
             self.injected_failures.append(failure_info)
             return failure_info
-    
-    async def inject_random_failure(self, excluded_types: Optional[List[FailureType]] = None,
-                           exclude_severe: bool = False) -> Dict[str, Any]:
+
+    async def inject_random_failure(
+        self, excluded_types: Optional[List[FailureType]] = None, exclude_severe: bool = False
+    ) -> Dict[str, Any]:
         """
         Inject a random failure type.
-        
+
         Args:
             excluded_types: List of failure types to exclude
             exclude_severe: Whether to exclude severe intensity failures
-            
+
         Returns:
             Dictionary with failure information
         """
@@ -240,7 +250,9 @@ class BrowserFailureInjector:
         if self.use_circuit_breaker and self.circuit_breaker:
             circuit_state = self.circuit_breaker.get_state()
             if circuit_state == "open":
-                logger.warning(f"Circuit breaker is OPEN. Too many failures detected. Refusing to inject more failures.")
+                logger.warning(
+                    f"Circuit breaker is OPEN. Too many failures detected. Refusing to inject more failures."
+                )
                 return {
                     "timestamp": time.time(),
                     "failure_type": "random",
@@ -249,45 +261,50 @@ class BrowserFailureInjector:
                     "platform": getattr(self.bridge, "platform", "unknown"),
                     "success": False,
                     "circuit_breaker_open": True,
-                    "error": "Circuit breaker is open due to too many failures"
+                    "error": "Circuit breaker is open due to too many failures",
                 }
-        
+
         # Get all failure types
         all_failure_types = list(FailureType)
-        
+
         # Filter out excluded types
         if excluded_types:
             available_types = [ft for ft in all_failure_types if ft not in excluded_types]
         else:
             available_types = all_failure_types
-        
+
         # If circuit breaker is in half-open state, avoid severe failures
-        circuit_half_open = (self.use_circuit_breaker and self.circuit_breaker and 
-                            self.circuit_breaker.get_state() == "half-open")
-        
+        circuit_half_open = (
+            self.use_circuit_breaker
+            and self.circuit_breaker
+            and self.circuit_breaker.get_state() == "half-open"
+        )
+
         if circuit_half_open or exclude_severe:
             # Avoid severe intensity when circuit breaker is recovering
             intensities = ["mild", "moderate"]
-            logger.info("Circuit breaker in half-open state or exclude_severe=True, avoiding severe failures")
+            logger.info(
+                "Circuit breaker in half-open state or exclude_severe=True, avoiding severe failures"
+            )
         else:
             intensities = ["mild", "moderate", "severe"]
-        
+
         # Choose a random failure type
         failure_type = random.choice(available_types)
-        
+
         # Choose a random intensity
         intensity = random.choice(intensities)
-        
+
         # Inject the failure
         return await self.inject_failure(failure_type, intensity)
-    
+
     async def _inject_connection_failure(self, intensity: str) -> bool:
         """
         Inject a connection failure.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -297,7 +314,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject connection failure")
                 return False
-            
+
             # Execute script to disrupt connection
             if intensity == "mild":
                 # Temporarily block network access
@@ -352,25 +369,25 @@ class BrowserFailureInjector:
                     
                     return true;
                 """
-            
+
             # Execute the script
             driver.execute_script(script)
-            
+
             # Additional artificial delay to ensure script executes
             await anyio.sleep(1)
-            
+
             return True
         except Exception as e:
             logger.error(f"Error injecting connection failure: {str(e)}")
             return False
-    
+
     async def _inject_resource_exhaustion(self, intensity: str) -> bool:
         """
         Inject a resource exhaustion failure.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -380,7 +397,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject resource exhaustion")
                 return False
-            
+
             # Execute script to consume resources
             if intensity == "mild":
                 # Allocate a moderate amount of memory
@@ -441,25 +458,25 @@ class BrowserFailureInjector:
                     
                     return true;
                 """
-            
+
             # Execute the script
             driver.execute_script(script)
-            
+
             # Additional artificial delay to ensure script executes
             await anyio.sleep(1)
-            
+
             return True
         except Exception as e:
             logger.error(f"Error injecting resource exhaustion: {str(e)}")
             return False
-    
+
     async def _inject_gpu_error(self, intensity: str) -> bool:
         """
         Inject a GPU error.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -469,7 +486,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject GPU error")
                 return False
-            
+
             # Execute script to cause WebGPU/WebGL errors
             if intensity == "mild":
                 # Create and immediately destroy context
@@ -566,25 +583,25 @@ class BrowserFailureInjector:
                     
                     return true;
                 """
-            
+
             # Execute the script
             driver.execute_script(script)
-            
+
             # Additional artificial delay to ensure script executes
             await anyio.sleep(1)
-            
+
             return True
         except Exception as e:
             logger.error(f"Error injecting GPU error: {str(e)}")
             return False
-    
+
     async def _inject_api_error(self, intensity: str) -> bool:
         """
         Inject an API error (WebNN/WebGPU API issues).
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -594,7 +611,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject API error")
                 return False
-            
+
             # Execute script to cause API errors
             if intensity == "mild":
                 # Cause minor API errors
@@ -703,25 +720,25 @@ class BrowserFailureInjector:
                     
                     return true;
                 """
-            
+
             # Execute the script
             driver.execute_script(script)
-            
+
             # Additional artificial delay to ensure script executes
             await anyio.sleep(1)
-            
+
             return True
         except Exception as e:
             logger.error(f"Error injecting API error: {str(e)}")
             return False
-    
+
     async def _inject_timeout(self, intensity: str) -> bool:
         """
         Inject a timeout.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -731,7 +748,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject timeout")
                 return False
-            
+
             # Execute script to cause timeouts
             if intensity == "mild":
                 # Short delay
@@ -769,7 +786,7 @@ class BrowserFailureInjector:
                     return true;
                 """
                 timeout_duration = 30  # seconds
-            
+
             # Execute the script with a timeout
             try:
                 # Set a very short script timeout to force a timeout
@@ -778,25 +795,25 @@ class BrowserFailureInjector:
             except Exception as e:
                 # This exception is expected (timeout)
                 logger.info(f"Timeout injection successful: {str(e)}")
-                
+
                 # Reset script timeout
                 driver.set_script_timeout(30)  # Reset to default
                 return True
-            
+
             # If we get here, the script completed without timing out
             logger.warning("Timeout injection did not cause a timeout as expected")
             return False
         except Exception as e:
             logger.error(f"Error injecting timeout: {str(e)}")
             return False
-    
+
     async def _inject_crash(self, intensity: str) -> bool:
         """
         Inject a browser crash or severe error.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -806,7 +823,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject crash")
                 return False
-            
+
             # Execute script to cause crashes or severe errors
             if intensity == "mild":
                 # Mild error, shouldn't crash but will cause errors
@@ -880,13 +897,13 @@ class BrowserFailureInjector:
                     
                     return true;
                 """
-            
+
             # Execute the script
             driver.execute_script(script)
-            
+
             # Additional artificial delay to ensure script executes
             await anyio.sleep(1)
-            
+
             # Check if browser is still responsive
             try:
                 driver.execute_script("return document.title")
@@ -898,14 +915,14 @@ class BrowserFailureInjector:
         except Exception as e:
             logger.error(f"Error injecting crash: {str(e)}")
             return False
-    
+
     async def _inject_internal_error(self, intensity: str) -> bool:
         """
         Inject an internal browser error.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -915,7 +932,7 @@ class BrowserFailureInjector:
             if not driver:
                 logger.warning("No WebDriver available to inject internal error")
                 return False
-            
+
             # Execute script to cause internal errors
             if intensity == "mild":
                 # Create DOM errors
@@ -1017,25 +1034,25 @@ class BrowserFailureInjector:
                     
                     return true;
                 """
-            
+
             # Execute the script
             driver.execute_script(script)
-            
+
             # Additional artificial delay to ensure script executes
             await anyio.sleep(1)
-            
+
             return True
         except Exception as e:
             logger.error(f"Error injecting internal error: {str(e)}")
             return False
-    
+
     async def _inject_unknown_failure(self, intensity: str) -> bool:
         """
         Inject an unknown/generic failure.
-        
+
         Args:
             intensity: Failure intensity
-            
+
         Returns:
             True if failure was successfully injected
         """
@@ -1046,30 +1063,30 @@ class BrowserFailureInjector:
             self._inject_gpu_error,
             self._inject_api_error,
             self._inject_timeout,
-            self._inject_internal_error
+            self._inject_internal_error,
         ]
-        
+
         # Avoid crashes for unknown failures to prevent difficulty in recovery
-        
+
         # Choose random failure type
         failure_func = random.choice(failure_types)
-        
+
         # Inject the failure
         return await failure_func(intensity)
-    
+
     def get_injected_failures(self) -> List[Dict[str, Any]]:
         """
         Get list of injected failures.
-        
+
         Returns:
             List of failure information dictionaries
         """
         return self.injected_failures
-    
+
     def get_failure_stats(self) -> Dict[str, Any]:
         """
         Get statistics about injected failures.
-        
+
         Returns:
             Dictionary with failure statistics
         """
@@ -1077,59 +1094,64 @@ class BrowserFailureInjector:
         failure_counts = {}
         success_counts = {}
         intensity_counts = {"mild": 0, "moderate": 0, "severe": 0}
-        
+
         for failure in self.injected_failures:
             failure_type = failure["failure_type"]
             success = failure["success"]
             intensity = failure.get("intensity", "unknown")
-            
+
             if failure_type not in failure_counts:
                 failure_counts[failure_type] = 0
                 success_counts[failure_type] = 0
-            
+
             failure_counts[failure_type] += 1
             if success:
                 success_counts[failure_type] += 1
-            
+
             # Count by intensity
             if intensity in intensity_counts:
                 intensity_counts[intensity] += 1
-        
+
         # Calculate success rates
         success_rates = {}
         for failure_type in failure_counts:
             if failure_counts[failure_type] > 0:
-                success_rates[failure_type] = success_counts[failure_type] / failure_counts[failure_type]
+                success_rates[failure_type] = (
+                    success_counts[failure_type] / failure_counts[failure_type]
+                )
             else:
                 success_rates[failure_type] = 0.0
-        
+
         # Basic stats
         stats = {
             "total_attempts": len(self.injected_failures),
             "total_successful": sum(success_counts.values()),
-            "success_rate": sum(success_counts.values()) / len(self.injected_failures) if self.injected_failures else 0.0,
+            "success_rate": sum(success_counts.values()) / len(self.injected_failures)
+            if self.injected_failures
+            else 0.0,
             "failure_counts": failure_counts,
             "success_counts": success_counts,
             "success_rates": success_rates,
-            "intensity_counts": intensity_counts
+            "intensity_counts": intensity_counts,
         }
-        
+
         # Add circuit breaker info if available
         if self.use_circuit_breaker and self.circuit_breaker:
             cb_state = self.circuit_breaker.get_state()
             cb_failures = self.circuit_breaker.get_failure_count()
             cb_threshold = self.circuit_breaker.failure_threshold
-            
+
             stats["circuit_breaker"] = {
                 "state": cb_state,
                 "failure_count": cb_failures,
                 "threshold": cb_threshold,
                 "threshold_percent": (cb_failures / cb_threshold) * 100 if cb_threshold > 0 else 0,
                 "recovery_timeout": self.circuit_breaker.recovery_timeout,
-                "half_open_after": self.circuit_breaker.half_open_after
+                "half_open_after": self.circuit_breaker.half_open_after,
             }
-        
+
         return stats
+
 
 # Example usage
 async def example_usage():
@@ -1137,95 +1159,95 @@ async def example_usage():
     try:
         # Import bridge for example
         from selenium_browser_bridge import BrowserConfiguration, SeleniumBrowserBridge
-        
+
         # Import circuit breaker if available
         try:
             from circuit_breaker import CircuitBreaker
+
             # Create a circuit breaker with lower thresholds for demonstration
             circuit_breaker = CircuitBreaker(
                 failure_threshold=3,  # Open circuit after 3 failures
                 recovery_timeout=30,  # Stay open for 30 seconds
-                half_open_after=15,   # Try half-open after 15 seconds
-                name="demo_circuit_breaker"
+                half_open_after=15,  # Try half-open after 15 seconds
+                name="demo_circuit_breaker",
             )
             print("Created circuit breaker for demonstration")
         except ImportError:
             circuit_breaker = None
             print("Circuit breaker not available for demonstration")
-        
+
         # Create browser bridge
-        config = BrowserConfiguration(
-            browser_name="chrome",
-            platform="webgpu",
-            headless=True
-        )
+        config = BrowserConfiguration(browser_name="chrome", platform="webgpu", headless=True)
         bridge = SeleniumBrowserBridge(config)
-        
+
         # Launch browser
         success = await bridge.launch(allow_simulation=True)
         if not success:
             print("Failed to launch browser")
             return
-        
+
         # Create failure injector with circuit breaker
         injector = BrowserFailureInjector(
-            bridge, 
+            bridge,
             circuit_breaker=circuit_breaker,
-            use_circuit_breaker=(circuit_breaker is not None)
+            use_circuit_breaker=(circuit_breaker is not None),
         )
-        
+
         # Inject various failures
         print("\nInjecting mild connection failure...")
         await injector.inject_failure(FailureType.CONNECTION_FAILURE, "mild")
-        
+
         print("\nInjecting moderate resource exhaustion...")
         await injector.inject_failure(FailureType.RESOURCE_EXHAUSTION, "moderate")
-        
+
         print("\nInjecting mild GPU error...")
         await injector.inject_failure(FailureType.GPU_ERROR, "mild")
-        
+
         # Get circuit breaker status
         if circuit_breaker:
             print(f"\nCircuit breaker state: {circuit_breaker.get_state()}")
             print(f"Failure count: {circuit_breaker.get_failure_count()}")
-        
+
         # Inject severe failures to trigger circuit breaker
         print("\nInjecting severe failures...")
         await injector.inject_failure(FailureType.CRASH, "severe")
         await injector.inject_failure(FailureType.CRASH, "severe")
         await injector.inject_failure(FailureType.CRASH, "severe")
-        
+
         # Check circuit breaker status again
         if circuit_breaker:
             print(f"\nCircuit breaker state after severe failures: {circuit_breaker.get_state()}")
             print(f"Failure count: {circuit_breaker.get_failure_count()}")
-        
+
         # Try injecting a failure when circuit is open
         print("\nTrying to inject failure with circuit open...")
         result = await injector.inject_random_failure()
-        print(f"Result: {'Blocked by circuit breaker' if result.get('circuit_breaker_open') else 'Injected successfully'}")
-        
+        print(
+            f"Result: {'Blocked by circuit breaker' if result.get('circuit_breaker_open') else 'Injected successfully'}"
+        )
+
         # Get detailed statistics
         stats = injector.get_failure_stats()
         print(f"\nFailure injection stats: {stats}")
-        
+
         # Wait for circuit to transition to half-open
         if circuit_breaker and circuit_breaker.get_state() == "open":
             print(f"\nWaiting for circuit to transition to half-open state...")
             await anyio.sleep(circuit_breaker.half_open_after + 1)
             print(f"Circuit state after waiting: {circuit_breaker.get_state()}")
-            
+
             # Try a safer failure with half-open circuit
             print("Injecting moderate failure with half-open circuit...")
             result = await injector.inject_random_failure(exclude_severe=True)
             print(f"Result: {result.get('success')}")
-        
+
     except Exception as e:
         print(f"Error in example: {str(e)}")
     finally:
         # Close browser
-        if 'bridge' in locals():
+        if "bridge" in locals():
             await bridge.close()
+
 
 if __name__ == "__main__":
     # Run the example

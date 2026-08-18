@@ -166,9 +166,7 @@ _BINARY_SUFFIXES = frozenset(
         ".zip",
     }
 )
-_DOCUMENT_SUFFIXES = frozenset(
-    {".adoc", ".md", ".mdx", ".rst", ".txt"}
-)
+_DOCUMENT_SUFFIXES = frozenset({".adoc", ".md", ".mdx", ".rst", ".txt"})
 _POLICY_NAMES = frozenset(
     {
         "agents.md",
@@ -303,7 +301,9 @@ class RepositoryAllowlist:
     allowlist_cid: str
 
     def __post_init__(self) -> None:
-        roots = tuple(sorted({_canonical_existing_directory(item) for item in self.repository_roots}))
+        roots = tuple(
+            sorted({_canonical_existing_directory(item) for item in self.repository_roots})
+        )
         if not roots:
             raise RepositoryAllowlistError(
                 "repository allowlist must contain at least one exact root"
@@ -322,12 +322,8 @@ class RepositoryAllowlist:
         object.__setattr__(self, "allowlist_cid", expected)
 
     @classmethod
-    def from_roots(
-        cls, roots: Sequence[str | os.PathLike[str]]
-    ) -> "RepositoryAllowlist":
-        normalized = tuple(
-            sorted({_canonical_existing_directory(item) for item in roots})
-        )
+    def from_roots(cls, roots: Sequence[str | os.PathLike[str]]) -> "RepositoryAllowlist":
+        normalized = tuple(sorted({_canonical_existing_directory(item) for item in roots}))
         return cls(
             normalized,
             _cid_for(
@@ -433,9 +429,7 @@ class _RootWitness:
 
 
 def _cid_for(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        canonical_prompt_workflow_bytes(value)
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(canonical_prompt_workflow_bytes(value)).hexdigest()
 
 
 def _canonical_existing_directory(value: str | os.PathLike[str]) -> str:
@@ -445,9 +439,7 @@ def _canonical_existing_directory(value: str | os.PathLike[str]) -> str:
     try:
         resolved = path.resolve(strict=True)
     except OSError as exc:
-        raise RepositoryAllowlistError(
-            "repository allowlist root is unavailable"
-        ) from exc
+        raise RepositoryAllowlistError("repository allowlist root is unavailable") from exc
     if resolved != path or not resolved.is_dir() or resolved == Path("/"):
         raise RepositoryAllowlistError(
             "repository allowlist roots must be canonical non-root directories"
@@ -513,9 +505,7 @@ def _run_git(
     except OSError as exc:
         raise DirectoryResolutionError("Git executable is unavailable") from exc
     if result.returncode and not allow_failure:
-        raise DirectoryResolutionError(
-            f"Git operation {arguments[0]!r} failed"
-        )
+        raise DirectoryResolutionError(f"Git operation {arguments[0]!r} failed")
     return result.stdout if not result.returncode else b""
 
 
@@ -524,7 +514,9 @@ def _git_entries(
 ) -> tuple[dict[str, _GitEntry], dict[str, _GitEntry]]:
     head: dict[str, _GitEntry] = {}
     for record in _run_git(
-        root, ("ls-tree", "-rz", "--full-tree", "HEAD"), deadline=deadline,
+        root,
+        ("ls-tree", "-rz", "--full-tree", "HEAD"),
+        deadline=deadline,
         allow_failure=True,
     ).split(b"\0"):
         if not record:
@@ -534,19 +526,13 @@ def _git_entries(
             mode, kind, object_id = metadata.decode("ascii").split()
             path = raw_path.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
-            raise DirectoryResolutionError(
-                "HEAD contains an undecodable entry"
-            ) from exc
+            raise DirectoryResolutionError("HEAD contains an undecodable entry") from exc
         if kind != "blob" or mode == "160000":
-            raise NestedRepositoryError(
-                f"nested repository or submodule is forbidden at {path!r}"
-            )
+            raise NestedRepositoryError(f"nested repository or submodule is forbidden at {path!r}")
         head[path] = _GitEntry(mode, object_id)
 
     index: dict[str, _GitEntry] = {}
-    for record in _run_git(
-        root, ("ls-files", "--stage", "-z"), deadline=deadline
-    ).split(b"\0"):
+    for record in _run_git(root, ("ls-files", "--stage", "-z"), deadline=deadline).split(b"\0"):
         if not record:
             continue
         try:
@@ -554,17 +540,11 @@ def _git_entries(
             mode, object_id, stage = metadata.decode("ascii").split()
             path = raw_path.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
-            raise DirectoryResolutionError(
-                "Git index contains an undecodable entry"
-            ) from exc
+            raise DirectoryResolutionError("Git index contains an undecodable entry") from exc
         if stage != "0":
-            raise DirectoryResolutionError(
-                f"unmerged Git index entry is forbidden at {path!r}"
-            )
+            raise DirectoryResolutionError(f"unmerged Git index entry is forbidden at {path!r}")
         if mode == "160000":
-            raise NestedRepositoryError(
-                f"nested repository or submodule is forbidden at {path!r}"
-            )
+            raise NestedRepositoryError(f"nested repository or submodule is forbidden at {path!r}")
         index[path] = _GitEntry(mode, object_id)
     return head, index
 
@@ -573,9 +553,7 @@ def _in_scope(path: str, scope: str) -> bool:
     return scope == "." or path == scope or path.startswith(scope + "/")
 
 
-def _default_directory_reason(
-    path: str, *, exclude_generated_state: bool = True
-) -> str:
+def _default_directory_reason(path: str, *, exclude_generated_state: bool = True) -> str:
     parts = PurePosixPath(path).parts
     for part in parts:
         folded = part.casefold()
@@ -602,11 +580,7 @@ def _default_directory_reason(
 def _credential_reason(path: str) -> str:
     name = PurePosixPath(path).name.casefold()
     suffix = PurePosixPath(name).suffix
-    if (
-        name in _CREDENTIAL_FILENAMES
-        or name.startswith(".env.")
-        or suffix in _CREDENTIAL_SUFFIXES
-    ):
+    if name in _CREDENTIAL_FILENAMES or name.startswith(".env.") or suffix in _CREDENTIAL_SUFFIXES:
         return "credential_or_key_material"
     return ""
 
@@ -617,10 +591,7 @@ def _matches(path: str, patterns: Sequence[str]) -> bool:
         if (
             fnmatch.fnmatchcase(path, pattern)
             or fnmatch.fnmatchcase(name, pattern)
-            or (
-                pattern.startswith("**/")
-                and fnmatch.fnmatchcase(path, pattern[3:])
-            )
+            or (pattern.startswith("**/") and fnmatch.fnmatchcase(path, pattern[3:]))
         ):
             return True
     return False
@@ -631,20 +602,22 @@ def _safe_reason(value: str) -> str:
     return rendered or "unknown"
 
 
-def _root_witness(
-    root: Path, directory: Path, *, deadline: float
-) -> _RootWitness:
+def _root_witness(root: Path, directory: Path, *, deadline: float) -> _RootWitness:
     try:
         root_stat = root.stat()
         directory_stat = directory.stat()
     except OSError as exc:
         raise DirectoryResolutionError("scan roots are unavailable") from exc
-    top = _run_git(
-        root, ("rev-parse", "--show-toplevel"), deadline=deadline
-    ).decode("utf-8", "strict").strip()
-    git_directory = _run_git(
-        root, ("rev-parse", "--absolute-git-dir"), deadline=deadline
-    ).decode("utf-8", "strict").strip()
+    top = (
+        _run_git(root, ("rev-parse", "--show-toplevel"), deadline=deadline)
+        .decode("utf-8", "strict")
+        .strip()
+    )
+    git_directory = (
+        _run_git(root, ("rev-parse", "--absolute-git-dir"), deadline=deadline)
+        .decode("utf-8", "strict")
+        .strip()
+    )
     return _RootWitness(
         (root_stat.st_dev, root_stat.st_ino, root_stat.st_mode),
         (directory_stat.st_dev, directory_stat.st_ino, directory_stat.st_mode),
@@ -669,21 +642,15 @@ def _resolve_request(
             "repository root or requested directory is unavailable"
         ) from exc
     if resolved_root != root or resolved_directory != directory:
-        raise DirectoryResolutionError(
-            "repository root and directory must not traverse symlinks"
-        )
+        raise DirectoryResolutionError("repository root and directory must not traverse symlinks")
     if not resolved_directory.is_dir():
         raise DirectoryResolutionError("requested directory must be a directory")
     try:
         common = Path(os.path.commonpath((str(root), str(directory))))
     except ValueError as exc:
-        raise DirectoryResolutionError(
-            "requested directory is outside repository root"
-        ) from exc
+        raise DirectoryResolutionError("requested directory is outside repository root") from exc
     if common != root:
-        raise DirectoryResolutionError(
-            "requested directory is outside repository root"
-        )
+        raise DirectoryResolutionError("requested directory is outside repository root")
     if str(root) not in allowlist.repository_roots:
         raise RepositoryAllowlistError(
             "requested repository is not in the explicit repository allowlist"
@@ -699,9 +666,7 @@ def _resolve_request(
         )
     witness = _root_witness(root, directory, deadline=deadline)
     if Path(witness.git_top_level).resolve(strict=True) != root:
-        raise DirectoryResolutionError(
-            "repository_root must name the exact Git worktree top level"
-        )
+        raise DirectoryResolutionError("repository_root must name the exact Git worktree top level")
     scope = directory.relative_to(root).as_posix()
     if scope == ".":
         scope = "."
@@ -716,15 +681,11 @@ def _validate_output_paths(
     output_root = Path(policy.output_root)
     resolved_output_root = output_root.resolve(strict=False)
     if resolved_output_root != output_root:
-        raise DirectoryResolutionError(
-            "output_root traverses a symlink or non-canonical ancestor"
-        )
+        raise DirectoryResolutionError("output_root traverses a symlink or non-canonical ancestor")
     for allowed in policy.allowed_output_roots:
         allowed_path = Path(allowed)
         if allowed_path.resolve(strict=False) != allowed_path:
-            raise DirectoryResolutionError(
-                "allowed output root traverses a symlink"
-            )
+            raise DirectoryResolutionError("allowed output root traverses a symlink")
     results: list[str] = []
     for relative in (policy.markdown_path, policy.duckdb_path):
         if not relative:
@@ -732,17 +693,10 @@ def _validate_output_paths(
         target = output_root.joinpath(*PurePosixPath(relative).parts)
         resolved = target.resolve(strict=False)
         try:
-            if (
-                Path(os.path.commonpath((str(output_root), str(resolved))))
-                != output_root
-            ):
-                raise DirectoryResolutionError(
-                    "output path escapes its declared output_root"
-                )
+            if Path(os.path.commonpath((str(output_root), str(resolved)))) != output_root:
+                raise DirectoryResolutionError("output path escapes its declared output_root")
         except ValueError as exc:
-            raise DirectoryResolutionError(
-                "output path escapes its declared output_root"
-            ) from exc
+            raise DirectoryResolutionError("output path escapes its declared output_root") from exc
         try:
             repository_relative = target.relative_to(root).as_posix()
         except ValueError:
@@ -765,9 +719,7 @@ def _worktree_paths(
     excluded_directories: set[str] = set()
 
     def traversal_error(error: OSError) -> None:
-        raise DirectoryResolutionError(
-            "requested directory contains an unreadable path"
-        ) from error
+        raise DirectoryResolutionError("requested directory contains an unreadable path") from error
 
     for current, names, filenames in os.walk(
         directory, topdown=True, followlinks=False, onerror=traversal_error
@@ -851,24 +803,16 @@ def _ignored_paths(root: Path, scope: str, *, deadline: float) -> set[str]:
         deadline=deadline,
     )
     try:
-        return {
-            item.decode("utf-8")
-            for item in output.split(b"\0")
-            if item
-        }
+        return {item.decode("utf-8") for item in output.split(b"\0") if item}
     except UnicodeDecodeError as exc:
-        raise DirectoryResolutionError(
-            "ignored worktree path is not UTF-8"
-        ) from exc
+        raise DirectoryResolutionError("ignored worktree path is not UTF-8") from exc
 
 
 def _stable_file_bytes(path: Path, relative: str, maximum: int) -> bytes:
     try:
         before = path.lstat()
     except OSError as exc:
-        raise UnstableDirectoryScanError(
-            f"admitted path became unreadable: {relative!r}"
-        ) from exc
+        raise UnstableDirectoryScanError(f"admitted path became unreadable: {relative!r}") from exc
     if stat.S_ISLNK(before.st_mode):
         try:
             target = os.readlink(path)
@@ -883,18 +827,12 @@ def _stable_file_bytes(path: Path, relative: str, maximum: int) -> bytes:
             )
         data = os.fsencode(target)
         if len(data) > maximum:
-            raise ScanBudgetError(
-                f"admitted symlink exceeds max_file_bytes: {relative!r}"
-            )
+            raise ScanBudgetError(f"admitted symlink exceeds max_file_bytes: {relative!r}")
         return data
     if not stat.S_ISREG(before.st_mode):
-        raise DirectoryResolutionError(
-            f"special file is forbidden: {relative!r}"
-        )
+        raise DirectoryResolutionError(f"special file is forbidden: {relative!r}")
     if before.st_size > maximum:
-        raise ScanBudgetError(
-            f"admitted file exceeds max_file_bytes: {relative!r}"
-        )
+        raise ScanBudgetError(f"admitted file exceeds max_file_bytes: {relative!r}")
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
@@ -913,9 +851,7 @@ def _stable_file_bytes(path: Path, relative: str, maximum: int) -> bytes:
                 chunks.append(chunk)
                 total += len(chunk)
                 if total > maximum:
-                    raise ScanBudgetError(
-                        f"admitted file exceeds max_file_bytes: {relative!r}"
-                    )
+                    raise ScanBudgetError(f"admitted file exceeds max_file_bytes: {relative!r}")
             after = os.fstat(descriptor)
         finally:
             os.close(descriptor)
@@ -923,17 +859,9 @@ def _stable_file_bytes(path: Path, relative: str, maximum: int) -> bytes:
     except PromptDirectoryScanError:
         raise
     except OSError as exc:
-        raise UnstableDirectoryScanError(
-            f"admitted file became unreadable: {relative!r}"
-        ) from exc
-    if not (
-        _stat_signature(before)
-        == _stat_signature(after)
-        == _stat_signature(final)
-    ):
-        raise UnstableDirectoryScanError(
-            f"admitted file changed while scanning: {relative!r}"
-        )
+        raise UnstableDirectoryScanError(f"admitted file became unreadable: {relative!r}") from exc
+    if not (_stat_signature(before) == _stat_signature(after) == _stat_signature(final)):
+        raise UnstableDirectoryScanError(f"admitted file changed while scanning: {relative!r}")
     return b"".join(chunks)
 
 
@@ -981,13 +909,9 @@ def _artifact(
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise PromptDirectoryScanError(
-            "scan evidence artifact is not canonical JSON"
-        ) from exc
+        raise PromptDirectoryScanError("scan evidence artifact is not canonical JSON") from exc
     if len(encoded) > MAX_EVIDENCE_ARTIFACT_BYTES:
-        raise ScanBudgetError(
-            "scan evidence artifact exceeds the 16777216-byte hard bound"
-        )
+        raise ScanBudgetError("scan evidence artifact exceeds the 16777216-byte hard bound")
     digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
     handle = f"blob:{digest}"
     if artifact_store is not None:
@@ -997,9 +921,7 @@ def _artifact(
             media_type="application/json",
         )
         if reference.digest != digest:
-            raise PromptDirectoryScanError(
-                "artifact store returned a mismatched content digest"
-            )
+            raise PromptDirectoryScanError("artifact store returned a mismatched content digest")
         handle = reference.artifact_id
     return ScanArtifact(
         kind=kind,
@@ -1147,9 +1069,7 @@ def _classify(
     categories: dict[str, Mapping[str, Any]] = {
         "languages": {
             "counts": dict(sorted(languages.items())),
-            "paths": {
-                key: sorted(value) for key, value in sorted(language_paths.items())
-            },
+            "paths": {key: sorted(value) for key, value in sorted(language_paths.items())},
         },
         "build": {"paths": sorted(builds), "count": len(builds)},
         "interfaces": {
@@ -1190,8 +1110,7 @@ def _classify(
     truncations = []
     if symbol_truncated:
         truncations.append(
-            "symbol_summary:max_symbols:"
-            f"{len(selected_symbols)}-of-{len(symbol_observations)}"
+            f"symbol_summary:max_symbols:{len(selected_symbols)}-of-{len(symbol_observations)}"
         )
     if len(all_interface_observations) > max_symbols:
         truncations.append(
@@ -1339,10 +1258,7 @@ def _optional_result(
             ):
                 raise ValueError("optional analysis path is outside scan closure")
         if any(
-            not claim
-            or len(claim.encode("utf-8")) > 1_024
-            or "\x00" in claim
-            for claim in claims
+            not claim or len(claim.encode("utf-8")) > 1_024 or "\x00" in claim for claim in claims
         ):
             raise ValueError("optional analysis claim is malformed")
         summary_bytes = parsed.summary.encode("utf-8")
@@ -1352,21 +1268,16 @@ def _optional_result(
             or b"\x00" in summary_bytes
             or _contains_secret(summary_bytes)
         ):
-            raise SecretLeakageError(
-                "optional analysis summary failed secret screening"
-            )
+            raise SecretLeakageError("optional analysis summary failed secret screening")
         if (
             not parsed.status
             or parsed.status != parsed.status.strip()
             or len(parsed.status.encode("utf-8")) > 128
         ):
             raise ValueError("optional analysis status is malformed")
-        if (
-            parsed.artifact_cid
-            and not re.fullmatch(
-                r"(?:sha256:[0-9a-f]{64}|b[a-z2-7]+)",
-                parsed.artifact_cid,
-            )
+        if parsed.artifact_cid and not re.fullmatch(
+            r"(?:sha256:[0-9a-f]{64}|b[a-z2-7]+)",
+            parsed.artifact_cid,
         ):
             raise ValueError("optional artifact identity is malformed")
     except Exception as exc:
@@ -1387,9 +1298,7 @@ def _coerce_allowlist(
     if isinstance(value, RepositoryAllowlist):
         return value
     if isinstance(value, (str, bytes, os.PathLike)):
-        raise RepositoryAllowlistError(
-            "repository_allowlist must be an explicit sequence of roots"
-        )
+        raise RepositoryAllowlistError("repository_allowlist must be an explicit sequence of roots")
     return RepositoryAllowlist.from_roots(value)
 
 
@@ -1402,16 +1311,13 @@ def _verify_root_witness(
 ) -> None:
     current = _root_witness(root, directory, deadline=deadline)
     if current != expected:
-        raise UnstableDirectoryScanError(
-            "repository or directory root changed during scan"
-        )
+        raise UnstableDirectoryScanError("repository or directory root changed during scan")
 
 
 def scan_prompt_directory_detailed(
     request: PromptWorkflowRequest,
     *,
-    repository_allowlist: RepositoryAllowlist
-    | Sequence[str | os.PathLike[str]],
+    repository_allowlist: RepositoryAllowlist | Sequence[str | os.PathLike[str]],
     artifact_store: "BoundedArtifactStore | None" = None,
     optional_analysis: OptionalAnalysisAdapter
     | Callable[[OptionalAnalysisContext], Any]
@@ -1446,11 +1352,7 @@ def scan_prompt_directory_detailed(
     )
     ignored = _ignored_paths(root, scope, deadline=deadline)
     tracked = set(head) | set(index)
-    all_paths = sorted(
-        path
-        for path in tracked | worktree
-        if _in_scope(path, scope)
-    )
+    all_paths = sorted(path for path in tracked | worktree if _in_scope(path, scope))
     decisions: dict[str, _Decision] = {
         path: _Decision(
             path,
@@ -1471,11 +1373,7 @@ def scan_prompt_directory_detailed(
             path,
             exclude_generated_state=request.scan_policy.exclude_generated_state,
         )
-        reason = (
-            "workflow_output_path"
-            if path in output_exclusions
-            else default_reason
-        )
+        reason = "workflow_output_path" if path in output_exclusions else default_reason
         if not reason and request.scan_policy.exclude_credentials:
             reason = _credential_reason(path)
         if not reason and _matches(path, request.scan_policy.exclude_patterns):
@@ -1489,11 +1387,7 @@ def scan_prompt_directory_detailed(
         is_untracked = path in worktree and path not in tracked
         if not reason and is_untracked and path in ignored:
             reason = "repository_ignore_policy"
-        if (
-            not reason
-            and is_untracked
-            and not request.scan_policy.include_untracked
-        ):
+        if not reason and is_untracked and not request.scan_policy.include_untracked:
             reason = "untracked_not_admitted"
         if not reason and _looks_binary(path):
             reason = "large_or_binary_default"
@@ -1502,9 +1396,7 @@ def scan_prompt_directory_detailed(
                 path,
                 "excluded",
                 reason,
-                ("content_not_read",)
-                if reason == "credential_or_key_material"
-                else (),
+                ("content_not_read",) if reason == "credential_or_key_material" else (),
             )
         else:
             candidates.append(path)
@@ -1529,9 +1421,7 @@ def scan_prompt_directory_detailed(
         try:
             size = int(raw.decode("ascii", "strict").strip())
         except (UnicodeDecodeError, ValueError) as exc:
-            raise DirectoryResolutionError(
-                "Git returned a malformed blob size"
-            ) from exc
+            raise DirectoryResolutionError("Git returned a malformed blob size") from exc
         if size < 0:
             raise DirectoryResolutionError("Git returned a negative blob size")
         git_blob_sizes[entry.object_id] = size
@@ -1576,9 +1466,7 @@ def scan_prompt_directory_detailed(
             }.values()
         )
         if any(git_blob_size(entry) > budget.max_file_bytes for entry in git_entries):
-            decisions[path] = _Decision(
-                path, "excluded", "max_file_bytes_default"
-            )
+            decisions[path] = _Decision(path, "excluded", "max_file_bytes_default")
             continue
         variants: list[bytes] = []
         worktree_size = 0
@@ -1592,54 +1480,38 @@ def scan_prompt_directory_detailed(
                 ) from exc
             if stat.S_ISLNK(file_stat.st_mode):
                 if request.scan_policy.reject_symlinks:
-                    raise ScanSymlinkError(
-                        f"selected symlink is forbidden: {path!r}"
-                    )
+                    raise ScanSymlinkError(f"selected symlink is forbidden: {path!r}")
                 resolved = absolute.resolve(strict=False)
                 try:
                     if Path(os.path.commonpath((str(root), str(resolved)))) != root:
-                        raise ScanSymlinkError(
-                            f"selected symlink escapes repository: {path!r}"
-                        )
+                        raise ScanSymlinkError(f"selected symlink escapes repository: {path!r}")
                 except ValueError as exc:
                     raise ScanSymlinkError(
                         f"selected symlink escapes repository: {path!r}"
                     ) from exc
             elif not stat.S_ISREG(file_stat.st_mode):
-                raise DirectoryResolutionError(
-                    f"special file is forbidden: {path!r}"
-                )
+                raise DirectoryResolutionError(f"special file is forbidden: {path!r}")
             if file_stat.st_size > budget.max_file_bytes:
-                decisions[path] = _Decision(
-                    path, "excluded", "max_file_bytes_default"
-                )
+                decisions[path] = _Decision(path, "excluded", "max_file_bytes_default")
                 continue
             worktree_size = file_stat.st_size
         if inspected_bytes + worktree_size > budget.max_scan_bytes:
-            decisions[path] = _Decision(
-                path, "excluded", "max_scan_bytes_inspection_budget"
-            )
+            decisions[path] = _Decision(path, "excluded", "max_scan_bytes_inspection_budget")
             budget_exhausted = True
             continue
         if path in worktree:
             absolute = root.joinpath(*PurePosixPath(path).parts)
-            worktree_data = _stable_file_bytes(
-                absolute, path, budget.max_file_bytes
-            )
+            worktree_data = _stable_file_bytes(absolute, path, budget.max_file_bytes)
             variants.append(worktree_data)
             inspected_bytes += len(worktree_data)
             for entry in git_entries:
                 if matches_git_object(worktree_data, entry):
                     git_blob_cache.setdefault(entry.object_id, worktree_data)
         git_inspection_charge = sum(
-            git_blob_size(entry)
-            for entry in git_entries
-            if entry.object_id not in git_blob_cache
+            git_blob_size(entry) for entry in git_entries if entry.object_id not in git_blob_cache
         )
         if inspected_bytes + git_inspection_charge > budget.max_scan_bytes:
-            decisions[path] = _Decision(
-                path, "excluded", "max_scan_bytes_inspection_budget"
-            )
+            decisions[path] = _Decision(path, "excluded", "max_scan_bytes_inspection_budget")
             budget_exhausted = True
             continue
         for entry in git_entries:
@@ -1652,9 +1524,7 @@ def scan_prompt_directory_detailed(
             decisions[path] = _Decision(path, "excluded", "binary_content_default")
             continue
         if any(_contains_secret(data) for data in variants):
-            raise SecretLeakageError(
-                f"secret-like material detected in admitted path {path!r}"
-            )
+            raise SecretLeakageError(f"secret-like material detected in admitted path {path!r}")
         new_digests: dict[str, int] = {}
         for data in variants:
             digest = "sha256:" + hashlib.sha256(data).hexdigest()
@@ -1671,22 +1541,12 @@ def scan_prompt_directory_detailed(
         decisions[path] = _Decision(
             path,
             "included",
-            (
-                "tracked_or_staged"
-                if path in tracked
-                else "policy_admitted_untracked"
-            ),
+            ("tracked_or_staged" if path in tracked else "policy_admitted_untracked"),
             ("source_body_content_addressed",),
         )
 
     excluded_paths = tuple(
-        sorted(
-            {
-                item.path
-                for item in decisions.values()
-                if item.disposition == "excluded"
-            }
-        )
+        sorted({item.path for item in decisions.values() if item.disposition == "excluded"})
     )
     from ..core.program_behavior import (
         ProgramBehaviorError,
@@ -1716,17 +1576,11 @@ def scan_prompt_directory_detailed(
             previous=previous.program_behavior if previous is not None else None,
         )
     except RepositoryRaceError as exc:
-        raise UnstableDirectoryScanError(
-            "admitted repository bytes changed during scan"
-        ) from exc
+        raise UnstableDirectoryScanError("admitted repository bytes changed during scan") from exc
     except SymlinkEscapeError as exc:
-        raise ScanSymlinkError(
-            "selected symlink escapes the admitted scan closure"
-        ) from exc
+        raise ScanSymlinkError("selected symlink escapes the admitted scan closure") from exc
     except RequiredInputTooLargeError as exc:
-        raise ScanBudgetError(
-            "exact program-behavior scan exceeded a declared bound"
-        ) from exc
+        raise ScanBudgetError("exact program-behavior scan exceeded a declared bound") from exc
     except ProgramBehaviorError as exc:
         raise PromptDirectoryScanError(
             f"exact program-behavior scan failed ({_safe_reason(type(exc).__name__)})"
@@ -1734,13 +1588,9 @@ def scan_prompt_directory_detailed(
 
     actual_paths = tuple(item.path for item in behavior.repository.entries)
     if actual_paths != tuple(sorted(included)):
-        raise UnstableDirectoryScanError(
-            "policy selection and exact worktree snapshot disagree"
-        )
+        raise UnstableDirectoryScanError("policy selection and exact worktree snapshot disagree")
     if behavior.repository.stats.hashed_bytes != admitted_bytes:
-        raise UnstableDirectoryScanError(
-            "preflight bytes and exact worktree snapshot disagree"
-        )
+        raise UnstableDirectoryScanError("preflight bytes and exact worktree snapshot disagree")
     dirty_worktree_root = _cid_for(
         {
             "identity_kind": "program-behavior-dirty-worktree-root",
@@ -1782,9 +1632,7 @@ def scan_prompt_directory_detailed(
     )
     configuration["scanner_root"] = scanner_root
     configuration_root = _cid_for(configuration)
-    categories, truncations, category_counts = _classify(
-        behavior, included, budget.max_symbols
-    )
+    categories, truncations, category_counts = _classify(behavior, included, budget.max_symbols)
     artifacts: list[ScanArtifact] = []
     category_artifacts: dict[str, ScanArtifact] = {}
     for name, payload in categories.items():
@@ -1815,9 +1663,7 @@ def scan_prompt_directory_detailed(
                     "kind": item.kind.value,
                     "head_digest": item.head_blob.digest if item.head_blob else "",
                     "index_digest": item.index_blob.digest if item.index_blob else "",
-                    "worktree_digest": (
-                        item.worktree_blob.digest if item.worktree_blob else ""
-                    ),
+                    "worktree_digest": (item.worktree_blob.digest if item.worktree_blob else ""),
                     "rename_from": item.rename_from,
                 }
                 for item in behavior.repository.entries
@@ -1832,9 +1678,7 @@ def scan_prompt_directory_detailed(
             "schema": SCAN_DECISION_MANIFEST_SCHEMA,
             "configuration": configuration,
             "configuration_root": configuration_root,
-            "decisions": [
-                decisions[path].to_dict() for path in sorted(decisions)
-            ],
+            "decisions": [decisions[path].to_dict() for path in sorted(decisions)],
             "stability_checks": [
                 "canonical_roots_before_scan",
                 "stable_file_reads",
@@ -1864,9 +1708,7 @@ def scan_prompt_directory_detailed(
         "schema": SCAN_EVIDENCE_ARTIFACT_SCHEMA,
         "kind": "optional-analysis",
         "status": optional.status,
-        "summary_digest": _cid_for(
-            {"summary": optional.summary, "status": optional.status}
-        ),
+        "summary_digest": _cid_for({"summary": optional.summary, "status": optional.status}),
         "upstream_artifact_cid": optional.artifact_cid,
         "repository_paths": list(optional.repository_paths),
         "claim_keys": list(optional.claim_keys),
@@ -1891,10 +1733,7 @@ def scan_prompt_directory_detailed(
             summary=_category_summary(name, categories[name]),
             artifact=category_artifacts[name],
             paths=(
-                [
-                    record["path"]
-                    for record in categories[name].get("records", ())
-                ]
+                [record["path"] for record in categories[name].get("records", ())]
                 if name in {"interfaces", "symbols"}
                 else [
                     path
@@ -1902,9 +1741,7 @@ def scan_prompt_directory_detailed(
                         categories[name].get("paths", ())
                         if name != "languages"
                         else [
-                            path
-                            for group in categories[name]["paths"].values()
-                            for path in group
+                            path for group in categories[name]["paths"].values() for path in group
                         ]
                     )
                     for path in ([value] if isinstance(value, str) else value)
@@ -1971,9 +1808,7 @@ def scan_prompt_directory_detailed(
             {
                 "schema": SCAN_EVIDENCE_ARTIFACT_SCHEMA,
                 "kind": "scan-summary",
-                "evidence_artifact_cids": [
-                    item.artifact_cid for item in artifacts
-                ],
+                "evidence_artifact_cids": [item.artifact_cid for item in artifacts],
                 "category_counts": category_counts,
                 "optional_analysis_status": optional_status,
             },
@@ -2021,9 +1856,7 @@ def scan_prompt_directory_detailed(
             "optional_analysis_status": optional_status,
         }
     )
-    excluded_decisions = [
-        item for item in decisions.values() if item.disposition == "excluded"
-    ]
+    excluded_decisions = [item for item in decisions.values() if item.disposition == "excluded"]
     exclusion_strings: list[str] = []
     exclusion_bytes = 0
     exclusion_limit = max(256, budget.max_serialized_bytes // 4)
@@ -2053,9 +1886,7 @@ def scan_prompt_directory_detailed(
             f"scan_scope:budget_exclusions:manifest:{decision_manifest.artifact_cid}"
         )
     truncations = sorted(set(truncations))
-    status_counts = Counter(
-        item.status.value for item in behavior.repository.entries
-    )
+    status_counts = Counter(item.status.value for item in behavior.repository.entries)
     counts = {
         "files": len(actual_paths),
         "scan_bytes": behavior.repository.stats.hashed_bytes,
@@ -2070,17 +1901,14 @@ def scan_prompt_directory_detailed(
         "modified": status_counts.get("modified", 0),
         "staged": status_counts.get("staged", 0),
         "staged_and_modified": status_counts.get("staged_and_modified", 0),
-        "deleted": status_counts.get("deleted", 0)
-        + status_counts.get("staged_deletion", 0),
+        "deleted": status_counts.get("deleted", 0) + status_counts.get("staged_deletion", 0),
         "renamed": status_counts.get("renamed", 0),
         "evidence": len(evidence),
         **category_counts,
     }
     _verify_root_witness(root, directory, witness, deadline=deadline)
     if _validate_output_paths(request, root, scope) != output_exclusions:
-        raise UnstableDirectoryScanError(
-            "workflow output path resolution changed during scan"
-        )
+        raise UnstableDirectoryScanError("workflow output path resolution changed during scan")
     try:
         behavior.verify_unchanged()
     except Exception as exc:
@@ -2127,8 +1955,7 @@ def scan_prompt_directory_detailed(
 def scan_prompt_directory(
     request: PromptWorkflowRequest,
     *,
-    repository_allowlist: RepositoryAllowlist
-    | Sequence[str | os.PathLike[str]],
+    repository_allowlist: RepositoryAllowlist | Sequence[str | os.PathLike[str]],
     artifact_store: "BoundedArtifactStore | None" = None,
     optional_analysis: OptionalAnalysisAdapter
     | Callable[[OptionalAnalysisContext], Any]
@@ -2153,8 +1980,7 @@ class PromptDirectoryScanner:
 
     def __init__(
         self,
-        repository_allowlist: RepositoryAllowlist
-        | Sequence[str | os.PathLike[str]],
+        repository_allowlist: RepositoryAllowlist | Sequence[str | os.PathLike[str]],
         *,
         artifact_store: "BoundedArtifactStore | None" = None,
         optional_analysis: OptionalAnalysisAdapter

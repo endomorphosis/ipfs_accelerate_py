@@ -111,13 +111,11 @@ def test_bundle_index_has_equivalent_json_and_duckdb_queries(tmp_path: Path) -> 
     assert first_payload["bundle_key"] == "objective/test/one"
     assert first_payload["profile_g"]["goal"]["created_at_ms"] == 1_784_678_400_000
     assert (
-        first_payload["profile_g"]["task_spec_cid"]
-        == second_payload["profile_g"]["task_spec_cid"]
+        first_payload["profile_g"]["task_spec_cid"] == second_payload["profile_g"]["task_spec_cid"]
     )
     schema_rows = artifact_schema(json_path)["rows"]
     assert any(
-        row["table_name"] == "bundle_tasks"
-        and row["column_name"] == "canonical_task_cid"
+        row["table_name"] == "bundle_tasks" and row["column_name"] == "canonical_task_cid"
         for row in schema_rows
     )
 
@@ -289,10 +287,7 @@ def test_large_todo_vector_index_omits_repeated_record_evidence(
             }
         ],
         "coverage_inputs": {
-            "by_task": {
-                f"T-{ordinal}": {"ast_symbols": ["large"]}
-                for ordinal in range(129)
-            },
+            "by_task": {f"T-{ordinal}": {"ast_symbols": ["large"]} for ordinal in range(129)},
             "criteria": [],
             "edges": [],
         },
@@ -311,9 +306,7 @@ def test_large_todo_vector_index_omits_repeated_record_evidence(
     assert "ast_records" not in record["conflict_surface"]
     assert record["conflict_surface"]["ast_record_count"] == 1
     assert record["conflict_surface"]["paths"] == ["src/module.py"]
-    assert rendered["query_artifact"]["duckdb_path"] == (
-        "objective_bundles/index.duckdb"
-    )
+    assert rendered["query_artifact"]["duckdb_path"] == ("objective_bundles/index.duckdb")
     rewritten = write_todo_vector_index_artifact(
         index_path=index_path,
         payload=rendered,
@@ -424,17 +417,13 @@ def test_scheduler_manifest_normalizes_rows_and_bounds_query_output(
         sql="SELECT decision, reason FROM manifest_decisions WHERE task_cid = 'cid-active'",
         limit=5,
     )
-    assert decision["rows"] == [
-        {"decision": "launched", "reason": "capacity_available"}
-    ]
+    assert decision["rows"] == [{"decision": "launched", "reason": "capacity_available"}]
     lifecycle = query_artifact(
         manifest_path,
         table="scheduler_task_states",
         columns=("task_id", "phase", "status"),
     )
-    assert lifecycle["rows"] == [
-        {"task_id": "T-ACTIVE", "phase": "active", "status": "active"}
-    ]
+    assert lifecycle["rows"] == [{"task_id": "T-ACTIVE", "phase": "active", "status": "active"}]
     conflict = query_artifact(
         manifest_path,
         table="manifest_conflict_decisions",
@@ -486,10 +475,7 @@ def test_same_metadata_json_drift_refreshes_by_content_digest(
 
     refreshed = read_bundle_index_projection(json_path)
 
-    assert (
-        refreshed["bundles"]["objective/test/one"]["tasks"][0]["title"]
-        == "Other task"
-    )
+    assert refreshed["bundles"]["objective/test/one"]["tasks"][0]["title"] == "Other task"
 
 
 def test_direct_duckdb_rejects_paired_json_digest_or_table_drift(
@@ -514,7 +500,7 @@ def test_direct_duckdb_rejects_paired_json_digest_or_table_drift(
     try:
         connection.execute(
             "UPDATE bundle_tasks SET payload_json = "
-            "json_merge_patch(payload_json, '{\"title\":\"Tampered\"}') "
+            'json_merge_patch(payload_json, \'{"title":"Tampered"}\') '
             "WHERE task_id = 'T-1'"
         )
     finally:

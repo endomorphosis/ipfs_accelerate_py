@@ -62,9 +62,7 @@ for result in results:
 ### Bandit-Based Model Recommendation
 
 ```python
-from ipfs_accelerate_py.model_manager import (
-    BanditModelRecommender, RecommendationContext, DataType
-)
+from ipfs_accelerate_py.model_manager import BanditModelRecommender, RecommendationContext, DataType
 
 # Initialize the recommender
 recommender = BanditModelRecommender(algorithm="thompson_sampling")
@@ -75,7 +73,7 @@ context = RecommendationContext(
     hardware="cuda",
     input_type=DataType.TOKENS,
     output_type=DataType.LOGITS,
-    performance_requirements={"latency": "<100ms"}
+    performance_requirements={"latency": "<100ms"},
 )
 
 # Get recommendation
@@ -85,12 +83,10 @@ if recommendation:
     print(f"💡 Recommended: {recommendation.model_id}")
     print(f"🎯 Confidence: {recommendation.confidence_score:.3f}")
     print(f"📝 Reasoning: {recommendation.reasoning}")
-    
+
     # Provide feedback (0.0 to 1.0, where 1.0 is best)
     recommender.provide_feedback(
-        model_id=recommendation.model_id,
-        feedback_score=0.85,
-        context=context
+        model_id=recommendation.model_id, feedback_score=0.85, context=context
     )
 ```
 
@@ -98,8 +94,11 @@ if recommendation:
 
 ```python
 from ipfs_accelerate_py.model_manager import (
-    ModelManager, VectorDocumentationIndex, BanditModelRecommender
+    ModelManager,
+    VectorDocumentationIndex,
+    BanditModelRecommender,
 )
+
 
 # Complete AI-powered workflow
 def ai_model_discovery_workflow(user_query: str, requirements: dict):
@@ -110,38 +109,36 @@ def ai_model_discovery_workflow(user_query: str, requirements: dict):
         print("📚 Found relevant documentation:")
         for result in doc_results:
             print(f"  📄 {result.document.file_path}")
-    
+
     # 2. Get AI-powered model recommendation
     with ModelManager() as manager:
         recommender = BanditModelRecommender(model_manager=manager)
-        
+
         context = RecommendationContext(
             task_type=requirements.get("task_type"),
             hardware=requirements.get("hardware"),
             input_type=requirements.get("input_type"),
-            output_type=requirements.get("output_type")
+            output_type=requirements.get("output_type"),
         )
-        
+
         recommendation = recommender.recommend_model(context)
-        
+
         if recommendation:
             print(f"🎯 AI Recommendation: {recommendation.model_id}")
             return recommendation
-    
+
     return None
+
 
 # Usage example
 requirements = {
     "task_type": "text_classification",
     "hardware": "cuda",
     "input_type": DataType.TOKENS,
-    "output_type": DataType.LOGITS
+    "output_type": DataType.LOGITS,
 }
 
-recommendation = ai_model_discovery_workflow(
-    "CUDA text classification models", 
-    requirements
-)
+recommendation = ai_model_discovery_workflow("CUDA text classification models", requirements)
 ```
 
 ## 📊 Advanced Features
@@ -154,7 +151,7 @@ recommendation = ai_model_discovery_workflow(
 # Use a different sentence transformer model
 doc_index = VectorDocumentationIndex(
     model_name="all-mpnet-base-v2",  # Higher quality embeddings
-    storage_path="custom_doc_index.json"
+    storage_path="custom_doc_index.json",
 )
 ```
 
@@ -164,8 +161,8 @@ doc_index = VectorDocumentationIndex(
 # Search with custom parameters
 results = doc_index.search(
     query="WebGPU acceleration setup",
-    top_k=5,                    # Number of results
-    min_similarity=0.3          # Minimum similarity threshold
+    top_k=5,  # Number of results
+    min_similarity=0.3,  # Minimum similarity threshold
 )
 
 # Results include detailed information
@@ -189,7 +186,7 @@ custom_doc = DocumentEntry(
     file_path="custom_guide.md",
     content="Custom documentation content...",
     title="Custom Guide",
-    section="Advanced Usage"
+    section="Advanced Usage",
 )
 
 # Add embedding and include in index
@@ -225,12 +222,8 @@ context = RecommendationContext(
     hardware="cuda",
     input_type=DataType.IMAGE,
     output_type=DataType.TEXT,
-    performance_requirements={
-        "latency": "<500ms",
-        "memory": "<8GB",
-        "accuracy": ">0.9"
-    },
-    user_id="user123"  # For personalized recommendations
+    performance_requirements={"latency": "<500ms", "memory": "<8GB", "accuracy": ">0.9"},
+    user_id="user123",  # For personalized recommendations
 )
 ```
 
@@ -241,21 +234,19 @@ context = RecommendationContext(
 recommender.provide_feedback(
     model_id="recommended_model_id",
     feedback_score=0.8,  # User satisfaction
-    context=context
+    context=context,
 )
 
 # Multiple feedback types
 feedback_contexts = [
     {"feedback_score": 0.9, "performance_met": True},
     {"feedback_score": 0.6, "performance_met": False, "issue": "too_slow"},
-    {"feedback_score": 0.95, "performance_met": True, "deployment": "production"}
+    {"feedback_score": 0.95, "performance_met": True, "deployment": "production"},
 ]
 
 for feedback in feedback_contexts:
     recommender.provide_feedback(
-        model_id="model_id",
-        feedback_score=feedback["feedback_score"],
-        context=context
+        model_id="model_id", feedback_score=feedback["feedback_score"], context=context
     )
 ```
 
@@ -268,15 +259,17 @@ report = recommender.get_performance_report()
 print(f"Algorithm: {report['algorithm']}")
 print(f"Total trials: {report['total_trials']}")
 
-for context_key, context_data in report['contexts'].items():
+for context_key, context_data in report["contexts"].items():
     print(f"\nContext: {context_key}")
     print(f"  Best model: {context_data['best_model']}")
     print(f"  Best performance: {context_data['best_average_reward']:.3f}")
-    
+
     # Individual model performance
-    for model_id, performance in context_data['arms'].items():
-        print(f"    {model_id}: {performance['average_reward']:.3f} "
-              f"({performance['num_trials']} trials)")
+    for model_id, performance in context_data["arms"].items():
+        print(
+            f"    {model_id}: {performance['average_reward']:.3f} "
+            f"({performance['num_trials']} trials)"
+        )
 ```
 
 ## 🎯 Use Cases
@@ -287,27 +280,28 @@ for context_key, context_data in report['contexts'].items():
 def help_new_user(user_question: str):
     """Help new users find relevant documentation and models."""
     doc_index = VectorDocumentationIndex()
-    
+
     # Search for relevant documentation
     doc_results = doc_index.search(user_question, top_k=3)
-    
+
     print("📚 Relevant Documentation:")
     for result in doc_results:
         print(f"  📄 {result.document.file_path}")
         print(f"  📝 {result.document.content[:150]}...")
-    
+
     # Get beginner-friendly model recommendation
     context = RecommendationContext(
         task_type="beginner_friendly",
         hardware="cpu",  # Assume CPU for beginners
-        user_id="new_user"
+        user_id="new_user",
     )
-    
+
     recommender = BanditModelRecommender()
     recommendation = recommender.recommend_model(context)
-    
+
     if recommendation:
         print(f"\n🎯 Recommended starter model: {recommendation.model_id}")
+
 
 # Usage
 help_new_user("How do I get started with text classification?")
@@ -319,33 +313,28 @@ help_new_user("How do I get started with text classification?")
 def optimize_for_performance(current_model: str, hardware: str):
     """Find better performing alternatives for current setup."""
     doc_index = VectorDocumentationIndex()
-    
+
     # Search for optimization documentation
-    optimization_docs = doc_index.search(
-        f"{hardware} optimization performance tuning", 
-        top_k=2
-    )
-    
+    optimization_docs = doc_index.search(f"{hardware} optimization performance tuning", top_k=2)
+
     print("🚀 Performance Optimization Resources:")
     for result in optimization_docs:
         print(f"  📄 {result.document.file_path}")
-    
+
     # Get performance-optimized recommendation
     context = RecommendationContext(
         task_type="performance_optimization",
         hardware=hardware,
-        performance_requirements={
-            "priority": "speed",
-            "acceptable_accuracy_drop": 0.05
-        }
+        performance_requirements={"priority": "speed", "acceptable_accuracy_drop": 0.05},
     )
-    
+
     recommender = BanditModelRecommender()
     recommendation = recommender.recommend_model(context)
-    
+
     if recommendation and recommendation.model_id != current_model:
         print(f"💡 Better alternative: {recommendation.model_id}")
         print(f"🎯 Confidence: {recommendation.confidence_score:.3f}")
+
 
 # Usage
 optimize_for_performance("bert-base-uncased", "cuda")
@@ -356,43 +345,43 @@ optimize_for_performance("bert-base-uncased", "cuda")
 ```python
 def plan_production_deployment(requirements: dict):
     """Plan production deployment with AI assistance."""
-    
+
     # Search for deployment documentation
     doc_index = VectorDocumentationIndex()
     deployment_docs = doc_index.search(
-        f"production deployment {requirements['hardware']} scalability",
-        top_k=2
+        f"production deployment {requirements['hardware']} scalability", top_k=2
     )
-    
+
     print("🏭 Production Deployment Resources:")
     for result in deployment_docs:
         print(f"  📄 {result.document.file_path}")
-    
+
     # Get production-ready model recommendation
     context = RecommendationContext(
         task_type="production_deployment",
         hardware=requirements["hardware"],
         performance_requirements=requirements,
-        user_id="production_team"
+        user_id="production_team",
     )
-    
+
     with ModelManager() as manager:
         recommender = BanditModelRecommender(model_manager=manager)
         recommendation = recommender.recommend_model(context)
-        
+
         if recommendation:
             # Get detailed model information
             model_details = manager.get_model(recommendation.model_id)
-            
+
             print(f"\n🎯 Production-Ready Model: {recommendation.model_id}")
             print(f"📊 Confidence: {recommendation.confidence_score:.3f}")
-            
+
             if model_details:
                 print(f"🏗️ Architecture: {model_details.architecture}")
                 print(f"🔧 Supported backends: {model_details.supported_backends}")
-                
+
                 if model_details.hardware_requirements:
                     print(f"💾 Hardware requirements: {model_details.hardware_requirements}")
+
 
 # Usage
 production_requirements = {
@@ -400,7 +389,7 @@ production_requirements = {
     "latency": "<50ms",
     "throughput": ">100 requests/sec",
     "memory": "<4GB",
-    "availability": "99.9%"
+    "availability": "99.9%",
 }
 
 plan_production_deployment(production_requirements)
@@ -412,13 +401,9 @@ plan_production_deployment(production_requirements)
 
 ```python
 # Configure storage paths for persistence
-vector_index = VectorDocumentationIndex(
-    storage_path="./ai_data/documentation_index.json"
-)
+vector_index = VectorDocumentationIndex(storage_path="./ai_data/documentation_index.json")
 
-bandit_recommender = BanditModelRecommender(
-    storage_path="./ai_data/bandit_learning.json"
-)
+bandit_recommender = BanditModelRecommender(storage_path="./ai_data/bandit_learning.json")
 ```
 
 ### Advanced Algorithm Parameters
@@ -443,19 +428,17 @@ integration = ModelManagerIntegration()
 # Import existing models and enhance with AI features
 integration.import_from_existing_metadata()
 
+
 # Add AI-powered search to existing workflows
 def enhanced_model_search(query: str):
     # Traditional search
     traditional_results = integration.search_models(query)
-    
+
     # AI-powered documentation search
     doc_index = VectorDocumentationIndex()
     ai_results = doc_index.search(query)
-    
-    return {
-        "models": traditional_results,
-        "documentation": ai_results
-    }
+
+    return {"models": traditional_results, "documentation": ai_results}
 ```
 
 ## 📈 Performance and Scalability
@@ -492,29 +475,30 @@ def enhanced_model_search(query: str):
 def monitor_ai_performance():
     recommender = BanditModelRecommender()
     report = recommender.get_performance_report()
-    
+
     # Track key metrics
-    total_trials = report['total_trials']
-    num_contexts = len(report['contexts'])
-    
+    total_trials = report["total_trials"]
+    num_contexts = len(report["contexts"])
+
     # Calculate average performance across contexts
     avg_performance = 0
-    for context_data in report['contexts'].values():
-        if context_data['best_average_reward'] > 0:
-            avg_performance += context_data['best_average_reward']
-    
+    for context_data in report["contexts"].values():
+        if context_data["best_average_reward"] > 0:
+            avg_performance += context_data["best_average_reward"]
+
     avg_performance /= max(num_contexts, 1)
-    
+
     print(f"🔍 AI Performance Metrics:")
     print(f"  Total trials: {total_trials}")
     print(f"  Active contexts: {num_contexts}")
     print(f"  Average performance: {avg_performance:.3f}")
-    
+
     return {
         "total_trials": total_trials,
         "contexts": num_contexts,
-        "avg_performance": avg_performance
+        "avg_performance": avg_performance,
     }
+
 
 # Run periodic monitoring
 metrics = monitor_ai_performance()

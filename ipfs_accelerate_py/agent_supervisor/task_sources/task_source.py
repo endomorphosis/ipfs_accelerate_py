@@ -29,12 +29,8 @@ from types import MappingProxyType, SimpleNamespace
 from typing import Any, ClassVar, Final, Iterable, Mapping, Protocol, Sequence, runtime_checkable
 
 
-TASK_SOURCE_PROTOCOL_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-source-protocol@1"
-)
-TASK_SOURCE_IDENTITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-source-identity@1"
-)
+TASK_SOURCE_PROTOCOL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-source-protocol@1"
+TASK_SOURCE_IDENTITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-source-identity@1"
 TASK_SOURCE_SNAPSHOT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/canonical-task-source-snapshot@1"
 )
@@ -47,9 +43,7 @@ MAX_QUERY_LIMIT: Final = 1_000
 MAX_SNAPSHOT_TASKS: Final = 8_192
 MAX_WATCH_SECONDS: Final = 30.0
 SUPPORTED_SOURCE_KINDS: Final = frozenset({"markdown", "duckdb", "dual"})
-DUAL_TASK_SOURCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/dual-task-source@1"
-)
+DUAL_TASK_SOURCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/dual-task-source@1"
 CANONICAL_PROJECTION_SNAPSHOT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/verified-canonical-task-projection@1"
 )
@@ -220,9 +214,7 @@ def _immutable_record(value: Mapping[str, Any]) -> dict[str, Any]:
 def _json_plain(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _json_plain(member) for key, member in value.items()}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_json_plain(member) for member in value]
     return value
 
@@ -287,9 +279,7 @@ class CanonicalProjectionSnapshot:
 
     def __post_init__(self) -> None:
         if self.schema != CANONICAL_PROJECTION_SNAPSHOT_SCHEMA:
-            raise UnsupportedTaskSourceError(
-                "unsupported canonical projection snapshot schema"
-            )
+            raise UnsupportedTaskSourceError("unsupported canonical projection snapshot schema")
         if not str(self.plan_root or "").strip():
             raise TaskSourceIntegrityError("canonical projection plan root is missing")
         task_cids = tuple(str(item) for item in self.task_cids)
@@ -305,12 +295,10 @@ class CanonicalProjectionSnapshot:
                 "canonical projection has an invalid task or goal population"
             )
         task_aliases = tuple(
-            (str(key), str(value))
-            for key, value in _pairs(self.task_aliases, noun="task aliases")
+            (str(key), str(value)) for key, value in _pairs(self.task_aliases, noun="task aliases")
         )
         goal_aliases = tuple(
-            (str(key), str(value))
-            for key, value in _pairs(self.goal_aliases, noun="goal aliases")
+            (str(key), str(value)) for key, value in _pairs(self.goal_aliases, noun="goal aliases")
         )
         task_records = tuple(
             (key, _frozen_mapping(value, noun=f"task record {key}"))
@@ -325,12 +313,10 @@ class CanonicalProjectionSnapshot:
             for key, value in _pairs(self.dependencies, noun="dependencies")
         )
         statuses = tuple(
-            (key, _semantic_status(value))
-            for key, value in _pairs(self.statuses, noun="statuses")
+            (key, _semantic_status(value)) for key, value in _pairs(self.statuses, noun="statuses")
         )
         task_revisions = tuple(
-            (key, int(value))
-            for key, value in _pairs(self.task_revisions, noun="task revisions")
+            (key, int(value)) for key, value in _pairs(self.task_revisions, noun="task revisions")
         )
         expected_tasks = set(task_cids)
         expected_goals = set(goal_cids)
@@ -347,18 +333,16 @@ class CanonicalProjectionSnapshot:
             raise TaskSourceIntegrityError(
                 "canonical projection task components disagree on population"
             )
-        if (
-            {key for key, _value in goal_aliases} != expected_goals
-            or {key for key, _value in goal_records} != expected_goals
-        ):
+        if {key for key, _value in goal_aliases} != expected_goals or {
+            key for key, _value in goal_records
+        } != expected_goals:
             raise TaskSourceIntegrityError(
                 "canonical projection goal components disagree on population"
             )
         aliases = [value for _key, value in task_aliases]
         goal_alias_values = [value for _key, value in goal_aliases]
-        if (
-            len(aliases) != len(set(aliases))
-            or len(goal_alias_values) != len(set(goal_alias_values))
+        if len(aliases) != len(set(aliases)) or len(goal_alias_values) != len(
+            set(goal_alias_values)
         ):
             raise TaskSourceIntegrityError("canonical projection aliases are duplicated")
         for task_cid, required in dependencies:
@@ -374,16 +358,13 @@ class CanonicalProjectionSnapshot:
                     goal_id=dict(goal_aliases)[
                         str(dict(task_records)[task_cid].get("goal_cid") or "")
                     ],
-                    goal_cid=str(
-                        dict(task_records)[task_cid].get("goal_cid") or ""
-                    ),
+                    goal_cid=str(dict(task_records)[task_cid].get("goal_cid") or ""),
                     title="canonical",
                     status=dict(statuses)[task_cid],
                     revision=dict(task_revisions)[task_cid],
                     ordinal=index,
                     dependency_task_ids=tuple(
-                        dict(task_aliases)[item]
-                        for item in dict(dependencies)[task_cid]
+                        dict(task_aliases)[item] for item in dict(dependencies)[task_cid]
                     ),
                     dependency_task_cids=dict(dependencies)[task_cid],
                     body=dict(dict(task_records)[task_cid]),
@@ -396,32 +377,21 @@ class CanonicalProjectionSnapshot:
             or not isinstance(self.revision, int)
             or self.revision < 1
         ):
-            raise TaskSourceIntegrityError(
-                "canonical projection revision must be positive"
-            )
+            raise TaskSourceIntegrityError("canonical projection revision must be positive")
         events = tuple(
-            _frozen_mapping(item, noun="canonical projection event")
-            for item in self.events
+            _frozen_mapping(item, noun="canonical projection event") for item in self.events
         )
         if len(events) > MAX_DUAL_EVENTS:
             raise TaskSourceBoundsError("canonical event history exceeds its bound")
-        if [int(item.get("sequence") or 0) for item in events] != list(
-            range(1, len(events) + 1)
-        ):
-            raise TaskSourceIntegrityError(
-                "canonical event sequence is not contiguous"
-            )
+        if [int(item.get("sequence") or 0) for item in events] != list(range(1, len(events) + 1)):
+            raise TaskSourceIntegrityError("canonical event sequence is not contiguous")
         if self.revision != len(events) + 1:
-            raise TaskSourceIntegrityError(
-                "canonical revision does not match its event history"
-            )
+            raise TaskSourceIntegrityError("canonical revision does not match its event history")
         event_revisions = {task_cid: 1 for task_cid in task_cids}
         for event in events:
             task_cid = str(event.get("task_cid") or "")
             if task_cid not in expected_tasks:
-                raise TaskSourceIntegrityError(
-                    "canonical event references an unknown task"
-                )
+                raise TaskSourceIntegrityError("canonical event references an unknown task")
             if event.get("event_type") == "status_changed":
                 event_revisions[task_cid] += 1
                 if int(event.get("task_revision") or 0) != event_revisions[task_cid]:
@@ -429,45 +399,30 @@ class CanonicalProjectionSnapshot:
                         "canonical task revision history is not contiguous"
                     )
         if dict(task_revisions) != event_revisions:
-            raise TaskSourceIntegrityError(
-                "canonical task revisions do not match status events"
-            )
+            raise TaskSourceIntegrityError("canonical task revisions do not match status events")
         reconstructed_statuses = dict(statuses)
         for event in reversed(events):
             if event.get("event_type") != "status_changed":
                 continue
             task_cid = str(event["task_cid"])
-            if reconstructed_statuses[task_cid] != _semantic_status(
-                event.get("status")
-            ):
+            if reconstructed_statuses[task_cid] != _semantic_status(event.get("status")):
                 raise TaskSourceIntegrityError(
                     "canonical status event outcome disagrees with current state"
                 )
-            reconstructed_statuses[task_cid] = _semantic_status(
-                event.get("previous_status")
-            )
+            reconstructed_statuses[task_cid] = _semantic_status(event.get("previous_status"))
         if any(value != "ready" for value in reconstructed_statuses.values()):
             raise TaskSourceIntegrityError(
                 "canonical status history does not begin at the admitted ready state"
             )
         ready_task_cids = tuple(str(item) for item in self.ready_task_cids)
         if set(ready_task_cids) - expected_tasks:
-            raise TaskSourceIntegrityError(
-                "canonical ready set references an unknown task"
-            )
-        satisfied = {
-            task_cid
-            for task_cid, status in statuses
-            if status in COMPLETED_STATUSES
-        }
+            raise TaskSourceIntegrityError("canonical ready set references an unknown task")
+        satisfied = {task_cid for task_cid, status in statuses if status in COMPLETED_STATUSES}
         expected_ready = tuple(
             task_cid
             for task_cid in task_cids
             if dict(statuses)[task_cid] == "ready"
-            and all(
-                dependency in satisfied
-                for dependency in dict(dependencies)[task_cid]
-            )
+            and all(dependency in satisfied for dependency in dict(dependencies)[task_cid])
         )
         if ready_task_cids != expected_ready:
             raise TaskSourceIntegrityError(
@@ -489,9 +444,7 @@ class CanonicalProjectionSnapshot:
             raise TaskSourceIntegrityError(
                 "canonical terminal outcome does not match task statuses"
             )
-        graph_record = _frozen_mapping(
-            self.graph_record, noun="canonical graph record"
-        )
+        graph_record = _frozen_mapping(self.graph_record, noun="canonical graph record")
         object.__setattr__(self, "task_cids", task_cids)
         object.__setattr__(self, "goal_cids", goal_cids)
         object.__setattr__(self, "task_aliases", task_aliases)
@@ -506,9 +459,7 @@ class CanonicalProjectionSnapshot:
         object.__setattr__(self, "graph_record", graph_record)
         expected_id = _operation_id(self.to_dict(include_snapshot_id=False))
         if self.snapshot_id and self.snapshot_id != expected_id:
-            raise TaskSourceIntegrityError(
-                "canonical projection snapshot digest does not match"
-            )
+            raise TaskSourceIntegrityError("canonical projection snapshot digest does not match")
         object.__setattr__(self, "snapshot_id", expected_id)
 
     def parity_dict(self) -> dict[str, Any]:
@@ -520,15 +471,9 @@ class CanonicalProjectionSnapshot:
             "goal_cids": list(self.goal_cids),
             "task_aliases": dict(self.task_aliases),
             "goal_aliases": dict(self.goal_aliases),
-            "task_records": {
-                key: dict(value) for key, value in self.task_records
-            },
-            "goal_records": {
-                key: dict(value) for key, value in self.goal_records
-            },
-            "dependencies": {
-                key: list(value) for key, value in self.dependencies
-            },
+            "task_records": {key: dict(value) for key, value in self.task_records},
+            "goal_records": {key: dict(value) for key, value in self.goal_records},
+            "dependencies": {key: list(value) for key, value in self.dependencies},
             "statuses": dict(self.statuses),
             "task_revisions": dict(self.task_revisions),
             "ready_task_cids": list(self.ready_task_cids),
@@ -596,28 +541,16 @@ class CanonicalProjectionSnapshot:
             plan_root=str(value.get("plan_root") or ""),
             task_cids=tuple(value.get("task_cids") or ()),
             goal_cids=tuple(value.get("goal_cids") or ()),
-            task_aliases=_pairs(
-                value.get("task_aliases") or {}, noun="task aliases"
-            ),
-            goal_aliases=_pairs(
-                value.get("goal_aliases") or {}, noun="goal aliases"
-            ),
-            task_records=_pairs(
-                value.get("task_records") or {}, noun="task records"
-            ),
-            goal_records=_pairs(
-                value.get("goal_records") or {}, noun="goal records"
-            ),
+            task_aliases=_pairs(value.get("task_aliases") or {}, noun="task aliases"),
+            goal_aliases=_pairs(value.get("goal_aliases") or {}, noun="goal aliases"),
+            task_records=_pairs(value.get("task_records") or {}, noun="task records"),
+            goal_records=_pairs(value.get("goal_records") or {}, noun="goal records"),
             dependencies=tuple(
                 (key, tuple(member))
-                for key, member in _pairs(
-                    value.get("dependencies") or {}, noun="dependencies"
-                )
+                for key, member in _pairs(value.get("dependencies") or {}, noun="dependencies")
             ),
             statuses=_pairs(value.get("statuses") or {}, noun="statuses"),
-            task_revisions=_pairs(
-                value.get("task_revisions") or {}, noun="task revisions"
-            ),
+            task_revisions=_pairs(value.get("task_revisions") or {}, noun="task revisions"),
             ready_task_cids=tuple(value.get("ready_task_cids") or ()),
             revision=int(value.get("revision") or 0),
             events=tuple(value.get("events") or ()),
@@ -700,9 +633,7 @@ class TaskSourceIdentity:
         if self.protocol_schema != TASK_SOURCE_PROTOCOL_SCHEMA:
             raise UnsupportedTaskSourceError("unsupported task-source protocol schema")
         if self.source_kind not in SUPPORTED_SOURCE_KINDS:
-            raise UnsupportedTaskSourceError(
-                f"unsupported task-source kind {self.source_kind!r}"
-            )
+            raise UnsupportedTaskSourceError(f"unsupported task-source kind {self.source_kind!r}")
         for name in ("locator", "source_id", "root_id", "source_schema"):
             value = str(getattr(self, name) or "").strip()
             if not value or "\x00" in value or "\n" in value or "\r" in value:
@@ -749,9 +680,7 @@ class TaskSourceIdentity:
             source_schema=str(value.get("source_schema") or ""),
             schema_version=int(value.get("schema_version") or 0),
             repository_root_id=str(value.get("repository_root_id") or ""),
-            protocol_schema=str(
-                value.get("protocol_schema") or TASK_SOURCE_PROTOCOL_SCHEMA
-            ),
+            protocol_schema=str(value.get("protocol_schema") or TASK_SOURCE_PROTOCOL_SCHEMA),
         )
         claimed = str(value.get("identity_id") or "")
         if claimed and claimed != result.identity_id:
@@ -952,9 +881,7 @@ class TaskSource(Protocol):
         receipt: Mapping[str, Any] | None = None,
     ) -> TaskSourceCASResult: ...
 
-    def append_event(
-        self, event_type: str, payload: Mapping[str, Any]
-    ) -> Mapping[str, Any]: ...
+    def append_event(self, event_type: str, payload: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
     def watch(
         self,
@@ -1039,9 +966,7 @@ class CanonicalTaskSource:
         if backend_path is None:
             raise UnsupportedTaskSourceError("task-source backend has no path")
         self.path = Path(backend_path).absolute()
-        self.events_path = Path(
-            getattr(backend, "events_path", self.path)
-        ).absolute()
+        self.events_path = Path(getattr(backend, "events_path", self.path)).absolute()
         observed = self._observe_identity()
         expected = (
             TaskSourceIdentity.from_dict(expected_identity)
@@ -1127,13 +1052,9 @@ class CanonicalTaskSource:
         try:
             current = self._observe_identity()
         except Exception as exc:
-            raise TaskSourceIntegrityError(
-                f"could not verify task-source identity: {exc}"
-            ) from exc
+            raise TaskSourceIntegrityError(f"could not verify task-source identity: {exc}") from exc
         if current != self._identity:
-            raise TaskSourceIntegrityError(
-                "task-source identity changed during the daemon run"
-            )
+            raise TaskSourceIntegrityError("task-source identity changed during the daemon run")
         return current
 
     @staticmethod
@@ -1166,20 +1087,9 @@ class CanonicalTaskSource:
         body = dict(record.body)
         dependency_cids = tuple(str(item) for item in record.dependencies)
         alias_map = dict(aliases or {})
-        dependency_aliases = tuple(
-            alias_map.get(item, item) for item in dependency_cids
-        )
-        title = str(
-            body.get("objective")
-            or body.get("title")
-            or body.get("description")
-            or ""
-        )
-        goal_id = str(
-            body.get("goal_id")
-            or body.get("goal_key")
-            or record.goal_cid
-        )
+        dependency_aliases = tuple(alias_map.get(item, item) for item in dependency_cids)
+        title = str(body.get("objective") or body.get("title") or body.get("description") or "")
+        goal_id = str(body.get("goal_id") or body.get("goal_key") or record.goal_cid)
         return TaskSourceTask(
             task_id=str(record.task_alias),
             task_cid=str(record.task_cid),
@@ -1192,9 +1102,7 @@ class CanonicalTaskSource:
             dependency_task_ids=dependency_aliases,
             dependency_task_cids=dependency_cids,
             body=body,
-            board_namespace=str(
-                body.get("board_namespace") or body.get("track") or "duckdb"
-            ),
+            board_namespace=str(body.get("board_namespace") or body.get("track") or "duckdb"),
             source_line=int(record.ordinal) + 1,
         )
 
@@ -1206,13 +1114,10 @@ class CanonicalTaskSource:
                 self._markdown_task(item, raw.board_revision, index)
                 for index, item in enumerate(raw.tasks)
             )
-            dependency_count = sum(
-                len(item.dependency_task_cids) for item in tasks
-            )
+            dependency_count = sum(len(item.dependency_task_cids) for item in tasks)
             terminal = bool(tasks) and all(
                 item.status in COMPLETED_STATUSES
-                or item.status
-                in {"failed", "rejected", "cancelled", "quarantined"}
+                or item.status in {"failed", "rejected", "cancelled", "quarantined"}
                 for item in tasks
             )
             return TaskSourceSnapshot(
@@ -1245,9 +1150,7 @@ class CanonicalTaskSource:
             page = self.backend.list_tasks(cursor=cursor, limit=MAX_QUERY_LIMIT)
             records.extend(page.tasks)
             if len(records) > MAX_SNAPSHOT_TASKS:
-                raise TaskSourceBoundsError(
-                    "task population exceeds the common snapshot bound"
-                )
+                raise TaskSourceBoundsError("task population exceeds the common snapshot bound")
             cursor = str(page.next_cursor or "")
             if not cursor:
                 break
@@ -1260,23 +1163,15 @@ class CanonicalTaskSource:
         tasks: Sequence[TaskSourceTask],
     ) -> tuple[TaskSourceTask, ...]:
         by_cid = {item.task_cid: item for item in tasks}
-        dependencies = {
-            item.task_cid: set(item.dependency_task_cids) for item in tasks
-        }
+        dependencies = {item.task_cid: set(item.dependency_task_cids) for item in tasks}
         dependents = {item.task_cid: set() for item in tasks}
         for task_cid, required in dependencies.items():
             unknown = required - set(by_cid)
             if unknown:
-                raise TaskSourceIntegrityError(
-                    f"task {task_cid!r} references unknown dependencies"
-                )
+                raise TaskSourceIntegrityError(f"task {task_cid!r} references unknown dependencies")
             for dependency in required:
                 dependents[dependency].add(task_cid)
-        ready = sorted(
-            task_cid
-            for task_cid, required in dependencies.items()
-            if not required
-        )
+        ready = sorted(task_cid for task_cid, required in dependencies.items() if not required)
         ordered: list[TaskSourceTask] = []
         while ready:
             task_cid = ready.pop(0)
@@ -1316,11 +1211,7 @@ class CanonicalTaskSource:
             if cursor
             else 0
         )
-        selected = tuple(
-            item
-            for item in current.tasks
-            if not statuses or item.status in statuses
-        )
+        selected = tuple(item for item in current.tasks if not statuses or item.status in statuses)
         tasks = selected[offset : offset + selected_limit]
         next_offset = offset + len(tasks)
         next_cursor = (
@@ -1336,9 +1227,7 @@ class CanonicalTaskSource:
         return TaskSourcePage(tasks=tasks, revision=current.revision, next_cursor=next_cursor)
 
     def _duckdb_aliases(self) -> dict[str, str]:
-        return {
-            item.task_cid: item.task_id for item in self._all_duckdb_tasks()
-        }
+        return {item.task_cid: item.task_id for item in self._all_duckdb_tasks()}
 
     def get(self, task_id: str) -> TaskSourceTask | None:
         self._require_pinned()
@@ -1351,9 +1240,7 @@ class CanonicalTaskSource:
         if self.source_kind == "markdown":
             snapshot = self.backend.snapshot()
             ordinal = next(
-                index
-                for index, item in enumerate(snapshot.tasks)
-                if item.task_cid == raw.task_cid
+                index for index, item in enumerate(snapshot.tasks) if item.task_cid == raw.task_cid
             )
             return self._markdown_task(raw, snapshot.board_revision, ordinal)
         return self._duckdb_task(raw, self._duckdb_aliases())
@@ -1380,13 +1267,10 @@ class CanonicalTaskSource:
         unknown = (resolved_completed | resolved_blocked) - set(by_cid)
         if unknown:
             raise TaskSourceIntegrityError(
-                "readiness input references unknown tasks: "
-                + ", ".join(sorted(unknown))
+                "readiness input references unknown tasks: " + ", ".join(sorted(unknown))
             )
         satisfied = resolved_completed | {
-            item.task_cid
-            for item in snapshot.tasks
-            if item.status in COMPLETED_STATUSES
+            item.task_cid for item in snapshot.tasks if item.status in COMPLETED_STATUSES
         }
         unavailable = resolved_blocked | {
             item.task_cid for item in snapshot.tasks if item.status == "blocked"
@@ -1419,9 +1303,7 @@ class CanonicalTaskSource:
         expected = {
             str(item).strip().lower()
             for item in (
-                (expected_status,)
-                if isinstance(expected_status, str)
-                else tuple(expected_status)
+                (expected_status,) if isinstance(expected_status, str) else tuple(expected_status)
             )
         }
         if not expected:
@@ -1505,9 +1387,7 @@ class CanonicalTaskSource:
         try:
             if self.source_kind == "markdown":
                 return self.backend.append_event(event_type, enriched)
-            return self.backend.append_event(
-                {**enriched, "event_type": event_type}
-            )
+            return self.backend.append_event({**enriched, "event_type": event_type})
         except Exception as exc:
             raise self._translated(exc) from exc
 
@@ -1539,11 +1419,7 @@ class CanonicalTaskSource:
                 revision=snapshot.revision,
             )
             if cursor
-            else (
-                self._markdown_initial_cursor()
-                if self.source_kind == "markdown"
-                else 0
-            )
+            else (self._markdown_initial_cursor() if self.source_kind == "markdown" else 0)
         )
         try:
             if self.source_kind == "markdown":
@@ -1595,9 +1471,7 @@ class CanonicalTaskSource:
         try:
             current = self._observe_identity()
             if hasattr(self, "_identity") and current != self._identity:
-                raise TaskSourceIntegrityError(
-                    "task-source identity changed during the daemon run"
-                )
+                raise TaskSourceIntegrityError("task-source identity changed during the daemon run")
             if self.source_kind == "markdown":
                 native = self.backend.check_integrity()
                 if not native.valid:
@@ -1640,8 +1514,7 @@ class CanonicalTaskSource:
         if "bound" in name or "limit" in text.lower():
             return TaskSourceBoundsError(text)
         if any(token in name for token in ("conflict", "stale")) or any(
-            token in text.lower()
-            for token in ("stale", "compare-and-swap", "fence", "conflict")
+            token in text.lower() for token in ("stale", "compare-and-swap", "fence", "conflict")
         ):
             return TaskSourceConflictError(text)
         return TaskSourceIntegrityError(text)
@@ -1679,11 +1552,7 @@ def _canonical_event_receipt(
         "logical_transaction_id",
     }
     receipt = dict(value) if markdown else dict(value.get("receipt") or {})
-    return {
-        str(key): member
-        for key, member in receipt.items()
-        if str(key) not in generated
-    }
+    return {str(key): member for key, member in receipt.items() if str(key) not in generated}
 
 
 def _canonical_events(source: CanonicalTaskSource) -> tuple[Mapping[str, Any], ...]:
@@ -1715,16 +1584,8 @@ def _canonical_events(source: CanonicalTaskSource) -> tuple[Mapping[str, Any], .
     selected: list[Mapping[str, Any]] = []
     task_revisions: dict[str, int] = {}
     for raw in raw_events:
-        body = (
-            dict(raw)
-            if source.source_kind == "markdown"
-            else dict(raw.get("body") or {})
-        )
-        receipt = (
-            body
-            if source.source_kind == "markdown"
-            else dict(body.get("receipt") or {})
-        )
+        body = dict(raw) if source.source_kind == "markdown" else dict(raw.get("body") or {})
+        receipt = body if source.source_kind == "markdown" else dict(body.get("receipt") or {})
         carried = body.get("dual_event") or receipt.get("dual_event")
         if isinstance(carried, Mapping):
             event = dict(carried)
@@ -1735,12 +1596,7 @@ def _canonical_events(source: CanonicalTaskSource) -> tuple[Mapping[str, Any], .
                     event.get("task_revision") or 0
                 )
             continue
-        raw_type = str(
-            raw.get("type")
-            or raw.get("event_type")
-            or body.get("event_type")
-            or ""
-        )
+        raw_type = str(raw.get("type") or raw.get("event_type") or body.get("event_type") or "")
         task_cid = str(raw.get("task_cid") or body.get("task_cid") or "")
         if raw_type in {"task_status_changed", "status_changed"}:
             task_revision = task_revisions.get(task_cid, 1) + 1
@@ -1757,9 +1613,7 @@ def _canonical_events(source: CanonicalTaskSource) -> tuple[Mapping[str, Any], .
                 ),
             }
         else:
-            payload = _canonical_event_receipt(
-                body, markdown=source.source_kind == "markdown"
-            )
+            payload = _canonical_event_receipt(body, markdown=source.source_kind == "markdown")
             event = {
                 "sequence": len(selected) + 1,
                 "event_type": raw_type,
@@ -1787,9 +1641,7 @@ def _markdown_graph_record(raw: Any) -> dict[str, Any]:
         tasks[str(item.task_cid)] = _immutable_record(task)
         for goal in metadata.get("goal_records") or ():
             if not isinstance(goal, Mapping):
-                raise TaskSourceIntegrityError(
-                    "Markdown immutable goal record is malformed"
-                )
+                raise TaskSourceIntegrityError("Markdown immutable goal record is malformed")
             goal_cid = str(goal.get("content_id") or "")
             goals[goal_cid] = _immutable_record(goal)
     return {
@@ -1801,9 +1653,7 @@ def _markdown_graph_record(raw: Any) -> dict[str, Any]:
 
 def _duckdb_carried_metadata(source: CanonicalTaskSource) -> dict[str, Any]:
     try:
-        rows = source.backend.query(
-            "materialization_receipts", cursor=0, limit=MAX_QUERY_LIMIT
-        )
+        rows = source.backend.query("materialization_receipts", cursor=0, limit=MAX_QUERY_LIMIT)
     except Exception:
         return {}
     for row in rows:
@@ -1812,9 +1662,7 @@ def _duckdb_carried_metadata(source: CanonicalTaskSource) -> dict[str, Any]:
         except (TypeError, ValueError):
             continue
         receipt = body.get("receipt")
-        if isinstance(receipt, Mapping) and isinstance(
-            receipt.get("canonical_graph"), Mapping
-        ):
+        if isinstance(receipt, Mapping) and isinstance(receipt.get("canonical_graph"), Mapping):
             return json.loads(_canonical_bytes(dict(receipt)))
     return {}
 
@@ -1829,9 +1677,7 @@ def _duckdb_query_all(
     cursor = 0
     while True:
         page = tuple(
-            source.backend.query(
-                table, cursor=cursor, limit=min(MAX_QUERY_LIMIT, maximum)
-            )
+            source.backend.query(table, cursor=cursor, limit=min(MAX_QUERY_LIMIT, maximum))
         )
         records.extend(dict(item) for item in page)
         if len(records) > maximum:
@@ -1849,11 +1695,7 @@ def canonical_projection_snapshot(
 ) -> CanonicalProjectionSnapshot:
     """Independently verify and export one projection into canonical form."""
 
-    selected = (
-        source
-        if isinstance(source, CanonicalTaskSource)
-        else open_task_source(source)
-    )
+    selected = source if isinstance(source, CanonicalTaskSource) else open_task_source(source)
     if isinstance(selected, DualTaskSource):
         return selected.canonical_snapshot()
     selected.check_integrity().require_valid()
@@ -1873,15 +1715,10 @@ def canonical_projection_snapshot(
         goal_records: dict[str, Mapping[str, Any]] = {}
         for item in raw.tasks:
             for goal in item.metadata.get("goal_records") or ():
-                goal_records[str(goal.get("content_id") or "")] = _immutable_record(
-                    goal
-                )
-        goal_aliases = {
-            item.goal_cid: item.goal_id for item in snapshot.tasks
-        }
+                goal_records[str(goal.get("content_id") or "")] = _immutable_record(goal)
+        goal_aliases = {item.goal_cid: item.goal_id for item in snapshot.tasks}
         graph_goals = {
-            str(item.get("content_id") or ""): item
-            for item in graph_record.get("goals") or ()
+            str(item.get("content_id") or ""): item for item in graph_record.get("goals") or ()
         }
         for goal_cid, goal in graph_goals.items():
             goal_aliases.setdefault(goal_cid, str(goal.get("goal_key") or goal_cid))
@@ -1894,9 +1731,7 @@ def canonical_projection_snapshot(
         graph_record = dict(carried.get("canonical_graph") or {})
         goal_records = {}
         goal_aliases = {}
-        for row in _duckdb_query_all(
-            selected, "goals", maximum=MAX_SNAPSHOT_TASKS
-        ):
+        for row in _duckdb_query_all(selected, "goals", maximum=MAX_SNAPSHOT_TASKS):
             goal_cid = str(row["goal_cid"])
             try:
                 goal_body = json.loads(str(row["body_json"]))
@@ -1909,29 +1744,15 @@ def canonical_projection_snapshot(
         repository_root_id = selected.identity.repository_root_id
         board_namespace = str(
             carried.get("board_namespace")
-            or (
-                snapshot.tasks[0].board_namespace
-                if snapshot.tasks
-                else "prompt-workflow"
-            )
+            or (snapshot.tasks[0].board_namespace if snapshot.tasks else "prompt-workflow")
         )
 
     tasks = tuple(snapshot.tasks)
     task_aliases = {item.task_cid: item.task_id for item in tasks}
-    task_records = {
-        item.task_cid: _immutable_record(item.body) for item in tasks
-    }
-    dependencies = {
-        item.task_cid: tuple(item.dependency_task_cids) for item in tasks
-    }
-    statuses = {
-        item.task_cid: _semantic_status(item.status) for item in tasks
-    }
-    satisfied = {
-        task_cid
-        for task_cid, status in statuses.items()
-        if status in COMPLETED_STATUSES
-    }
+    task_records = {item.task_cid: _immutable_record(item.body) for item in tasks}
+    dependencies = {item.task_cid: tuple(item.dependency_task_cids) for item in tasks}
+    statuses = {item.task_cid: _semantic_status(item.status) for item in tasks}
+    satisfied = {task_cid for task_cid, status in statuses.items() if status in COMPLETED_STATUSES}
     ready_task_cids = tuple(
         item.task_cid
         for item in tasks
@@ -2018,9 +1839,7 @@ def compare_task_source_projections(
         "events",
         "terminal",
     )
-    mismatches = tuple(
-        name for name in component_names if left_value[name] != right_value[name]
-    )
+    mismatches = tuple(name for name in component_names if left_value[name] != right_value[name])
     parity_id = _operation_id(
         {
             "schema": TASK_SOURCE_PARITY_REPORT_SCHEMA,
@@ -2043,9 +1862,7 @@ def compare_task_source_projections(
 def _atomic_json_write(path: Path, value: Mapping[str, Any]) -> None:
     payload = _canonical_bytes(dict(value))
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=str(path.parent)
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -2089,20 +1906,14 @@ class DualTaskSource:
         auto_promote: bool = False,
     ) -> None:
         self.primary = (
-            primary
-            if isinstance(primary, CanonicalTaskSource)
-            else open_task_source(primary)
+            primary if isinstance(primary, CanonicalTaskSource) else open_task_source(primary)
         )
         self.shadow = (
-            shadow
-            if isinstance(shadow, CanonicalTaskSource)
-            else open_task_source(shadow)
+            shadow if isinstance(shadow, CanonicalTaskSource) else open_task_source(shadow)
         )
         self.primary_source = self.primary
         self.shadow_source = self.shadow
-        if isinstance(self.primary, DualTaskSource) or isinstance(
-            self.shadow, DualTaskSource
-        ):
+        if isinstance(self.primary, DualTaskSource) or isinstance(self.shadow, DualTaskSource):
             raise UnsupportedTaskSourceError("nested dual task sources are unsupported")
         if self.primary.source_kind == self.shadow.source_kind:
             raise UnsupportedTaskSourceError(
@@ -2116,13 +1927,9 @@ class DualTaskSource:
         self.events_path = self.primary.events_path
         self.journal_path = Path(
             journal_path
-            or self.primary.path.with_name(
-                f".{self.primary.path.name}.dual-task-source.json"
-            )
+            or self.primary.path.with_name(f".{self.primary.path.name}.dual-task-source.json")
         ).absolute()
-        self._lock_path = self.journal_path.with_name(
-            f".{self.journal_path.name}.lock"
-        )
+        self._lock_path = self.journal_path.with_name(f".{self.journal_path.name}.lock")
         self._fault_injector = fault_injector
         self._promoted = False
         self._quarantined = False
@@ -2142,8 +1949,7 @@ class DualTaskSource:
             source_schema=DUAL_TASK_SOURCE_SCHEMA,
             schema_version=1,
             repository_root_id=(
-                self.primary.identity.repository_root_id
-                or self.shadow.identity.repository_root_id
+                self.primary.identity.repository_root_id or self.shadow.identity.repository_root_id
             ),
         )
         self._ensure_journal()
@@ -2158,9 +1964,7 @@ class DualTaskSource:
                 if source.source_kind == "markdown":
                     raw = source.backend.snapshot()
                     if raw.tasks:
-                        root = str(
-                            raw.tasks[0].metadata.get("candidate_plan_root") or ""
-                        )
+                        root = str(raw.tasks[0].metadata.get("candidate_plan_root") or "")
                         if root:
                             return root
                 elif source.identity.root_id:
@@ -2208,9 +2012,7 @@ class DualTaskSource:
             self._promoted = bool(payload.get("promoted"))
             self._quarantined = bool(payload.get("quarantined"))
             return
-        _atomic_json_write(
-            self.journal_path, self._journal_envelope(self._empty_journal())
-        )
+        _atomic_json_write(self.journal_path, self._journal_envelope(self._empty_journal()))
 
     def _read_journal(self) -> dict[str, Any]:
         try:
@@ -2221,22 +2023,16 @@ class DualTaskSource:
                 b"dual-task-source-journal-v1\0" + _canonical_bytes(payload)
             ).hexdigest()
         except Exception as exc:
-            raise TaskSourceQuarantinedError(
-                "dual task-source journal is corrupt"
-            ) from exc
+            raise TaskSourceQuarantinedError("dual task-source journal is corrupt") from exc
         if (
             digest != expected
             or payload.get("schema") != DUAL_TASK_SOURCE_JOURNAL_SCHEMA
             or payload.get("dual_id") != self._dual_id
             or not isinstance(payload.get("operations"), Mapping)
         ):
-            raise TaskSourceQuarantinedError(
-                "dual task-source journal is corrupt or foreign"
-            )
+            raise TaskSourceQuarantinedError("dual task-source journal is corrupt or foreign")
         if len(payload["operations"]) > MAX_DUAL_TRANSACTIONS:
-            raise TaskSourceBoundsError(
-                "dual task-source transaction journal exceeds its bound"
-            )
+            raise TaskSourceBoundsError("dual task-source transaction journal exceeds its bound")
         return dict(payload)
 
     def _write_journal(self, payload: Mapping[str, Any]) -> None:
@@ -2290,10 +2086,7 @@ class DualTaskSource:
             operations = self._read_journal()["operations"]
         except TaskSourceError:
             return True
-        return any(
-            record.get("state") in {"prepared", "partial"}
-            for record in operations.values()
-        )
+        return any(record.get("state") in {"prepared", "partial"} for record in operations.values())
 
     def _quarantine_operation(
         self,
@@ -2336,9 +2129,7 @@ class DualTaskSource:
                 primary_task = self.primary.get(task_cid)
                 shadow_task = self.shadow.get(task_cid)
                 if primary_task is None or shadow_task is None:
-                    self._quarantine_operation(
-                        payload, transaction_id, "task population changed"
-                    )
+                    self._quarantine_operation(payload, transaction_id, "task population changed")
                     raise TaskSourceQuarantinedError(
                         "dual transaction task population changed during recovery"
                     )
@@ -2384,9 +2175,7 @@ class DualTaskSource:
                     payload["operations"] = operations
                     self._write_journal(payload)
                     if record["state"] == "committed":
-                        compare_task_source_projections(
-                            self.primary, self.shadow
-                        ).require_valid()
+                        compare_task_source_projections(self.primary, self.shadow).require_valid()
                     recovered.append(transaction_id)
                 except Exception as exc:
                     self._quarantine_operation(
@@ -2443,18 +2232,14 @@ class DualTaskSource:
     def snapshot(self, *, include_tasks: bool = False) -> TaskSourceSnapshot:
         _report, left, right = self._require_operable()
         canonical = right if self._promoted else left
-        tasks = (
-            self._dual_tasks(self.active, canonical) if include_tasks else ()
-        )
+        tasks = self._dual_tasks(self.active, canonical) if include_tasks else ()
         return TaskSourceSnapshot(
             identity=self._identity,
             revision=canonical.revision,
             event_cursor=len(canonical.events),
             task_count=len(canonical.task_cids),
             goal_count=len(canonical.goal_cids),
-            dependency_count=sum(
-                len(value) for _key, value in canonical.dependencies
-            ),
+            dependency_count=sum(len(value) for _key, value in canonical.dependencies),
             terminal=canonical.terminal,
             tasks=tasks,
         )
@@ -2481,11 +2266,7 @@ class DualTaskSource:
             if cursor
             else 0
         )
-        selected = tuple(
-            task
-            for task in snapshot.tasks
-            if not statuses or task.status in statuses
-        )
+        selected = tuple(task for task in snapshot.tasks if not statuses or task.status in statuses)
         tasks = selected[offset : offset + selected_limit]
         next_offset = offset + len(tasks)
         next_cursor = (
@@ -2503,9 +2284,7 @@ class DualTaskSource:
     def get(self, task_id: str) -> TaskSourceTask | None:
         snapshot = self.snapshot(include_tasks=True)
         matches = [
-            item
-            for item in snapshot.tasks
-            if item.task_id == task_id or item.task_cid == task_id
+            item for item in snapshot.tasks if item.task_id == task_id or item.task_cid == task_id
         ]
         if len(matches) > 1:
             raise TaskSourceIntegrityError("dual task lookup is ambiguous")
@@ -2531,8 +2310,7 @@ class DualTaskSource:
         unknown = (completed | blocked) - set(by_cid)
         if unknown:
             raise TaskSourceIntegrityError(
-                "readiness input references unknown tasks: "
-                + ", ".join(sorted(unknown))
+                "readiness input references unknown tasks: " + ", ".join(sorted(unknown))
             )
         durable_completed = {
             item.task_cid
@@ -2568,22 +2346,15 @@ class DualTaskSource:
         expected = {
             str(item).strip().lower()
             for item in (
-                (expected_status,)
-                if isinstance(expected_status, str)
-                else tuple(expected_status)
+                (expected_status,) if isinstance(expected_status, str) else tuple(expected_status)
             )
         }
         if not expected:
             raise ValueError("expected_status must not be empty")
         selected_new_status = str(new_status or "").strip().lower()
         if selected_new_status not in _DUAL_MUTATION_STATUSES:
-            raise ValueError(
-                "new_status is not supported by both task-source projections"
-            )
-        if (
-            isinstance(expected_revision, bool)
-            or not isinstance(expected_revision, (str, int))
-        ):
+            raise ValueError("new_status is not supported by both task-source projections")
+        if isinstance(expected_revision, bool) or not isinstance(expected_revision, (str, int)):
             raise ValueError("expected_revision must be a task revision token")
         requested_receipt = json.loads(_canonical_bytes(dict(receipt or {})))
         with exclusive_file_lock(self._lock_path, timeout_seconds=30.0):
@@ -2626,22 +2397,12 @@ class DualTaskSource:
             primary_task = self.primary.get(task_cid)
             shadow_task = self.shadow.get(task_cid)
             if primary_task is None or shadow_task is None:
-                raise TaskSourceIntegrityError(
-                    "dual task population changed before mutation"
-                )
-            active_status = (
-                shadow_task.status if self._promoted else primary_task.status
-            )
+                raise TaskSourceIntegrityError("dual task population changed before mutation")
+            active_status = shadow_task.status if self._promoted else primary_task.status
             if active_status not in expected:
-                raise TaskSourceConflictError(
-                    "task status compare-and-swap conflict"
-                )
-            if _semantic_status(primary_task.status) != _semantic_status(
-                shadow_task.status
-            ):
-                raise TaskSourceIntegrityError(
-                    "dual task statuses disagree before mutation"
-                )
+                raise TaskSourceConflictError("task status compare-and-swap conflict")
+            if _semantic_status(primary_task.status) != _semantic_status(shadow_task.status):
+                raise TaskSourceIntegrityError("dual task statuses disagree before mutation")
             transaction_id = _operation_id(
                 {
                     "schema": DUAL_TASK_SOURCE_TRANSACTION_SCHEMA,
@@ -2719,17 +2480,11 @@ class DualTaskSource:
                     receipt=enriched,
                 )
                 self._fault("after_shadow")
-                parity = compare_task_source_projections(
-                    self.primary, self.shadow
-                )
+                parity = compare_task_source_projections(self.primary, self.shadow)
                 parity.require_valid()
                 operations[transaction_id]["state"] = "committed"
-                operations[transaction_id]["primary_receipt_id"] = (
-                    first_result.receipt_id
-                )
-                operations[transaction_id]["shadow_receipt_id"] = (
-                    second_result.receipt_id
-                )
+                operations[transaction_id]["primary_receipt_id"] = first_result.receipt_id
+                operations[transaction_id]["shadow_receipt_id"] = second_result.receipt_id
                 payload["operations"] = operations
                 self._write_journal(payload)
             except BaseException as exc:
@@ -2754,9 +2509,7 @@ class DualTaskSource:
 
     cas_status = compare_and_swap_status
 
-    def append_event(
-        self, event_type: str, payload: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    def append_event(self, event_type: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         """Append a replay-safe event to both projections.
 
         Event appends use the same durable idempotency journal as status
@@ -2772,17 +2525,13 @@ class DualTaskSource:
             _report, left, right = self._require_operable()
             canonical = right if self._promoted else left
             task_key = str(
-                selected_payload.get("task_cid")
-                or selected_payload.get("task_id")
-                or ""
+                selected_payload.get("task_cid") or selected_payload.get("task_id") or ""
             )
             aliases = dict(canonical.task_aliases)
             reverse = {alias: cid for cid, alias in aliases.items()}
             task_cid = task_key if task_key in aliases else reverse.get(task_key, "")
             if not task_cid:
-                raise TaskSourceIntegrityError(
-                    "dual event must reference one canonical task"
-                )
+                raise TaskSourceIntegrityError("dual event must reference one canonical task")
             transaction_id = _operation_id(
                 {
                     "schema": DUAL_TASK_SOURCE_TRANSACTION_SCHEMA,
@@ -2832,9 +2581,7 @@ class DualTaskSource:
                 journal["operations"] = operations
                 self._write_journal(journal)
                 shadow_result = self.shadow.append_event(event_type, enriched)
-                compare_task_source_projections(
-                    self.primary, self.shadow
-                ).require_valid()
+                compare_task_source_projections(self.primary, self.shadow).require_valid()
                 operations[transaction_id]["state"] = "committed"
                 journal["operations"] = operations
                 self._write_journal(journal)
@@ -2846,8 +2593,7 @@ class DualTaskSource:
             return {
                 "event_id": transaction_id,
                 "changed": bool(
-                    primary_result.get("changed", True)
-                    or shadow_result.get("changed", True)
+                    primary_result.get("changed", True) or shadow_result.get("changed", True)
                 ),
                 "revision": canonical.revision + 1,
             }
@@ -2932,9 +2678,7 @@ class DualTaskSource:
         with exclusive_file_lock(self._lock_path, timeout_seconds=30.0):
             report = self.parity()
             if not report.valid:
-                raise TaskSourceIntegrityError(
-                    "parity disagreement prevents projection promotion"
-                )
+                raise TaskSourceIntegrityError("parity disagreement prevents projection promotion")
             if automatic and not report.promotion_allowed:
                 raise TaskSourceIntegrityError(
                     "automatic promotion is blocked by recovery or quarantine state"
@@ -2974,9 +2718,7 @@ def _graph_with_lifecycle(value: Mapping[str, Any]) -> dict[str, Any]:
     for task in graph.get("tasks") or ():
         task.update({"status": "proposed", "created_at_ms": 0, "updated_at_ms": 0})
     for evidence in graph.get("evidence") or ():
-        evidence.update(
-            {"status": "admitted", "created_at_ms": 0, "updated_at_ms": 0}
-        )
+        evidence.update({"status": "admitted", "created_at_ms": 0, "updated_at_ms": 0})
     graph.update({"status": "proposed", "created_at_ms": 0, "updated_at_ms": 0})
     return graph
 
@@ -2999,9 +2741,7 @@ def _markdown_projection_from_snapshot(
     from ..prompt.prompt_workflow import PromptGoalGraph
 
     try:
-        graph = PromptGoalGraph.from_dict(
-            _graph_with_lifecycle(snapshot.graph_record)
-        )
+        graph = PromptGoalGraph.from_dict(_graph_with_lifecycle(snapshot.graph_record))
     except Exception as exc:
         raise TaskSourceIntegrityError(
             "canonical graph payload cannot rebuild a verified Markdown projection"
@@ -3014,9 +2754,7 @@ def _markdown_projection_from_snapshot(
     goal_aliases = dict(snapshot.goal_aliases)
     ordered_tasks = _topological_tasks(graph)
     if tuple(item.task_cid for item in ordered_tasks) != snapshot.task_cids:
-        raise TaskSourceIntegrityError(
-            "canonical graph topology disagrees with the snapshot"
-        )
+        raise TaskSourceIntegrityError("canonical graph topology disagrees with the snapshot")
     projection_root = snapshot.admitted_plan_root or snapshot.plan_root
     projection_id = _projection_identity(
         plan_root=projection_root,
@@ -3026,14 +2764,10 @@ def _markdown_projection_from_snapshot(
     )
     graph_semantic = _semantic(graph.to_dict())
     graph_core = {
-        key: member
-        for key, member in graph_semantic.items()
-        if key not in {"goals", "tasks"}
+        key: member for key, member in graph_semantic.items() if key not in {"goals", "tasks"}
     }
     goal_records = tuple(_semantic(goal.to_record()) for goal in graph.goals)
-    assignments: list[list[Mapping[str, Any]]] = [
-        [] for _item in ordered_tasks
-    ]
+    assignments: list[list[Mapping[str, Any]]] = [[] for _item in ordered_tasks]
     for index, record in enumerate(goal_records):
         assignments[index % len(assignments)].append(record)
     goals = {item.goal_cid: item for item in graph.goals}
@@ -3052,8 +2786,7 @@ def _markdown_projection_from_snapshot(
                     task_alias=task_aliases[task.task_cid],
                     goal_alias=goal_aliases[goal.goal_cid],
                     dependency_aliases=tuple(
-                        task_aliases[item]
-                        for item in task.dependency_task_cids
+                        task_aliases[item] for item in task.dependency_task_cids
                     ),
                     plan_root=projection_root,
                     candidate_plan_root=snapshot.plan_root,
@@ -3091,9 +2824,7 @@ def _replay_canonical_events(
         if event_type == "status_changed":
             task = source.get(task_cid)
             if task is None:
-                raise TaskSourceIntegrityError(
-                    "migration event references an unknown task"
-                )
+                raise TaskSourceIntegrityError("migration event references an unknown task")
             if _semantic_status(task.status) != str(event["previous_status"]):
                 raise TaskSourceIntegrityError(
                     "migration event history does not match target status"
@@ -3158,9 +2889,7 @@ def rebuild_task_source_projection(
         )
     else:
         native_target = target
-        path_value = getattr(target, "path", None) or getattr(
-            target, "database_path", None
-        )
+        path_value = getattr(target, "path", None) or getattr(target, "database_path", None)
         if path_value is None:
             raise UnsupportedTaskSourceError("migration target has no path")
         path = Path(path_value).absolute()
@@ -3192,8 +2921,7 @@ def rebuild_task_source_projection(
             {
                 "payload": payload,
                 "digest": hashlib.sha256(
-                    b"task-source-projection-migration-v1\0"
-                    + _canonical_bytes(payload)
+                    b"task-source-projection-migration-v1\0" + _canonical_bytes(payload)
                 ).hexdigest(),
             },
         )
@@ -3204,17 +2932,12 @@ def rebuild_task_source_projection(
             payload = envelope["payload"]
             digest = str(envelope["digest"])
             expected = hashlib.sha256(
-                b"task-source-projection-migration-v1\0"
-                + _canonical_bytes(payload)
+                b"task-source-projection-migration-v1\0" + _canonical_bytes(payload)
             ).hexdigest()
         except Exception as exc:
-            raise TaskSourceQuarantinedError(
-                "projection migration journal is corrupt"
-            ) from exc
+            raise TaskSourceQuarantinedError("projection migration journal is corrupt") from exc
         if digest != expected or not isinstance(payload, Mapping):
-            raise TaskSourceQuarantinedError(
-                "projection migration journal digest does not match"
-            )
+            raise TaskSourceQuarantinedError("projection migration journal digest does not match")
         return dict(payload)
 
     from .duckdb_state import exclusive_file_lock
@@ -3228,9 +2951,7 @@ def rebuild_task_source_projection(
                 or state.get("migration_id") != migration_id
                 or state.get("snapshot_id") != verified.snapshot_id
             ):
-                raise TaskSourceQuarantinedError(
-                    "projection migration journal is stale or foreign"
-                )
+                raise TaskSourceQuarantinedError("projection migration journal is stale or foreign")
         else:
             state = {
                 "schema": TASK_SOURCE_MIGRATION_RECEIPT_SCHEMA,
@@ -3247,13 +2968,9 @@ def rebuild_task_source_projection(
 
         if state["phase"] == "verified":
             try:
-                rebuilt = open_task_source(
-                    native_target or path, kind=selected_kind
-                )
+                rebuilt = open_task_source(native_target or path, kind=selected_kind)
                 target_snapshot = canonical_projection_snapshot(rebuilt)
-                parity = compare_task_source_projections(
-                    verified, target_snapshot
-                )
+                parity = compare_task_source_projections(verified, target_snapshot)
                 parity.require_valid()
             except Exception:
                 # A projection can be corrupted after a completed migration.
@@ -3262,9 +2979,7 @@ def rebuild_task_source_projection(
                 state["phase"] = "snapshot_verified"
                 state.pop("target_snapshot_id", None)
                 state["quarantine_path"] = ""
-                state["quarantine_generation"] = (
-                    int(state.get("quarantine_generation") or 0) + 1
-                )
+                state["quarantine_generation"] = int(state.get("quarantine_generation") or 0) + 1
                 write_state(state)
             else:
                 return TaskSourceMigrationResult(
@@ -3278,22 +2993,16 @@ def rebuild_task_source_projection(
                     parity=parity,
                     receipt_id=migration_id,
                     quarantine_path=(
-                        Path(state["quarantine_path"])
-                        if state.get("quarantine_path")
-                        else None
+                        Path(state["quarantine_path"]) if state.get("quarantine_path") else None
                     ),
                 )
 
         quarantine_path: Path | None = (
-            Path(state["quarantine_path"])
-            if state.get("quarantine_path")
-            else None
+            Path(state["quarantine_path"]) if state.get("quarantine_path") else None
         )
         if state["phase"] == "snapshot_verified" and path.exists():
             try:
-                existing = open_task_source(
-                    native_target or path, kind=selected_kind
-                )
+                existing = open_task_source(native_target or path, kind=selected_kind)
                 existing_snapshot = canonical_projection_snapshot(existing)
                 parity = compare_task_source_projections(verified, existing_snapshot)
                 if parity.valid:
@@ -3312,21 +3021,15 @@ def rebuild_task_source_projection(
                     )
             except Exception:
                 pass
-            quarantine_generation = int(
-                state.get("quarantine_generation") or 0
-            )
-            generation_suffix = (
-                "" if quarantine_generation == 0 else f".{quarantine_generation}"
-            )
+            quarantine_generation = int(state.get("quarantine_generation") or 0)
+            generation_suffix = "" if quarantine_generation == 0 else f".{quarantine_generation}"
             quarantine_path = path.with_name(
                 f"{path.name}.quarantine."
                 f"{verified.snapshot_id.rsplit(':', 1)[-1][:16]}"
                 f"{generation_suffix}"
             )
             if quarantine_path.exists():
-                raise TaskSourceQuarantinedError(
-                    "projection quarantine destination already exists"
-                )
+                raise TaskSourceQuarantinedError("projection quarantine destination already exists")
             associated_paths = [path]
             if selected_kind == "markdown":
                 from .markdown_task_source import MarkdownTaskSource
@@ -3342,9 +3045,7 @@ def rebuild_task_source_projection(
                         Path(markdown_target.journal_path),
                     )
                 )
-            quarantine_suffix = (
-                verified.snapshot_id.rsplit(":", 1)[-1][:16]
-            )
+            quarantine_suffix = verified.snapshot_id.rsplit(":", 1)[-1][:16]
             quarantined_artifacts: list[str] = []
             # Sidecars move first so a newly materialized Markdown board can
             # never inherit a foreign event stream or recovery journal.
@@ -3355,8 +3056,7 @@ def rebuild_task_source_projection(
                     quarantine_path
                     if artifact == path
                     else artifact.with_name(
-                        f"{artifact.name}.quarantine.{quarantine_suffix}"
-                        f"{generation_suffix}"
+                        f"{artifact.name}.quarantine.{quarantine_suffix}{generation_suffix}"
                     )
                 )
                 if destination.exists():
@@ -3384,13 +3084,9 @@ def rebuild_task_source_projection(
                     raise TaskSourceIntegrityError(
                         "canonical graph payload is required to rebuild DuckDB"
                     )
-                graph = PromptGoalGraph.from_dict(
-                    _graph_with_lifecycle(verified.graph_record)
-                )
+                graph = PromptGoalGraph.from_dict(_graph_with_lifecycle(verified.graph_record))
                 tree_id = (
-                    repository_root_id
-                    or verified.repository_root_id
-                    or str(graph.program_root)
+                    repository_root_id or verified.repository_root_id or str(graph.program_root)
                 )
                 backend = DuckDBTaskSource(path)
                 backend.materialize(
@@ -3440,8 +3136,7 @@ def rebuild_task_source_projection(
             )
             write_state(state)
             raise TaskSourceQuarantinedError(
-                "rebuilt projection failed canonical parity: "
-                + ", ".join(parity.mismatches)
+                "rebuilt projection failed canonical parity: " + ", ".join(parity.mismatches)
             )
         state["phase"] = "verified"
         state["target_snapshot_id"] = target_snapshot.snapshot_id
@@ -3495,9 +3190,7 @@ def open_task_source(
                 else expected_identity
             )
             if source.identity != expected:
-                raise TaskSourceIntegrityError(
-                    "open dual source does not match expected identity"
-                )
+                raise TaskSourceIntegrityError("open dual source does not match expected identity")
         if expected_root_id and source.identity.root_id != expected_root_id:
             raise TaskSourceIntegrityError("task source has a foreign plan root")
         return source
@@ -3515,19 +3208,14 @@ def open_task_source(
                 else expected_identity
             )
             if source.identity != expected:
-                raise TaskSourceIntegrityError(
-                    "open source does not match expected identity"
-                )
+                raise TaskSourceIntegrityError("open source does not match expected identity")
         if expected_root_id and source.identity.root_id != expected_root_id:
             raise TaskSourceIntegrityError("task source has a foreign plan root")
         if (
             expected_repository_root_id
-            and source.identity.repository_root_id
-            != expected_repository_root_id
+            and source.identity.repository_root_id != expected_repository_root_id
         ):
-            raise TaskSourceIntegrityError(
-                "task source has a foreign repository root"
-            )
+            raise TaskSourceIntegrityError("task source has a foreign repository root")
         return source
 
     backend = source
@@ -3546,9 +3234,7 @@ def open_task_source(
 
             backend = DuckDBTaskSource(path, **backend_options)
         else:
-            raise UnsupportedTaskSourceError(
-                f"unsupported task-source kind {selected_kind!r}"
-            )
+            raise UnsupportedTaskSourceError(f"unsupported task-source kind {selected_kind!r}")
     return CanonicalTaskSource(
         backend,
         source_kind=selected_kind,

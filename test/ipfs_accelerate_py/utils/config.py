@@ -7,7 +7,8 @@ from os.path import isfile, join
 from os import walk
 import toml
 
-class config():
+
+class config:
     def __init__(self, collection=None, meta=None):
         this_dir = os.path.dirname(os.path.realpath(__file__))
         if meta is not None:
@@ -31,9 +32,9 @@ class config():
                             base[key] = value
                         return base
                 else:
-                    raise Exception('file not found: ' + overrides)
+                    raise Exception("file not found: " + overrides)
             else:
-                raise Exception('invalid override type: ' + str(type(overrides)))
+                raise Exception("invalid override type: " + str(type(overrides)))
         elif isinstance(overrides, dict):
             for item in overrides.items():
                 key = item[0]
@@ -44,14 +45,9 @@ class config():
                     base[key] = value
         else:
             return base
-    
+
     def findConfig(self):
-        paths = [
-            './config.toml',
-            '../config.toml',
-            '../config/config.toml',
-            './config/config.toml'
-        ]
+        paths = ["./config.toml", "../config.toml", "../config/config.toml", "./config/config.toml"]
         foundPath = None
 
         for path in paths:
@@ -59,11 +55,11 @@ class config():
             this_path = os.path.realpath(os.path.join(thisdir, path))
             if os.path.exists(this_path):
                 foundPath = this_path
-        
+
         print("foundPath: ", foundPath)
         return foundPath if foundPath != None else None
 
-    def loadConfig(self, configPath, overrides = None):
+    def loadConfig(self, configPath, overrides=None):
         if configPath is None and "findConfig" in dir(self):
             configPath = self.findConfig()
         with open(configPath) as f:
@@ -73,24 +69,29 @@ class config():
             else:
                 return self.overrideToml(config, overrides)
 
-    def requireConfig(self, opts = None):
+    def requireConfig(self, opts=None):
         configPath = None
         this_dir = os.path.dirname(os.path.realpath(__file__))
-        this_config = os.path.join(this_dir, 'config.toml')
+        this_config = os.path.join(this_dir, "config.toml")
         if type(opts) == str and os.path.exists(opts) and opts is not None:
             configPath = opts
-        elif  type(opts) == dict and 'config' in opts and os.path.exists(opts['config']) and opts['config'] is not None:
-            configPath = opts['config']
+        elif (
+            type(opts) == dict
+            and "config" in opts
+            and os.path.exists(opts["config"])
+            and opts["config"] is not None
+        ):
+            configPath = opts["config"]
         elif opts is None and "findConfig" in dir(self):
             configPath = self.findConfig(this_config)
-        
+
         if not configPath:
-            print('this_dir: ')
+            print("this_dir: ")
             print(this_dir)
-            print('this_config: ')
+            print("this_config: ")
             print(this_config)
-            print('no config file found')
-            print('make sure config.toml is in the working directory')
-            print('or specify path using --config')
+            print("no config file found")
+            print("make sure config.toml is in the working directory")
+            print("or specify path using --config")
             exit(1)
         return self.loadConfig(configPath, opts)

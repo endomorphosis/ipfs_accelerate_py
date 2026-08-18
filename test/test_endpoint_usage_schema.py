@@ -93,9 +93,7 @@ def _scope(**overrides):
 
 
 def test_requirement_and_schema_versions_are_stable():
-    assert ENDPOINT_USAGE_CONTRACT_REQUIREMENT_ID == (
-        "requirement:endpoint-usage-contract.v1"
-    )
+    assert ENDPOINT_USAGE_CONTRACT_REQUIREMENT_ID == ("requirement:endpoint-usage-contract.v1")
     assert SCHEMA_VERSION == "1.0"
     assert IDENTITY_POLICY_VERSION == "1.0"
 
@@ -209,12 +207,8 @@ def test_unknown_scope_is_isolated_and_requires_no_deployment():
 
 
 def test_credential_configuration_pseudonym_is_keyed_and_rejects_raw_tokens():
-    first = credential_configuration_pseudonym(
-        "env:EXAMPLE_API_KEY", key_id="ledger-a"
-    )
-    second = credential_configuration_pseudonym(
-        "env:EXAMPLE_API_KEY", key_id="ledger-b"
-    )
+    first = credential_configuration_pseudonym("env:EXAMPLE_API_KEY", key_id="ledger-a")
+    second = credential_configuration_pseudonym("env:EXAMPLE_API_KEY", key_id="ledger-b")
     assert first != second
     assert first.startswith("cred_")
     with pytest.raises(UsageIdentityError, match="configuration handle"):
@@ -252,16 +246,12 @@ def test_usage_vector_requires_currency_only_for_cost_micros():
     assert vector.entries[0].dimension is UsageDimension.COST_MICROS or any(
         entry.dimension is UsageDimension.COST_MICROS for entry in vector.entries
     )
-    cost = next(
-        entry for entry in vector.entries if entry.dimension is UsageDimension.COST_MICROS
-    )
+    cost = next(entry for entry in vector.entries if entry.dimension is UsageDimension.COST_MICROS)
     assert cost.currency == "USD"
     with pytest.raises(SchemaValidationError, match="currency is required"):
         UsageVectorEntry(dimension="cost_micros", amount=Quantity.finite(1))
     with pytest.raises(SchemaValidationError, match="only valid for cost_micros"):
-        UsageVectorEntry(
-            dimension="requests", amount=Quantity.finite(1), currency="USD"
-        )
+        UsageVectorEntry(dimension="requests", amount=Quantity.finite(1), currency="USD")
     assert UsageVector.from_dict(vector.to_dict()) == vector
 
 

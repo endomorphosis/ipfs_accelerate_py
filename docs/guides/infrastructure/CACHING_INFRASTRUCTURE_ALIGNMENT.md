@@ -33,7 +33,7 @@ should_skip, result = cache.should_skip_scan(
     repo="owner/repo",
     commit_sha="abc123",
     scan_config={"queries": "security-extended"},
-    changed_files=["src/main.py"]
+    changed_files=["src/main.py"],
 )
 
 if not should_skip:
@@ -57,7 +57,7 @@ if not should_skip:
 ```python
 from ipfs_accelerate_py.github_cli.credential_manager import (
     get_global_credential_manager,
-    CredentialScope
+    CredentialScope,
 )
 
 manager = get_global_credential_manager()
@@ -68,7 +68,7 @@ manager.store_credential(
     value="secret_value",
     scope=CredentialScope.REPO,
     scope_filter="owner/repo",
-    ttl_hours=24
+    ttl_hours=24,
 )
 
 # Retrieve credential
@@ -112,7 +112,7 @@ cache = GitHubAPICache(enable_universal_connectivity=True)
 stats = cache.get_stats()
 
 # New connectivity stats
-print(stats['connectivity'])
+print(stats["connectivity"])
 # {
 #     "discovered_peers": 5,
 #     "relay_peers": 2,
@@ -271,15 +271,17 @@ from ipfs_accelerate_py.github_cli import GitHubAPICache
 cache = GitHubAPICache(
     enable_p2p=True,
     enable_universal_connectivity=True,  # NEW
-    enable_peer_discovery=True
+    enable_peer_discovery=True,
 )
 
 # Use CodeQL cache
 from ipfs_accelerate_py.github_cli.codeql_cache import get_global_codeql_cache
+
 codeql_cache = get_global_codeql_cache()
 
 # Use credential manager
 from ipfs_accelerate_py.github_cli.credential_manager import get_global_credential_manager
+
 cred_manager = get_global_credential_manager()
 ```
 

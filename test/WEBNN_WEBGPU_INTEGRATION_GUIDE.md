@@ -932,34 +932,30 @@ On the Python side, the resource pool integrates with the Selenium bridge to ena
 from selenium_bridge import ResourcePoolBridge
 
 # Create resource pool bridge
-bridge = ResourcePoolBridge(
-    max_connections=4,
-    browser='chrome',
-    enable_gpu=True,
-    enable_cpu=True
-)
+bridge = ResourcePoolBridge(max_connections=4, browser="chrome", enable_gpu=True, enable_cpu=True)
 
 # Initialize with model configurations
-bridge.initialize([
-    {
-        'model_id': 'vision-model',
-        'model_path': 'https://huggingface.co/google/vit-base-patch16-224/resolve/main/model.onnx',
-        'backend': 'webgpu',
-        'family': 'vision'
-    },
-    {
-        'model_id': 'text-model',
-        'model_path': 'https://huggingface.co/bert-base-uncased/resolve/main/model.onnx',
-        'backend': 'cpu',
-        'family': 'text_embedding'
-    }
-])
+bridge.initialize(
+    [
+        {
+            "model_id": "vision-model",
+            "model_path": "https://huggingface.co/google/vit-base-patch16-224/resolve/main/model.onnx",
+            "backend": "webgpu",
+            "family": "vision",
+        },
+        {
+            "model_id": "text-model",
+            "model_path": "https://huggingface.co/bert-base-uncased/resolve/main/model.onnx",
+            "backend": "cpu",
+            "family": "text_embedding",
+        },
+    ]
+)
 
 # Run parallel inference
-vision_result, text_result = bridge.run_parallel([
-    ('vision-model', {'input': image_data}),
-    ('text-model', {'input_ids': text_data})
-])
+vision_result, text_result = bridge.run_parallel(
+    [("vision-model", {"input": image_data}), ("text-model", {"input_ids": text_data})]
+)
 
 # Process results
 print(f"Vision result shape: {vision_result.shape}")

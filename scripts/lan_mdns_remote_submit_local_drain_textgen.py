@@ -76,21 +76,33 @@ def _run_mesh_worker_process(*, queue_path: str, worker_id: str, mesh_peers: str
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Submit remote textgen tasks and drain locally via mesh")
+    parser = argparse.ArgumentParser(
+        description="Submit remote textgen tasks and drain locally via mesh"
+    )
 
     parser.add_argument("--remote-peer-id", required=True, help="Remote peer_id to submit tasks to")
-    parser.add_argument("--remote-multiaddr", required=True, help="Remote peer multiaddr (includes /p2p/<peer_id>)")
+    parser.add_argument(
+        "--remote-multiaddr", required=True, help="Remote peer multiaddr (includes /p2p/<peer_id>)"
+    )
 
-    parser.add_argument("--count", type=int, default=20, help="Number of text-generation tasks to submit")
+    parser.add_argument(
+        "--count", type=int, default=20, help="Number of text-generation tasks to submit"
+    )
     parser.add_argument("--concurrency", type=int, default=10, help="Concurrent wait RPCs")
     parser.add_argument("--timeout-s", type=float, default=240.0, help="Per-task wait timeout")
 
-    parser.add_argument("--prompt", default="The quick brown fox", help="Prompt for text generation")
+    parser.add_argument(
+        "--prompt", default="The quick brown fox", help="Prompt for text generation"
+    )
     parser.add_argument("--max-new-tokens", type=int, default=16)
     parser.add_argument("--temperature", type=float, default=0.2)
 
-    parser.add_argument("--state-dir", default="state/p2p_remote_drain", help="Directory for queue/report")
-    parser.add_argument("--worker-id", default="", help="Local worker id (default: hostname + timestamp)")
+    parser.add_argument(
+        "--state-dir", default="state/p2p_remote_drain", help="Directory for queue/report"
+    )
+    parser.add_argument(
+        "--worker-id", default="", help="Local worker id (default: hostname + timestamp)"
+    )
 
     return parser.parse_args(argv)
 
@@ -103,7 +115,9 @@ def _extract_progress(task: Dict[str, Any]) -> Dict[str, Any]:
     return prog if isinstance(prog, dict) else {}
 
 
-async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: argparse.Namespace, worker_id: str) -> Dict[str, Any]:
+async def _submit_and_wait(
+    *, remote_peer_id: str, remote_multiaddr: str, args: argparse.Namespace, worker_id: str
+) -> Dict[str, Any]:
     import anyio
 
     from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, submit_task_with_info, wait_task
@@ -135,7 +149,14 @@ async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: 
                 # Brief backoff for transient dial/stream failures.
                 await anyio.sleep(0.25 * (attempt + 1))
 
-        submitted.append({"task_id": (info or {}).get("task_id"), "submit_info": info, "payload": payload, "error": submit_error})
+        submitted.append(
+            {
+                "task_id": (info or {}).get("task_id"),
+                "submit_info": info,
+                "payload": payload,
+                "error": submit_error,
+            }
+        )
 
     # Wait for completions with bounded concurrency.
     results_by_id: Dict[str, Any] = {}
@@ -147,7 +168,9 @@ async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: 
         last_error: Optional[Dict[str, Any]] = None
         while anyio.current_time() < deadline:
             try:
-                t = await wait_task(remote=remote, task_id=str(task_id), timeout_s=min(60.0, float(args.timeout_s)))
+                t = await wait_task(
+                    remote=remote, task_id=str(task_id), timeout_s=min(60.0, float(args.timeout_s))
+                )
             except Exception as exc:
                 # Treat transient stream/dial issues as retryable; keep trying
                 # until deadline and record the last error for debugging.
@@ -185,7 +208,11 @@ async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: 
     ]
 
     mesh_executed = [
-        x for x in completed if isinstance(x.get("progress"), dict) and x["progress"].get("mesh") is True and x["progress"].get("worker_id") == worker_id
+        x
+        for x in completed
+        if isinstance(x.get("progress"), dict)
+        and x["progress"].get("mesh") is True
+        and x["progress"].get("worker_id") == worker_id
     ]
 
     return {
@@ -195,7 +222,12 @@ async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: 
         "completed": completed,
         "summary": {
             "submitted": len(submitted),
-            "completed": sum(1 for x in completed if isinstance(x.get("task"), dict) and x["task"].get("status") in {"completed", "failed"}),
+            "completed": sum(
+                1
+                for x in completed
+                if isinstance(x.get("task"), dict)
+                and x["task"].get("status") in {"completed", "failed"}
+            ),
             "mesh_executed_by_this_host": len(mesh_executed),
         },
     }
@@ -222,7 +254,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ctx = get_context("spawn")
     proc = ctx.Process(
         target=_run_mesh_worker_process,
-        kwargs={"queue_path": queue_path, "worker_id": worker_id, "mesh_peers": str(args.remote_multiaddr)},
+        kwargs={
+            "queue_path": queue_path,
+            "worker_id": worker_id,
+            "mesh_peers": str(args.remote_multiaddr),
+        },
         daemon=True,
     )
     proc.start()
@@ -234,6 +270,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         import anyio
 
         started = _now_ts()
+
         async def _main_async() -> Dict[str, Any]:
             return await _submit_and_wait(
                 remote_peer_id=str(args.remote_peer_id),
@@ -243,7 +280,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
 
         report = anyio.run(_main_async, backend="trio")
-        report["timing"] = {"started": started, "finished": _now_ts(), "duration_s": _now_ts() - started}
+        report["timing"] = {
+            "started": started,
+            "finished": _now_ts(),
+            "duration_s": _now_ts() - started,
+        }
 
         _write_json(report_path, report)
 

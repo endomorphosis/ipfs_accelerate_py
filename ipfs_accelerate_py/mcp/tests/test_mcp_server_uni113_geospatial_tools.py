@@ -54,7 +54,9 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
 
     def test_extract_geographic_entities_rejects_invalid_threshold(self) -> None:
         async def _run() -> None:
-            result = await extract_geographic_entities(corpus_data="sample", confidence_threshold=2.0)
+            result = await extract_geographic_entities(
+                corpus_data="sample", confidence_threshold=2.0
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("between 0 and 1", str(result.get("message", "")))
 
@@ -62,7 +64,9 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
 
     def test_map_spatiotemporal_events_rejects_invalid_resolution(self) -> None:
         async def _run() -> None:
-            result = await map_spatiotemporal_events(corpus_data="sample", temporal_resolution="quarter")
+            result = await map_spatiotemporal_events(
+                corpus_data="sample", temporal_resolution="quarter"
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("must be one of", str(result.get("message", "")))
 
@@ -86,7 +90,9 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
 
     def test_map_spatiotemporal_events_success_shape(self) -> None:
         async def _run() -> None:
-            result = await map_spatiotemporal_events(corpus_data="sample", temporal_resolution="day")
+            result = await map_spatiotemporal_events(
+                corpus_data="sample", temporal_resolution="day"
+            )
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("clusters", result)
@@ -137,7 +143,9 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_geospatial_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_geospatial_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

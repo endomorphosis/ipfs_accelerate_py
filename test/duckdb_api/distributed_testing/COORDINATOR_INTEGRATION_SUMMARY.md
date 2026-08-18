@@ -97,15 +97,13 @@ coordinator = CoordinatorServer(
     db_path="./benchmark_db.duckdb",
     enable_load_balancer=True,
     load_balancer_config={
-        "default_scheduler": {
-            "type": "performance_based"
-        },
+        "default_scheduler": {"type": "performance_based"},
         "model_family_schedulers": {
             "vision": {"type": "performance_based"},
             "text": {"type": "weighted_round_robin"},
-            "audio": {"type": "affinity_based"}
-        }
-    }
+            "audio": {"type": "affinity_based"},
+        },
+    },
 )
 
 # Start coordinator

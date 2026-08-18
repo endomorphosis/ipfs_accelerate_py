@@ -36,7 +36,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             standalone.run_server(host='127.0.0.1', port=8991, name='demo', description='demo', verbose=False)
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("RUN_CALLED:127.0.0.1:8991", result.stdout)
 
     def test_standalone_run_fastapi_server_contract(self) -> None:
@@ -50,7 +52,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
                 standalone.run_fastapi_server(host='127.0.0.1', port=8992, mount_path='/mcp', name='demo', description='demo', verbose=True)
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("FASTAPI_RUN_CALLED 127.0.0.1 8992", result.stdout)
 
     def test_standalone_fastapi_app_tracks_d2_bridge_disable_override(self) -> None:
@@ -86,19 +90,23 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         print('D2_APP_TELEMETRY', json.dumps({'telemetry': telemetry, 'counts': counts}, sort_keys=True))
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
-        marker = 'D2_APP_TELEMETRY '
-        payload_line = next((line for line in result.stdout.splitlines() if line.startswith(marker)), '')
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
+        marker = "D2_APP_TELEMETRY "
+        payload_line = next(
+            (line for line in result.stdout.splitlines() if line.startswith(marker)), ""
+        )
         self.assertTrue(payload_line, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
-        payload = json.loads(payload_line[len(marker):])
-        telemetry = payload['telemetry']
-        counts = payload['counts']
-        self.assertTrue(telemetry.get('bridge_disable_ignored'))
-        self.assertTrue(telemetry.get('bridge_active'))
-        self.assertEqual(telemetry.get('deprecation_phase'), 'D2_opt_in_only')
-        self.assertEqual(telemetry.get('reason'), 'unified_bridge')
-        self.assertEqual(counts.get('bridge_disable_ignored_calls'), 1)
-        self.assertEqual(counts.get('unified_bridge_calls'), 1)
+        payload = json.loads(payload_line[len(marker) :])
+        telemetry = payload["telemetry"]
+        counts = payload["counts"]
+        self.assertTrue(telemetry.get("bridge_disable_ignored"))
+        self.assertTrue(telemetry.get("bridge_active"))
+        self.assertEqual(telemetry.get("deprecation_phase"), "D2_opt_in_only")
+        self.assertEqual(telemetry.get("reason"), "unified_bridge")
+        self.assertEqual(counts.get("bridge_disable_ignored_calls"), 1)
+        self.assertEqual(counts.get("unified_bridge_calls"), 1)
 
     def test_standalone_run_server_preserves_d2_rollback_telemetry(self) -> None:
         """Standalone run_server should preserve explicit rollback telemetry in subprocess mode."""
@@ -138,23 +146,27 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
                 standalone.run_server(host='127.0.0.1', port=8995, name='demo', description='demo', verbose=False)
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
-        marker = 'D2_RUN_TELEMETRY '
-        payload_line = next((line for line in result.stdout.splitlines() if line.startswith(marker)), '')
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
+        marker = "D2_RUN_TELEMETRY "
+        payload_line = next(
+            (line for line in result.stdout.splitlines() if line.startswith(marker)), ""
+        )
         self.assertTrue(payload_line, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
-        payload = json.loads(payload_line[len(marker):])
-        telemetry = payload['telemetry']
-        counts = payload['counts']
-        self.assertEqual(payload['host'], '127.0.0.1')
-        self.assertEqual(payload['port'], 8995)
-        self.assertTrue(telemetry.get('used_legacy_wrapper'))
-        self.assertTrue(telemetry.get('force_legacy_rollback'))
-        self.assertFalse(telemetry.get('bridge_disable_ignored'))
-        self.assertEqual(telemetry.get('deprecation_phase'), 'D2_opt_in_only')
-        self.assertEqual(telemetry.get('reason'), 'force_legacy_rollback')
-        self.assertEqual(counts.get('rollback_calls'), 1)
-        self.assertEqual(counts.get('legacy_wrapper_calls'), 1)
-        self.assertEqual(counts.get('warning_emissions'), 1)
+        payload = json.loads(payload_line[len(marker) :])
+        telemetry = payload["telemetry"]
+        counts = payload["counts"]
+        self.assertEqual(payload["host"], "127.0.0.1")
+        self.assertEqual(payload["port"], 8995)
+        self.assertTrue(telemetry.get("used_legacy_wrapper"))
+        self.assertTrue(telemetry.get("force_legacy_rollback"))
+        self.assertFalse(telemetry.get("bridge_disable_ignored"))
+        self.assertEqual(telemetry.get("deprecation_phase"), "D2_opt_in_only")
+        self.assertEqual(telemetry.get("reason"), "force_legacy_rollback")
+        self.assertEqual(counts.get("rollback_calls"), 1)
+        self.assertEqual(counts.get("legacy_wrapper_calls"), 1)
+        self.assertEqual(counts.get("warning_emissions"), 1)
 
     def test_canonical_standalone_run_server_contract(self) -> None:
         """Canonical standalone facade should invoke the canonical server builder path."""
@@ -170,7 +182,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             standalone_server.run_server(host='127.0.0.1', port=8993, name='demo', description='demo', verbose=False)
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("CANONICAL_RUN_SERVER 127.0.0.1 8993", result.stdout)
 
     def test_canonical_standalone_run_fastapi_server_contract(self) -> None:
@@ -183,7 +197,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             standalone_server.run_fastapi_server(host='127.0.0.1', port=8994, mount_path='/mcp', name='demo', description='demo', verbose=True)
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("CANONICAL_FASTAPI_RUN 127.0.0.1 8994 /mcp", result.stdout)
 
     def test_canonical_module_main_contract(self) -> None:
@@ -196,7 +212,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             print('MAIN_RETURN', canonical_main.main())
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("STANDALONE_MAIN_CALLED", result.stdout)
         self.assertIn("MAIN_RETURN 0", result.stdout)
 
@@ -210,7 +228,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             print('SERVER_MAIN_RETURN', canonical_server.main())
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("SERVER_STANDALONE_MAIN_CALLED", result.stdout)
         self.assertIn("SERVER_MAIN_RETURN None", result.stdout)
 
@@ -224,7 +244,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             start_simple_server()
         """
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("SIMPLE_START_CALLED {}", result.stdout)
 
     def test_unified_bootstrap_trio_dispatch_contract(self) -> None:
@@ -283,7 +305,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         """
 
         result = self._run_subprocess(code)
-        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}"
+        )
         self.assertIn("TRIO_DISPATCH_OK", result.stdout)
 
 

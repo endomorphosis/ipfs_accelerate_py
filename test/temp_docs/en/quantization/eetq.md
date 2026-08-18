@@ -52,7 +52,7 @@ model = AutoModelForCausalLM.from_pretrained(
     "meta-llama/Llama-3.1-8B",
     torch_dtype="auto",
     device_map="auto",
-    quantization_config=quantization_config
+    quantization_config=quantization_config,
 )
 ```
 

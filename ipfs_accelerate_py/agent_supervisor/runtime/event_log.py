@@ -37,18 +37,10 @@ _DEFAULT_EVENT_LOG_RETAIN_RECENT = 500
 _EVENT_LOG_MAX_ARCHIVES_ENV = "IPFS_ACCELERATE_AGENT_EVENT_LOG_MAX_ARCHIVES"
 _DEFAULT_EVENT_LOG_MAX_ARCHIVES = 8
 
-EVENT_LOG_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.event-log-manifest@2"
-)
-LEGACY_EVENT_LOG_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.event-log-manifest@1"
-)
-EVENT_CURSOR_CHECKPOINT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
-)
-SEMANTIC_CHANGE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/semantic-change@1"
-)
+EVENT_LOG_MANIFEST_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-log-manifest@2"
+LEGACY_EVENT_LOG_MANIFEST_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-log-manifest@1"
+EVENT_CURSOR_CHECKPOINT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
+SEMANTIC_CHANGE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/semantic-change@1"
 SEMANTIC_CHANGE_EVENT_TYPE: Final = "decision_runtime_semantic_change"
 _EVENT_OFFSET_INDEX_STRIDE = 256
 _EVENT_OFFSET_INDEX_MAX_ITEMS = 4096
@@ -116,9 +108,7 @@ class SemanticChange:
 
     def __post_init__(self) -> None:
         if self.schema != SEMANTIC_CHANGE_SCHEMA:
-            raise SemanticChangeIntegrityError(
-                "unsupported semantic change schema"
-            )
+            raise SemanticChangeIntegrityError("unsupported semantic change schema")
         try:
             native_kind = (
                 self.kind
@@ -139,28 +129,18 @@ class SemanticChange:
         ):
             value = str(getattr(self, name) or "").strip()
             if not value or "\x00" in value:
-                raise SemanticChangeIntegrityError(
-                    f"semantic change {name} must be non-empty"
-                )
+                raise SemanticChangeIntegrityError(f"semantic change {name} must be non-empty")
             object.__setattr__(self, name, value)
         for name in ("repository_id", "tree_id"):
             value = str(getattr(self, name) or "").strip()
             if "\x00" in value:
-                raise SemanticChangeIntegrityError(
-                    f"semantic change {name} contains NUL"
-                )
+                raise SemanticChangeIntegrityError(f"semantic change {name} contains NUL")
             object.__setattr__(self, name, value)
         if self.previous_root_id == self.current_root_id:
-            raise SemanticChangeIntegrityError(
-                "semantic change must advance its root"
-            )
+            raise SemanticChangeIntegrityError("semantic change must advance its root")
         dependency_ids = tuple(
             sorted(
-                {
-                    str(item).strip()
-                    for item in self.semantic_dependency_ids
-                    if str(item).strip()
-                }
+                {str(item).strip() for item in self.semantic_dependency_ids if str(item).strip()}
             )
         )
         if len(dependency_ids) != len(tuple(self.semantic_dependency_ids)):
@@ -169,9 +149,7 @@ class SemanticChange:
             )
         object.__setattr__(self, "semantic_dependency_ids", dependency_ids)
         if not isinstance(self.metadata, Mapping):
-            raise SemanticChangeIntegrityError(
-                "semantic change metadata must be an object"
-            )
+            raise SemanticChangeIntegrityError("semantic change metadata must be an object")
         try:
             canonical_metadata = json.loads(
                 _canonical_event_bytes(dict(self.metadata), MAX_PROJECTION_BYTES)
@@ -180,14 +158,10 @@ class SemanticChange:
             raise SemanticChangeIntegrityError(
                 "semantic change metadata is not canonical JSON"
             ) from exc
-        object.__setattr__(
-            self, "metadata", MappingProxyType(canonical_metadata)
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(canonical_metadata))
         expected = _canonical_identity(self.to_dict(include_identity=False))
         if self.change_id and self.change_id != expected:
-            raise SemanticChangeIntegrityError(
-                "semantic change identity mismatch"
-            )
+            raise SemanticChangeIntegrityError("semantic change identity mismatch")
         object.__setattr__(self, "change_id", expected)
 
     def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
@@ -213,9 +187,7 @@ class SemanticChange:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "SemanticChange":
         if not isinstance(value, Mapping):
-            raise SemanticChangeIntegrityError(
-                "semantic change must be an object"
-            )
+            raise SemanticChangeIntegrityError("semantic change must be an object")
         allowed = {
             "schema",
             "kind",
@@ -234,30 +206,22 @@ class SemanticChange:
             "change_id",
         }
         if set(value).difference(allowed):
-            raise SemanticChangeIntegrityError(
-                "semantic change contains unknown fields"
-            )
+            raise SemanticChangeIntegrityError("semantic change contains unknown fields")
         return cls(
             schema=str(value.get("schema") or SEMANTIC_CHANGE_SCHEMA),
             kind=value.get("kind", value.get("change_kind", "")),
             subject_id=str(value.get("subject_id") or ""),
             previous_root_id=str(
-                value.get("previous_root_id", value.get("previous_revision", ""))
-                or ""
+                value.get("previous_root_id", value.get("previous_revision", "")) or ""
             ),
             current_root_id=str(
-                value.get(
-                    "current_root_id", value.get("replacement_revision", "")
-                )
-                or ""
+                value.get("current_root_id", value.get("replacement_revision", "")) or ""
             ),
             scope_kind=str(value.get("scope_kind") or ""),
             scope_value=str(value.get("scope_value") or ""),
             repository_id=str(value.get("repository_id") or ""),
             tree_id=str(value.get("tree_id") or ""),
-            semantic_dependency_ids=tuple(
-                value.get("semantic_dependency_ids") or ()
-            ),
+            semantic_dependency_ids=tuple(value.get("semantic_dependency_ids") or ()),
             metadata=value.get("metadata") or {},
             change_id=str(value.get("change_id") or ""),
         )
@@ -276,9 +240,7 @@ class SemanticChangePage:
         if not isinstance(self.next_cursor, EventCursor):
             raise TypeError("next_cursor must be an EventCursor")
         if len(self.changes) != len(self.event_ids):
-            raise SemanticChangeIntegrityError(
-                "semantic change page event bindings are incomplete"
-            )
+            raise SemanticChangeIntegrityError("semantic change page event bindings are incomplete")
 
 
 _EVENT_LOCKS: dict[str, threading.RLock] = {}
@@ -329,17 +291,13 @@ def _canonical_event_bytes(value: Mapping[str, Any], maximum: int) -> bytes:
     except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("event payload must contain canonical JSON values") from exc
     if len(encoded) > maximum:
-        raise EventPayloadTooLarge(
-            f"event exceeds the {maximum}-byte persistence bound"
-        )
+        raise EventPayloadTooLarge(f"event exceeds the {maximum}-byte persistence bound")
     return encoded
 
 
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -487,16 +445,13 @@ def _scan_event_log(
                 if not isinstance(raw_event, dict):
                     continue
                 physical_count += 1
-                raw_sequence = raw_event.get(
-                    "sequence", raw_event.get("position")
-                )
+                raw_sequence = raw_event.get("sequence", raw_event.get("position"))
                 canonical = (
                     isinstance(raw_sequence, int)
                     and not isinstance(raw_sequence, bool)
                     and raw_sequence > 0
                     and str(raw_event.get("stream_id") or "") == selected_stream
-                    and str(raw_event.get("snapshot_id") or "")
-                    == selected_snapshot
+                    and str(raw_event.get("snapshot_id") or "") == selected_snapshot
                 )
                 sequence = int(raw_sequence) if canonical else latest_sequence + 1
                 all_canonical = all_canonical and canonical
@@ -514,9 +469,7 @@ def _scan_event_log(
                 if not event_id:
                     event_id = _event_identity(event)
                 elif event_id != _event_identity(event):
-                    raise CursorReplayError(
-                        f"event {sequence} has a non-canonical event_id"
-                    )
+                    raise CursorReplayError(f"event {sequence} has a non-canonical event_id")
                 known_identity = identities.get(sequence)
                 if known_identity is not None:
                     if known_identity != event_id:
@@ -525,17 +478,12 @@ def _scan_event_log(
                         )
                 else:
                     if latest_sequence and sequence != latest_sequence + 1:
-                        raise CursorReplayError(
-                            "event recovery encountered a sequence gap"
-                        )
+                        raise CursorReplayError("event recovery encountered a sequence gap")
                     if (
                         latest_sequence
-                        and str(event.get("previous_event_id") or "")
-                        != latest_event_id
+                        and str(event.get("previous_event_id") or "") != latest_event_id
                     ):
-                        raise CursorReplayError(
-                            "event recovery encountered a broken hash chain"
-                        )
+                        raise CursorReplayError("event recovery encountered a broken hash chain")
                     identities[sequence] = event_id
                     latest_sequence = sequence
                     latest_event_id = event_id
@@ -544,11 +492,7 @@ def _scan_event_log(
                 if not first_sequence:
                     first_sequence = sequence
                 last_sequence = max(last_sequence, sequence)
-                if (
-                    not offsets
-                    or (sequence - first_sequence) % _EVENT_OFFSET_INDEX_STRIDE
-                    == 0
-                ):
+                if not offsets or (sequence - first_sequence) % _EVENT_OFFSET_INDEX_STRIDE == 0:
                     offsets.append([sequence, offset])
         record = {
             "path": source.name,
@@ -580,9 +524,7 @@ def _scan_event_log(
         "earliest_sequence": earliest_sequence,
         "latest_sequence": latest_sequence,
         "last_event_id": latest_event_id,
-        "active_indexed_bytes": int(
-            (active_record or {}).get("size_bytes", 0)
-        ),
+        "active_indexed_bytes": int((active_record or {}).get("size_bytes", 0)),
         "files": records,
     }
     value["manifest_digest"] = _event_manifest_digest(value)
@@ -603,9 +545,7 @@ def _event_manifest_digest(value: Mapping[str, Any]) -> str:
 
 def _load_event_manifest(path: Path) -> dict[str, Any] | None:
     try:
-        value = json.loads(
-            _event_manifest_path(path).read_text(encoding="utf-8")
-        )
+        value = json.loads(_event_manifest_path(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     if (
@@ -621,9 +561,7 @@ def _load_event_manifest(path: Path) -> dict[str, Any] | None:
 
 def _manifest_matches_metadata(path: Path, value: Mapping[str, Any]) -> bool:
     expected = {
-        str(item.get("path")): item
-        for item in value.get("files", ())
-        if isinstance(item, Mapping)
+        str(item.get("path")): item for item in value.get("files", ()) if isinstance(item, Mapping)
     }
     actual_paths = _source_paths(path)
     if set(expected) != {item.name for item in actual_paths}:
@@ -677,10 +615,7 @@ def _write_event_manifest(
     prior = dict(previous or _load_event_manifest(path) or {})
     value = _scan_event_log(
         path,
-        generation=(
-            int(prior.get("generation", 0))
-            + (1 if increment_generation else 0)
-        ),
+        generation=(int(prior.get("generation", 0)) + (1 if increment_generation else 0)),
         stream_id=str(prior.get("stream_id") or "") or None,
         snapshot_id=str(prior.get("snapshot_id") or "") or None,
     )
@@ -798,9 +733,7 @@ def recover_jsonl_event_log_tail(
     ):
         raise ValueError("max_quarantine_bytes must be a positive integer")
     event_path = Path(path)
-    selected_checkpoint = (
-        _coerce_event_cursor(checkpoint) if checkpoint is not None else None
-    )
+    selected_checkpoint = _coerce_event_cursor(checkpoint) if checkpoint is not None else None
     result: dict[str, Any] = {
         "repaired": False,
         "failed_closed": False,
@@ -910,25 +843,19 @@ def recover_jsonl_event_log_tail(
                     # Read only canonical identities; _scan_event_log below
                     # remains responsible for complete chain validation.
                     sources = [
-                        source
-                        for source in _source_paths(event_path)
-                        if source != event_path
+                        source for source in _source_paths(event_path) if source != event_path
                     ]
                     source_events: list[dict[str, Any]] = []
                     for source in sources:
                         source_events.extend(read_jsonl_events(source))
                     source_events.extend(valid_events)
                     for value in source_events:
-                        sequence = value.get(
-                            "sequence", value.get("position")
-                        )
+                        sequence = value.get("sequence", value.get("position"))
                         if (
                             isinstance(sequence, int)
                             and not isinstance(sequence, bool)
-                            and str(value.get("stream_id") or "")
-                            == selected_stream
-                            and str(value.get("snapshot_id") or "")
-                            == selected_snapshot
+                            and str(value.get("stream_id") or "") == selected_stream
+                            and str(value.get("snapshot_id") or "") == selected_snapshot
                         ):
                             event_id = str(value.get("event_id") or "")
                             if event_id and event_id == _event_identity(value):
@@ -946,9 +873,7 @@ def recover_jsonl_event_log_tail(
                         return result
 
             if invalid:
-                quarantine_path = unique_backup_path(
-                    event_path, "partial-tail"
-                )
+                quarantine_path = unique_backup_path(event_path, "partial-tail")
                 _atomic_write_bytes(quarantine_path, invalid)
                 _atomic_write_bytes(event_path, bytes(retained))
                 result.update(
@@ -1139,9 +1064,7 @@ def _coerce_event_cursor(
         return EventCursor.from_token(cursor)
     if isinstance(cursor, Mapping):
         return EventCursor.from_dict(cursor)
-    raise EventCursorError(
-        "cursor must be an EventCursor, canonical cursor record, or token"
-    )
+    raise EventCursorError("cursor must be an EventCursor, canonical cursor record, or token")
 
 
 def _record_for_source(
@@ -1218,9 +1141,7 @@ def _read_segment_page_events(
                 raise CursorReplayError(
                     f"event segment {source.name!r} contains a non-object event"
                 )
-            raw_sequence = raw_event.get(
-                "sequence", raw_event.get("position")
-            )
+            raw_sequence = raw_event.get("sequence", raw_event.get("position"))
             canonical = (
                 isinstance(raw_sequence, int)
                 and not isinstance(raw_sequence, bool)
@@ -1246,9 +1167,7 @@ def _read_segment_page_events(
             event_id = str(event.get("event_id") or "")
             expected_event_id = _event_identity(event)
             if event_id and event_id != expected_event_id:
-                raise CursorReplayError(
-                    f"event {sequence} has a non-canonical event_id"
-                )
+                raise CursorReplayError(f"event {sequence} has a non-canonical event_id")
             event["event_id"] = event_id or expected_event_id
             previous_event_id = event["event_id"]
             if sequence >= wanted_sequence:
@@ -1304,9 +1223,7 @@ def read_jsonl_event_page(
             known = population.get(sequence)
             if known is not None:
                 if known["event_id"] != event["event_id"]:
-                    raise CursorReplayError(
-                        f"event sequence {sequence} has conflicting identities"
-                    )
+                    raise CursorReplayError(f"event sequence {sequence} has conflicting identities")
                 continue
             population[sequence] = event
         if len(population) >= target_population:
@@ -1319,10 +1236,7 @@ def read_jsonl_event_page(
         stream_id=stream_id,
         snapshot_id=snapshot_id,
     )
-    manifest_has_more = (
-        page.next_cursor.position
-        < int(manifest.get("latest_sequence") or 0)
-    )
+    manifest_has_more = page.next_cursor.position < int(manifest.get("latest_sequence") or 0)
     if manifest_has_more == page.has_more:
         return page
     return EventPage(
@@ -1349,9 +1263,7 @@ def write_event_cursor_checkpoint(
         "cursor": selected.to_record(),
     }
     value["checkpoint_digest"] = _canonical_identity(value)
-    payload = (
-        json.dumps(value, sort_keys=True, indent=2).encode("utf-8") + b"\n"
-    )
+    payload = json.dumps(value, sort_keys=True, indent=2).encode("utf-8") + b"\n"
     with _EventLogLock(checkpoint_path):
         try:
             if checkpoint_path.read_bytes() == payload:
@@ -1382,24 +1294,16 @@ def read_event_cursor_checkpoint(
         or value.get("schema") != EVENT_CURSOR_CHECKPOINT_SCHEMA
         or value.get("checkpoint_digest")
         != _canonical_identity(
-            {
-                key: item
-                for key, item in value.items()
-                if key != "checkpoint_digest"
-            }
+            {key: item for key, item in value.items() if key != "checkpoint_digest"}
         )
         or not isinstance(value.get("cursor"), Mapping)
     ):
         raise EventCursorError("event cursor checkpoint is malformed")
     cursor = EventCursor.from_dict(value["cursor"])
     if stream_id and cursor.stream_id != stream_id:
-        raise CursorReplayError(
-            "event cursor checkpoint belongs to a different stream"
-        )
+        raise CursorReplayError("event cursor checkpoint belongs to a different stream")
     if snapshot_id and cursor.snapshot_id != snapshot_id:
-        raise CursorReplayError(
-            "event cursor checkpoint belongs to a different snapshot"
-        )
+        raise CursorReplayError("event cursor checkpoint belongs to a different snapshot")
     return cursor
 
 
@@ -1438,11 +1342,7 @@ def _manifest_after_append(
     offset: int,
 ) -> dict[str, Any]:
     value = dict(manifest)
-    records = [
-        dict(item)
-        for item in manifest.get("files", ())
-        if isinstance(item, Mapping)
-    ]
+    records = [dict(item) for item in manifest.get("files", ()) if isinstance(item, Mapping)]
     active = next(
         (item for item in records if item.get("path") == path.name),
         None,
@@ -1455,9 +1355,7 @@ def _manifest_after_append(
             "sha256": "",
             "first_sequence": 0,
             "last_sequence": 0,
-            "start_previous_event_id": str(
-                event.get("previous_event_id") or ""
-            ),
+            "start_previous_event_id": str(event.get("previous_event_id") or ""),
             "offset_index": [],
             "canonical_events": True,
         }
@@ -1472,10 +1370,7 @@ def _manifest_after_append(
         and not isinstance(item, (str, bytes, bytearray))
         and len(item) == 2
     ]
-    if (
-        not offsets
-        or (sequence - first_sequence) % _EVENT_OFFSET_INDEX_STRIDE == 0
-    ):
+    if not offsets or (sequence - first_sequence) % _EVENT_OFFSET_INDEX_STRIDE == 0:
         offsets.append([sequence, offset])
     stat = path.stat()
     active.update(
@@ -1496,9 +1391,7 @@ def _manifest_after_append(
     value.update(
         {
             "updated_at": utc_now(),
-            "earliest_sequence": int(
-                value.get("earliest_sequence") or sequence
-            ),
+            "earliest_sequence": int(value.get("earliest_sequence") or sequence),
             "latest_sequence": sequence,
             "last_event_id": str(event["event_id"]),
             "active_indexed_bytes": int(stat.st_size),
@@ -1555,11 +1448,7 @@ def _reconcile_manifest_tail(
         return None
     value = dict(manifest)
     if stat.st_size == indexed:
-        records = [
-            dict(item)
-            for item in manifest.get("files", ())
-            if isinstance(item, Mapping)
-        ]
+        records = [dict(item) for item in manifest.get("files", ()) if isinstance(item, Mapping)]
         for record in records:
             if record.get("path") == path.name:
                 record.update(_stat_fields(path))
@@ -1580,14 +1469,12 @@ def _reconcile_manifest_tail(
                 expected_sequence = int(value.get("latest_sequence") or 0) + 1
                 if (
                     raw_event.get("sequence") != expected_sequence
-                    or str(raw_event.get("stream_id") or "")
-                    != str(value.get("stream_id") or "")
+                    or str(raw_event.get("stream_id") or "") != str(value.get("stream_id") or "")
                     or str(raw_event.get("snapshot_id") or "")
                     != str(value.get("snapshot_id") or "")
                     or str(raw_event.get("previous_event_id") or "")
                     != str(value.get("last_event_id") or "")
-                    or str(raw_event.get("event_id") or "")
-                    != _event_identity(raw_event)
+                    or str(raw_event.get("event_id") or "") != _event_identity(raw_event)
                 ):
                     return None
                 value = _manifest_after_append(
@@ -1645,9 +1532,7 @@ def append_jsonl_event(
         else MAX_PROJECTION_BYTES
     )
     if max_bytes is not None and (
-        isinstance(max_bytes, bool)
-        or not isinstance(max_bytes, int)
-        or max_bytes < 1
+        isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1
     ):
         raise ValueError("max_bytes must be a positive integer or None")
     limit = min(max_bytes or default_limit, default_limit)
@@ -1658,11 +1543,7 @@ def append_jsonl_event(
         previous_event_id = str(manifest.get("last_event_id") or "")
         event = {
             "type": event_type,
-            "timestamp": (
-                selected_timestamp
-                if selected_timestamp is not None
-                else utc_now()
-            ),
+            "timestamp": (selected_timestamp if selected_timestamp is not None else utc_now()),
             **supplied_payload,
             "stream_id": str(manifest["stream_id"]),
             "snapshot_id": str(manifest["snapshot_id"]),
@@ -1704,13 +1585,9 @@ def semantic_change_from_event(value: Mapping[str, Any]) -> SemanticChange:
     """Decode and verify a semantic change from its durable event envelope."""
 
     if not isinstance(value, Mapping):
-        raise SemanticChangeIntegrityError(
-            "semantic change event must be an object"
-        )
+        raise SemanticChangeIntegrityError("semantic change event must be an object")
     if str(value.get("type") or "") != SEMANTIC_CHANGE_EVENT_TYPE:
-        raise SemanticChangeIntegrityError(
-            "event is not a semantic change event"
-        )
+        raise SemanticChangeIntegrityError("event is not a semantic change event")
     payload = value.get("change")
     if not isinstance(payload, Mapping):
         # Compatibility with an early flat projection. Reserved physical
@@ -1733,9 +1610,7 @@ def semantic_change_from_event(value: Mapping[str, Any]) -> SemanticChange:
     change = SemanticChange.from_dict(payload)
     claimed = str(value.get("change_id") or "")
     if claimed and claimed != change.change_id:
-        raise SemanticChangeIntegrityError(
-            "semantic change event has conflicting identities"
-        )
+        raise SemanticChangeIntegrityError("semantic change event has conflicting identities")
     return change
 
 
@@ -1747,11 +1622,7 @@ def append_semantic_change_event(
 ) -> dict[str, Any]:
     """Append one canonical semantic transition to the supervisor event log."""
 
-    selected = (
-        change
-        if isinstance(change, SemanticChange)
-        else SemanticChange.from_dict(change)
-    )
+    selected = change if isinstance(change, SemanticChange) else SemanticChange.from_dict(change)
     return append_jsonl_event(
         path,
         SEMANTIC_CHANGE_EVENT_TYPE,
@@ -1781,10 +1652,7 @@ def read_semantic_change_page(
 
     page = read_jsonl_event_page(path, cursor, limit=limit)
     seen = {str(item) for item in known_change_ids}
-    roots = {
-        str(key): str(item)
-        for key, item in (expected_roots or {}).items()
-    }
+    roots = {str(key): str(item) for key, item in (expected_roots or {}).items()}
     changes: list[SemanticChange] = []
     event_ids: list[str] = []
     for event in page.events:
@@ -1792,18 +1660,12 @@ def read_semantic_change_page(
             continue
         change = semantic_change_from_event(event)
         if change.change_id in seen:
-            raise SemanticChangeIntegrityError(
-                f"duplicate semantic change {change.change_id}"
-            )
+            raise SemanticChangeIntegrityError(f"duplicate semantic change {change.change_id}")
         seen.add(change.change_id)
         current = roots.get(change.subject_id)
-        if (
-            current is not None
-            and change.previous_root_id != current
-        ):
+        if current is not None and change.previous_root_id != current:
             raise SemanticChangeIntegrityError(
-                "semantic changes are missing or reordered for "
-                f"{change.subject_id!r}"
+                f"semantic changes are missing or reordered for {change.subject_id!r}"
             )
         roots[change.subject_id] = change.current_root_id
         changes.append(change)
@@ -1870,11 +1732,7 @@ def rotate_event_log_if_needed(
     """
     path = Path(path)
     selected_max_bytes = (
-        int(
-            os.environ.get(
-                _EVENT_LOG_MAX_BYTES_ENV, str(_DEFAULT_EVENT_LOG_MAX_BYTES)
-            )
-        )
+        int(os.environ.get(_EVENT_LOG_MAX_BYTES_ENV, str(_DEFAULT_EVENT_LOG_MAX_BYTES)))
         if max_bytes is None
         else max_bytes
     )
@@ -1944,11 +1802,7 @@ def rotate_event_log_if_needed(
                         if len(retained) == selected_retain_recent:
                             archive_stream.write(retained.popleft())
                             archived_count += 1
-                        retained.append(
-                            raw_line
-                            if raw_line.endswith(b"\n")
-                            else raw_line + b"\n"
-                        )
+                        retained.append(raw_line if raw_line.endswith(b"\n") else raw_line + b"\n")
                 archive_stream.flush()
                 os.fsync(archive_stream.fileno())
             if total_count <= selected_retain_recent:

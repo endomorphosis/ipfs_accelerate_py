@@ -99,9 +99,7 @@ def _effect(operation: Operation) -> ExpectedEffect:
     )
 
 
-def _proposal_parameters(
-    operation: Operation, repository_root: Path
-) -> dict[str, Any]:
+def _proposal_parameters(operation: Operation, repository_root: Path) -> dict[str, Any]:
     if operation is Operation.WORKFLOW_PREVIEW:
         return {
             "directory": str(repository_root),
@@ -120,9 +118,7 @@ def _proposal_parameters(
     }
 
 
-def _mutation_parameters(
-    operation: Operation, repository_root: Path
-) -> dict[str, Any]:
+def _mutation_parameters(operation: Operation, repository_root: Path) -> dict[str, Any]:
     if operation is Operation.WORKFLOW_MATERIALIZE:
         return {
             "preview_ref": "receipt:preview",
@@ -172,10 +168,7 @@ def test_prompt_mcp_tools_are_lazily_named_and_catalog_complete() -> None:
         tool = AGENT_SUPERVISOR_OPERATION_TOOLS[operation]
         assert tool.__name__ == f"agent_supervisor_{operation.value}"
         assert tool.__agent_supervisor_operation__ is operation
-        assert (
-            tool.__agent_supervisor_dispatch_mode__
-            == AGENT_SUPERVISOR_MCP_DISPATCH_MODE
-        )
+        assert tool.__agent_supervisor_dispatch_mode__ == AGENT_SUPERVISOR_MCP_DISPATCH_MODE
         descriptor = catalog.operation(operation)
         assert descriptor.authority is operation.authority
 
@@ -190,8 +183,7 @@ def test_prompt_mcp_tools_are_lazily_named_and_catalog_complete() -> None:
         assert operation.value in names
         # Public callable name keeps the agent_supervisor_ prefix.
         assert any(
-            definition["func"].__name__
-            == f"agent_supervisor_{operation.value}"
+            definition["func"].__name__ == f"agent_supervisor_{operation.value}"
             for definition in manager.definitions
             if definition["name"] == operation.value
         )
@@ -206,10 +198,7 @@ def test_prompt_mcp_tools_are_lazily_named_and_catalog_complete() -> None:
     assert publication.process_free is True
     assert publication.dispatch_mode == AGENT_SUPERVISOR_MCP_DISPATCH_MODE
     for operation in PROMPT_OPS:
-        assert (
-            publication.dispatcher_ids[operation]
-            == DIRECT_CONTROL_SERVICE_DISPATCHER_ID
-        )
+        assert publication.dispatcher_ids[operation] == DIRECT_CONTROL_SERVICE_DISPATCHER_ID
     assert validate_agent_supervisor_mcp_catalog().operations == manifest.operations
 
 
@@ -297,19 +286,13 @@ async def test_mcp_requires_server_allowlists_and_rejects_path_widening(
     state_root = tmp_path / "state"
     repository_root.mkdir()
     state_root.mkdir()
-    monkeypatch.delenv(
-        native_tools.AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV, raising=False
-    )
-    monkeypatch.delenv(
-        native_tools.AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV, raising=False
-    )
+    monkeypatch.delenv(native_tools.AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV, raising=False)
+    monkeypatch.delenv(native_tools.AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV, raising=False)
     configure_agent_supervisor_control()
     request = OperationRequest(
         operation=Operation.WORKFLOW_PREVIEW,
         **_binding(repository_root, state_root),
-        parameters=_proposal_parameters(
-            Operation.WORKFLOW_PREVIEW, repository_root
-        ),
+        parameters=_proposal_parameters(Operation.WORKFLOW_PREVIEW, repository_root),
         dry_run=True,
     )
     tool = AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.WORKFLOW_PREVIEW]
@@ -336,9 +319,7 @@ async def test_mcp_requires_server_allowlists_and_rejects_path_widening(
     outside = OperationRequest(
         operation=Operation.WORKFLOW_PREVIEW,
         **_binding(foreign_repo, foreign_state),
-        parameters=_proposal_parameters(
-            Operation.WORKFLOW_PREVIEW, foreign_repo
-        ),
+        parameters=_proposal_parameters(Operation.WORKFLOW_PREVIEW, foreign_repo),
         dry_run=True,
     )
     denied = await tool(request=outside.to_record())
@@ -486,9 +467,7 @@ print(json.dumps({
     environment = os.environ.copy()
     environment.pop("IPFS_ACCEL_SKIP_CORE", None)
     environment["PYTHONPATH"] = os.pathsep.join(
-        value
-        for value in (str(REPO_ROOT), environment.get("PYTHONPATH", ""))
-        if value
+        value for value in (str(REPO_ROOT), environment.get("PYTHONPATH", "")) if value
     )
     completed = subprocess.run(
         [sys.executable, str(probe)],

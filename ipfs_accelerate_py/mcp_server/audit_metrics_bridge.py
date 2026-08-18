@@ -73,7 +73,9 @@ class AuditMetricsBridge:
         }
 
 
-def connect_audit_to_prometheus(audit_log: Any, exporter: Any, *, category: str = "policy") -> AuditMetricsBridge:
+def connect_audit_to_prometheus(
+    audit_log: Any, exporter: Any, *, category: str = "policy"
+) -> AuditMetricsBridge:
     """Create and attach an :class:`AuditMetricsBridge`."""
     bridge = AuditMetricsBridge(audit_log, exporter, category=category)
     bridge.attach()

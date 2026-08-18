@@ -448,7 +448,9 @@ def test_prefetch_llama_cpp_model_registers_local_path_in_content_cache(monkeypa
     assert status.complete is True
     assert status.cache_backend == "content_addressed_disk"
     expected_sha256 = hashlib.sha256(b"tiny-gguf").hexdigest()
-    expected_multihash, expected_cid = llama_cpp_utils._raw_sha256_cid_v1_from_digest(expected_sha256)
+    expected_multihash, expected_cid = llama_cpp_utils._raw_sha256_cid_v1_from_digest(
+        expected_sha256
+    )
     assert status.content_sha256 == expected_sha256
     assert status.content_multihash_sha256 == expected_multihash
     assert status.content_cid_v1 == expected_cid
@@ -722,7 +724,9 @@ def test_ensure_llama_cpp_uses_existing_binary_without_installer(monkeypatch, tm
     install_calls = []
 
     monkeypatch.setattr(llama_cpp_utils, "_default_cache_dir", lambda: tmp_path / "cache")
-    monkeypatch.setattr(llama_cpp_utils.shutil, "which", lambda name: str(llama_bin) if name == "llama" else None)
+    monkeypatch.setattr(
+        llama_cpp_utils.shutil, "which", lambda name: str(llama_bin) if name == "llama" else None
+    )
     monkeypatch.setattr(
         llama_cpp_utils,
         "_run_command",
@@ -742,7 +746,9 @@ def test_ensure_llama_cpp_auto_installs_managed_source_when_missing(monkeypatch,
     calls = []
 
     monkeypatch.setattr(llama_cpp_utils, "_default_cache_dir", lambda: tmp_path)
-    monkeypatch.setattr(llama_cpp_utils, "find_llama_cpp_executable", lambda _explicit_binary="": ("", ""))
+    monkeypatch.setattr(
+        llama_cpp_utils, "find_llama_cpp_executable", lambda _explicit_binary="": ("", "")
+    )
     monkeypatch.setattr(llama_cpp_utils, "_cuda_toolkit_available", lambda: False)
     monkeypatch.setattr(llama_cpp_utils, "_nproc", lambda: "2")
     monkeypatch.setattr(
@@ -898,9 +904,7 @@ def test_ensure_llama_cpp_server_reuses_active_pidfile(monkeypatch, tmp_path):
     assert result.message == "server_existing_startup_timeout"
 
 
-def test_ensure_llama_cpp_server_restarts_active_pidfile_on_context_mismatch(
-    monkeypatch, tmp_path
-):
+def test_ensure_llama_cpp_server_restarts_active_pidfile_on_context_mismatch(monkeypatch, tmp_path):
     config = llama_cpp_utils.LlamaCppServerConfig(
         port=8123,
         context_size=16384,
@@ -1027,9 +1031,13 @@ def test_ensure_llama_cpp_server_autosizes_after_managed_install(monkeypatch, tm
     launched = {}
     ready_checks = {"count": 0}
 
-    monkeypatch.setattr(llama_cpp_utils, "_pidfile_path", lambda _config: tmp_path / "server-8125.json")
+    monkeypatch.setattr(
+        llama_cpp_utils, "_pidfile_path", lambda _config: tmp_path / "server-8125.json"
+    )
     monkeypatch.setattr(llama_cpp_utils, "_log_path", lambda _config: tmp_path / "server.log")
-    monkeypatch.setattr(llama_cpp_utils, "find_llama_cpp_executable", lambda _explicit_binary="": ("", ""))
+    monkeypatch.setattr(
+        llama_cpp_utils, "find_llama_cpp_executable", lambda _explicit_binary="": ("", "")
+    )
     monkeypatch.setattr(
         llama_cpp_utils,
         "ensure_llama_cpp",
@@ -1043,7 +1051,9 @@ def test_ensure_llama_cpp_server_autosizes_after_managed_install(monkeypatch, tm
     )
     monkeypatch.setattr(llama_cpp_utils, "llama_cpp_model_cache_status", lambda _config: cache)
     monkeypatch.setattr(llama_cpp_utils, "read_llama_cpp_gguf_sizing_info", lambda _path: sizing)
-    monkeypatch.setattr(llama_cpp_utils, "_llama_cpp_cublas_major", lambda executable: 13 if executable else 0)
+    monkeypatch.setattr(
+        llama_cpp_utils, "_llama_cpp_cublas_major", lambda executable: 13 if executable else 0
+    )
     monkeypatch.setattr(
         llama_cpp_utils,
         "llama_cpp_list_devices",
@@ -1108,7 +1118,9 @@ def test_ensure_llama_cpp_server_prefetch_failure_does_not_start(monkeypatch):
         ),
     )
     monkeypatch.setattr(llama_cpp_utils, "llama_cpp_model_cache_status", lambda _config: status)
-    monkeypatch.setattr(llama_cpp_utils, "prefetch_llama_cpp_model", lambda _config, **_kwargs: status)
+    monkeypatch.setattr(
+        llama_cpp_utils, "prefetch_llama_cpp_model", lambda _config, **_kwargs: status
+    )
 
     def fail_popen(*_args, **_kwargs):
         raise AssertionError("prefetch failure should prevent server launch")
@@ -1150,7 +1162,9 @@ def test_ensure_llama_cpp_server_prefetch_uses_content_cache_model_path(monkeypa
     launched = {}
     ready_checks = {"count": 0}
 
-    monkeypatch.setattr(llama_cpp_utils, "_pidfile_path", lambda _config: tmp_path / "server-8126.json")
+    monkeypatch.setattr(
+        llama_cpp_utils, "_pidfile_path", lambda _config: tmp_path / "server-8126.json"
+    )
     monkeypatch.setattr(llama_cpp_utils, "_log_path", lambda _config: tmp_path / "server.log")
     monkeypatch.setattr(llama_cpp_utils, "llama_cpp_server_ready", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
@@ -1163,7 +1177,9 @@ def test_ensure_llama_cpp_server_prefetch_uses_content_cache_model_path(monkeypa
         ),
     )
     monkeypatch.setattr(llama_cpp_utils, "llama_cpp_model_cache_status", lambda _config: status)
-    monkeypatch.setattr(llama_cpp_utils, "prefetch_llama_cpp_model", lambda _config, **_kwargs: status)
+    monkeypatch.setattr(
+        llama_cpp_utils, "prefetch_llama_cpp_model", lambda _config, **_kwargs: status
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_LLAMA_CPP_EVICT_TO_FIT", "0")
 
     class FakePopen:
@@ -1221,7 +1237,9 @@ def test_ensure_llama_cpp_server_prefetch_uses_hash_pending_model_path(
     launched = {}
     ready_checks = {"count": 0}
 
-    monkeypatch.setattr(llama_cpp_utils, "_pidfile_path", lambda _config: tmp_path / "server-8129.json")
+    monkeypatch.setattr(
+        llama_cpp_utils, "_pidfile_path", lambda _config: tmp_path / "server-8129.json"
+    )
     monkeypatch.setattr(llama_cpp_utils, "_log_path", lambda _config: tmp_path / "server.log")
     monkeypatch.setattr(llama_cpp_utils, "llama_cpp_server_ready", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
@@ -1234,7 +1252,9 @@ def test_ensure_llama_cpp_server_prefetch_uses_hash_pending_model_path(
         ),
     )
     monkeypatch.setattr(llama_cpp_utils, "llama_cpp_model_cache_status", lambda _config: status)
-    monkeypatch.setattr(llama_cpp_utils, "prefetch_llama_cpp_model", lambda _config, **_kwargs: status)
+    monkeypatch.setattr(
+        llama_cpp_utils, "prefetch_llama_cpp_model", lambda _config, **_kwargs: status
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_LLAMA_CPP_EVICT_TO_FIT", "0")
 
     class FakePopen:

@@ -122,17 +122,9 @@ def test_six_stage_pools_have_independent_admission_ceilings() -> None:
     assert set(by_stage) == set(stages)
     assert all(item.configured_limit == 1 for item in by_stage.values())
     assert all(item.effective_limit == 1 for item in by_stage.values())
-    assert {
-        decision.stage
-        for decision in snapshot.decisions
-        if decision.admitted
-    } == set(stages)
+    assert {decision.stage for decision in snapshot.decisions if decision.admitted} == set(stages)
     assert all(
-        sum(
-            decision.admitted and decision.stage == stage
-            for decision in snapshot.decisions
-        )
-        == 1
+        sum(decision.admitted and decision.stage == stage for decision in snapshot.decisions) == 1
         for stage in stages
     )
 
@@ -163,12 +155,8 @@ def test_work_stealing_prefers_critical_paths_but_starvation_is_bounded() -> Non
 
     critical_order = scheduler.fair_work_order(
         (
-            LaneResourceRequirements(
-                lane_id="short", stage="validation", critical_path_length=1
-            ),
-            LaneResourceRequirements(
-                lane_id="long", stage="validation", critical_path_length=10
-            ),
+            LaneResourceRequirements(lane_id="short", stage="validation", critical_path_length=1),
+            LaneResourceRequirements(lane_id="long", stage="validation", critical_path_length=10),
         )
     )
     assert [item.lane_id for item in critical_order] == ["long", "short"]
@@ -266,10 +254,7 @@ def test_shared_model_and_prover_batching_preserves_member_accounting() -> None:
                 tuple(request.token_budget for request in requests),
             )
         )
-        return [
-            {"request_id": request.request_id, "route": request.route}
-            for request in requests
-        ]
+        return [{"request_id": request.request_id, "route": request.route} for request in requests]
 
     config = ProviderBatchSchedulerConfig(
         max_batch_size=8,
@@ -387,7 +372,5 @@ def test_measured_adaptive_run_reaches_three_x_with_stable_resources() -> None:
     assert receipt.adaptive.duplicate_compute_percent_millionths < 5_000_000
     assert (
         receipt.adaptive.accepted_count * receipt.baseline.duration_ms
-        >= 3
-        * receipt.baseline.accepted_count
-        * receipt.adaptive.duration_ms
+        >= 3 * receipt.baseline.accepted_count * receipt.adaptive.duration_ms
     )

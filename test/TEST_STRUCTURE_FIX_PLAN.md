@@ -44,16 +44,19 @@ Update `ARCHITECTURE_TYPES` in the generator system to include these models:
 ARCHITECTURE_TYPES = {
     "encoder-decoder": [
         # Existing models...
-        "bigbird", "xlm_prophetnet"
+        "bigbird",
+        "xlm_prophetnet",
     ],
     "vision-encoder-text-decoder": [
         # Existing models...
-        "layoutlmv2", "layoutlmv3"
+        "layoutlmv2",
+        "layoutlmv3",
     ],
     "speech": [
         # Existing models...
-        "clvp", "seamless_m4t_v2"
-    ]
+        "clvp",
+        "seamless_m4t_v2",
+    ],
 }
 ```
 
@@ -80,15 +83,17 @@ After generation, verify each test file:
 Add specific model details to MODEL_REGISTRY for accurate handling:
 
 ```python
-MODEL_REGISTRY.update({
-    "layoutlmv2": {
-        "description": "LayoutLMv2 model for document understanding",
-        "class": "LayoutLMv2ForSequenceClassification",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "architecture": "vision-encoder-text-decoder"
-    },
-    # Add entries for other models
-})
+MODEL_REGISTRY.update(
+    {
+        "layoutlmv2": {
+            "description": "LayoutLMv2 model for document understanding",
+            "class": "LayoutLMv2ForSequenceClassification",
+            "default_model": "microsoft/layoutlmv2-base-uncased",
+            "architecture": "vision-encoder-text-decoder",
+        },
+        # Add entries for other models
+    }
+)
 ```
 
 ### 6. Update Documentation

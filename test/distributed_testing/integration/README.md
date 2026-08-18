@@ -48,7 +48,9 @@ from distributed_testing.plugin_architecture import PluginType
 from distributed_testing.integration.ci_cd_integration_plugin import CICDIntegrationPlugin
 
 # Access CI/CD plugin from coordinator
-ci_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)["CICDIntegration-1.0.0"]
+ci_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)[
+    "CICDIntegration-1.0.0"
+]
 
 # Check CI status
 ci_status = ci_plugin.get_ci_status()
@@ -94,7 +96,7 @@ To use these plugins, include this directory in the plugin directories when init
 coordinator = DistributedTestingCoordinator(
     db_path="benchmark_db.duckdb",
     enable_plugins=True,
-    plugin_dirs=["distributed_testing/integration"]
+    plugin_dirs=["distributed_testing/integration"],
 )
 ```
 

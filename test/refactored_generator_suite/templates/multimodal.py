@@ -12,7 +12,7 @@ from .base_architecture import BaseArchitectureTemplate
 
 class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
     """Multimodal architecture template implementation."""
-    
+
     def __init__(self):
         """Initialize the multimodal architecture template."""
         super().__init__()
@@ -22,13 +22,13 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
             "multimodal_classification",
             "multimodal_generation",
             "multimodal_question_answering",
-            "multimodal_retrieval"
+            "multimodal_retrieval",
         ]
         self.default_task_type = "multimodal_classification"
         self.model_description = "This is a multimodal model capable of processing and generating content across multiple modalities (text, image, audio, etc.)."
         self.hidden_size = 768
         self.test_input = "This is a test input for the multimodal model."
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get multimodal model class for task type."""
         if task_type == "multimodal_generation":
@@ -41,11 +41,11 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.AutoModel"
         else:
             return "self.transformers.AutoModel"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get multimodal processor class for task type."""
         return "self.transformers.AutoProcessor"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get multimodal input processing code."""
         return """
@@ -89,7 +89,7 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
         # Move inputs to device
         inputs = {k: v.to(device) for k, v in inputs.items()}
         """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get multimodal output processing code."""
         if task_type == "multimodal_classification":
@@ -208,7 +208,7 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
                 # Generic output
                 result = str(outputs)
             """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get multimodal mock processor code."""
         return """
@@ -237,7 +237,7 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
                     
                     return result
                 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get multimodal mock output code."""
         return """
@@ -261,7 +261,7 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
                 
                 return mock_outputs
                 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get multimodal architecture hardware compatibility matrix."""
         return {
@@ -270,5 +270,5 @@ class MultimodalArchitectureTemplate(BaseArchitectureTemplate):
             "rocm": True,
             "mps": True,
             "openvino": True,
-            "qnn": False  # QNN may not fully support multimodal models
+            "qnn": False,  # QNN may not fully support multimodal models
         }

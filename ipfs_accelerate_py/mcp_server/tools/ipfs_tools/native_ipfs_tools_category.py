@@ -95,7 +95,9 @@ def _mcp_error_response(message: str, *, error_type: str = "error") -> Dict[str,
     )
 
 
-def _parse_json_object(request_json: Any) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+def _parse_json_object(
+    request_json: Any,
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """Parse JSON-string object payload for source-compatible MCP entrypoints."""
     if not isinstance(request_json, str):
         return None, _mcp_error_response("Input must be a JSON string")
@@ -137,7 +139,9 @@ async def pin_to_ipfs(
         if error is not None:
             return error
         if "content_source" not in data:
-            return _mcp_error_response("Missing required field: content_source", error_type="validation")
+            return _mcp_error_response(
+                "Missing required field: content_source", error_type="validation"
+            )
 
         result = await pin_to_ipfs(
             content_source=data["content_source"],
@@ -145,12 +149,17 @@ async def pin_to_ipfs(
             wrap_with_directory=bool(data.get("wrap_with_directory", False)),
             hash_algo=str(data.get("hash_algo", "sha2-256") or "sha2-256"),
         )
-        return _mcp_text_response(result if isinstance(result, dict) else {"status": "success", "result": result})
+        return _mcp_text_response(
+            result if isinstance(result, dict) else {"status": "success", "result": result}
+        )
 
     if isinstance(content_source, str):
         normalized_source = content_source.strip()
         if not normalized_source:
-            return {"status": "error", "message": "'content_source' must be a non-empty string or object."}
+            return {
+                "status": "error",
+                "message": "'content_source' must be a non-empty string or object.",
+            }
         content_source = normalized_source
     elif not isinstance(content_source, dict):
         return {"status": "error", "message": "'content_source' must be a string or object."}
@@ -199,7 +208,9 @@ async def get_from_ipfs(
             timeout_seconds=data.get("timeout_seconds", 60),
             gateway=data.get("gateway"),
         )
-        return _mcp_text_response(result if isinstance(result, dict) else {"status": "success", "result": result})
+        return _mcp_text_response(
+            result if isinstance(result, dict) else {"status": "success", "result": result}
+        )
 
     normalized_cid = str(cid or "").strip()
     if not normalized_cid:
@@ -217,7 +228,10 @@ async def get_from_ipfs(
 
     normalized_output_path = str(output_path).strip() if output_path is not None else None
     if output_path is not None and not normalized_output_path:
-        return {"status": "error", "message": "'output_path' must be a non-empty string when provided."}
+        return {
+            "status": "error",
+            "message": "'output_path' must be a non-empty string when provided.",
+        }
 
     normalized_gateway = str(gateway).strip() if gateway is not None else None
     if gateway is not None and not normalized_gateway:
@@ -225,8 +239,7 @@ async def get_from_ipfs(
     if normalized_gateway is not None:
         normalized_gateway = normalized_gateway.rstrip("/")
         if not (
-            normalized_gateway.startswith("http://")
-            or normalized_gateway.startswith("https://")
+            normalized_gateway.startswith("http://") or normalized_gateway.startswith("https://")
         ):
             return {
                 "status": "error",

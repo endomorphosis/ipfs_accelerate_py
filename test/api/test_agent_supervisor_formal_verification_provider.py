@@ -366,9 +366,7 @@ def test_stdio_server_emits_protocol_response_and_rejects_bad_requests() -> None
         )
         == 0
     )
-    malformed_response = ProviderResponse.from_dict(
-        json.loads(malformed_output.getvalue())
-    )
+    malformed_response = ProviderResponse.from_dict(json.loads(malformed_output.getvalue()))
     assert malformed_response.error is not None
     assert malformed_response.error.code is ProviderFailureCode.MALFORMED_REQUEST
 

@@ -180,9 +180,7 @@ class GoalBenchmarkMetrics:
             "false_completion_count",
             "authority_boundary_violation_count",
         ):
-            object.__setattr__(
-                self, name, _nonnegative_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative_int(getattr(self, name), name))
         object.__setattr__(
             self,
             "restart_recovery_stable",
@@ -201,16 +199,10 @@ class GoalBenchmarkMetrics:
         )
         for numerator, denominator in bounds:
             if getattr(self, numerator) > getattr(self, denominator):
-                raise ContractValidationError(
-                    f"{numerator} cannot exceed {denominator}"
-                )
+                raise ContractValidationError(f"{numerator} cannot exceed {denominator}")
         if self.fallback_count > self.schema_validation_count:
-            raise ContractValidationError(
-                "fallback_count cannot exceed schema_validation_count"
-            )
-        if self.proposal_count == 0 and (
-            self.critical_path_steps or self.available_parallel_width
-        ):
+            raise ContractValidationError("fallback_count cannot exceed schema_validation_count")
+        if self.proposal_count == 0 and (self.critical_path_steps or self.available_parallel_width):
             raise ContractValidationError(
                 "empty proposal sets cannot have a critical path or parallel width"
             )
@@ -221,19 +213,13 @@ class GoalBenchmarkMetrics:
                 "non-empty proposal sets require a critical path and parallel width"
             )
         if self.critical_path_steps > self.proposal_count:
-            raise ContractValidationError(
-                "critical_path_steps cannot exceed proposal_count"
-            )
+            raise ContractValidationError("critical_path_steps cannot exceed proposal_count")
         if self.available_parallel_width > self.proposal_count:
-            raise ContractValidationError(
-                "available_parallel_width cannot exceed proposal_count"
-            )
+            raise ContractValidationError("available_parallel_width cannot exceed proposal_count")
 
     @property
     def schema_acceptance_bps(self) -> int:
-        return _rate_bps(
-            self.schema_acceptance_count, self.schema_validation_count
-        )
+        return _rate_bps(self.schema_acceptance_count, self.schema_validation_count)
 
     @property
     def type_acceptance_bps(self) -> int:
@@ -256,9 +242,7 @@ class GoalBenchmarkMetrics:
 
     @property
     def repair_convergence_bps(self) -> int:
-        return _rate_bps(
-            self.repair_convergence_count, self.repair_attempt_count
-        )
+        return _rate_bps(self.repair_convergence_count, self.repair_attempt_count)
 
     @property
     def fallback_bps(self) -> int:
@@ -276,15 +260,9 @@ class GoalBenchmarkMetrics:
             "evidence_required_count": self.evidence_required_count,
             "evidence_covered_count": self.evidence_covered_count,
             "evidence_coverage_bps": self.evidence_coverage_bps,
-            "authoritative_proof_required_count": (
-                self.authoritative_proof_required_count
-            ),
-            "authoritative_proof_closed_count": (
-                self.authoritative_proof_closed_count
-            ),
-            "authoritative_proof_closure_bps": (
-                self.authoritative_proof_closure_bps
-            ),
+            "authoritative_proof_required_count": (self.authoritative_proof_required_count),
+            "authoritative_proof_closed_count": (self.authoritative_proof_closed_count),
+            "authoritative_proof_closure_bps": (self.authoritative_proof_closure_bps),
             "unsupported_semantics_count": self.unsupported_semantics_count,
             "duplicate_conflict_count": self.duplicate_conflict_count,
             "duplicate_conflict_bps": self.duplicate_conflict_bps,
@@ -299,9 +277,7 @@ class GoalBenchmarkMetrics:
             "fallback_count": self.fallback_count,
             "fallback_bps": self.fallback_bps,
             "false_completion_count": self.false_completion_count,
-            "authority_boundary_violation_count": (
-                self.authority_boundary_violation_count
-            ),
+            "authority_boundary_violation_count": (self.authority_boundary_violation_count),
             "restart_recovery_stable": self.restart_recovery_stable,
         }
 
@@ -353,17 +329,14 @@ class PairedGoalBenchmarkCase:
                 else GoalBenchmarkCategory(str(self.category))
             )
         except ValueError as exc:
-            raise ContractValidationError(
-                "unsupported goal benchmark category"
-            ) from exc
+            raise ContractValidationError("unsupported goal benchmark category") from exc
         object.__setattr__(self, "category", category)
         if not isinstance(self.baseline, GoalBenchmarkMetrics):
             raise ContractValidationError("baseline must be GoalBenchmarkMetrics")
         if not isinstance(self.shadow, GoalBenchmarkMetrics):
             raise ContractValidationError("shadow must be GoalBenchmarkMetrics")
         if (
-            self.baseline.evidence_required_count
-            != self.shadow.evidence_required_count
+            self.baseline.evidence_required_count != self.shadow.evidence_required_count
             or self.baseline.authoritative_proof_required_count
             != self.shadow.authoritative_proof_required_count
         ):
@@ -374,12 +347,10 @@ class PairedGoalBenchmarkCase:
     @property
     def quality_delta_bps(self) -> int:
         baseline = (
-            self.baseline.evidence_coverage_bps
-            + self.baseline.authoritative_proof_closure_bps
+            self.baseline.evidence_coverage_bps + self.baseline.authoritative_proof_closure_bps
         ) // 2
         shadow = (
-            self.shadow.evidence_coverage_bps
-            + self.shadow.authoritative_proof_closure_bps
+            self.shadow.evidence_coverage_bps + self.shadow.authoritative_proof_closure_bps
         ) // 2
         return shadow - baseline
 
@@ -387,10 +358,8 @@ class PairedGoalBenchmarkCase:
     def paired_win(self) -> bool:
         return (
             self.quality_delta_bps > 0
-            and self.shadow.unsupported_semantics_count
-            <= self.baseline.unsupported_semantics_count
-            and self.shadow.duplicate_conflict_bps
-            <= self.baseline.duplicate_conflict_bps
+            and self.shadow.unsupported_semantics_count <= self.baseline.unsupported_semantics_count
+            and self.shadow.duplicate_conflict_bps <= self.baseline.duplicate_conflict_bps
             and self.shadow.false_completion_count == 0
             and self.shadow.authority_boundary_violation_count == 0
         )
@@ -434,9 +403,7 @@ class PairedGoalBenchmarkCase:
             raise ContractValidationError("goal benchmark case identity mismatch")
         for name in ("quality_delta_bps", "paired_win"):
             if name in payload and payload[name] != getattr(result, name):
-                raise ContractValidationError(
-                    f"goal benchmark case {name} does not match its arms"
-                )
+                raise ContractValidationError(f"goal benchmark case {name} does not match its arms")
         return result
 
 
@@ -473,13 +440,9 @@ class GoalBenchmarkAggregate:
     stable_restart_count: int
 
     @classmethod
-    def from_metrics(
-        cls, metrics: Sequence[GoalBenchmarkMetrics]
-    ) -> "GoalBenchmarkAggregate":
+    def from_metrics(cls, metrics: Sequence[GoalBenchmarkMetrics]) -> "GoalBenchmarkAggregate":
         if not metrics:
-            raise ContractValidationError(
-                "a benchmark aggregate requires at least one observation"
-            )
+            raise ContractValidationError("a benchmark aggregate requires at least one observation")
 
         def total(name: str) -> int:
             return sum(getattr(item, name) for item in metrics)
@@ -496,12 +459,8 @@ class GoalBenchmarkAggregate:
             type_acceptance_count=total("type_acceptance_count"),
             evidence_required_count=total("evidence_required_count"),
             evidence_covered_count=total("evidence_covered_count"),
-            authoritative_proof_required_count=total(
-                "authoritative_proof_required_count"
-            ),
-            authoritative_proof_closed_count=total(
-                "authoritative_proof_closed_count"
-            ),
+            authoritative_proof_required_count=total("authoritative_proof_required_count"),
+            authoritative_proof_closed_count=total("authoritative_proof_closed_count"),
             unsupported_semantics_count=total("unsupported_semantics_count"),
             duplicate_conflict_count=total("duplicate_conflict_count"),
             proposal_count=total("proposal_count"),
@@ -518,19 +477,13 @@ class GoalBenchmarkAggregate:
             token_cost_mean=_mean_int(token),
             fallback_count=total("fallback_count"),
             false_completion_count=total("false_completion_count"),
-            authority_boundary_violation_count=total(
-                "authority_boundary_violation_count"
-            ),
-            stable_restart_count=sum(
-                int(item.restart_recovery_stable) for item in metrics
-            ),
+            authority_boundary_violation_count=total("authority_boundary_violation_count"),
+            stable_restart_count=sum(int(item.restart_recovery_stable) for item in metrics),
         )
 
     @property
     def schema_acceptance_bps(self) -> int:
-        return _rate_bps(
-            self.schema_acceptance_count, self.schema_validation_count
-        )
+        return _rate_bps(self.schema_acceptance_count, self.schema_validation_count)
 
     @property
     def type_acceptance_bps(self) -> int:
@@ -553,9 +506,7 @@ class GoalBenchmarkAggregate:
 
     @property
     def repair_convergence_bps(self) -> int:
-        return _rate_bps(
-            self.repair_convergence_count, self.repair_attempt_count
-        )
+        return _rate_bps(self.repair_convergence_count, self.repair_attempt_count)
 
     @property
     def fallback_bps(self) -> int:
@@ -566,17 +517,13 @@ class GoalBenchmarkAggregate:
         return _rate_bps(self.stable_restart_count, self.observation_count)
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        result = {name: getattr(self, name) for name in self.__dataclass_fields__}
         result.update(
             {
                 "schema_acceptance_bps": self.schema_acceptance_bps,
                 "type_acceptance_bps": self.type_acceptance_bps,
                 "evidence_coverage_bps": self.evidence_coverage_bps,
-                "authoritative_proof_closure_bps": (
-                    self.authoritative_proof_closure_bps
-                ),
+                "authoritative_proof_closure_bps": (self.authoritative_proof_closure_bps),
                 "duplicate_conflict_bps": self.duplicate_conflict_bps,
                 "repair_convergence_bps": self.repair_convergence_bps,
                 "fallback_bps": self.fallback_bps,
@@ -604,14 +551,10 @@ class PairedGoalBenchmarkReport:
             for item in self.cases
         )
         if not normalized:
-            raise ContractValidationError(
-                "paired goal benchmark report cannot be empty"
-            )
+            raise ContractValidationError("paired goal benchmark report cannot be empty")
         ids = [item.case_id for item in normalized]
         if len(ids) != len(set(ids)):
-            raise ContractValidationError(
-                "paired goal benchmark report contains duplicate cases"
-            )
+            raise ContractValidationError("paired goal benchmark report contains duplicate cases")
         object.__setattr__(
             self,
             "cases",
@@ -620,15 +563,11 @@ class PairedGoalBenchmarkReport:
 
     @property
     def baseline(self) -> GoalBenchmarkAggregate:
-        return GoalBenchmarkAggregate.from_metrics(
-            [item.baseline for item in self.cases]
-        )
+        return GoalBenchmarkAggregate.from_metrics([item.baseline for item in self.cases])
 
     @property
     def shadow(self) -> GoalBenchmarkAggregate:
-        return GoalBenchmarkAggregate.from_metrics(
-            [item.shadow for item in self.cases]
-        )
+        return GoalBenchmarkAggregate.from_metrics([item.shadow for item in self.cases])
 
     @property
     def category_counts(self) -> dict[str, int]:
@@ -655,10 +594,7 @@ class PairedGoalBenchmarkReport:
 
     @property
     def evidence_coverage_delta_bps(self) -> int:
-        return (
-            self.shadow.evidence_coverage_bps
-            - self.baseline.evidence_coverage_bps
-        )
+        return self.shadow.evidence_coverage_bps - self.baseline.evidence_coverage_bps
 
     @property
     def authoritative_proof_closure_delta_bps(self) -> int:
@@ -669,9 +605,7 @@ class PairedGoalBenchmarkReport:
 
     @property
     def report_id(self) -> str:
-        return _content_id(
-            self.to_dict(include_id=False), prefix="goal-benchmark-report-"
-        )
+        return _content_id(self.to_dict(include_id=False), prefix="goal-benchmark-report-")
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -687,9 +621,7 @@ class PairedGoalBenchmarkReport:
             "paired_win_bps": self.paired_win_bps,
             "mean_quality_delta_bps": self.mean_quality_delta_bps,
             "evidence_coverage_delta_bps": self.evidence_coverage_delta_bps,
-            "authoritative_proof_closure_delta_bps": (
-                self.authoritative_proof_closure_delta_bps
-            ),
+            "authoritative_proof_closure_delta_bps": (self.authoritative_proof_closure_delta_bps),
         }
         if include_id:
             payload["report_id"] = self.report_id
@@ -704,8 +636,7 @@ class PairedGoalBenchmarkReport:
         )
         result = cls(
             cases=tuple(
-                PairedGoalBenchmarkCase.from_dict(item)
-                for item in payload.get("cases") or ()
+                PairedGoalBenchmarkCase.from_dict(item) for item in payload.get("cases") or ()
             ),
             benchmark_version=payload.get("benchmark_version", ""),
         )
@@ -766,9 +697,7 @@ class GoalRolloutGatePolicy:
             "minimum_assist_observations",
             "minimum_auto_safe_observations",
         ):
-            object.__setattr__(
-                self, name, _positive_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _positive_int(getattr(self, name), name))
         for name in (
             "minimum_mean_quality_delta_bps",
             "minimum_paired_win_bps",
@@ -793,9 +722,7 @@ class GoalRolloutGatePolicy:
         object.__setattr__(
             self,
             "allow_auto_safe_promotion",
-            _boolean(
-                self.allow_auto_safe_promotion, "allow_auto_safe_promotion"
-            ),
+            _boolean(self.allow_auto_safe_promotion, "allow_auto_safe_promotion"),
         )
 
     def observation_floor(self, target: GoalDevelopmentMode) -> int:
@@ -809,9 +736,7 @@ class GoalRolloutGatePolicy:
         return {
             GoalDevelopmentMode.SHADOW: self.minimum_shadow_schema_acceptance_bps,
             GoalDevelopmentMode.ASSIST: self.minimum_assist_schema_acceptance_bps,
-            GoalDevelopmentMode.AUTO_SAFE: (
-                self.minimum_auto_safe_schema_acceptance_bps
-            ),
+            GoalDevelopmentMode.AUTO_SAFE: (self.minimum_auto_safe_schema_acceptance_bps),
         }[target]
 
     def type_floor(self, target: GoalDevelopmentMode) -> int:
@@ -855,26 +780,16 @@ class GoalRolloutGateDecision:
                 ) from exc
             object.__setattr__(self, name, normalized)
         object.__setattr__(self, "allowed", _boolean(self.allowed, "allowed"))
-        if isinstance(self.reason_codes, str) or not isinstance(
-            self.reason_codes, Sequence
-        ):
-            raise ContractValidationError(
-                "reason_codes must be a sequence of strings"
-            )
-        reasons = tuple(
-            sorted({_text(item, "reason_codes") for item in self.reason_codes})
-        )
+        if isinstance(self.reason_codes, str) or not isinstance(self.reason_codes, Sequence):
+            raise ContractValidationError("reason_codes must be a sequence of strings")
+        reasons = tuple(sorted({_text(item, "reason_codes") for item in self.reason_codes}))
         object.__setattr__(self, "reason_codes", reasons)
         if self.allowed == bool(reasons):
-            raise ContractValidationError(
-                "allowed must be true exactly when reason_codes is empty"
-            )
+            raise ContractValidationError("allowed must be true exactly when reason_codes is empty")
 
     @property
     def decision_id(self) -> str:
-        return _content_id(
-            self.to_dict(include_id=False), prefix="goal-rollout-gate-"
-        )
+        return _content_id(self.to_dict(include_id=False), prefix="goal-rollout-gate-")
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -926,9 +841,7 @@ def evaluate_goal_rollout_promotion(
     """Evaluate an adjacent promotion without changing runtime configuration."""
 
     if not isinstance(report, PairedGoalBenchmarkReport):
-        raise ContractValidationError(
-            "report must be PairedGoalBenchmarkReport"
-        )
+        raise ContractValidationError("report must be PairedGoalBenchmarkReport")
     gate = policy or GoalRolloutGatePolicy()
     try:
         source = (
@@ -952,9 +865,7 @@ def evaluate_goal_rollout_promotion(
 
     if not report.taxonomy_complete:
         reasons.append("fixture_taxonomy_incomplete")
-    if target in _PROMOTION_ORDER[1:] and len(report.cases) < gate.observation_floor(
-        target
-    ):
+    if target in _PROMOTION_ORDER[1:] and len(report.cases) < gate.observation_floor(target):
         reasons.append("insufficient_paired_observations")
 
     shadow = report.shadow
@@ -969,20 +880,13 @@ def evaluate_goal_rollout_promotion(
         reasons.append("material_quality_improvement_not_met")
     if report.paired_win_bps < gate.minimum_paired_win_bps:
         reasons.append("paired_win_rate_not_met")
-    if (
-        report.evidence_coverage_delta_bps
-        < gate.minimum_evidence_coverage_delta_bps
-    ):
+    if report.evidence_coverage_delta_bps < gate.minimum_evidence_coverage_delta_bps:
         reasons.append("evidence_coverage_improvement_not_met")
-    if (
-        report.authoritative_proof_closure_delta_bps
-        < gate.minimum_proof_closure_delta_bps
-    ):
+    if report.authoritative_proof_closure_delta_bps < gate.minimum_proof_closure_delta_bps:
         reasons.append("authoritative_proof_improvement_not_met")
     if (
         shadow.duplicate_conflict_bps
-        > report.baseline.duplicate_conflict_bps
-        + gate.maximum_duplicate_conflict_regression_bps
+        > report.baseline.duplicate_conflict_bps + gate.maximum_duplicate_conflict_regression_bps
     ):
         reasons.append("duplicate_conflict_regression")
     if (
@@ -999,10 +903,7 @@ def evaluate_goal_rollout_promotion(
             reasons.append("type_acceptance_floor_not_met")
         if shadow.fallback_bps > gate.fallback_ceiling(target):
             reasons.append("fallback_ceiling_exceeded")
-    if (
-        target is GoalDevelopmentMode.AUTO_SAFE
-        and not gate.allow_auto_safe_promotion
-    ):
+    if target is GoalDevelopmentMode.AUTO_SAFE and not gate.allow_auto_safe_promotion:
         reasons.append("auto_safe_promotion_not_explicitly_authorized")
 
     normalized = tuple(sorted(set(reasons)))

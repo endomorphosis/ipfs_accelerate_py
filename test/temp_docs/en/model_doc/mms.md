@@ -70,7 +70,9 @@ model_id = "facebook/mms-1b-all"
 target_lang = "fra"
 
 processor = AutoProcessor.from_pretrained(model_id, target_lang=target_lang)
-model = Wav2Vec2ForCTC.from_pretrained(model_id, target_lang=target_lang, ignore_mismatched_sizes=True)
+model = Wav2Vec2ForCTC.from_pretrained(
+    model_id, target_lang=target_lang, ignore_mismatched_sizes=True
+)
 ```
 
 <Tip>
@@ -94,7 +96,9 @@ from transformers import pipeline
 model_id = "facebook/mms-1b-all"
 target_lang = "fra"
 
-pipe = pipeline(model=model_id, model_kwargs={"target_lang": "fra", "ignore_mismatched_sizes": True})
+pipe = pipeline(
+    model=model_id, model_kwargs={"target_lang": "fra", "ignore_mismatched_sizes": True}
+)
 ```
 
 #### Inference
@@ -106,12 +110,16 @@ First, we load audio data in different languages using the [Datasets](https://gi
 from datasets import load_dataset, Audio
 
 # English
-stream_data = load_dataset("mozilla-foundation/common_voice_13_0", "en", split="test", streaming=True)
+stream_data = load_dataset(
+    "mozilla-foundation/common_voice_13_0", "en", split="test", streaming=True
+)
 stream_data = stream_data.cast_column("audio", Audio(sampling_rate=16000))
 en_sample = next(iter(stream_data))["audio"]["array"]
 
 # French
-stream_data = load_dataset("mozilla-foundation/common_voice_13_0", "fr", split="test", streaming=True)
+stream_data = load_dataset(
+    "mozilla-foundation/common_voice_13_0", "fr", split="test", streaming=True
+)
 stream_data = stream_data.cast_column("audio", Audio(sampling_rate=16000))
 fr_sample = next(iter(stream_data))["audio"]["array"]
 ```
@@ -203,7 +211,7 @@ inputs = tokenizer(text="Hello - my dog is cute", return_tensors="pt")
 set_seed(555)  # make deterministic
 
 with torch.no_grad():
-   outputs = model(**inputs)
+    outputs = model(**inputs)
 
 waveform = outputs.waveform[0]
 ```
@@ -260,13 +268,16 @@ import subprocess
 tokenizer = VitsTokenizer.from_pretrained("facebook/mms-tts-kor")
 model = VitsModel.from_pretrained("facebook/mms-tts-kor")
 
+
 def uromanize(input_string, uroman_path):
     """Convert non-Roman strings to Roman using the `uroman` perl package."""
     script_path = os.path.join(uroman_path, "bin", "uroman.pl")
 
     command = ["perl", script_path]
 
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     # Execute the perl command
     stdout, stderr = process.communicate(input=input_string.encode())
 
@@ -276,6 +287,7 @@ def uromanize(input_string, uroman_path):
     # Return the output as a string and skip the new-line character at the end
     return stdout.decode()[:-1]
 
+
 text = "이봐 무슨 일이야"
 uromanized_text = uromanize(text, uroman_path=os.environ["UROMAN"])
 
@@ -283,7 +295,7 @@ inputs = tokenizer(text=uromanized_text, return_tensors="pt")
 
 set_seed(555)  # make deterministic
 with torch.no_grad():
-   outputs = model(inputs["input_ids"])
+    outputs = model(inputs["input_ids"])
 
 waveform = outputs.waveform[0]
 ```
@@ -303,14 +315,14 @@ model = VitsModel.from_pretrained("facebook/mms-tts-eng")
 inputs = tokenizer(text="Hello - my dog is cute", return_tensors="pt")
 
 # make deterministic
-set_seed(555)  
+set_seed(555)
 
 # make speech faster and more noisy
 model.speaking_rate = 1.5
 model.noise_scale = 0.8
 
 with torch.no_grad():
-   outputs = model(**inputs)
+    outputs = model(**inputs)
 ```
 
 ### Language Identification (LID)
@@ -331,12 +343,16 @@ Next, we load a couple of audio samples via `datasets`. Make sure that the audio
 from datasets import load_dataset, Audio
 
 # English
-stream_data = load_dataset("mozilla-foundation/common_voice_13_0", "en", split="test", streaming=True)
+stream_data = load_dataset(
+    "mozilla-foundation/common_voice_13_0", "en", split="test", streaming=True
+)
 stream_data = stream_data.cast_column("audio", Audio(sampling_rate=16000))
 en_sample = next(iter(stream_data))["audio"]["array"]
 
 # Arabic
-stream_data = load_dataset("mozilla-foundation/common_voice_13_0", "ar", split="test", streaming=True)
+stream_data = load_dataset(
+    "mozilla-foundation/common_voice_13_0", "ar", split="test", streaming=True
+)
 stream_data = stream_data.cast_column("audio", Audio(sampling_rate=16000))
 ar_sample = next(iter(stream_data))["audio"]["array"]
 ```

@@ -75,7 +75,7 @@ class BaseAPIBackend:
 
         Call once from the subclass ``__init__``.
         """
-        self.circuit_state: str = "CLOSED"   # CLOSED | OPEN | HALF_OPEN
+        self.circuit_state: str = "CLOSED"  # CLOSED | OPEN | HALF_OPEN
         self.failure_threshold: int = failure_threshold
         self.reset_timeout: float = reset_timeout
         self.failure_count: int = 0
@@ -120,13 +120,19 @@ class BaseAPIBackend:
                     self.active_requests += 1
 
                 # Unwrap (priority, dict) tuple if needed.
-                if isinstance(raw_item, tuple) and len(raw_item) == 2 and isinstance(raw_item[1], dict):
+                if (
+                    isinstance(raw_item, tuple)
+                    and len(raw_item) == 2
+                    and isinstance(raw_item[1], dict)
+                ):
                     _, request_info = raw_item
                 elif isinstance(raw_item, dict):
                     request_info = raw_item
                 else:
                     # Unrecognised format – skip silently to avoid blocking.
-                    logger.warning("_process_queue: unrecognised queue item type %s, skipping", type(raw_item))
+                    logger.warning(
+                        "_process_queue: unrecognised queue item type %s, skipping", type(raw_item)
+                    )
                     with self.queue_lock:
                         self.active_requests = max(0, self.active_requests - 1)
                     continue
@@ -159,9 +165,9 @@ class BaseAPIBackend:
                             request_id = request_info.get("request_id")
 
                             if hasattr(self, "make_request"):
-                                method = self.make_request          # type: ignore[attr-defined]
+                                method = self.make_request  # type: ignore[attr-defined]
                             elif hasattr(self, "make_post_request"):
-                                method = self.make_post_request     # type: ignore[attr-defined]
+                                method = self.make_post_request  # type: ignore[attr-defined]
                             else:
                                 raise AttributeError(
                                     "Backend has neither make_request nor make_post_request"

@@ -209,10 +209,7 @@ def _module_available(checkout: Path, module_name: str) -> bool:
     # PEP 420 namespace packages need no __init__.py.  Requiring at least one
     # Python child prevents an unrelated empty directory from satisfying the
     # availability check.
-    return any(
-        child.is_file() and child.suffix == ".py"
-        for child in module_path.iterdir()
-    )
+    return any(child.is_file() and child.suffix == ".py" for child in module_path.iterdir())
 
 
 def discover_sibling_repository(
@@ -227,9 +224,7 @@ def discover_sibling_repository(
     # top level contains the independently checked-out datasets sibling.
     # Prefer the nearest such ancestor.  Shared Git common directories can
     # contain unrelated worktrees, so their neighbors are only fallbacks.
-    candidates = [
-        ancestor / submodule_name for ancestor in parent_repo.parents
-    ]
+    candidates = [ancestor / submodule_name for ancestor in parent_repo.parents]
     worktrees = _git(parent_repo, "worktree", "list", "--porcelain")
     if worktrees.returncode == 0:
         for line in worktrees.stdout.splitlines():
@@ -284,11 +279,7 @@ def verify_submodule_alignment(
         )
 
     relative_text = relative.as_posix()
-    gitlink = (
-        _gitlink(parent, parent_commit, relative_text)
-        if parent_commit is not None
-        else None
-    )
+    gitlink = _gitlink(parent, parent_commit, relative_text) if parent_commit is not None else None
     if parent_commit is not None and gitlink is None:
         diagnostics.append(
             AlignmentDiagnostic(
@@ -329,10 +320,7 @@ def verify_submodule_alignment(
             diagnostics.append(
                 AlignmentDiagnostic(
                     "embedded_checkout_dirty",
-                    (
-                        "embedded checkout contains tracked, untracked, "
-                        "or nested-submodule changes"
-                    ),
+                    ("embedded checkout contains tracked, untracked, or nested-submodule changes"),
                     "Commit, stash, or remove the reported embedded checkout changes.",
                 )
             )
@@ -348,11 +336,7 @@ def verify_submodule_alignment(
                 ),
             )
         )
-    if (
-        gitlink is not None
-        and embedded.origin_main is not None
-        and gitlink != embedded.origin_main
-    ):
+    if gitlink is not None and embedded.origin_main is not None and gitlink != embedded.origin_main:
         diagnostics.append(
             AlignmentDiagnostic(
                 "gitlink_origin_main_mismatch",
@@ -408,10 +392,7 @@ def verify_submodule_alignment(
             diagnostics.append(
                 AlignmentDiagnostic(
                     "sibling_checkout_dirty",
-                    (
-                        "sibling checkout contains tracked, untracked, "
-                        "or nested-submodule changes"
-                    ),
+                    ("sibling checkout contains tracked, untracked, or nested-submodule changes"),
                     "Commit, stash, or remove the reported sibling checkout changes.",
                 )
             )
@@ -446,8 +427,7 @@ def verify_submodule_alignment(
             )
 
     module_availability = {
-        module_name: embedded.available
-        and _module_available(embedded_path, module_name)
+        module_name: embedded.available and _module_available(embedded_path, module_name)
         for module_name in dict.fromkeys(required_modules)
     }
     for module_name, available in module_availability.items():

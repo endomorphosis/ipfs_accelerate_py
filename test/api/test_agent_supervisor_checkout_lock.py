@@ -39,9 +39,7 @@ def _metadata(
 
 
 def _pending_files(lock_path: Path) -> list[Path]:
-    return list(
-        lock_path.parent.glob(f".{lock_path.name}.*.pending")
-    )
+    return list(lock_path.parent.glob(f".{lock_path.name}.*.pending"))
 
 
 def _git(repo: Path, *args: str) -> str:

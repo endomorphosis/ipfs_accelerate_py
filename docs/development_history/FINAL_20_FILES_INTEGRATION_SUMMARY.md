@@ -56,10 +56,12 @@ Each file received the following integration:
 # 1. Import with 3-level fallback
 try:
     from ...common.storage_wrapper import StorageWrapper
+
     DISTRIBUTED_STORAGE_AVAILABLE = True
 except ImportError:
     try:
         from ..common.storage_wrapper import StorageWrapper
+
         DISTRIBUTED_STORAGE_AVAILABLE = True
     except ImportError:
         DISTRIBUTED_STORAGE_AVAILABLE = False

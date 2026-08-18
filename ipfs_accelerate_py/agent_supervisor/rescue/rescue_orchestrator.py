@@ -63,9 +63,7 @@ from .rescue_planner import (
 RESCUE_ORCHESTRATION_REQUIREMENT_ID: Final[str] = (
     "ASI-157:bounded-rescue-one-exact-action-per-permit"
 )
-RESCUE_ROOT_BINDING_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/rescue-root-binding@1"
-)
+RESCUE_ROOT_BINDING_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/rescue-root-binding@1"
 RESCUE_RUNTIME_SNAPSHOT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/rescue-runtime-snapshot@1"
 )
@@ -87,9 +85,7 @@ RESCUE_HEALTH_RECEIPT_SCHEMA: Final[str] = (
 RESCUE_ACTION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/rescue-action-execution-receipt@1"
 )
-RESCUE_RUN_RECEIPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/rescue-run-receipt@1"
-)
+RESCUE_RUN_RECEIPT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/rescue-run-receipt@1"
 
 ABSOLUTE_MAX_RESCUE_ACTIONS: Final[int] = 32
 ABSOLUTE_MAX_RESCUE_TIME_MS: Final[int] = 10 * 60 * 1_000
@@ -183,9 +179,7 @@ def _canonical(value: Any) -> Any:
         if not all(isinstance(key, str) for key in value):
             raise RescueOrchestrationError("mapping keys must be strings")
         return {key: _canonical(value[key]) for key in sorted(value)}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_canonical(item) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
@@ -193,17 +187,13 @@ def _canonical(value: Any) -> Any:
     converter = getattr(value, "to_record", None)
     if callable(converter):
         return _canonical(converter())
-    raise RescueOrchestrationError(
-        "unsupported canonical value: " + type(value).__name__
-    )
+    raise RescueOrchestrationError("unsupported canonical value: " + type(value).__name__)
 
 
 def _freeze(value: Any) -> Any:
     plain = _canonical(value)
     if isinstance(plain, dict):
-        return MappingProxyType(
-            {key: _freeze(item) for key, item in plain.items()}
-        )
+        return MappingProxyType({key: _freeze(item) for key, item in plain.items()})
     if isinstance(plain, list):
         return tuple(_freeze(item) for item in plain)
     return plain
@@ -327,9 +317,7 @@ class RescueRuntimeSnapshot:
             "revision",
             "observed_at_ms",
         ):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if not isinstance(self.quarantined, bool):
             raise RescueOrchestrationError("quarantined must be boolean")
 
@@ -374,28 +362,15 @@ class RescueExecutionBudget:
         if self.max_actions > ABSOLUTE_MAX_RESCUE_ACTIONS:
             raise RescueOrchestrationError("max_actions exceeds absolute bound")
         if self.max_model_actions > ABSOLUTE_MAX_RESCUE_ACTIONS:
-            raise RescueOrchestrationError(
-                "max_model_actions exceeds absolute bound"
-            )
+            raise RescueOrchestrationError("max_model_actions exceeds absolute bound")
         if self.max_elapsed_ms > ABSOLUTE_MAX_RESCUE_TIME_MS:
-            raise RescueOrchestrationError(
-                "max_elapsed_ms exceeds absolute bound"
-            )
+            raise RescueOrchestrationError("max_elapsed_ms exceeds absolute bound")
         if self.permit_ttl_ms > ABSOLUTE_MAX_PERMIT_TTL_MS:
-            raise RescueOrchestrationError(
-                "permit_ttl_ms exceeds short-lived absolute bound"
-            )
+            raise RescueOrchestrationError("permit_ttl_ms exceeds short-lived absolute bound")
         if self.max_model_tokens > ABSOLUTE_MAX_MODEL_TOKENS:
-            raise RescueOrchestrationError(
-                "max_model_tokens exceeds absolute bound"
-            )
-        if (
-            self.max_model_cost_microunits
-            > ABSOLUTE_MAX_MODEL_COST_MICROUNITS
-        ):
-            raise RescueOrchestrationError(
-                "max_model_cost_microunits exceeds absolute bound"
-            )
+            raise RescueOrchestrationError("max_model_tokens exceeds absolute bound")
+        if self.max_model_cost_microunits > ABSOLUTE_MAX_MODEL_COST_MICROUNITS:
+            raise RescueOrchestrationError("max_model_cost_microunits exceeds absolute bound")
 
 
 @dataclass(frozen=True)
@@ -410,9 +385,7 @@ class RescueExecutionRequest:
     fencing_epoch: int
     idempotency_scope: str
     rescue_plan_root: str = ""
-    budget: RescueExecutionBudget = field(
-        default_factory=RescueExecutionBudget
-    )
+    budget: RescueExecutionBudget = field(default_factory=RescueExecutionBudget)
     model_tokens: int = 0
     model_cost_microunits: int = 0
     start_action_index: int = 0
@@ -424,18 +397,12 @@ class RescueExecutionRequest:
             raise RescueOrchestrationError("plan must be RescuePlan")
         if not isinstance(self.incident, SupervisorIncident):
             raise RescueOrchestrationError("incident must be SupervisorIncident")
-        if not isinstance(
-            self.exhaustion_receipt, ProgrammaticRecoveryExhaustionReceipt
-        ):
-            raise RescueOrchestrationError(
-                "exhaustion_receipt has the wrong type"
-            )
+        if not isinstance(self.exhaustion_receipt, ProgrammaticRecoveryExhaustionReceipt):
+            raise RescueOrchestrationError("exhaustion_receipt has the wrong type")
         if not isinstance(self.roots, RescueRootBinding):
             raise RescueOrchestrationError("roots must be RescueRootBinding")
         if not isinstance(self.budget, RescueExecutionBudget):
-            raise RescueOrchestrationError(
-                "budget must be RescueExecutionBudget"
-            )
+            raise RescueOrchestrationError("budget must be RescueExecutionBudget")
         object.__setattr__(self, "lease_id", _text(self.lease_id, "lease_id"))
         object.__setattr__(
             self,
@@ -457,14 +424,10 @@ class RescueExecutionRequest:
             "model_cost_microunits",
             "start_action_index",
         ):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if self.control_request is not None:
             if not isinstance(self.control_request, OperationRequest):
-                raise RescueOrchestrationError(
-                    "control_request must be OperationRequest"
-                )
+                raise RescueOrchestrationError("control_request must be OperationRequest")
             if self.control_request.operation is not Operation.RESCUE:
                 raise RescueOrchestrationError(
                     "control_request must use the shared rescue operation"
@@ -510,18 +473,12 @@ class RescueSimulationReceipt:
         if not self.effects or not all(
             isinstance(item, RescueSimulatedEffect) for item in self.effects
         ):
-            raise RescueOrchestrationError(
-                "simulation must return typed non-empty effects"
-            )
+            raise RescueOrchestrationError("simulation must return typed non-empty effects")
         ids = tuple(item.effect_id for item in self.effects)
         if len(ids) != len(set(ids)):
-            raise RescueOrchestrationError(
-                "simulation effect IDs must be unique"
-            )
+            raise RescueOrchestrationError("simulation effect IDs must be unique")
         object.__setattr__(
-            self, "simulated_at_ms", _nonnegative(
-                self.simulated_at_ms, "simulated_at_ms"
-            )
+            self, "simulated_at_ms", _nonnegative(self.simulated_at_ms, "simulated_at_ms")
         )
 
     def to_dict(self) -> Mapping[str, Any]:
@@ -557,25 +514,17 @@ class RescueActionBinding:
         for name in ("plan_cid", "lease_id", "idempotency_key", "caller"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in ("action_index", "fencing_epoch"):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if not isinstance(self.action, RescueAction):
             raise RescueOrchestrationError("action must be RescueAction")
         if not isinstance(self.roots, RescueRootBinding):
             raise RescueOrchestrationError("roots must be RescueRootBinding")
         if not isinstance(self.simulation, RescueSimulationReceipt):
-            raise RescueOrchestrationError(
-                "simulation must be RescueSimulationReceipt"
-            )
+            raise RescueOrchestrationError("simulation must be RescueSimulationReceipt")
         if self.simulation.action_content_id != self.action.content_id:
-            raise RescueOrchestrationError(
-                "simulation belongs to a different action"
-            )
+            raise RescueOrchestrationError("simulation belongs to a different action")
         if self.simulation.root_binding_id != self.roots.content_id:
-            raise RescueOrchestrationError(
-                "simulation belongs to different roots"
-            )
+            raise RescueOrchestrationError("simulation belongs to different roots")
 
     def to_dict(self) -> Mapping[str, Any]:
         return {
@@ -615,12 +564,8 @@ class RescueAuthorizationReceipt:
     expires_at_ms: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "domain", RescueAuthorizationDomain(self.domain)
-        )
-        object.__setattr__(
-            self, "verdict", RescueAuthorizationVerdict(self.verdict)
-        )
+        object.__setattr__(self, "domain", RescueAuthorizationDomain(self.domain))
+        object.__setattr__(self, "verdict", RescueAuthorizationVerdict(self.verdict))
         for name in ("binding_id", "root_binding_id", "authority_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         lowered = self.authority_id.lower()
@@ -629,21 +574,13 @@ class RescueAuthorizationReceipt:
                 "a model/planner/provider cannot authorize rescue execution"
             )
         if self.verdict is not RescueAuthorizationVerdict.PERMIT:
-            object.__setattr__(
-                self, "reason_code", _text(self.reason_code, "reason_code")
-            )
+            object.__setattr__(self, "reason_code", _text(self.reason_code, "reason_code"))
         elif self.reason_code:
-            object.__setattr__(
-                self, "reason_code", _text(self.reason_code, "reason_code")
-            )
+            object.__setattr__(self, "reason_code", _text(self.reason_code, "reason_code"))
         for name in ("evaluated_at_ms", "expires_at_ms"):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if self.expires_at_ms <= self.evaluated_at_ms:
-            raise RescueOrchestrationError(
-                "authorization receipt must have a positive lifetime"
-            )
+            raise RescueOrchestrationError("authorization receipt must have a positive lifetime")
 
     @property
     def admitted(self) -> bool:
@@ -703,31 +640,18 @@ class RescuePermitUseReceipt:
             "use_sequence",
             "remaining_uses",
         ):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if self.use_sequence != 1 or self.remaining_uses != 0:
-            raise RescueOrchestrationError(
-                "a rescue permit must authorize exactly one use"
-            )
+            raise RescueOrchestrationError("a rescue permit must authorize exactly one use")
         if (
             self.expires_at_ms <= self.issued_at_ms
-            or self.expires_at_ms - self.issued_at_ms
-            > ABSOLUTE_MAX_PERMIT_TTL_MS
+            or self.expires_at_ms - self.issued_at_ms > ABSOLUTE_MAX_PERMIT_TTL_MS
         ):
-            raise RescueOrchestrationError(
-                "rescue permit is not short-lived"
-            )
-        if not (
-            self.issued_at_ms <= self.consumed_at_ms < self.expires_at_ms
-        ):
-            raise RescueOrchestrationError(
-                "permit was consumed outside its validity window"
-            )
+            raise RescueOrchestrationError("rescue permit is not short-lived")
+        if not (self.issued_at_ms <= self.consumed_at_ms < self.expires_at_ms):
+            raise RescueOrchestrationError("permit was consumed outside its validity window")
         if self.grants_completion_authority:
-            raise RescueOrchestrationError(
-                "rescue permits cannot grant completion authority"
-            )
+            raise RescueOrchestrationError("rescue permits cannot grant completion authority")
 
     def to_dict(self) -> Mapping[str, Any]:
         return {
@@ -772,18 +696,10 @@ class RescueEffectObservation:
             "transaction_receipt_id",
             _text(self.transaction_receipt_id, "transaction_receipt_id"),
         )
-        if not isinstance(self.complete, bool) or not isinstance(
-            self.quarantined, bool
-        ):
-            raise RescueOrchestrationError(
-                "effect completion flags must be boolean"
-            )
-        if self.control_result is not None and not isinstance(
-            self.control_result, OperationResult
-        ):
-            raise RescueOrchestrationError(
-                "control_result must be OperationResult"
-            )
+        if not isinstance(self.complete, bool) or not isinstance(self.quarantined, bool):
+            raise RescueOrchestrationError("effect completion flags must be boolean")
+        if self.control_result is not None and not isinstance(self.control_result, OperationResult):
+            raise RescueOrchestrationError("control_result must be OperationResult")
 
     def to_dict(self) -> Mapping[str, Any]:
         return {
@@ -792,9 +708,7 @@ class RescueEffectObservation:
             "complete": self.complete,
             "quarantined": self.quarantined,
             "control_result_id": (
-                ""
-                if self.control_result is None
-                else self.control_result.content_id
+                "" if self.control_result is None else self.control_result.content_id
             ),
         }
 
@@ -812,14 +726,8 @@ class RescueHealthReceipt:
         object.__setattr__(self, "state", RescueHealthState(self.state))
         for name in ("incident_cid", "root_binding_id", "health_test_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "evidence_ids", _strings(self.evidence_ids, "evidence_ids")
-        )
-        object.__setattr__(
-            self, "checked_at_ms", _nonnegative(
-                self.checked_at_ms, "checked_at_ms"
-            )
-        )
+        object.__setattr__(self, "evidence_ids", _strings(self.evidence_ids, "evidence_ids"))
+        object.__setattr__(self, "checked_at_ms", _nonnegative(self.checked_at_ms, "checked_at_ms"))
 
     def to_dict(self) -> Mapping[str, Any]:
         return {
@@ -866,20 +774,13 @@ class RescueActionExecutionReceipt:
             "root_binding_id",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "action_index", _nonnegative(self.action_index, "action_index")
-        )
-        object.__setattr__(
-            self, "disposition", RescueReceiptDisposition(self.disposition)
-        )
+        object.__setattr__(self, "action_index", _nonnegative(self.action_index, "action_index"))
+        object.__setattr__(self, "disposition", RescueReceiptDisposition(self.disposition))
         object.__setattr__(self, "stop_reason", RescueStopReason(self.stop_reason))
         if not all(
-            isinstance(item, RescueAuthorizationReceipt)
-            for item in self.authorization_receipts
+            isinstance(item, RescueAuthorizationReceipt) for item in self.authorization_receipts
         ):
-            raise RescueOrchestrationError(
-                "authorization_receipts are malformed"
-            )
+            raise RescueOrchestrationError("authorization_receipts are malformed")
         if self.simulation_receipt_id:
             object.__setattr__(
                 self,
@@ -889,21 +790,14 @@ class RescueActionExecutionReceipt:
         if self.permit_use_receipt is not None and not isinstance(
             self.permit_use_receipt, RescuePermitUseReceipt
         ):
-            raise RescueOrchestrationError(
-                "permit_use_receipt has the wrong type"
-            )
-        if not all(
-            isinstance(item, RescueSimulatedEffect)
-            for item in self.observed_effects
-        ):
+            raise RescueOrchestrationError("permit_use_receipt has the wrong type")
+        if not all(isinstance(item, RescueSimulatedEffect) for item in self.observed_effects):
             raise RescueOrchestrationError("observed_effects are malformed")
         if self.transaction_receipt_id:
             object.__setattr__(
                 self,
                 "transaction_receipt_id",
-                _text(
-                    self.transaction_receipt_id, "transaction_receipt_id"
-                ),
+                _text(self.transaction_receipt_id, "transaction_receipt_id"),
             )
         if self.health_receipt is not None and not isinstance(
             self.health_receipt, RescueHealthReceipt
@@ -915,13 +809,9 @@ class RescueActionExecutionReceipt:
             _strings(self.recovery_steps, "recovery_steps"),
         )
         for name in ("started_at_ms", "finished_at_ms"):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if self.finished_at_ms < self.started_at_ms:
-            raise RescueOrchestrationError(
-                "action receipt finishes before it starts"
-            )
+            raise RescueOrchestrationError("action receipt finishes before it starts")
 
     @property
     def partial(self) -> bool:
@@ -942,23 +832,15 @@ class RescueActionExecutionReceipt:
             "root_binding_id": self.root_binding_id,
             "disposition": self.disposition.value,
             "stop_reason": self.stop_reason.value,
-            "authorization_receipts": [
-                item.to_dict() for item in self.authorization_receipts
-            ],
+            "authorization_receipts": [item.to_dict() for item in self.authorization_receipts],
             "simulation_receipt_id": self.simulation_receipt_id,
             "permit_use_receipt": (
-                None
-                if self.permit_use_receipt is None
-                else self.permit_use_receipt.to_dict()
+                None if self.permit_use_receipt is None else self.permit_use_receipt.to_dict()
             ),
-            "observed_effects": [
-                item.to_dict() for item in self.observed_effects
-            ],
+            "observed_effects": [item.to_dict() for item in self.observed_effects],
             "transaction_receipt_id": self.transaction_receipt_id,
             "health_receipt": (
-                None
-                if self.health_receipt is None
-                else self.health_receipt.to_dict()
+                None if self.health_receipt is None else self.health_receipt.to_dict()
             ),
             "recovery_steps": list(self.recovery_steps),
             "started_at_ms": self.started_at_ms,
@@ -987,14 +869,9 @@ class RescueRunReceipt:
     def __post_init__(self) -> None:
         for name in ("plan_cid", "incident_cid", "root_binding_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "disposition", RescueReceiptDisposition(self.disposition)
-        )
+        object.__setattr__(self, "disposition", RescueReceiptDisposition(self.disposition))
         object.__setattr__(self, "stop_reason", RescueStopReason(self.stop_reason))
-        if not all(
-            isinstance(item, RescueActionExecutionReceipt)
-            for item in self.action_receipts
-        ):
+        if not all(isinstance(item, RescueActionExecutionReceipt) for item in self.action_receipts):
             raise RescueOrchestrationError("action_receipts are malformed")
         object.__setattr__(
             self,
@@ -1002,9 +879,7 @@ class RescueRunReceipt:
             _nonnegative(self.next_action_index, "next_action_index"),
         )
         for name in ("started_at_ms", "finished_at_ms"):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         object.__setattr__(
             self,
             "recovery_steps",
@@ -1020,9 +895,7 @@ class RescueRunReceipt:
             "root_binding_id": self.root_binding_id,
             "disposition": self.disposition.value,
             "stop_reason": self.stop_reason.value,
-            "action_receipts": [
-                item.to_dict() for item in self.action_receipts
-            ],
+            "action_receipts": [item.to_dict() for item in self.action_receipts],
             "next_action_index": self.next_action_index,
             "started_at_ms": self.started_at_ms,
             "finished_at_ms": self.finished_at_ms,
@@ -1043,22 +916,19 @@ class RescueRunReceipt:
 
 
 class RescueStateProvider(Protocol):
-    def snapshot(self) -> RescueRuntimeSnapshot:
-        ...
+    def snapshot(self) -> RescueRuntimeSnapshot: ...
 
 
 class RescueEffectSimulator(Protocol):
     def simulate(
         self, action: RescueAction, roots: RescueRootBinding, now_ms: int
-    ) -> RescueSimulationReceipt:
-        ...
+    ) -> RescueSimulationReceipt: ...
 
 
 class RescueDomainAuthorizer(Protocol):
     def authorize(
         self, binding: RescueActionBinding, now_ms: int
-    ) -> RescueAuthorizationReceipt:
-        ...
+    ) -> RescueAuthorizationReceipt: ...
 
 
 class RescueExecutionPermitBoundary(Protocol):
@@ -1071,8 +941,7 @@ class RescueExecutionPermitBoundary(Protocol):
         snapshot: RescueRuntimeSnapshot,
         issued_at_ms: int,
         expires_at_ms: int,
-    ) -> RescuePermitUseReceipt:
-        ...
+    ) -> RescuePermitUseReceipt: ...
 
 
 class RescueControlTransaction(Protocol):
@@ -1083,28 +952,20 @@ class RescueControlTransaction(Protocol):
         binding: RescueActionBinding,
         permit: RescuePermitUseReceipt,
         control_request: Optional[OperationRequest],
-    ) -> RescueEffectObservation:
-        ...
+    ) -> RescueEffectObservation: ...
 
 
 class RescueHealthTester(Protocol):
-    def test(
-        self, binding: RescueActionBinding, now_ms: int
-    ) -> RescueHealthReceipt:
-        ...
+    def test(self, binding: RescueActionBinding, now_ms: int) -> RescueHealthReceipt: ...
 
 
-def _invoke(
-    dependency: Any, method: str, *args: Any
-) -> Any:
+def _invoke(dependency: Any, method: str, *args: Any) -> Any:
     target = getattr(dependency, method, None)
     if callable(target):
         return target(*args)
     if callable(dependency):
         return dependency(*args)
-    raise RescueOrchestrationError(
-        type(dependency).__name__ + " does not implement " + method
-    )
+    raise RescueOrchestrationError(type(dependency).__name__ + " does not implement " + method)
 
 
 def _operation_spec(
@@ -1119,22 +980,17 @@ def _operation_spec(
             reason_code="unknown_operation",
         ) from exc
     if set(action.parameters) != set(spec.parameters):
-        required = {
-            name for name, parameter in spec.parameters.items()
-            if parameter.required
-        }
-        if not required.issubset(action.parameters) or not set(
-            action.parameters
-        ).issubset(spec.parameters):
+        required = {name for name, parameter in spec.parameters.items() if parameter.required}
+        if not required.issubset(action.parameters) or not set(action.parameters).issubset(
+            spec.parameters
+        ):
             raise RescuePlannerValidationError(
                 "action parameters differ from the closed catalog schema",
                 reason_code="invalid_parameters",
             )
     for name, value in action.parameters.items():
         spec.parameters[name].validate(value, name)
-    if spec.target_prefixes and not action.target_id.startswith(
-        spec.target_prefixes
-    ):
+    if spec.target_prefixes and not action.target_id.startswith(spec.target_prefixes):
         raise RescuePlannerValidationError(
             "action target type is outside the operation schema",
             reason_code="invalid_target_type",
@@ -1179,15 +1035,11 @@ def _control_effects(
             "control transaction did not succeed: " + result.status.value
         )
     claims = tuple(result.effects)
-    expected = {
-        item.effect_id: item for item in binding.simulation.effects
-    }
+    expected = {item.effect_id: item for item in binding.simulation.effects}
     observed = []
     for claim in claims:
         if not isinstance(claim, EffectClaim):
-            raise RescueOrchestrationError(
-                "control transaction returned an untyped effect claim"
-            )
+            raise RescueOrchestrationError("control transaction returned an untyped effect claim")
         simulated = expected.get(claim.effect_id)
         if simulated is None or not claim.applied:
             continue
@@ -1208,9 +1060,7 @@ class RescueOrchestrator:
         *,
         state_provider: RescueStateProvider,
         simulator: RescueEffectSimulator,
-        authorizers: Mapping[
-            RescueAuthorizationDomain, RescueDomainAuthorizer
-        ],
+        authorizers: Mapping[RescueAuthorizationDomain, RescueDomainAuthorizer],
         permit_boundary: RescueExecutionPermitBoundary,
         control_transaction: RescueControlTransaction,
         health_tester: RescueHealthTester,
@@ -1221,19 +1071,14 @@ class RescueOrchestrator:
     ) -> None:
         self._state_provider = state_provider
         self._simulator = simulator
-        normalized = {
-            RescueAuthorizationDomain(key): value
-            for key, value in authorizers.items()
-        }
+        normalized = {RescueAuthorizationDomain(key): value for key, value in authorizers.items()}
         if set(normalized) != set(REQUIRED_AUTHORIZATION_DOMAINS):
             raise RescueOrchestrationError(
                 "exactly one IntentIR, LegalIR, SecurityIR, proof, and "
                 "control authorizer is required"
             )
         if len({id(item) for item in normalized.values()}) != len(normalized):
-            raise RescueOrchestrationError(
-                "authorization domains require independent authorizers"
-            )
+            raise RescueOrchestrationError("authorization domains require independent authorizers")
         self._authorizers = MappingProxyType(normalized)
         self._permit_boundary = permit_boundary
         self._control_transaction = control_transaction
@@ -1249,21 +1094,14 @@ class RescueOrchestrator:
     def _snapshot(self) -> RescueRuntimeSnapshot:
         value = _invoke(self._state_provider, "snapshot")
         if not isinstance(value, RescueRuntimeSnapshot):
-            raise RescueOrchestrationError(
-                "state provider returned an invalid snapshot"
-            )
+            raise RescueOrchestrationError("state provider returned an invalid snapshot")
         return value
 
     @staticmethod
-    def _root_stop(
-        expected: RescueRootBinding, current: RescueRootBinding
-    ) -> RescueStopReason:
+    def _root_stop(expected: RescueRootBinding, current: RescueRootBinding) -> RescueStopReason:
         if current.incident_cid != expected.incident_cid:
             return RescueStopReason.INCIDENT_DRIFT
-        if (
-            current.exhaustion_receipt_cid
-            != expected.exhaustion_receipt_cid
-        ):
+        if current.exhaustion_receipt_cid != expected.exhaustion_receipt_cid:
             return RescueStopReason.EXHAUSTION_DRIFT
         return RescueStopReason.ROOT_DRIFT
 
@@ -1368,8 +1206,7 @@ class RescueOrchestrator:
                 reason_code="quarantine_required",
             )
         if request.model_tokens > request.budget.max_model_tokens or (
-            request.model_cost_microunits
-            > request.budget.max_model_cost_microunits
+            request.model_cost_microunits > request.budget.max_model_cost_microunits
         ):
             raise RescuePlannerValidationError(
                 "model budget exceeds execution authority",
@@ -1513,9 +1350,7 @@ class RescueOrchestrator:
         )
 
     @staticmethod
-    def _action_idempotency(
-        request: RescueExecutionRequest, action_index: int
-    ) -> str:
+    def _action_idempotency(request: RescueExecutionRequest, action_index: int) -> str:
         if request.control_request is not None:
             return request.control_request.idempotency_key
         return request.idempotency_scope + ":" + str(action_index)
@@ -1543,9 +1378,7 @@ class RescueOrchestrator:
             authorization_receipts=tuple(authorizations),
             simulation_receipt_id=binding.simulation.receipt_id,
             permit_use_receipt=permit,
-            observed_effects=(
-                () if observation is None else observation.effects
-            ),
+            observed_effects=(() if observation is None else observation.effects),
             transaction_receipt_id=(
                 "" if observation is None else observation.transaction_receipt_id
             ),
@@ -1698,8 +1531,7 @@ class RescueOrchestrator:
         if (
             simulation.action_content_id != action.content_id
             or simulation.root_binding_id != request.roots.content_id
-            or tuple(item.effect for item in simulation.effects)
-            != tuple(action.expected_effects)
+            or tuple(item.effect for item in simulation.effects) != tuple(action.expected_effects)
             or any(item.target_id != action.target_id for item in simulation.effects)
         ):
             binding = self._empty_binding(request, action_index, started)
@@ -1745,9 +1577,7 @@ class RescueOrchestrator:
         now = self._now()
         for domain in REQUIRED_AUTHORIZATION_DOMAINS:
             try:
-                receipt = _invoke(
-                    self._authorizers[domain], "authorize", binding, now
-                )
+                receipt = _invoke(self._authorizers[domain], "authorize", binding, now)
             except Exception:
                 return self._receipt(
                     binding,
@@ -1902,15 +1732,11 @@ class RescueOrchestrator:
                 if observation.status is OperationStatus.SUCCEEDED:
                     observation = _control_effects(observation, binding)
                 else:
-                    expected_by_id = {
-                        item.effect_id: item
-                        for item in binding.simulation.effects
-                    }
+                    expected_by_id = {item.effect_id: item for item in binding.simulation.effects}
                     observed = tuple(
                         expected_by_id[item.effect_id]
                         for item in observation.effects
-                        if item.applied
-                        and item.effect_id in expected_by_id
+                        if item.applied and item.effect_id in expected_by_id
                     )
                     control_denied = not observed
                     observation = RescueEffectObservation(
@@ -1933,9 +1759,7 @@ class RescueOrchestrator:
             control_failed = True
             observation = RescueEffectObservation(
                 effects=(),
-                transaction_receipt_id=(
-                    "unknown-control-outcome:" + permit.receipt_id
-                ),
+                transaction_receipt_id=("unknown-control-outcome:" + permit.receipt_id),
                 complete=False,
             )
 
@@ -1952,9 +1776,7 @@ class RescueOrchestrator:
         except Exception:
             post_guard = RescueStopReason.ROOT_DRIFT
         try:
-            post_health = _invoke(
-                self._health_tester, "test", binding, self._now()
-            )
+            post_health = _invoke(self._health_tester, "test", binding, self._now())
             if not isinstance(post_health, RescueHealthReceipt):
                 raise RescueOrchestrationError(
                     "post-effect health tester returned an invalid receipt"
@@ -1964,9 +1786,7 @@ class RescueOrchestrator:
                 state=RescueHealthState.UNKNOWN,
                 incident_cid=request.roots.incident_cid,
                 root_binding_id=request.roots.content_id,
-                health_test_id=(
-                    "health-test-unavailable:" + observation.transaction_receipt_id
-                ),
+                health_test_id=("health-test-unavailable:" + observation.transaction_receipt_id),
                 checked_at_ms=self._now(),
             )
 
@@ -2095,17 +1915,13 @@ class RescueOrchestrator:
         """Execute bounded actions until a mandatory stop condition is met."""
 
         if not isinstance(request, RescueExecutionRequest):
-            raise RescueOrchestrationError(
-                "request must be RescueExecutionRequest"
-            )
+            raise RescueOrchestrationError("request must be RescueExecutionRequest")
         with self._lock:
             started = self._now()
             try:
                 self._validate_request_bindings(request)
             except RescuePlannerValidationError as exc:
-                action_index = min(
-                    request.start_action_index, len(request.plan.actions) - 1
-                )
+                action_index = min(request.start_action_index, len(request.plan.actions) - 1)
                 binding = self._empty_binding(request, action_index, started)
                 reason = {
                     "model_budget": RescueStopReason.MODEL_BUDGET,
@@ -2180,11 +1996,7 @@ class RescueOrchestrator:
                 elif receipts:
                     stop = receipts[-1].stop_reason
                     disposition = receipts[-1].disposition
-            recovery = (
-                receipts[-1].recovery_steps
-                if receipts
-                else self._recovery_steps(stop)
-            )
+            recovery = receipts[-1].recovery_steps if receipts else self._recovery_steps(stop)
             return RescueRunReceipt(
                 plan_cid=request.plan.rescue_plan_cid,
                 incident_cid=request.roots.incident_cid,

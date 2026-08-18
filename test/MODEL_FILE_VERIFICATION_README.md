@@ -170,16 +170,11 @@ The system can also be used programmatically:
 from model_file_verification import ModelFileVerifier
 
 # Create a verifier
-verifier = ModelFileVerifier(
-    cache_dir="/path/to/cache",
-    huggingface_token="YOUR_TOKEN"
-)
+verifier = ModelFileVerifier(cache_dir="/path/to/cache", huggingface_token="YOUR_TOKEN")
 
 # Verify a model file
 model_path, was_converted = verifier.verify_model_for_benchmark(
-    model_id="bert-base-uncased",
-    file_path="model.onnx",
-    model_type="bert"
+    model_id="bert-base-uncased", file_path="model.onnx", model_type="bert"
 )
 
 # Check if a model file exists
@@ -189,10 +184,12 @@ exists = verifier.verify_model_exists("bert-base-uncased", "model.onnx")
 metadata = verifier.get_model_metadata("bert-base-uncased")
 
 # Batch verify multiple models
-results = verifier.batch_verify_models([
-    {"model_id": "bert-base-uncased", "file_path": "model.onnx", "model_type": "bert"},
-    {"model_id": "t5-small", "file_path": "model.onnx", "model_type": "t5"}
-])
+results = verifier.batch_verify_models(
+    [
+        {"model_id": "bert-base-uncased", "file_path": "model.onnx", "model_type": "bert"},
+        {"model_id": "t5-small", "file_path": "model.onnx", "model_type": "t5"},
+    ]
+)
 ```
 
 ## Integration with Benchmark System

@@ -211,13 +211,11 @@ def test_workflow_fixture_matrix_preserves_truthful_outcomes(tmp_path: Path) -> 
     assert result.states["kernel-rejection"] is ProofNodeState.FAILED
     assert result.states["provider-outage"] is ProofNodeState.UNSUPPORTED
     assert result.states["stale-evidence"] is ProofNodeState.SUCCEEDED
-    authoritative = {
-        receipt.authoritative_verdict
-        for receipt in result.authoritative_receipts
-    }
+    authoritative = {receipt.authoritative_verdict for receipt in result.authoritative_receipts}
     assert authoritative == {ProofVerdict.PROVED, ProofVerdict.DISPROVED}
     stale = next(
-        item for item in result.receipts
+        item
+        for item in result.receipts
         if item.obligation_id == by_id["stale-evidence"].obligation_id
     )
     assert stale.authoritative_verdict is ProofVerdict.INCONCLUSIVE
@@ -284,9 +282,7 @@ def test_independent_lanes_share_global_budget_without_duplicate_work(
     assert peak_by_pool == {"cpu-proof": 1, "model": 1, "artifact": 1}
     assert calls == {step.step_id: 1 for step in steps}
     assert result.snapshot.active_leases == 0
-    assert len({attempt.attempt_id for attempt in result.attempts}) == len(
-        result.attempts
-    )
+    assert len({attempt.attempt_id for attempt in result.attempts}) == len(result.attempts)
 
 
 def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
@@ -301,12 +297,9 @@ def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
     def execute(context):
         calls[context.step_id] = calls.get(context.step_id, 0) + 1
         if context.step_id == "kernel":
-            assert {
-                item.step_id for item in context.dependency_attempts
-            } == {"solve"}
+            assert {item.step_id for item in context.dependency_attempts} == {"solve"}
             assert any(
-                item.status is AttemptStatus.SUCCEEDED
-                for item in context.dependency_attempts
+                item.status is AttemptStatus.SUCCEEDED for item in context.dependency_attempts
             )
             return _receipt(plan, kernel)
         return None
@@ -331,8 +324,7 @@ def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
     assert restarted.authoritative_receipts[0].plan_id == plan.plan_id
     assert restarted.snapshot.plan_id == first.snapshot.plan_id
     assert {
-        lease.step_id: (lease.fencing_token, lease.active)
-        for lease in restarted.snapshot.leases
+        lease.step_id: (lease.fencing_token, lease.active) for lease in restarted.snapshot.leases
     } == {
         "translate": (1, False),
         "solve": (1, False),
@@ -348,9 +340,9 @@ def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
             "freshness": "current",
         }
     ]
-    assert next(
-        node for node in serialized["nodes"] if node["step_id"] == "kernel"
-    )["dependency_step_ids"] == ["solve"]
+    assert next(node for node in serialized["nodes"] if node["step_id"] == "kernel")[
+        "dependency_step_ids"
+    ] == ["solve"]
 
 
 def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
@@ -390,9 +382,7 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
             translate_entered.set()
             time.sleep(0.04)
         if context.step_id == kernel.step_id:
-            assert {
-                item.step_id for item in context.dependency_attempts
-            } == {solve.step_id}
+            assert {item.step_id for item in context.dependency_attempts} == {solve.step_id}
             return _receipt(plan, kernel)
         return None
 
@@ -474,26 +464,14 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
         and result["shared_resource_lease_budget"] is True
         for result in results
     )
-    operator_states = [
-        result["proof_operator_state"]
-        for result in results
-    ]
+    operator_states = [result["proof_operator_state"] for result in results]
     assert all(state["complete"] is True for state in operator_states)
     assert all(state["active_leases"] == 0 for state in operator_states)
     assert all(
-        state["dependencies"][kernel.step_id] == [solve.step_id]
-        for state in operator_states
+        state["dependencies"][kernel.step_id] == [solve.step_id] for state in operator_states
     )
-    assert all(
-        len(state["authoritative_receipt_ids"]) == 1
-        for state in operator_states
-    )
-    assert len(
-        {
-            tuple(state["authoritative_receipt_ids"])
-            for state in operator_states
-        }
-    ) == 1
+    assert all(len(state["authoritative_receipt_ids"]) == 1 for state in operator_states)
+    assert len({tuple(state["authoritative_receipt_ids"]) for state in operator_states}) == 1
     assert len(operator_states[0]["receipt_lineage"]) == 1
 
     restarted = PortalImplementationDaemon(
@@ -554,9 +532,7 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
     assert first_transition["updated_task_ids"] == [task.task_id]
     assert duplicate_transition["updated"] is False
     assert duplicate_transition["reason"] == "already_completed"
-    assert todo_path.read_text(encoding="utf-8").count(
-        "- Status: completed"
-    ) == 1
+    assert todo_path.read_text(encoding="utf-8").count("- Status: completed") == 1
 
 
 def test_scheduler_receipt_flows_into_fail_closed_merge_gate(tmp_path: Path) -> None:
@@ -626,3 +602,316 @@ def test_scheduler_receipt_flows_into_fail_closed_merge_gate(tmp_path: Path) -> 
     assert merge.proof_receipt_ids == (proof.receipt_id,)
     assert outage.allowed is False
     assert outage.decision.rollout_mode is RolloutMode.ENFORCEMENT
+
+
+# ---------------------------------------------------------------------------
+# PGIR-053: bounded expert iteration
+# ---------------------------------------------------------------------------
+
+from ipfs_accelerate_py.agent_supervisor.objectives.expert_iteration_campaign import (
+    refuse_expert_iteration_promotion,
+    run_expert_iteration_campaign,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign_contracts import (
+    IRLearningCampaign,
+    default_campaign_roles,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.bounded_expert_iteration import (
+    EXPERT_ITERATION_FIXTURE_KINDS,
+    BoundedExpertIteration,
+    CheckpointSelfPromotionError,
+    CurriculumRevision,
+    ExpertIterationBounds,
+    ExpertIterationExample,
+    ExpertIterationOutcomeClass,
+    ExpertIterationStage,
+    ExpertIterationStopReason,
+    HiddenTestFeedbackError,
+    expert_iteration_fixture_example,
+    expert_iteration_fixture_payload,
+    map_attempt_outcome,
+    run_bounded_expert_iteration,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+)
+
+
+def _expert_campaign_task() -> dict[str, object]:
+    return {
+        "schema": "IRLearningCampaignTask@1",
+        "task_id": "PGIR-053",
+        "title": "Implement bounded expert iteration",
+        "status": "todo",
+        "completion": "validated-implementation",
+        "is_schedulable": True,
+        "priority": "P0",
+        "track": "curriculum",
+        "parent_goal": "PGIR-G070",
+        "subgoal": "expert-iteration",
+        "owning_repository": "ipfs_accelerate_py",
+        "owned_paths": [
+            "ipfs_accelerate_py/agent_supervisor/proof/",
+            "ipfs_accelerate_py/agent_supervisor/objectives/",
+        ],
+        "base_source_revisions": "SRCSET-1",
+        "source_dataset_revisions": "RESULT(PGIR-011)",
+        "data_split_identity": "RESULT(PGIR-012)",
+        "compiler_identity": "RESULT(PGIR-021)",
+        "decompiler_identity": "RESULT(PGIR-022)",
+        "model_checkpoint_identity": "checkpoint:current",
+        "objective": "Implement the generate-parse/type-tactician/hammer-check-retain-refill-train-qualify loop",
+        "depends_on": ["PGIR-040", "PGIR-041", "PGIR-051", "PGIR-052", "PGIR-062"],
+        "resource_profile": "RP-MIXED",
+        "expected_inputs": "checked pair/negative roots, proof/tactic/hammer/checker traces",
+        "expected_outputs": "content-addressed curriculum revisions and round receipts",
+        "allowed_effects": "existing proof/objective/refill control surfaces",
+        "prohibited_effects": "hidden-test feedback, unverified success retention, unbounded loop, checkpoint self-promotion",
+        "acceptance_criteria": "each terminal/timeout/unavailable class maps correctly; no-progress/repetition bounds deterministic; resume exact",
+        "required_proof_or_evaluation_evidence": "expert-iteration fixture, crash/restart, authority and exhaustion tests",
+        "lease_and_checkpoint_policy": "LEASE-DEFAULT",
+        "rollback_procedure": "ROLLBACK-DEFAULT",
+        "result_identity": "RESULT(PGIR-053)",
+        "outputs": [
+            "ipfs_accelerate_py/agent_supervisor/proof/",
+            "ipfs_accelerate_py/agent_supervisor/objectives/",
+        ],
+        "validation": "python -m pytest -q test/api/test_agent_supervisor_proof_workflow_e2e.py",
+        "bundle": "pgir/proof/expert-iteration",
+        "parallel_lane": "expert-iteration",
+        "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/proof/",
+            "ipfs_accelerate_py/agent_supervisor/objectives/",
+        ],
+        "conflict_policy": "round coordinator exclusive; stage workers use immutable inputs",
+        "work_graph_role": "curriculum",
+    }
+
+
+def _expert_campaign() -> IRLearningCampaign:
+    return IRLearningCampaign.from_dict(
+        {
+            "schema": "IRLearningCampaign@1",
+            "campaign_id": "campaign:pgir-053",
+            "input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+            "repository_tree_id": "tree:expert-iteration",
+            "owner_actor_id": "supervisor",
+            "roles": [item.to_dict() for item in default_campaign_roles()],
+            "tasks": [_expert_campaign_task()],
+            "operations": [
+                "create",
+                "plan",
+                "status",
+                "steer",
+                "refill",
+                "proof-replay",
+                "compare",
+                "promote",
+                "reject",
+                "report",
+            ],
+            "dependency_results": {
+                "PGIR-011": "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "PGIR-012": "baguqeerabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "PGIR-040": "baguqeeracccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "PGIR-041": "baguqeeradddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "PGIR-051": "baguqeeraeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "PGIR-052": "baguqeerafffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "PGIR-062": "baguqeeraggggggggggggggggggggggggggggggggggggggggggggggggggg",
+            },
+        }
+    )
+
+
+def test_expert_iteration_fixture_matrix_maps_terminal_timeout_unavailable() -> None:
+    expected = {
+        "verified_success": ExpertIterationOutcomeClass.VERIFIED_SUCCESS,
+        "checked_counterexample": ExpertIterationOutcomeClass.CHECKED_COUNTEREXAMPLE,
+        "parse_type_failure": ExpertIterationOutcomeClass.PARSE_TYPE_FAILURE,
+        "timeout": ExpertIterationOutcomeClass.TIMEOUT,
+        "unavailable": ExpertIterationOutcomeClass.UNAVAILABLE,
+        "unsupported": ExpertIterationOutcomeClass.UNSUPPORTED,
+        "unverified_success": ExpertIterationOutcomeClass.UNVERIFIED_SUCCESS,
+        "hidden_test_feedback": ExpertIterationOutcomeClass.HIDDEN_TEST_FEEDBACK,
+        "rejected": ExpertIterationOutcomeClass.REJECTED,
+        "inconclusive": ExpertIterationOutcomeClass.INCONCLUSIVE,
+    }
+    assert set(expected) == set(EXPERT_ITERATION_FIXTURE_KINDS)
+    for kind, outcome in expected.items():
+        mapped = map_attempt_outcome(expert_iteration_fixture_payload(kind))
+        assert mapped is outcome, (kind, mapped)
+        assert mapped.timeout_is_falsehood is False
+
+    examples = [
+        expert_iteration_fixture_example(kind)
+        for kind in EXPERT_ITERATION_FIXTURE_KINDS
+        if kind != "hidden_test_feedback"
+    ]
+    by_kind: dict[str, object] = {}
+    retained_ids: list[str] = []
+    last_result = None
+    for offset in range(0, len(examples), 8):
+        last_result = run_bounded_expert_iteration(
+            examples[offset : offset + 8],
+            campaign_id=f"campaign:pgir-053-fixture:{offset}",
+            bounds=ExpertIterationBounds(max_rounds=1, max_no_progress_rounds=3),
+        )
+        retained_ids.extend(item.attempt_id for item in last_result.retained_attempts)
+        for attempt in last_result.attempts:
+            by_kind[str(attempt.metadata.get("fixture_kind") or "")] = attempt
+    result = last_result
+    assert result is not None
+    assert by_kind["verified_success"].retained is True
+    assert by_kind["verified_success"].curriculum_authority is CurriculumAuthority.HIGH
+    assert by_kind["verified_success"].curriculum_class is CurriculumClass.VERIFIED_SUCCESS
+    assert by_kind["verified_success"].kernel_verified is True
+    assert by_kind["checked_counterexample"].retained is True
+    assert (
+        by_kind["checked_counterexample"].curriculum_authority is CurriculumAuthority.HIGH
+    )
+    assert by_kind["timeout"].curriculum_class is CurriculumClass.TIMEOUT
+    assert by_kind["timeout"].timeout_is_falsehood is False
+    assert by_kind["timeout"].retained is False
+    assert by_kind["unavailable"].retained is False
+    assert by_kind["unavailable"].outcome_class is ExpertIterationOutcomeClass.UNAVAILABLE
+    assert by_kind["unavailable"].reason_code in {
+        "unavailable_is_not_falsehood",
+        "provider_outage",
+    }
+    assert by_kind["unverified_success"].retained is False
+    assert (
+        by_kind["unverified_success"].curriculum_authority
+        is not CurriculumAuthority.HIGH
+    )
+    latest = result.latest_curriculum_revision
+    assert latest is not None
+    assert by_kind["verified_success"].attempt_id in retained_ids
+    assert by_kind["checked_counterexample"].attempt_id in retained_ids
+    assert by_kind["unverified_success"].attempt_id not in retained_ids
+    assert result.promotion_authority is False
+
+
+def test_expert_iteration_rejects_hidden_test_and_unverified_high_authority() -> None:
+    try:
+        ExpertIterationExample(
+            example_id="example:hidden",
+            obligation_id="obligation:hidden",
+            split="hidden",
+        )
+        raise AssertionError("hidden split must fail closed")
+    except HiddenTestFeedbackError:
+        pass
+    try:
+        run_bounded_expert_iteration(
+            (
+                {
+                    "example_id": "example:test",
+                    "obligation_id": "obligation:test",
+                    "split": "test",
+                    "fixture_kind": "verified_success",
+                },
+            ),
+            campaign_id="campaign:pgir-053-hidden",
+        )
+        raise AssertionError("test-split examples must fail closed")
+    except HiddenTestFeedbackError:
+        pass
+    try:
+        CurriculumRevision(
+            campaign_id="campaign:pgir-053-hidden",
+            round_index=0,
+            metadata={"hidden_test_feedback": True},
+        )
+        raise AssertionError("hidden-test curriculum metadata must fail closed")
+    except HiddenTestFeedbackError:
+        pass
+
+
+def test_expert_iteration_checkpoint_cannot_self_promote(tmp_path: Path) -> None:
+    example = expert_iteration_fixture_example("verified_success")
+
+    def promoting_runner(_example, stage, _context):
+        if stage is ExpertIterationStage.QUALIFY:
+            return {"status": "succeeded", "self_promote": True}
+        return expert_iteration_fixture_payload(example.fixture_kind)
+
+    try:
+        run_bounded_expert_iteration(
+            (example,),
+            campaign_id="campaign:pgir-053-promote",
+            state_path=tmp_path / "expert",
+            stage_runner=promoting_runner,
+            bounds=ExpertIterationBounds(max_rounds=1),
+        )
+        raise AssertionError("qualify self-promotion must fail closed")
+    except CheckpointSelfPromotionError:
+        pass
+    try:
+        refuse_expert_iteration_promotion(_expert_campaign())
+        raise AssertionError("campaign promote helper must fail closed")
+    except CheckpointSelfPromotionError:
+        pass
+
+
+def test_expert_iteration_crash_restart_resumes_exact_receipts(tmp_path: Path) -> None:
+    examples = (
+        expert_iteration_fixture_example("verified_success", example_id="ex:ok"),
+        expert_iteration_fixture_example("timeout", example_id="ex:timeout"),
+    )
+    bounds = ExpertIterationBounds(max_rounds=2, max_no_progress_rounds=3)
+    state = tmp_path / "expert-iteration"
+    first = BoundedExpertIteration(
+        campaign_id="campaign:pgir-053-resume",
+        bounds=bounds,
+        state_path=state,
+        checkpoint_id="ckpt:round-0",
+    ).run(examples, halt_after_round=1)
+    assert first.complete is False
+    assert first.stop_reason is ExpertIterationStopReason.HALTED
+    assert first.receipts
+    first_receipt = first.receipts[0].receipt_id
+    first_revision = first.latest_curriculum_revision
+    assert first_revision is not None
+    first_revision_id = first_revision.revision_id
+
+    restarted = BoundedExpertIteration(
+        campaign_id="campaign:pgir-053-resume",
+        bounds=bounds,
+        state_path=state,
+        checkpoint_id="ckpt:round-0",
+    )
+    second = restarted.resume()
+    assert second.receipts[0].receipt_id == first_receipt
+    assert second.curriculum_revisions
+    assert second.curriculum_revisions[0].revision_id == first_revision_id
+    assert second.receipts[0].curriculum_revision_id == first_revision_id
+    assert second.promotion_authority is False
+    assert restarted.checkpoint.promotion_authority is False
+    serialized = second.to_dict()
+    assert serialized["promotion_authority"] is False
+    assert serialized["curriculum_revision_id"] == second.latest_curriculum_revision.revision_id
+    assert first_revision_id in [
+        item["revision_id"] for item in serialized["curriculum_revisions"]
+    ]
+
+
+def test_expert_iteration_campaign_binds_refill_replay_compare_without_promote(
+    tmp_path: Path,
+) -> None:
+    campaign = _expert_campaign()
+    receipt = run_expert_iteration_campaign(
+        campaign,
+        (expert_iteration_fixture_example("verified_success"),),
+        bounds=ExpertIterationBounds(max_rounds=1),
+        state_path=tmp_path / "campaign-expert",
+    )
+    assert receipt.promotion_authority is False
+    assert receipt.promote_refused is True
+    assert receipt.refill_operation is not None
+    assert receipt.proof_replay_operation is not None
+    assert receipt.compare_operation is not None
+    assert receipt.result_identity
+    assert receipt.result.retained_attempts
+    assert receipt.result.retained_attempts[0].independently_validated is True
+    assert receipt.result.latest_curriculum_revision is not None

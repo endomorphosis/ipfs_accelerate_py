@@ -35,7 +35,10 @@ def test_investigation_package_exports_source_compatible_functions() -> None:
     assert ingest_news_feed is native_investigation_tools.ingest_news_feed
     assert ingest_website is native_investigation_tools.ingest_website
     assert ingest_document_collection is native_investigation_tools.ingest_document_collection
-    assert analyze_deontological_conflicts is native_investigation_tools.analyze_deontological_conflicts
+    assert (
+        analyze_deontological_conflicts
+        is native_investigation_tools.analyze_deontological_conflicts
+    )
     assert query_deontic_statements is native_investigation_tools.query_deontic_statements
     assert query_deontic_conflicts is native_investigation_tools.query_deontic_conflicts
     assert extract_geographic_entities is native_investigation_tools.extract_geographic_entities

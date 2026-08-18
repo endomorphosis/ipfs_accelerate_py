@@ -154,13 +154,12 @@ results = multimodal_hardware_aware_benchmark.benchmark_modern_multimodal_models
     use_power_metrics=True,
     use_bandwidth_metrics=True,
     model_size="base",
-    output_dir="multimodal_benchmark_results"
+    output_dir="multimodal_benchmark_results",
 )
 
 # Or benchmark a specific multimodal model
 single_results = multimodal_hardware_aware_benchmark.benchmark_specific_multimodal_model(
-    model_id="llava-hf/llava-1.5-7b-hf",
-    use_hardware_metrics=True
+    model_id="llava-hf/llava-1.5-7b-hf", use_hardware_metrics=True
 )
 ```
 

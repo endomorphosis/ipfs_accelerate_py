@@ -20,6 +20,14 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
+    ProofStateClass,
+    ProofStateClassification,
+    project_curriculum,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.goal_tactician_lifecycle import (
     GoalTacticianLifecycleConfig,
     GoalTacticianLifecycleError,
@@ -70,9 +78,7 @@ def _open(
 def _fresh_instance(state_dir: Path) -> GoalTacticianSupervisorLifecycle:
     """Simulate a process restart: new object, durable state only."""
 
-    return GoalTacticianSupervisorLifecycle(
-        GoalTacticianLifecycleConfig(state_dir=state_dir)
-    )
+    return GoalTacticianSupervisorLifecycle(GoalTacticianLifecycleConfig(state_dir=state_dir))
 
 
 # ---------------------------------------------------------------------------
@@ -126,10 +132,7 @@ def test_restart_replays_identical_authoritative_state(tmp_path: Path) -> None:
     ):
         assert after[key] == before[key]
     assert after["cache_key"]["tree_id"] == before["cache_key"]["tree_id"]
-    assert (
-        second.authoritative_state().cache_key.key_id
-        == state.cache_key.key_id
-    )
+    assert second.authoritative_state().cache_key.key_id == state.cache_key.key_id
 
 
 def test_reconcile_on_restart_preserves_material_authority(
@@ -152,9 +155,7 @@ def test_reconcile_on_restart_preserves_material_authority(
         "tree_id": first.authoritative_state().tree_id,
         "fencing_epoch": first.authoritative_state().fencing_epoch,
         "cache_key_id": first.authoritative_state().cache_key.key_id,
-        "receipt_ids": [
-            item.receipt_id for item in first.authoritative_state().receipts
-        ],
+        "receipt_ids": [item.receipt_id for item in first.authoritative_state().receipts],
         "control_signal": first.authoritative_state().control_signal.value,
         "status": first.authoritative_state().status.value,
     }
@@ -177,10 +178,7 @@ def test_reconcile_on_restart_preserves_material_authority(
     assert material_after["cache_key_id"] == material_before["cache_key_id"]
     assert material_after["receipt_ids"] == material_before["receipt_ids"]
     assert material_after["control_signal"] == material_before["control_signal"]
-    assert any(
-        item.kind is LifecycleTransitionKind.RECONCILE
-        for item in reconciled.transitions
-    )
+    assert any(item.kind is LifecycleTransitionKind.RECONCILE for item in reconciled.transitions)
 
 
 def test_restart_method_reloads_from_disk(tmp_path: Path) -> None:
@@ -305,8 +303,7 @@ def test_tree_change_invalidates_scoped_receipts_and_cache_key(
     assert invalidated.receipts == ()
     assert invalidated.status is LifecyclePlanStatus.OPEN
     assert any(
-        item.kind is LifecycleTransitionKind.TREE_INVALIDATION
-        for item in invalidated.transitions
+        item.kind is LifecycleTransitionKind.TREE_INVALIDATION for item in invalidated.transitions
     )
 
     # Prior receipt is tree-stale if re-presented under a new lease.
@@ -430,6 +427,96 @@ def test_stale_epoch_receipt_cannot_complete_after_restart(
     assert second.authoritative_state().status is LifecyclePlanStatus.COMPLETED
 
 
+def _high_curriculum() -> CurriculumProjection:
+    return project_curriculum(
+        ProofStateClassification(
+            state_class=ProofStateClass.CLOSED,
+            curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+            independently_validated=True,
+            kernel_verified=True,
+            reason_code="independently_validated_kernel_success",
+        ),
+        independently_validated=True,
+    )
+
+
+def test_curriculum_authority_survives_restart(tmp_path: Path) -> None:
+    first = create_goal_tactician_supervisor_lifecycle(tmp_path)
+    _open(first)
+    lease = first.acquire_lease("worker-1")
+    first.record_curriculum_projection(_high_curriculum(), lease)
+    assert first.authoritative_state().curriculum_projections[-1]["authority"] == (
+        CurriculumAuthority.HIGH.value
+    )
+    before = first.authoritative_state().curriculum_projections
+
+    second = _fresh_instance(tmp_path)
+    after = second.authoritative_state().curriculum_projections
+    assert after == before
+    assert after[-1]["curriculum_class"] == CurriculumClass.VERIFIED_SUCCESS.value
+    assert after[-1]["upgrades_curriculum_authority"] is True
+
+
+def test_tree_invalidation_drops_high_curriculum_authority(tmp_path: Path) -> None:
+    first = create_goal_tactician_supervisor_lifecycle(tmp_path)
+    _open(first)
+    lease = first.acquire_lease("worker-1")
+    first.record_curriculum_projection(
+        _high_curriculum(),
+        lease,
+        ranked_candidates=(
+            {"candidate_id": "cand:keep", "kind": "tactic", "score_millionths": 1},
+        ),
+    )
+    assert first.authoritative_state().curriculum_projections
+    assert first.authoritative_state().ranked_candidates
+    first.invalidate_tree("tree:repo@def456", lease)
+
+    second = _fresh_instance(tmp_path)
+    state = second.authoritative_state()
+    assert state.curriculum_projections == ()
+    assert state.ranked_candidates == ()
+    new_lease = second.acquire_lease("worker-2")
+    with pytest.raises(GoalTacticianLifecycleError, match="cannot upgrade"):
+        second.record_curriculum_projection(
+            {
+                "curriculum_class": CurriculumClass.TIMEOUT.value,
+                "authority": CurriculumAuthority.HIGH.value,
+                "independently_validated": True,
+            },
+            new_lease,
+        )
+    candidate = project_curriculum(
+        ProofStateClassification(
+            state_class=ProofStateClass.TIMEOUT,
+            curriculum_class=CurriculumClass.TIMEOUT,
+            independently_validated=True,
+            reason_code="timeout_is_not_falsehood",
+        ),
+        independently_validated=True,
+    )
+    recorded = second.record_curriculum_projection(candidate, new_lease)
+    assert recorded.curriculum_projections[-1]["authority"] != CurriculumAuthority.HIGH.value
+
+
+def test_forged_curriculum_after_restart_fails_closed(tmp_path: Path) -> None:
+    first = create_goal_tactician_supervisor_lifecycle(tmp_path)
+    _open(first)
+    first.acquire_lease("worker-1")
+    second = _fresh_instance(tmp_path)
+    new_lease = second.acquire_lease("worker-2")
+    with pytest.raises(GoalTacticianLifecycleError, match="independently validated"):
+        second.record_curriculum_projection(
+            {
+                "curriculum_class": CurriculumClass.VERIFIED_SUCCESS.value,
+                "authority": CurriculumAuthority.HIGH.value,
+                "independently_validated": False,
+                "trace_ids": ["forged"],
+            },
+            new_lease,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Journal / durable artifacts
 # ---------------------------------------------------------------------------
@@ -448,9 +535,7 @@ def test_journal_and_state_artifacts_are_written(tmp_path: Path) -> None:
     assert lifecycle.config.journal_path.is_file()
     lines = [
         line
-        for line in lifecycle.config.journal_path.read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in lifecycle.config.journal_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert len(lines) >= 3  # end_goal, proof_graph, lease_acquire, candidate

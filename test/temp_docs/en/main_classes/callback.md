@@ -110,7 +110,9 @@ trainer = Trainer(
     args,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
-    callbacks=[MyCallback],  # We can either pass the callback class this way or an instance of it (MyCallback())
+    callbacks=[
+        MyCallback
+    ],  # We can either pass the callback class this way or an instance of it (MyCallback())
 )
 ```
 

@@ -38,8 +38,8 @@ else:
 if TYPE_CHECKING:
     from torch import Tensor
 
-if 'NO_LOCAL_GGUF' not in os.environ:
-    sys.path.insert(1, str(Path(__file__).parent / 'gguf-py'))
+if "NO_LOCAL_GGUF" not in os.environ:
+    sys.path.insert(1, str(Path(__file__).parent / "gguf-py"))
 import gguf
 
 # reuse model definitions from convert_hf_to_gguf.py
@@ -250,37 +250,48 @@ def get_base_tensor_name(lora_tensor_name: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Convert a Hugging Face PEFT LoRA adapter to a GGUF file")
+        description="Convert a Hugging Face PEFT LoRA adapter to a GGUF file"
+    )
     parser.add_argument(
-        "--outfile", type=Path,
+        "--outfile",
+        type=Path,
         help="path to write to; default: based on input. {ftype} will be replaced by the outtype.",
     )
     parser.add_argument(
-        "--outtype", type=str, choices=["f32", "f16", "bf16", "q8_0", "auto"], default="f16",
+        "--outtype",
+        type=str,
+        choices=["f32", "f16", "bf16", "q8_0", "auto"],
+        default="f16",
         help="output format - use f32 for float32, f16 for float16, bf16 for bfloat16, q8_0 for Q8_0, auto for the highest-fidelity 16-bit float type depending on the first loaded tensor type",
     )
     parser.add_argument(
-        "--bigendian", action="store_true",
+        "--bigendian",
+        action="store_true",
         help="model is executed on big endian machine",
     )
     parser.add_argument(
-        "--no-lazy", action="store_true",
+        "--no-lazy",
+        action="store_true",
         help="use more RAM by computing all outputs before writing (use in case lazy evaluation is broken)",
     )
     parser.add_argument(
-        "--verbose", action="store_true",
+        "--verbose",
+        action="store_true",
         help="increase output verbosity",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="only print out what will be done, without writing any new files",
     )
     parser.add_argument(
-        "--base", type=Path,
+        "--base",
+        type=Path,
         help="directory containing Hugging Face model config files (config.json, tokenizer.json) for the base model that the adapter is based on - only config is needed, actual model weights are not required. If base model is unspecified, it will be loaded from Hugging Face hub based on the adapter config",
     )
     parser.add_argument(
-        "lora_path", type=Path,
+        "lora_path",
+        type=Path,
         help="directory containing Hugging Face PEFT LoRA config (adapter_model.json) and weights (adapter_model.safetensors or adapter_model.bin)",
     )
 
@@ -293,7 +304,7 @@ def load_hparams_from_hf(hf_model_id: str) -> dict[str, Any]:
     return config.to_dict()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
 
@@ -344,7 +355,9 @@ if __name__ == '__main__':
                 sys.exit(1)
         else:
             logger.error("'base_model_name_or_path' is not found in adapter_config.json")
-            logger.error("Base model config is required. Please download the base model and add its path to --base")
+            logger.error(
+                "Base model config is required. Please download the base model and add its path to --base"
+            )
             sys.exit(1)
     else:
         logger.info(f"Loading base model: {dir_base_model.name}")
@@ -397,8 +410,12 @@ if __name__ == '__main__':
                             continue
                         logger.error(f"Unexpected name '{name}': Not a lora_A or lora_B tensor")
                         if ".embed_tokens.weight" in name or ".lm_head.weight" in name:
-                            logger.error("Embeddings is present in the adapter. This can be due to new tokens added during fine tuning")
-                            logger.error("Please refer to https://github.com/ggerganov/llama.cpp/pull/9948")
+                            logger.error(
+                                "Embeddings is present in the adapter. This can be due to new tokens added during fine tuning"
+                            )
+                            logger.error(
+                                "Please refer to https://github.com/ggerganov/llama.cpp/pull/9948"
+                            )
                         sys.exit(1)
 
                     if base_name in tensor_map:
@@ -417,7 +434,9 @@ if __name__ == '__main__':
                     assert tensor.B is not None
                     yield (name, cast(torch.Tensor, LoraTorchTensor(tensor.A, tensor.B)))
 
-            def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+            def modify_tensors(
+                self, data_torch: Tensor, name: str, bid: int | None
+            ) -> Iterable[tuple[str, Tensor]]:
                 dest = list(super().modify_tensors(data_torch, name, bid))
                 # some archs may have the same tensor for lm_head and output (tie word embeddings)
                 # in this case, adapters targeting lm_head will fail when using llama-export-lora

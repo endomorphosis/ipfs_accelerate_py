@@ -25,6 +25,25 @@ from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import (
     SupervisorWatchdog,
 )
 from ipfs_accelerate_py.agent_supervisor import supervisor_watchdog as watchdog_module
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
+    LearningCheckpointAdapter,
+)
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import RecoveryFault
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    LearningCheckpointBinding,
+)
+from ipfs_accelerate_py.agent_supervisor.self_improvement.campaign_refill_policy import (
+    CampaignRefillCandidate,
+    CampaignRefillController,
+    CampaignRefillHistory,
+    RefillDisposition,
+    RefillTrigger,
+    all_refill_triggers_are_bounded,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.campaign_resume import (
+    CampaignResumeCoordinator,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTaskState,
 )
@@ -86,9 +105,7 @@ def _coordinator(
             }
         ),
         quarantine_scope=quarantine,
-        event_publisher=lambda kind, payload: event_records.append(
-            (kind, dict(payload))
-        ),
+        event_publisher=lambda kind, payload: event_records.append((kind, dict(payload))),
         rescue_planner=planner,
         rescue_request_factory=request_factory,
         rescue_orchestrator=orchestrator,
@@ -241,16 +258,12 @@ def test_repeated_unchanged_failure_is_bounded_and_deduplicated_across_restart(
         tmp_path,
         handlers={RescueOperation.VALIDATION_REPLAY: unchanged},
         quarantines=quarantines,
-    ).unstall(
-        evidence={"validation": {"validation_id": "v1", "failed": True}}
-    )
+    ).unstall(evidence={"validation": {"validation_id": "v1", "failed": True}})
     duplicate = _coordinator(
         tmp_path,
         handlers={RescueOperation.VALIDATION_REPLAY: unchanged},
         quarantines=quarantines,
-    ).unstall(
-        evidence={"validation": {"validation_id": "v1", "failed": True}}
-    )
+    ).unstall(evidence={"validation": {"validation_id": "v1", "failed": True}})
 
     assert first["quarantined"]
     assert duplicate["deduplicated"]
@@ -431,9 +444,7 @@ def test_rescue_execution_requires_current_exhaustion_and_explicit_policy(
         request_factory=_rescue_request,
         orchestrator=orchestrator,
         execution_factory=lambda *_args: object(),
-    ).unstall(
-        evidence={"provider": {"provider_id": "p1", "unavailable": True}}
-    )
+    ).unstall(evidence={"provider": {"provider_id": "p1", "unavailable": True}})
 
     assert result["recovered"]
     assert planner.calls == 1
@@ -684,10 +695,7 @@ def test_corrupt_runtime_state_is_quarantined_and_repair_is_visible(
     ).unstall(evidence={"lock": {"lock_id": "l1", "orphaned": True}})
 
     assert result["recovered"]
-    assert (
-        result["state_repair"]["reason"]
-        == "corrupt_coordination_state_quarantined"
-    )
+    assert result["state_repair"]["reason"] == "corrupt_coordination_state_quarantined"
     assert list((tmp_path / "state").glob("*.corrupt-*"))
 
 
@@ -734,10 +742,13 @@ def test_implementation_quarantine_is_scope_exact_and_idempotent(
     assert first["task_id"] == "TASK-1"
     assert duplicate["deduplicated"]
     assert strategy["blocked_tasks"] == ["TASK-1"]
-    assert sum(
-        item["incident_cid"] == _cid("active-incident")
-        for item in strategy["autonomous_unstall_quarantines"]
-    ) == 1
+    assert (
+        sum(
+            item["incident_cid"] == _cid("active-incident")
+            for item in strategy["autonomous_unstall_quarantines"]
+        )
+        == 1
+    )
     assert PortalTaskState.load(config.state_path).active_task_id == ""
 
 
@@ -806,9 +817,7 @@ def test_watchdog_runs_unified_ladder_and_rechecks_lane_health(
         manifest_path=manifest_path,
         repo_root=tmp_path,
         lifecycle_restart=restart,
-        control_event_publisher=lambda kind, payload: events.append(
-            (kind, dict(payload))
-        ),
+        control_event_publisher=lambda kind, payload: events.append((kind, dict(payload))),
     )._check_cycle()
 
     lane_report = report["reports"][0]
@@ -818,10 +827,184 @@ def test_watchdog_runs_unified_ladder_and_rechecks_lane_health(
     assert result["work_complete"] is False
     assert restart_calls == 1
     assert any(
-        attempt["operation"] == "restart_lane"
-        and attempt["outcome"] == "succeeded"
+        attempt["operation"] == "restart_lane" and attempt["outcome"] == "succeeded"
         for attempt in result["deterministic"]["attempts"]
     )
     assert lane_report["pid_check"]["alive"]
     assert not lane_report["heartbeat_check"]["stale"]
     assert events[-1][0] == "autonomous_unstall_recovered"
+
+
+def _learning_binding(**overrides: object) -> LearningCheckpointBinding:
+    payload = {
+        "architecture_id": "arch:v1",
+        "weights_id": "weights:0",
+        "optimizer_id": "opt:adam",
+        "scheduler_id": "sched:cosine",
+        "tokenizer_id": "tok:v1",
+        "vocab_id": "vocab:v1",
+        "cursor_id": "cursor:0",
+        "corpus_id": "corpus:v1",
+        "split_id": "split:v1",
+        "curriculum_id": "curr:v1",
+        "loss_id": "loss:ce",
+        "random_id": "rng:0",
+        "env_id": "env:v1",
+        "code_id": "code:v1",
+        "compiler_id": "compiler:v1",
+        "cursor_step": 0,
+    }
+    payload.update(overrides)
+    return LearningCheckpointBinding.from_dict(payload)
+
+
+def test_all_refill_triggers_are_bounded() -> None:
+    assert all_refill_triggers_are_bounded()
+    controller = CampaignRefillController()
+    for trigger in RefillTrigger:
+        assert controller.policy.trigger_bound(trigger) >= 1
+
+
+def test_curriculum_priority_is_deterministic() -> None:
+    controller = CampaignRefillController()
+    candidates = (
+        CampaignRefillCandidate(
+            candidate_id="gap-b",
+            trigger=RefillTrigger.CURRICULUM_GAP,
+            residual_count=2,
+        ),
+        CampaignRefillCandidate(
+            candidate_id="proof-a",
+            trigger=RefillTrigger.PROOF_RESIDUAL,
+            residual_count=1,
+        ),
+        CampaignRefillCandidate(
+            candidate_id="eval-a",
+            trigger=RefillTrigger.EVALUATION_RESIDUAL,
+            residual_count=4,
+        ),
+        CampaignRefillCandidate(
+            candidate_id="gap-a",
+            trigger=RefillTrigger.CURRICULUM_GAP,
+            residual_count=2,
+        ),
+    )
+    ranked = controller.rank(candidates)
+    assert [item.candidate_id for item in ranked] == [
+        "proof-a",
+        "eval-a",
+        "gap-a",
+        "gap-b",
+    ]
+    decision = controller.decide(candidates)
+    assert decision.disposition is RefillDisposition.ADMITTED
+    assert [item.candidate_id for item in decision.admitted] == [
+        "proof-a",
+        "eval-a",
+        "gap-a",
+        "gap-b",
+    ]
+
+
+def test_repeated_no_progress_refill_is_bounded() -> None:
+    controller = CampaignRefillController()
+    candidate = CampaignRefillCandidate(
+        candidate_id="stuck-1",
+        trigger=RefillTrigger.NO_PROGRESS,
+        residual_count=1,
+        curriculum_key="curr:stuck",
+    )
+    history = CampaignRefillHistory(
+        refill_rounds=1,
+        last_progress_identity="curr:stuck",
+        no_progress_streak=2,
+    )
+    decision = controller.decide(
+        (candidate,),
+        history=history,
+        cursor_advanced=False,
+        progress_identity="curr:stuck",
+    )
+    assert decision.disposition is RefillDisposition.NO_PROGRESS_BOUNDED
+    assert decision.admitted == ()
+    assert not decision.changed
+
+
+def test_curriculum_repetition_and_round_bounds() -> None:
+    controller = CampaignRefillController()
+    repeated = CampaignRefillCandidate(
+        candidate_id="repeat-1",
+        trigger=RefillTrigger.CURRICULUM_GAP,
+        curriculum_key="curr:same",
+    )
+    history = CampaignRefillHistory(curriculum_repetitions={"curr:same": 2})
+    decision = controller.decide((repeated,), history=history)
+    assert decision.disposition is RefillDisposition.REPETITION_BOUNDED
+    rounds = controller.decide(
+        (repeated,),
+        history=CampaignRefillHistory(refill_rounds=8),
+    )
+    assert rounds.disposition is RefillDisposition.ROUND_BOUNDED
+
+
+def test_restart_during_refill_recovers_exactly_once(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    first = adapter.recover_crash(
+        incident_id="refill-restart-1",
+        fault=RecoveryFault.RESTART_DURING_REFILL,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    coordinator = CampaignResumeCoordinator(tmp_path / "campaign", owner_id="lane-1")
+    coordinator.adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    report = coordinator.recover_and_resume(
+        incident_id="refill-restart-1",
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+        fault=RecoveryFault.RESTART_DURING_REFILL,
+        refill_candidates=(
+            {
+                "candidate_id": "stuck-1",
+                "trigger": "no_progress",
+                "curriculum_key": "curr:stuck",
+            },
+        ),
+        refill_history=CampaignRefillHistory(
+            last_progress_identity=_learning_binding().progress_id,
+            no_progress_streak=2,
+        ),
+        cursor_advanced=False,
+    )
+    duplicate = adapter.recover_crash(
+        incident_id="refill-restart-1",
+        fault=RecoveryFault.RESTART_DURING_REFILL,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    assert first.restart_performed is True
+    assert first.restart_count == 1
+    assert duplicate.restart_performed is False
+    assert duplicate.repair is not None and first.repair is not None
+    assert duplicate.repair.receipt_id == first.repair.receipt_id
+    assert report.refill is not None
+    assert report.refill.disposition is RefillDisposition.NO_PROGRESS_BOUNDED
+    assert report.promotion_authority is False

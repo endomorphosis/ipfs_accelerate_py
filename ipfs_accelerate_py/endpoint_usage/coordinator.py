@@ -79,9 +79,7 @@ PROVIDER_CHARGEABLE_DEFAULT = frozenset(
 def _to_rfc3339(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamp must be timezone-aware")
-    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -186,9 +184,7 @@ class UsageCoordinator:
         last_conflict: Optional[Exception] = None
         for _ in range(self._cas_retries):
             document = self._store.read()
-            if self._fence is not None and int(document.get("fence") or 0) > int(
-                self._fence
-            ):
+            if self._fence is not None and int(document.get("fence") or 0) > int(self._fence):
                 from .store import StaleFenceError
 
                 raise StaleFenceError(
@@ -217,8 +213,7 @@ class UsageCoordinator:
             # Attach committed revision into result if it is a known type.
             return result, committed
         raise CompareAndSetConflict(
-            "exhausted CAS retries (%s): %s"
-            % (self._cas_retries, last_conflict)
+            "exhausted CAS retries (%s): %s" % (self._cas_retries, last_conflict)
         )
 
     # ------------------------------------------------------------------
@@ -251,7 +246,9 @@ class UsageCoordinator:
             ledger.set_limits(scope_id, parsed)
             now = self.clock.now()
             snap = ledger.build_snapshot(
-                scope_id, now, partition_scale=None  # already scaled into limits
+                scope_id,
+                now,
+                partition_scale=None,  # already scaled into limits
             )
             return snap, ledger
 
@@ -313,9 +310,7 @@ class UsageCoordinator:
                 reason_codes=("invalid_ttl",),
             )
         vector = (
-            requested
-            if isinstance(requested, UsageVector)
-            else UsageVector.from_dict(requested)
+            requested if isinstance(requested, UsageVector) else UsageVector.from_dict(requested)
         )
         amounts = vector_to_amounts(vector)
         estimate_obj: Optional[UsageEstimate] = None
@@ -346,7 +341,10 @@ class UsageCoordinator:
         def mutate(ledger: UsageLedger):
             now = self.clock.now()
             snap = ledger.build_snapshot(scope_id, now)
-            if expected_usage_revision is not None and snap.usage_revision != expected_usage_revision:
+            if (
+                expected_usage_revision is not None
+                and snap.usage_revision != expected_usage_revision
+            ):
                 raise StaleSnapshot(
                     "expected usage_revision %s but snapshot is %s"
                     % (expected_usage_revision, snap.usage_revision)
@@ -679,9 +677,7 @@ class UsageCoordinator:
                     reservation_id=reservation_id,
                     estimate_id=record.get("estimate_id"),
                     units=amounts_to_vector(charged) if charged else UsageVector(),
-                    reason_codes=tuple(
-                        r.replace(" ", "_")[:64] for r in reason_codes
-                    ),
+                    reason_codes=tuple(r.replace(" ", "_")[:64] for r in reason_codes),
                     provenance=Provenance(
                         source=LimitSource.LOCAL_OBSERVATION,
                         observed_at=_to_rfc3339(now),
@@ -733,9 +729,7 @@ class UsageCoordinator:
             self._assert_owner_live(record, ledger)
             now = self.clock.now()
             # Keep already committed/charged; release only residual hold.
-            charged = {
-                str(k): int(v) for k, v in (record.get("charged_amounts") or {}).items()
-            }
+            charged = {str(k): int(v) for k, v in (record.get("charged_amounts") or {}).items()}
             record = copy.deepcopy(record)
             record["state"] = ReservationState.RELEASED.value
             reservation_dict = dict(record["reservation"])
@@ -780,9 +774,7 @@ class UsageCoordinator:
         """Monotonic stream settlement: cumulative amounts must not decrease."""
 
         vector = (
-            cumulative
-            if isinstance(cumulative, UsageVector)
-            else UsageVector.from_dict(cumulative)
+            cumulative if isinstance(cumulative, UsageVector) else UsageVector.from_dict(cumulative)
         )
         new_amounts = vector_to_amounts(vector)
 
@@ -811,9 +803,7 @@ class UsageCoordinator:
                         reason_codes=("non_monotonic_stream",),
                     )
             # Cap at reserved.
-            reserved = {
-                str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()
-            }
+            reserved = {str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()}
             capped = {}
             for key, value in new_amounts.items():
                 cap = reserved.get(key, value)
@@ -890,17 +880,13 @@ class UsageCoordinator:
                 )
             self._assert_owner_live(record, ledger)
             now = self.clock.now()
-            reserved = {
-                str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()
-            }
+            reserved = {str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()}
             settled = ledger.stream_settled(reservation_id)
             if actual is None:
                 charged = dict(settled) if settled else dict(reserved)
             else:
                 vector = (
-                    actual
-                    if isinstance(actual, UsageVector)
-                    else UsageVector.from_dict(actual)
+                    actual if isinstance(actual, UsageVector) else UsageVector.from_dict(actual)
                 )
                 charged = vector_to_amounts(vector)
             # Conservative: never charge less than already stream-settled.
@@ -1030,9 +1016,7 @@ class UsageCoordinator:
                 )
                 events.append(event.event_id)
                 # Materialize as a committed reservation record for occupancy.
-                rid = stable_id(
-                    "ubatch", batch_id, "overhead", scope_id, idempotency_key
-                )
+                rid = stable_id("ubatch", batch_id, "overhead", scope_id, idempotency_key)
                 reservation = UsageReservation(
                     scope_id=scope_id,
                     reserved=overhead_vec,
@@ -1098,9 +1082,7 @@ class UsageCoordinator:
                     reserved=vec,
                     state=ReservationState.COMMITTED,
                     request_id="%s#member=%s" % (request_id, member_id),
-                    idempotency_key=stable_id(
-                        "ubatchidem", batch_id, "member", member_id
-                    ),
+                    idempotency_key=stable_id("ubatchidem", batch_id, "member", member_id),
                     owner_id=owner_id,
                     created_at=_to_rfc3339(now),
                     expires_at=_to_rfc3339(now),
@@ -1139,9 +1121,7 @@ class UsageCoordinator:
                 {
                     "batch_id": batch_id,
                     "overhead_charged": True,
-                    "members_charged": sorted(
-                        mid for mid, ok in members_charged.items() if ok
-                    ),
+                    "members_charged": sorted(mid for mid, ok in members_charged.items() if ok),
                     "charged": amounts_to_vector(charged_total).to_dict()
                     if charged_total
                     else UsageVector().to_dict(),
@@ -1226,8 +1206,7 @@ class UsageCoordinator:
                 if record is not None:
                     record = copy.deepcopy(record)
                     charged = {
-                        str(k): int(v)
-                        for k, v in (record.get("charged_amounts") or {}).items()
+                        str(k): int(v) for k, v in (record.get("charged_amounts") or {}).items()
                     }
                     refund_amounts = vector_to_amounts(vector)
                     for key, value in refund_amounts.items():
@@ -1273,8 +1252,7 @@ class UsageCoordinator:
                 # Expired: if never dispatched, release fully; if dispatched,
                 # conservatively charge provider-chargeable dimensions.
                 reserved = {
-                    str(k): int(v)
-                    for k, v in (record.get("reserved_amounts") or {}).items()
+                    str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()
                 }
                 dispatched = bool(record.get("dispatched"))
                 if not dispatched:
@@ -1358,9 +1336,7 @@ class UsageCoordinator:
 
     def migrate(self, *, target_schema_version: str = "1.0") -> Dict[str, Any]:
         document = self._store.read()
-        migrated = migrate_document(
-            document, target_schema_version=target_schema_version
-        )
+        migrated = migrate_document(document, target_schema_version=target_schema_version)
 
         def mutate(ledger: UsageLedger):
             # Replace document fields from migration result.
@@ -1399,9 +1375,7 @@ class UsageCoordinator:
             )
         vector = UsageVector()
         if units is not None:
-            vector = (
-                units if isinstance(units, UsageVector) else UsageVector.from_dict(units)
-            )
+            vector = units if isinstance(units, UsageVector) else UsageVector.from_dict(units)
 
         def mutate(ledger: UsageLedger):
             now = self.clock.now()

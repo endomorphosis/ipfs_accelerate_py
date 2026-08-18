@@ -255,12 +255,36 @@ _TOOL_SPECS = {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "Input text prompt."},
-                "model": {"type": "string", "description": "Model name on the vLLM server.", "default": "default"},
-                "endpoint_url": {"type": "string", "description": "vLLM server base URL.", "default": ""},
-                "api_key": {"type": "string", "description": "Optional bearer token.", "default": ""},
-                "max_tokens": {"type": "integer", "description": "Max tokens to generate.", "default": 256},
-                "temperature": {"type": "number", "description": "Sampling temperature.", "default": 0.7},
-                "top_p": {"type": "number", "description": "Nucleus sampling probability.", "default": 0.95},
+                "model": {
+                    "type": "string",
+                    "description": "Model name on the vLLM server.",
+                    "default": "default",
+                },
+                "endpoint_url": {
+                    "type": "string",
+                    "description": "vLLM server base URL.",
+                    "default": "",
+                },
+                "api_key": {
+                    "type": "string",
+                    "description": "Optional bearer token.",
+                    "default": "",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Max tokens to generate.",
+                    "default": 256,
+                },
+                "temperature": {
+                    "type": "number",
+                    "description": "Sampling temperature.",
+                    "default": 0.7,
+                },
+                "top_p": {
+                    "type": "number",
+                    "description": "Nucleus sampling probability.",
+                    "default": 0.95,
+                },
             },
             "required": ["prompt"],
         },

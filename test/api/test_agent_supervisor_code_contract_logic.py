@@ -203,18 +203,10 @@ def expected_contract(**kwargs: Any) -> ExpectedProgramContract:
                 policies=("path-scope-v1",),
             ),
         ),
-        idempotence=kwargs.pop(
-            "idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)
-        ),
-        ordering=kwargs.pop(
-            "ordering", OrderingSpec(mode=OrderingMode.UNORDERED)
-        ),
-        atomicity=kwargs.pop(
-            "atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)
-        ),
-        consistency=kwargs.pop(
-            "consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)
-        ),
+        idempotence=kwargs.pop("idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)),
+        ordering=kwargs.pop("ordering", OrderingSpec(mode=OrderingMode.UNORDERED)),
+        atomicity=kwargs.pop("atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)),
+        consistency=kwargs.pop("consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)),
         fallback=kwargs.pop(
             "fallback",
             FallbackSpec(
@@ -299,9 +291,7 @@ def test_translate_contract_valid_emits_claims_and_receipt() -> None:
             assert obligation.logic_family == LOGIC_FAMILY
             assert obligation.source_refs
             for assumption_id in obligation.assumption_ids:
-                assert any(
-                    a.assumption_id == assumption_id for a in claim.assumptions
-                )
+                assert any(a.assumption_id == assumption_id for a in claim.assumptions)
 
 
 def test_translate_covers_all_supported_predicate_kinds() -> None:
@@ -356,11 +346,7 @@ def test_extract_predicates_type_and_nullability() -> None:
     )
     nulls = [p for p in preds if p.kind is SupportedPredicateKind.NULLABILITY]
     assert nulls
-    assert any(
-        a.name == "nullable" and a.value is True
-        for p in nulls
-        for a in p.arguments
-    )
+    assert any(a.name == "nullable" and a.value is True for p in nulls for a in p.arguments)
 
 
 def test_vocabulary_projection_for_authorization_and_reachability() -> None:
@@ -395,11 +381,7 @@ def test_translate_with_closed_call_slice_reachability() -> None:
         reachability_pairs=(("node:a", "node:c"),),
     )
     assert result.status is TranslationStatus.TRANSLATED
-    reach = [
-        p
-        for p in result.predicates
-        if p.kind is SupportedPredicateKind.BOUNDED_REACHABILITY
-    ]
+    reach = [p for p in result.predicates if p.kind is SupportedPredicateKind.BOUNDED_REACHABILITY]
     assert reach
     assert all(p.closed for p in reach)
     assert result.receipt.call_slice_cid == "slice:closed-1"
@@ -643,9 +625,7 @@ def test_reject_changed_translator_ruleset_reuse() -> None:
     with pytest.raises(TranslationRejectedError) as exc:
         verify_conformance_receipt(
             good.receipt,
-            expected_translator_identity=translator_identity(
-                translator_version="other"
-            ),
+            expected_translator_identity=translator_identity(translator_version="other"),
         )
     assert exc.value.code is RejectionCode.TRANSLATOR_RULESET_REUSE
 
@@ -653,9 +633,7 @@ def test_reject_changed_translator_ruleset_reuse() -> None:
 def test_reject_forged_receipt_translator_identity() -> None:
     good = translate_contract(expected_contract())
     payload = good.receipt.to_dict()
-    payload["translator_identity"] = translator_identity(
-        translator_version="forged"
-    )
+    payload["translator_identity"] = translator_identity(translator_version="forged")
     # Keep declared version as current so internal mismatch is detected.
     with pytest.raises(TranslationRejectedError) as exc:
         ConformanceReceipt.from_dict(payload)
@@ -764,8 +742,7 @@ def test_unsupported_type_shape_emitted_explicitly() -> None:
     )
     assert unsupported
     assert all(
-        p.kind is not SupportedPredicateKind.TYPE
-        or "handle" not in str(p.arguments)
+        p.kind is not SupportedPredicateKind.TYPE or "handle" not in str(p.arguments)
         for p in preds
         if p.kind is SupportedPredicateKind.TYPE
     )
@@ -787,10 +764,7 @@ def test_contract_unsupported_semantics_propagated() -> None:
     )
     result = translate_contract(contract)
     assert result.status is TranslationStatus.TRANSLATED
-    assert any(
-        u.aspect == SemanticAspect.RESOURCE_BOUNDS.value
-        for u in result.unsupported
-    )
+    assert any(u.aspect == SemanticAspect.RESOURCE_BOUNDS.value for u in result.unsupported)
 
 
 # ---------------------------------------------------------------------------
@@ -910,4 +884,3 @@ def test_all_predicate_kinds_constructible() -> None:
         pred = make_predicate(kind, *args, source_cid=SOURCE_CID, closed=False)
         assert pred.kind is kind
         assert pred.relation is not None
-

@@ -137,7 +137,9 @@ import torch
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 
 # Load the model in half-precision
-model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf", torch_dtype=torch.float16, device_map="auto")
+model = LlavaForConditionalGeneration.from_pretrained(
+    "llava-hf/llava-1.5-7b-hf", torch_dtype=torch.float16, device_map="auto"
+)
 processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
 
 conversation = [
@@ -151,11 +153,7 @@ conversation = [
 ]
 
 inputs = processor.apply_chat_template(
-    conversation,
-    add_generation_prompt=True,
-    tokenize=True,
-    return_dict=True,
-    return_tensors="pt"
+    conversation, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
 ).to(model.device, torch.float16)
 
 # Generate
@@ -173,7 +171,9 @@ import torch
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 
 # Load the model in half-precision
-model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf", torch_dtype=torch.float16, device_map="auto")
+model = LlavaForConditionalGeneration.from_pretrained(
+    "llava-hf/llava-1.5-7b-hf", torch_dtype=torch.float16, device_map="auto"
+)
 processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
 
 
@@ -204,7 +204,7 @@ inputs = processor.apply_chat_template(
     tokenize=True,
     return_dict=True,
     padding=True,
-    return_tensors="pt"
+    return_tensors="pt",
 ).to(model.device, torch.float16)
 
 
@@ -221,7 +221,9 @@ In order to match the logits of the [original implementation](https://github.com
 ```python
 from transformers import LLavaImageProcessor
 
-image_processor = LLavaImageProcessor.from_pretrained("https://huggingface.co/llava-hf/llava-1.5-7b-hf", do_pad=True)
+image_processor = LLavaImageProcessor.from_pretrained(
+    "https://huggingface.co/llava-hf/llava-1.5-7b-hf", do_pad=True
+)
 ```
 
 ### Using Flash Attention 2

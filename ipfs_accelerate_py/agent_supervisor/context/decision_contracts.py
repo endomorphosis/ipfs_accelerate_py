@@ -30,36 +30,16 @@ DECISION_CONTRACT_VERSION: Final[int] = 1
 CONTRACT_VERSION: Final[int] = DECISION_CONTRACT_VERSION
 SCHEMA_VERSION: Final[int] = DECISION_CONTRACT_VERSION
 
-PINNED_ARTIFACT_REF_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/pinned-artifact-ref@1"
-)
-SEMANTIC_ROOT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/semantic-root@1"
-)
-DECISION_TARGET_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/decision-target@1"
-)
-ACTION_ENVELOPE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/action-envelope@1"
-)
-EFFECT_ENVELOPE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/effect-envelope@1"
-)
-APPLICABILITY_FACT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/applicability-fact@1"
-)
-CAPABILITY_ENVELOPE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/capability-envelope@1"
-)
-DECISION_BUDGET_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/decision-budget@1"
-)
-AUTHORITY_ENVELOPE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/authority-envelope@1"
-)
-DECISION_REQUEST_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/decision-request@1"
-)
+PINNED_ARTIFACT_REF_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/pinned-artifact-ref@1"
+SEMANTIC_ROOT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/semantic-root@1"
+DECISION_TARGET_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/decision-target@1"
+ACTION_ENVELOPE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/action-envelope@1"
+EFFECT_ENVELOPE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/effect-envelope@1"
+APPLICABILITY_FACT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/applicability-fact@1"
+CAPABILITY_ENVELOPE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/capability-envelope@1"
+DECISION_BUDGET_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/decision-budget@1"
+AUTHORITY_ENVELOPE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/authority-envelope@1"
+DECISION_REQUEST_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/decision-request@1"
 
 ABSOLUTE_MAX_DECISION_BYTES: Final[int] = 1_048_576
 ABSOLUTE_MAX_ARTIFACT_BYTES: Final[int] = 64 * 1024 * 1024
@@ -180,9 +160,7 @@ class SemanticRootKind(str, Enum):
     POLICY = "policy"
 
 
-MANDATORY_SEMANTIC_ROOT_KINDS: Final[frozenset[SemanticRootKind]] = frozenset(
-    SemanticRootKind
-)
+MANDATORY_SEMANTIC_ROOT_KINDS: Final[frozenset[SemanticRootKind]] = frozenset(SemanticRootKind)
 
 
 class WorktreeCoverage(str, Enum):
@@ -193,9 +171,7 @@ class WorktreeCoverage(str, Enum):
     UNTRACKED = "untracked"
 
 
-REQUIRED_DIRTY_WORKTREE_COVERAGE: Final[frozenset[WorktreeCoverage]] = frozenset(
-    WorktreeCoverage
-)
+REQUIRED_DIRTY_WORKTREE_COVERAGE: Final[frozenset[WorktreeCoverage]] = frozenset(WorktreeCoverage)
 
 
 class EffectKind(str, Enum):
@@ -260,9 +236,7 @@ def _text(
     if not isinstance(value, str):
         raise DecisionContractError(f"{name} must be a string")
     if value != value.strip():
-        raise NonCanonicalDecisionError(
-            f"{name} has leading or trailing whitespace"
-        )
+        raise NonCanonicalDecisionError(f"{name} has leading or trailing whitespace")
     if required and not value:
         raise DecisionContractError(f"{name} must not be empty")
     if "\x00" in value:
@@ -414,9 +388,7 @@ def _freeze_value(
                 f"{name} cannot contain finite or non-finite floating values"
             )
         if isinstance(item, str):
-            result = _text(
-                item, name, required=False, maximum=max_text_bytes
-            )
+            result = _text(item, name, required=False, maximum=max_text_bytes)
             if check_paths and key_name in _PATH_KEYS:
                 return _relative_path(result, key_name)
             return result
@@ -428,40 +400,26 @@ def _freeze_value(
             frozen: dict[str, Any] = {}
             previous = ""
             for key in sorted(item):
-                normalized_key = _text(
-                    key, f"{name} key", maximum=max_text_bytes
-                )
+                normalized_key = _text(key, f"{name} key", maximum=max_text_bytes)
                 if normalized_key in frozen or (previous and normalized_key <= previous):
-                    raise DuplicateReferenceError(
-                        f"{name} contains duplicate or conflicting keys"
-                    )
+                    raise DuplicateReferenceError(f"{name} contains duplicate or conflicting keys")
                 previous = normalized_key
                 raw = item[key]
                 if check_paths and normalized_key in _PATHS_KEYS:
                     if isinstance(raw, str) or not isinstance(raw, Sequence):
-                        raise DecisionContractError(
-                            f"{normalized_key} must be a sequence"
-                        )
-                    paths = tuple(
-                        _relative_path(member, normalized_key) for member in raw
-                    )
+                        raise DecisionContractError(f"{normalized_key} must be a sequence")
+                    paths = tuple(_relative_path(member, normalized_key) for member in raw)
                     if paths != tuple(sorted(paths)) or len(paths) != len(set(paths)):
                         raise NonCanonicalDecisionError(
                             f"{normalized_key} must be unique and sorted"
                         )
                     frozen[normalized_key] = paths
                 else:
-                    frozen[normalized_key] = visit(
-                        raw, depth + 1, normalized_key
-                    )
+                    frozen[normalized_key] = visit(raw, depth + 1, normalized_key)
             return MappingProxyType(frozen)
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return tuple(visit(member, depth + 1, key_name) for member in item)
-        raise DecisionContractError(
-            f"{name} contains unsupported value type {type(item).__name__}"
-        )
+        raise DecisionContractError(f"{name} contains unsupported value type {type(item).__name__}")
 
     return visit(value, 0)
 
@@ -470,18 +428,12 @@ def _schema(payload: Mapping[str, Any], expected: str, noun: str) -> None:
     if not isinstance(payload, Mapping):
         raise DecisionContractError(f"{noun} must be an object")
     if payload.get("schema") != expected:
-        raise DecisionContractError(
-            f"{noun} requires exact schema {expected!r}"
-        )
+        raise DecisionContractError(f"{noun} requires exact schema {expected!r}")
     if payload.get("contract_version") != DECISION_CONTRACT_VERSION:
-        raise DecisionContractError(
-            f"{noun} requires contract_version {DECISION_CONTRACT_VERSION}"
-        )
+        raise DecisionContractError(f"{noun} requires contract_version {DECISION_CONTRACT_VERSION}")
 
 
-def _reject_unknown(
-    payload: Mapping[str, Any], allowed: Iterable[str], noun: str
-) -> None:
+def _reject_unknown(payload: Mapping[str, Any], allowed: Iterable[str], noun: str) -> None:
     unknown = set(payload).difference(allowed)
     if unknown:
         raise DecisionContractError(
@@ -509,9 +461,7 @@ def _decode_json_object(payload: str, noun: str) -> Mapping[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
             if key in result:
-                raise DuplicateReferenceError(
-                    f"{noun} JSON contains duplicate object keys"
-                )
+                raise DuplicateReferenceError(f"{noun} JSON contains duplicate object keys")
             result[key] = value
         return result
 
@@ -528,9 +478,7 @@ def _decode_json_object(payload: str, noun: str) -> Mapping[str, Any]:
     except ContractValidationError as exc:
         raise DecisionContractError(f"{noun} JSON is not canonicalizable") from exc
     if encoded != payload.encode("utf-8"):
-        raise NonCanonicalDecisionError(
-            f"{noun} JSON changes during canonical round trip"
-        )
+        raise NonCanonicalDecisionError(f"{noun} JSON changes during canonical round trip")
     return value
 
 
@@ -545,9 +493,7 @@ class _DecisionCanonicalContract(CanonicalContract):
             raise DecisionContractError(f"{cls.__name__} has no decoder")
         result = decoder(value)
         if result.to_json() != payload:
-            raise NonCanonicalDecisionError(
-                f"{cls.__name__} changed during canonical round trip"
-            )
+            raise NonCanonicalDecisionError(f"{cls.__name__} changed during canonical round trip")
         return result
 
 
@@ -589,13 +535,10 @@ def _cid_digest(cid: Any) -> bytes:
         decoded = base64.b32decode((value[1:].upper() + padding).encode("ascii"))
     except (ValueError, UnicodeEncodeError) as exc:
         raise DecisionIdentityError("cid_v1 is malformed") from exc
-    if (
-        len(decoded) != len(_CIDV1_DAG_JSON_SHA256_PREFIX) + 32
-        or not decoded.startswith(_CIDV1_DAG_JSON_SHA256_PREFIX)
+    if len(decoded) != len(_CIDV1_DAG_JSON_SHA256_PREFIX) + 32 or not decoded.startswith(
+        _CIDV1_DAG_JSON_SHA256_PREFIX
     ):
-        raise DecisionIdentityError(
-            "cid_v1 must use CIDv1 dag-json with sha2-256"
-        )
+        raise DecisionIdentityError("cid_v1 must use CIDv1 dag-json with sha2-256")
     canonical = "b" + base64.b32encode(decoded).decode("ascii").rstrip("=").lower()
     if canonical != value:
         raise DecisionIdentityError("cid_v1 is not canonically encoded")
@@ -605,17 +548,13 @@ def _cid_digest(cid: Any) -> bytes:
 def _digest_bytes(value: Any) -> bytes:
     digest = _text(value, "supervisor_digest")
     if not digest.startswith(_SHA256) or len(digest) != len(_SHA256) + 64:
-        raise DecisionIdentityError(
-            "supervisor_digest must be sha256:<64 lowercase hex>"
-        )
+        raise DecisionIdentityError("supervisor_digest must be sha256:<64 lowercase hex>")
     try:
         result = bytes.fromhex(digest.removeprefix(_SHA256))
     except ValueError as exc:
         raise DecisionIdentityError("supervisor_digest is malformed") from exc
     if digest != _SHA256 + result.hex():
-        raise DecisionIdentityError(
-            "supervisor_digest must use canonical lowercase hex"
-        )
+        raise DecisionIdentityError("supervisor_digest must use canonical lowercase hex")
     return result
 
 
@@ -738,13 +677,9 @@ class PinnedArtifactRef(_DecisionCanonicalContract):
         try:
             decoded = json.loads(value)
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise NonCanonicalDecisionError(
-                "artifact bytes must contain canonical JSON"
-            ) from exc
+            raise NonCanonicalDecisionError("artifact bytes must contain canonical JSON") from exc
         if canonical_artifact_bytes(decoded) != value:
-            raise NonCanonicalDecisionError(
-                "artifact bytes change during canonical round trip"
-            )
+            raise NonCanonicalDecisionError("artifact bytes change during canonical round trip")
         return cls(
             artifact_id=artifact_id,
             artifact_kind=artifact_kind,
@@ -820,15 +755,11 @@ class SemanticRoot(_DecisionCanonicalContract):
     coverage: tuple[WorktreeCoverage, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, SemanticRootKind, "semantic root kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, SemanticRootKind, "semantic root kind"))
         artifact = self.artifact
         if not isinstance(artifact, PinnedArtifactRef):
             if not isinstance(artifact, Mapping):
-                raise DecisionContractError(
-                    "semantic root artifact must be a PinnedArtifactRef"
-                )
+                raise DecisionContractError("semantic root artifact must be a PinnedArtifactRef")
             artifact = PinnedArtifactRef.from_dict(artifact)
         if not artifact.authority.usable_as_root:
             raise UnknownAuthorityError(
@@ -838,15 +769,12 @@ class SemanticRoot(_DecisionCanonicalContract):
         if isinstance(self.coverage, str) or not isinstance(self.coverage, Sequence):
             raise DecisionContractError("semantic root coverage must be a sequence")
         coverage = tuple(
-            _enum(item, WorktreeCoverage, "worktree coverage")
-            for item in self.coverage
+            _enum(item, WorktreeCoverage, "worktree coverage") for item in self.coverage
         )
         if len(coverage) != len(set(coverage)):
             raise DuplicateReferenceError("semantic root coverage contains duplicates")
         if coverage != tuple(sorted(coverage, key=lambda item: item.value)):
-            raise NonCanonicalDecisionError(
-                "semantic root coverage must be canonically sorted"
-            )
+            raise NonCanonicalDecisionError("semantic root coverage must be canonically sorted")
         if self.kind is SemanticRootKind.DIRTY_WORKTREE:
             if set(coverage) != set(REQUIRED_DIRTY_WORKTREE_COVERAGE):
                 raise MissingSemanticRootError(
@@ -854,9 +782,7 @@ class SemanticRoot(_DecisionCanonicalContract):
                     "deleted, and untracked inputs"
                 )
         elif coverage:
-            raise DecisionContractError(
-                "coverage is only valid for the dirty_worktree root"
-            )
+            raise DecisionContractError("coverage is only valid for the dirty_worktree root")
         object.__setattr__(self, "coverage", coverage)
 
     @property
@@ -907,25 +833,18 @@ class DecisionTarget(_DecisionCanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "target_id", _text(self.target_id, "target_id"))
-        object.__setattr__(
-            self, "resource_type", _text(self.resource_type, "resource_type")
-        )
+        object.__setattr__(self, "resource_type", _text(self.resource_type, "resource_type"))
         if isinstance(self.repository_paths, str) or not isinstance(
             self.repository_paths, Sequence
         ):
             raise DecisionContractError("repository_paths must be a sequence")
-        paths = tuple(
-            _relative_path(item, "repository_paths")
-            for item in self.repository_paths
-        )
+        paths = tuple(_relative_path(item, "repository_paths") for item in self.repository_paths)
         if len(paths) > ABSOLUTE_MAX_PATHS:
             raise DecisionBoundsError("repository_paths exceeds its count bound")
         if len(paths) != len(set(paths)):
             raise DuplicateReferenceError("repository_paths contains duplicates")
         if paths != tuple(sorted(paths)):
-            raise NonCanonicalDecisionError(
-                "repository_paths must be canonically sorted"
-            )
+            raise NonCanonicalDecisionError("repository_paths must be canonically sorted")
         object.__setattr__(self, "repository_paths", paths)
 
     @property
@@ -958,9 +877,7 @@ class DecisionTarget(_DecisionCanonicalContract):
         result = cls(
             target_id=_required(payload, "target_id", "decision target"),
             resource_type=_required(payload, "resource_type", "decision target"),
-            repository_paths=_required(
-                payload, "repository_paths", "decision target"
-            ),
+            repository_paths=_required(payload, "repository_paths", "decision target"),
         )
         _identity(payload, result.content_id, "decision target")
         return result
@@ -974,9 +891,7 @@ def _coerce_targets(value: Any) -> tuple[DecisionTarget, ...]:
     if len(value) > ABSOLUTE_MAX_TARGETS:
         raise DecisionBoundsError("action targets exceeds its count bound")
     result = tuple(
-        item
-        if isinstance(item, DecisionTarget)
-        else DecisionTarget.from_dict(item)
+        item if isinstance(item, DecisionTarget) else DecisionTarget.from_dict(item)
         for item in value
     )
     ids = tuple(item.target_id for item in result)
@@ -1080,9 +995,7 @@ class EffectEnvelope(_DecisionCanonicalContract):
         object.__setattr__(self, "kind", _enum(self.kind, EffectKind, "effect kind"))
         object.__setattr__(self, "authority", _authority(self.authority))
         if self.authority is not self.kind.authority:
-            raise UnknownAuthorityError(
-                "effect authority does not match the effect kind"
-            )
+            raise UnknownAuthorityError("effect authority does not match the effect kind")
         object.__setattr__(
             self,
             "target_ids",
@@ -1098,21 +1011,14 @@ class EffectEnvelope(_DecisionCanonicalContract):
         ):
             raise DecisionContractError("effect repository_paths must be a sequence")
         paths = tuple(
-            _relative_path(item, "effect repository_paths")
-            for item in self.repository_paths
+            _relative_path(item, "effect repository_paths") for item in self.repository_paths
         )
         if paths != tuple(sorted(paths)) or len(paths) != len(set(paths)):
-            raise NonCanonicalDecisionError(
-                "effect repository_paths must be unique and sorted"
-            )
+            raise NonCanonicalDecisionError("effect repository_paths must be unique and sorted")
         object.__setattr__(self, "repository_paths", paths)
-        object.__setattr__(
-            self, "description", _text(self.description, "effect description")
-        )
+        object.__setattr__(self, "description", _text(self.description, "effect description"))
         if not isinstance(self.verification, Mapping) or not self.verification:
-            raise DecisionContractError(
-                "effect verification must be a non-empty object"
-            )
+            raise DecisionContractError("effect verification must be a non-empty object")
         object.__setattr__(
             self,
             "verification",
@@ -1188,9 +1094,7 @@ class ApplicabilityFact(_DecisionCanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fact_id", _text(self.fact_id, "fact_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ApplicabilityFactKind, "fact kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ApplicabilityFactKind, "fact kind"))
         object.__setattr__(self, "predicate", _text(self.predicate, "predicate"))
         if not isinstance(self.value, Mapping) or not self.value:
             raise DecisionContractError("applicability fact value must be non-empty")
@@ -1208,9 +1112,7 @@ class ApplicabilityFact(_DecisionCanonicalContract):
         source = self.source
         if not isinstance(source, PinnedArtifactRef):
             if not isinstance(source, Mapping):
-                raise DecisionContractError(
-                    "applicability source must be a PinnedArtifactRef"
-                )
+                raise DecisionContractError("applicability source must be a PinnedArtifactRef")
             source = PinnedArtifactRef.from_dict(source)
         if not source.authority.usable_as_root:
             raise UnknownAuthorityError(
@@ -1222,26 +1124,14 @@ class ApplicabilityFact(_DecisionCanonicalContract):
             "jurisdiction",
             _text(self.jurisdiction, "jurisdiction", required=False),
         )
-        start = _optional_integer(
-            self.effective_from_ms, "effective_from_ms", minimum=0
-        )
-        end = _optional_integer(
-            self.effective_until_ms, "effective_until_ms", minimum=0
-        )
+        start = _optional_integer(self.effective_from_ms, "effective_from_ms", minimum=0)
+        end = _optional_integer(self.effective_until_ms, "effective_until_ms", minimum=0)
         if start is not None and end is not None and end <= start:
-            raise DecisionContractError(
-                "effective_until_ms must be greater than effective_from_ms"
-            )
+            raise DecisionContractError("effective_until_ms must be greater than effective_from_ms")
         if self.kind is ApplicabilityFactKind.JURISDICTION and not self.jurisdiction:
-            raise DecisionContractError(
-                "jurisdiction facts require an explicit jurisdiction"
-            )
-        if self.kind is ApplicabilityFactKind.EFFECTIVE_TIME and (
-            start is None or end is None
-        ):
-            raise DecisionContractError(
-                "effective-time facts require an explicit bounded interval"
-            )
+            raise DecisionContractError("jurisdiction facts require an explicit jurisdiction")
+        if self.kind is ApplicabilityFactKind.EFFECTIVE_TIME and (start is None or end is None):
+            raise DecisionContractError("effective-time facts require an explicit bounded interval")
         object.__setattr__(self, "effective_from_ms", start)
         object.__setattr__(self, "effective_until_ms", end)
 
@@ -1296,9 +1186,7 @@ class ApplicabilityFact(_DecisionCanonicalContract):
             "effective_from_ms",
             "effective_until_ms",
         )
-        values = {
-            name: _required(payload, name, "applicability fact") for name in names
-        }
+        values = {name: _required(payload, name, "applicability fact") for name in names}
         result = cls(**values)
         _identity(payload, result.content_id, "applicability fact")
         return result
@@ -1321,14 +1209,10 @@ class CapabilityEnvelope(_DecisionCanonicalContract):
         configuration = self.configuration
         if not isinstance(configuration, PinnedArtifactRef):
             if not isinstance(configuration, Mapping):
-                raise DecisionContractError(
-                    "capability configuration must be a PinnedArtifactRef"
-                )
+                raise DecisionContractError("capability configuration must be a PinnedArtifactRef")
             configuration = PinnedArtifactRef.from_dict(configuration)
         if not configuration.authority.usable_as_root:
-            raise UnknownAuthorityError(
-                "capability configuration must be verified"
-            )
+            raise UnknownAuthorityError("capability configuration must be verified")
         object.__setattr__(self, "configuration", configuration)
 
     def _payload(self) -> dict[str, Any]:
@@ -1360,9 +1244,7 @@ class CapabilityEnvelope(_DecisionCanonicalContract):
             capability_id=_required(payload, "capability_id", "capability envelope"),
             provider_id=_required(payload, "provider_id", "capability envelope"),
             version=_required(payload, "version", "capability envelope"),
-            configuration=_required(
-                payload, "configuration", "capability envelope"
-            ),
+            configuration=_required(payload, "configuration", "capability envelope"),
         )
         _identity(payload, result.content_id, "capability envelope")
         return result
@@ -1457,9 +1339,7 @@ class DecisionBudget(_DecisionCanonicalContract):
         fields = set(cls.__dataclass_fields__).difference({"SCHEMA"})
         allowed = {"schema", "contract_version", "content_id", *fields}
         _reject_unknown(payload, allowed, "decision budget")
-        values = {
-            name: _required(payload, name, "decision budget") for name in fields
-        }
+        values = {name: _required(payload, name, "decision budget") for name in fields}
         result = cls(**values)
         _identity(payload, result.content_id, "decision budget")
         return result
@@ -1480,9 +1360,7 @@ class AuthorityEnvelope(_DecisionCanonicalContract):
     authorization: PinnedArtifactRef | None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "principal_id", _text(self.principal_id, "principal_id")
-        )
+        object.__setattr__(self, "principal_id", _text(self.principal_id, "principal_id"))
         object.__setattr__(
             self,
             "requested_authority",
@@ -1498,11 +1376,7 @@ class AuthorityEnvelope(_DecisionCanonicalContract):
                 maximum=ABSOLUTE_MAX_CAPABILITIES,
             ),
         )
-        lease = (
-            None
-            if self.lease_id is None
-            else _text(self.lease_id, "lease_id")
-        )
+        lease = None if self.lease_id is None else _text(self.lease_id, "lease_id")
         fence = _optional_integer(self.fencing_epoch, "fencing_epoch", minimum=0)
         replay = (
             None
@@ -1510,21 +1384,16 @@ class AuthorityEnvelope(_DecisionCanonicalContract):
             else _text(self.idempotency_key, "idempotency_key", maximum=256)
         )
         authorization = self.authorization
-        if authorization is not None and not isinstance(
-            authorization, PinnedArtifactRef
-        ):
+        if authorization is not None and not isinstance(authorization, PinnedArtifactRef):
             if not isinstance(authorization, Mapping):
-                raise DecisionContractError(
-                    "authorization must be a PinnedArtifactRef or null"
-                )
+                raise DecisionContractError("authorization must be a PinnedArtifactRef or null")
             authorization = PinnedArtifactRef.from_dict(authorization)
         if authorization is not None and not authorization.authority.usable_as_root:
             raise UnknownAuthorityError("authorization reference must be verified")
         if self.requested_authority is DecisionAuthority.MUTATION:
             if lease is None or fence is None or replay is None or authorization is None:
                 raise DecisionBindingError(
-                    "mutation authority requires authorization, lease, fence, "
-                    "and idempotency"
+                    "mutation authority requires authorization, lease, fence, and idempotency"
                 )
         object.__setattr__(self, "lease_id", lease)
         object.__setattr__(self, "fencing_epoch", fence)
@@ -1548,9 +1417,7 @@ class AuthorityEnvelope(_DecisionCanonicalContract):
             "lease_id": self.lease_id,
             "fencing_epoch": self.fencing_epoch,
             "idempotency_key": self.idempotency_key,
-            "authorization": (
-                self.authorization.to_dict() if self.authorization else None
-            ),
+            "authorization": (self.authorization.to_dict() if self.authorization else None),
         }
 
     @classmethod
@@ -1637,9 +1504,7 @@ class DecisionRequest(_DecisionCanonicalContract):
             "decision_kind",
             _enum(self.decision_kind, DecisionKind, "decision kind"),
         )
-        object.__setattr__(
-            self, "stage", _enum(self.stage, DecisionStage, "decision stage")
-        )
+        object.__setattr__(self, "stage", _enum(self.stage, DecisionStage, "decision stage"))
         for name in (
             "objective_id",
             "objective_revision",
@@ -1668,9 +1533,7 @@ class DecisionRequest(_DecisionCanonicalContract):
         authority = self.authority
         if not isinstance(authority, AuthorityEnvelope):
             if not isinstance(authority, Mapping):
-                raise DecisionContractError(
-                    "authority must be an AuthorityEnvelope"
-                )
+                raise DecisionContractError("authority must be an AuthorityEnvelope")
             authority = AuthorityEnvelope.from_dict(authority)
         object.__setattr__(self, "authority", authority)
         budget = self.budget
@@ -1686,9 +1549,7 @@ class DecisionRequest(_DecisionCanonicalContract):
             action = ActionEnvelope.from_dict(action)
         object.__setattr__(self, "action", action)
         if not authority.requested_authority.allows(action.authority):
-            raise UnknownAuthorityError(
-                "requested authority does not cover the action"
-            )
+            raise UnknownAuthorityError("requested authority does not cover the action")
 
         effects = _coerce_sequence(
             self.expected_effects,
@@ -1702,19 +1563,13 @@ class DecisionRequest(_DecisionCanonicalContract):
         if len(effect_ids) != len(set(effect_ids)):
             raise DuplicateReferenceError("expected effect IDs must be unique")
         if effects != tuple(sorted(effects, key=lambda item: item.effect_id)):
-            raise NonCanonicalDecisionError(
-                "expected_effects must be canonically sorted"
-            )
+            raise NonCanonicalDecisionError("expected_effects must be canonically sorted")
         target_ids = {item.target_id for item in action.targets}
         for effect in effects:
             if not authority.requested_authority.allows(effect.authority):
-                raise UnknownAuthorityError(
-                    "requested authority does not cover an expected effect"
-                )
+                raise UnknownAuthorityError("requested authority does not cover an expected effect")
             if not set(effect.target_ids).issubset(target_ids):
-                raise DecisionBindingError(
-                    "expected effect references an undeclared action target"
-                )
+                raise DecisionBindingError("expected effect references an undeclared action target")
         object.__setattr__(self, "expected_effects", effects)
 
         roots = _coerce_sequence(
@@ -1730,19 +1585,14 @@ class DecisionRequest(_DecisionCanonicalContract):
         )
         root_kinds = tuple(item.kind for item in roots)
         if len(root_kinds) != len(set(root_kinds)):
-            raise DuplicateReferenceError(
-                "semantic roots contain duplicate or conflicting roles"
-            )
+            raise DuplicateReferenceError("semantic roots contain duplicate or conflicting roles")
         missing = MANDATORY_SEMANTIC_ROOT_KINDS.difference(root_kinds)
         if missing:
             raise MissingSemanticRootError(
-                "missing semantic roots: "
-                + ", ".join(sorted(item.value for item in missing))
+                "missing semantic roots: " + ", ".join(sorted(item.value for item in missing))
             )
         if roots != tuple(sorted(roots, key=lambda item: item.kind.value)):
-            raise NonCanonicalDecisionError(
-                "semantic_roots must be canonically sorted"
-            )
+            raise NonCanonicalDecisionError("semantic_roots must be canonically sorted")
         object.__setattr__(self, "semantic_roots", roots)
 
         facts = _coerce_sequence(
@@ -1757,23 +1607,19 @@ class DecisionRequest(_DecisionCanonicalContract):
         if len(fact_ids) != len(set(fact_ids)):
             raise DuplicateReferenceError("applicability fact IDs must be unique")
         if facts != tuple(sorted(facts, key=lambda item: item.fact_id)):
-            raise NonCanonicalDecisionError(
-                "applicability_facts must be canonically sorted"
-            )
+            raise NonCanonicalDecisionError("applicability_facts must be canonically sorted")
         if any(item.jurisdiction for item in facts) and not self.jurisdiction:
-            raise DecisionBindingError(
-                "jurisdictional facts require request jurisdiction"
+            raise DecisionBindingError("jurisdictional facts require request jurisdiction")
+        if (
+            any(
+                item.effective_from_ms is not None or item.effective_until_ms is not None
+                for item in facts
             )
-        if any(
-            item.effective_from_ms is not None or item.effective_until_ms is not None
-            for item in facts
-        ) and self.effective_at_ms is None:
-            raise DecisionBindingError(
-                "temporal facts require request effective_at_ms"
-            )
+            and self.effective_at_ms is None
+        ):
+            raise DecisionBindingError("temporal facts require request effective_at_ms")
         if self.effective_at_ms is not None and any(
-            not item.applies_at(self.effective_at_ms, self.jurisdiction)
-            for item in facts
+            not item.applies_at(self.effective_at_ms, self.jurisdiction) for item in facts
         ):
             raise DecisionBindingError(
                 "applicability fact is outside the request jurisdiction or time"
@@ -1791,20 +1637,14 @@ class DecisionRequest(_DecisionCanonicalContract):
         capability_ids = tuple(item.capability_id for item in capabilities)
         if len(capability_ids) != len(set(capability_ids)):
             raise DuplicateReferenceError("capability IDs must be unique")
-        if capabilities != tuple(
-            sorted(capabilities, key=lambda item: item.capability_id)
-        ):
-            raise NonCanonicalDecisionError(
-                "capabilities must be canonically sorted"
-            )
+        if capabilities != tuple(sorted(capabilities, key=lambda item: item.capability_id)):
+            raise NonCanonicalDecisionError("capabilities must be canonically sorted")
         if set(authority.capability_ids) != set(capability_ids):
             raise DecisionBindingError(
                 "authority capability IDs must exactly match capability envelopes"
             )
         if action.tool_id not in set(capability_ids):
-            raise DecisionBindingError(
-                "action tool_id must name a declared capability"
-            )
+            raise DecisionBindingError("action tool_id must name a declared capability")
         object.__setattr__(self, "capabilities", capabilities)
 
         references = [
@@ -1818,18 +1658,14 @@ class DecisionRequest(_DecisionCanonicalContract):
         by_cid: dict[str, PinnedArtifactRef] = {}
         for reference in references:
             if reference.size_bytes > budget.max_artifact_bytes:
-                raise DecisionBoundsError(
-                    "pinned artifact exceeds max_artifact_bytes"
-                )
+                raise DecisionBoundsError("pinned artifact exceeds max_artifact_bytes")
             old_artifact = by_artifact.get(reference.artifact_id)
             old_cid = by_cid.get(reference.cid_v1)
             if old_artifact is not None or old_cid is not None:
                 previous = old_artifact or old_cid
                 assert previous is not None
                 if previous != reference:
-                    raise DuplicateReferenceError(
-                        "conflicting pinned artifact references"
-                    )
+                    raise DuplicateReferenceError("conflicting pinned artifact references")
                 raise DuplicateReferenceError("duplicate pinned artifact reference")
             by_artifact[reference.artifact_id] = reference
             by_cid[reference.cid_v1] = reference
@@ -1847,9 +1683,7 @@ class DecisionRequest(_DecisionCanonicalContract):
             check_paths=False,
         )
         if len(self.canonical_bytes()) > budget.max_serialized_bytes:
-            raise DecisionBoundsError(
-                "decision request exceeds max_serialized_bytes"
-            )
+            raise DecisionBoundsError("decision request exceeds max_serialized_bytes")
 
     @property
     def request_id(self) -> str:
@@ -1883,9 +1717,7 @@ class DecisionRequest(_DecisionCanonicalContract):
         normalized = _enum(kind, SemanticRootKind, "semantic root kind")
         return self.roots_by_kind[normalized]
 
-    def artifact_root(
-        self, kind: SemanticRootKind | str
-    ) -> PinnedArtifactRef:
+    def artifact_root(self, kind: SemanticRootKind | str) -> PinnedArtifactRef:
         """Return the pinned artifact for one mandatory semantic role."""
 
         return self.root(kind).artifact
@@ -1944,13 +1776,9 @@ class DecisionRequest(_DecisionCanonicalContract):
             "authority": self.authority.to_dict(),
             "budget": self.budget.to_dict(),
             "action": self.action.to_dict(),
-            "expected_effects": tuple(
-                item.to_dict() for item in self.expected_effects
-            ),
+            "expected_effects": tuple(item.to_dict() for item in self.expected_effects),
             "semantic_roots": tuple(item.to_dict() for item in self.semantic_roots),
-            "applicability_facts": tuple(
-                item.to_dict() for item in self.applicability_facts
-            ),
+            "applicability_facts": tuple(item.to_dict() for item in self.applicability_facts),
             "capabilities": tuple(item.to_dict() for item in self.capabilities),
         }
 
@@ -1983,9 +1811,7 @@ class DecisionRequest(_DecisionCanonicalContract):
             {"schema", "contract_version", "content_id", *names},
             "decision request",
         )
-        values = {
-            name: _required(payload, name, "decision request") for name in names
-        }
+        values = {name: _required(payload, name, "decision request") for name in names}
         result = cls(**values)
         _identity(payload, result.content_id, "decision request")
         return result

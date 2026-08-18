@@ -43,7 +43,9 @@ class TestMCPServerUNI210StorageTools(unittest.TestCase):
 
     def test_collection_inventory_alias_returns_normalized_shape(self) -> None:
         async def _run() -> None:
-            result = await list_storage_collections(include_metadata=False, include_timestamps=False)
+            result = await list_storage_collections(
+                include_metadata=False, include_timestamps=False
+            )
             self.assertEqual(result.get("status"), "success")
             self.assertIn("collections", result)
             self.assertIn("total_count", result)

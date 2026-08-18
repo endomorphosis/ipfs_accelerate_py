@@ -180,10 +180,7 @@ def test_rejected_proposal_closes_dispatch_and_proves_exact_g100_requirement(
     assert evidence["baseline_id"] == proposal.baseline_id
     assert evidence["diff_digest"] == proposal.diff_digest
     assert tuple(evidence["allowed_paths"]) == validation.policy.allowed_paths
-    assert (
-        tuple(evidence["task_owned_paths"])
-        == validation.policy.task_owned_paths
-    )
+    assert tuple(evidence["task_owned_paths"]) == validation.policy.task_owned_paths
     assert tuple(evidence["changed_paths"]) == proposal.changed_paths
     assert tuple(evidence["gate_trace"]) == tuple(
         gate.value for gate in validation.receipt.gate_trace
@@ -201,10 +198,7 @@ def test_rejected_proposal_closes_dispatch_and_proves_exact_g100_requirement(
     ):
         assert report[non_authority_field] is False
         assert report["proposal_validation"][non_authority_field] is False
-    assert (
-        NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
-        == G100_FAIL_FAST_REQUIREMENT
-    )
+    assert NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID == G100_FAIL_FAST_REQUIREMENT
 
 
 def test_accepted_proposal_default_runner_uses_validation_python(
@@ -289,10 +283,7 @@ def test_validated_scheduler_rejects_unmarked_runner_under_hermetic_policy(
     assert report["passed"] is False
     result = report["results"][0]
     assert result["returncode"] == 75
-    assert (
-        result["error"]
-        == "hermetic_validation_runner_capability_missing"
-    )
+    assert result["error"] == "hermetic_validation_runner_capability_missing"
     assert result["outcome"] == "infrastructure_failure"
     assert result["authoritative"] is False
 
@@ -351,9 +342,7 @@ def test_strict_validation_builds_hardened_python_environment(
         )
         for result in report["results"]
     ]
-    assert str(Path(sys.executable).resolve()) in str(
-        report["results"][0]["output"]
-    )
+    assert str(Path(sys.executable).resolve()) in str(report["results"][0]["output"])
     assert not profile_marker.exists()
 
 
@@ -378,16 +367,12 @@ def _failing_transitive_report(
         calls.append(spec.command)
         return {
             "returncode": (
-                7
-                if spec.command
-                == "pytest -q test/api/test_transitive_consumer.py"
-                else 0
+                7 if spec.command == "pytest -q test/api/test_transitive_consumer.py" else 0
             ),
             "output": "seeded transitive failure",
             "seeded_defect_id": (
                 "seed:g101"
-                if spec.command
-                == "pytest -q test/api/test_transitive_consumer.py"
+                if spec.command == "pytest -q test/api/test_transitive_consumer.py"
                 else ""
             ),
         }
@@ -451,10 +436,7 @@ def test_strict_validation_runner_receives_sanitized_environment(
         == str(Path("/usr/bin/python3").resolve())
         for environment in captured_environments
     )
-    assert all(
-        "AWS_SECRET_ACCESS_KEY" not in environment
-        for environment in captured_environments
-    )
+    assert all("AWS_SECRET_ACCESS_KEY" not in environment for environment in captured_environments)
     assert all(
         environment["HOME"] == "/nonexistent/ipfs-accelerate-validation"
         for environment in captured_environments
@@ -495,19 +477,12 @@ def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requiremen
         "test/api/test_transitive_consumer.py",
     )
     assert receipt.transitive_evidence.seeded_defect_id == "seed:g101"
-    assert tuple(report["proved_requirement_ids"]) == (
-        G101_TRANSITIVE_IMPACT_REQUIREMENT,
-    )
+    assert tuple(report["proved_requirement_ids"]) == (G101_TRANSITIVE_IMPACT_REQUIREMENT,)
     assert receipt.proved_requirement_ids == (G101_TRANSITIVE_IMPACT_REQUIREMENT,)
-    assert (
-        receipt.transitive_evidence.requirement_id
-        == G101_TRANSITIVE_IMPACT_REQUIREMENT
-    )
+    assert receipt.transitive_evidence.requirement_id == G101_TRANSITIVE_IMPACT_REQUIREMENT
     assert TRANSITIVE_IMPACT_REQUIREMENT_ID == G101_TRANSITIVE_IMPACT_REQUIREMENT
     failed = [
-        node
-        for node in receipt.nodes
-        if node.disposition is ValidationNodeDisposition.FAILED
+        node for node in receipt.nodes if node.disposition is ValidationNodeDisposition.FAILED
     ]
     assert len(failed) == 1
     assert failed[0].command == "pytest -q test/api/test_transitive_consumer.py"
@@ -515,9 +490,7 @@ def test_transitive_impact_selects_failing_test_and_proves_exact_g101_requiremen
     assert failed[0].mandatory is True
     assert failed[0].observed_seeded_defect_id == "seed:g101"
     assert failed[0].depends_on
-    assert {gate.disposition.value for gate in receipt.authority_gates} == {
-        "blocked"
-    }
+    assert {gate.disposition.value for gate in receipt.authority_gates} == {"blocked"}
     assert {gate.gate for gate in receipt.authority_gates} == {
         "semantic",
         "proof",
@@ -542,31 +515,31 @@ def test_strict_validation_parent_projection_binds_complete_scheduler_gate_surfa
     receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
 
     evidence = receipt.strict_validation_completion_evidence()
-    restored = StrictValidationDAGCompletionEvidence.from_dict(
-        evidence.to_dict()
-    )
+    restored = StrictValidationDAGCompletionEvidence.from_dict(evidence.to_dict())
 
     assert restored.evidence_id == evidence.evidence_id
     assert restored.validation_dag.receipt_id == receipt.receipt_id
     assert restored.objective_id == STRICT_VALIDATION_PARENT_OBJECTIVE_ID
     assert restored.child_objective_id == OBJECTIVE_ID
     assert restored.requirement_id == G101_TRANSITIVE_IMPACT_REQUIREMENT
-    assert restored.proved_requirement_ids == (
-        G101_TRANSITIVE_IMPACT_REQUIREMENT,
-    )
+    assert restored.proved_requirement_ids == (G101_TRANSITIVE_IMPACT_REQUIREMENT,)
     assert restored.repository_tree_id == TREE_ID
     assert restored.validation_policy_id == receipt.policy_id
     assert restored.operational_receipt_id == receipt.receipt_id
-    assert restored.gate_kinds == STRICT_VALIDATION_GATE_KINDS == (
-        "schema",
-        "authority",
-        "patch",
-        "path",
-        "ast_interface",
-        "impact_test",
-        "semantic_proof",
-        "merge",
-        "freshness",
+    assert (
+        restored.gate_kinds
+        == STRICT_VALIDATION_GATE_KINDS
+        == (
+            "schema",
+            "authority",
+            "patch",
+            "path",
+            "ast_interface",
+            "impact_test",
+            "semantic_proof",
+            "merge",
+            "freshness",
+        )
     )
     assert (
         restored.scheduler_gate_kinds
@@ -574,9 +547,7 @@ def test_strict_validation_parent_projection_binds_complete_scheduler_gate_surfa
         == ("impact_test", "semantic_proof", "merge", "freshness")
     )
     assert restored.impact_test_node_ids == tuple(
-        node.node_id
-        for node in receipt.nodes
-        if node.validation_id == VALIDATION_ID
+        node.node_id for node in receipt.nodes if node.validation_id == VALIDATION_ID
     )
     assert callable(restored.evaluate_parent_completion)
     with pytest.raises(
@@ -592,9 +563,7 @@ def test_strict_validation_parent_projection_binds_complete_scheduler_gate_surfa
     assert payload["completion_authoritative"] is False
     assert payload["gate_kinds"] == STRICT_VALIDATION_GATE_KINDS
     assert payload["receipt_id"] == payload["operational_receipt_id"]
-    assert payload["proved_requirement_ids"] == (
-        G101_TRANSITIVE_IMPACT_REQUIREMENT,
-    )
+    assert payload["proved_requirement_ids"] == (G101_TRANSITIVE_IMPACT_REQUIREMENT,)
 
 
 def test_strict_validation_parent_projection_rejects_tamper_and_non_witness_dag(
@@ -627,14 +596,10 @@ def test_strict_validation_parent_projection_rejects_tamper_and_non_witness_dag(
     ):
         StrictValidationDAGCompletionEvidence.from_dict(unknown)
 
-    completion_gate_tamper = deepcopy(
-        receipt.strict_validation_completion_evidence().to_dict()
-    )
+    completion_gate_tamper = deepcopy(receipt.strict_validation_completion_evidence().to_dict())
     completion_gate = next(
         gate
-        for gate in completion_gate_tamper["validation_dag"][
-            "authority_gates"
-        ]
+        for gate in completion_gate_tamper["validation_dag"]["authority_gates"]
         if gate["gate"] == "completion"
     )
     completion_gate["disposition"] = "pending"
@@ -642,9 +607,7 @@ def test_strict_validation_parent_projection_rejects_tamper_and_non_witness_dag(
         ValidationDAGError,
         match="identity mismatch|disposition does not match",
     ):
-        StrictValidationDAGCompletionEvidence.from_dict(
-            completion_gate_tamper
-        )
+        StrictValidationDAGCompletionEvidence.from_dict(completion_gate_tamper)
 
     detached = receipt.to_dict()
     detached["transitive_evidence"] = None
@@ -730,9 +693,7 @@ def test_passing_all_stage_dag_cannot_claim_code_proof_or_completion_authority(
         "kernel",
         "attestation",
     }
-    assert {
-        gate.disposition.value for gate in receipt.authority_gates
-    } == {"pending"}
+    assert {gate.disposition.value for gate in receipt.authority_gates} == {"pending"}
     assert receipt.proof_authoritative is False
     assert receipt.code_proof_authoritative is False
     assert receipt.completion_authoritative is False
@@ -835,9 +796,7 @@ def test_missing_or_uncovered_impact_fails_closed_without_false_completion(
     assert missing["error"] == "impact_graph_missing"
     assert missing["passed"] is False
     assert calls == []
-    assert ValidationDAGReceipt.from_dict(
-        missing["validation_dag_receipt"]
-    ).uncovered_impact
+    assert ValidationDAGReceipt.from_dict(missing["validation_dag_receipt"]).uncovered_impact
 
     unrelated = ImpactDependencyGraph(
         repository_tree_id=TREE_ID,
@@ -861,9 +820,7 @@ def test_missing_or_uncovered_impact_fails_closed_without_false_completion(
     assert uncovered["error"] == "uncovered_validation_impact"
     assert uncovered["passed"] is False
     assert calls == []
-    receipt = ValidationDAGReceipt.from_dict(
-        uncovered["validation_dag_receipt"]
-    )
+    receipt = ValidationDAGReceipt.from_dict(uncovered["validation_dag_receipt"])
     assert receipt.uncovered_impact
     assert receipt.completion_authoritative is False
 
@@ -894,9 +851,7 @@ def test_declared_validation_plan_builds_proposal_local_coverage(
         dependency_state="fixture",
         runner=runner,
     )
-    receipt = ValidationDAGReceipt.from_dict(
-        report["validation_dag_receipt"]
-    )
+    receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
 
     assert calls == ["pytest -q test/api/test_transitive_consumer.py"]
     assert report["passed"] is True
@@ -982,10 +937,7 @@ def test_declared_transitive_validation_cannot_be_omitted_from_population(
 
     assert calls == []
     assert report["error"] == "uncovered_validation_impact"
-    assert (
-        f"validation_population:{VALIDATION_ID}:0"
-        in report["coverage_errors"]
-    )
+    assert f"validation_population:{VALIDATION_ID}:0" in report["coverage_errors"]
     assert receipt.required_validation_ids == (VALIDATION_ID,)
     assert receipt.coverage_complete is False
     assert receipt.uncovered_impact is True
@@ -1063,15 +1015,9 @@ def test_transitive_failure_blocks_dependent_semantic_and_proof_nodes(
     assert nodes["semantic-check"].depends_on == (
         nodes["pytest -q test/api/test_transitive_consumer.py"].node_id,
     )
-    assert nodes["proof-solver"].depends_on == (
-        nodes["semantic-check"].node_id,
-    )
-    assert nodes["proof-kernel"].depends_on == (
-        nodes["proof-solver"].node_id,
-    )
-    failed_id = nodes[
-        "pytest -q test/api/test_transitive_consumer.py"
-    ].node_id
+    assert nodes["proof-solver"].depends_on == (nodes["semantic-check"].node_id,)
+    assert nodes["proof-kernel"].depends_on == (nodes["proof-solver"].node_id,)
+    failed_id = nodes["pytest -q test/api/test_transitive_consumer.py"].node_id
     assert nodes["semantic-check"].blocked_by_failed_node_ids == (failed_id,)
     assert nodes["proof-solver"].blocked_by_failed_node_ids == (failed_id,)
     assert nodes["proof-kernel"].blocked_by_failed_node_ids == (failed_id,)
@@ -1132,9 +1078,7 @@ def test_fail_fast_same_stage_peer_is_recorded_without_false_dependency(
     )
     receipt = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
     nodes = {node.command: node for node in receipt.nodes}
-    peer = nodes[
-        "pytest -q test/api/test_transitive_consumer_secondary.py"
-    ]
+    peer = nodes["pytest -q test/api/test_transitive_consumer_secondary.py"]
 
     assert calls == [
         "python -m compileall -q pkg",
@@ -1145,9 +1089,7 @@ def test_fail_fast_same_stage_peer_is_recorded_without_false_dependency(
     assert peer.reason == "fail_fast_after_stage_failure"
     assert peer.blocked_by_failed_node_ids == ()
     assert receipt.coverage_complete
-    assert receipt.proved_requirement_ids == (
-        G101_TRANSITIVE_IMPACT_REQUIREMENT,
-    )
+    assert receipt.proved_requirement_ids == (G101_TRANSITIVE_IMPACT_REQUIREMENT,)
 
 
 @pytest.mark.parametrize(
@@ -1287,9 +1229,7 @@ def _tamper_evidence_path(payload: dict[str, object]) -> None:
     "tamper",
     [
         lambda payload: payload.__setitem__("graph_id", "graph:tampered"),
-        lambda payload: payload["nodes"][0].__setitem__(
-            "result_digest", "digest:tampered"
-        ),
+        lambda payload: payload["nodes"][0].__setitem__("result_digest", "digest:tampered"),
         lambda payload: payload["transitive_evidence"].__setitem__(
             "receipt_id", "receipt:tampered"
         ),
@@ -1298,9 +1238,7 @@ def _tamper_evidence_path(payload: dict[str, object]) -> None:
             "depends_on", [payload["nodes"][0]["node_id"]]
         ),
         lambda payload: payload["nodes"][0].__setitem__("selected", False),
-        lambda payload: payload["authority_gates"][0].__setitem__(
-            "disposition", "pending"
-        ),
+        lambda payload: payload["authority_gates"][0].__setitem__("disposition", "pending"),
         lambda payload: payload["impact_graph"]["validation_targets"].__setitem__(
             VALIDATION_ID, ["test/api/test_forged.py"]
         ),
@@ -1344,9 +1282,7 @@ def _ast_impact_index(
         symbol_paths={
             "pkg.source.value": "pkg/source.py",
             "pkg.consumer.read": "pkg/consumer.py",
-            "tests.integration.test_read": (
-                "test/integration/test_consumer.py"
-            ),
+            "tests.integration.test_read": ("test/integration/test_consumer.py"),
             "pkg.unrelated.noop": "pkg/unrelated.py",
         },
         symbol_dependencies={
@@ -1524,10 +1460,7 @@ def test_impact_selected_explicit_hermetic_policy_rejects_unmarked_runner(
     assert report["passed"] is False
     result = report["results"][0]
     assert result["returncode"] == 75
-    assert (
-        result["error"]
-        == "hermetic_validation_runner_capability_missing"
-    )
+    assert result["error"] == "hermetic_validation_runner_capability_missing"
     assert result["outcome"] == "infrastructure_failure"
     assert result["authoritative"] is False
 
@@ -1569,31 +1502,18 @@ def test_dag_derives_all_mandatory_kinds_acceptance_and_skip_reasons() -> None:
 
     assert restored.dag_id == plan.dag_id
     assert plan.coverage_complete
-    assert {node.check.kind for node in selected.values()} == set(
-        ImpactValidationKind
-    )
+    assert {node.check.kind for node in selected.values()} == set(ImpactValidationKind)
     assert "changed_ast_interface" in selected["interface"].selection_reasons
-    assert (
-        "dependency_graph_validation_target"
-        in selected["integration"].selection_reasons
-    )
-    assert (
-        f"task_acceptance:{ACCEPTANCE_CRITERION}"
-        in selected["contract"].selection_reasons
-    )
+    assert "dependency_graph_validation_target" in selected["integration"].selection_reasons
+    assert f"task_acceptance:{ACCEPTANCE_CRITERION}" in selected["contract"].selection_reasons
     assert selected["interface"].depends_on == ("type",)
     assert selected["unit"].depends_on == ("type",)
     assert selected["integration"].depends_on == ("interface", "unit")
     assert selected["contract"].depends_on == ("interface", "unit")
     assert selected["runtime"].depends_on == ("contract", "integration")
-    unrelated = next(
-        node for node in plan.nodes if node.check_id == "unrelated-unit"
-    )
+    unrelated = next(node for node in plan.nodes if node.check_id == "unrelated-unit")
     assert unrelated.selected is False
-    assert (
-        unrelated.skipped_reason
-        == "no_changed_symbol_dependency_acceptance_or_policy_match"
-    )
+    assert unrelated.skipped_reason == "no_changed_symbol_dependency_acceptance_or_policy_match"
     forged = deepcopy(plan.to_dict())
     forged["impact"]["affected_symbols"] = ["pkg.source.value"]
     forged.pop("dag_id")
@@ -1611,9 +1531,7 @@ def test_uncovered_acceptance_or_mandatory_kind_fails_closed(
         return {"returncode": 0}
 
     checks = tuple(
-        check
-        for check in _impact_checks()
-        if check.kind is not ImpactValidationKind.RUNTIME
+        check for check in _impact_checks() if check.kind is not ImpactValidationKind.RUNTIME
     )
     report = ValidationScheduler().run_impact_selected(
         checks,
@@ -1630,10 +1548,7 @@ def test_uncovered_acceptance_or_mandatory_kind_fails_closed(
     assert report["passed"] is False
     assert report["error"] == "uncovered_validation_impact"
     assert "missing_mandatory_runtime_check" in report["uncovered_impact"]
-    assert (
-        "uncovered_acceptance:An unmapped criterion."
-        in report["uncovered_impact"]
-    )
+    assert "uncovered_acceptance:An unmapped criterion." in report["uncovered_impact"]
     assert report["time_to_first_useful_failure_ms"] == 0.0
     assert len(report["nodes"]) == len(checks)
 
@@ -1668,28 +1583,18 @@ def test_dependency_aware_dag_parallelism_fail_fast_and_complete_receipt(
         dependency_state="fixture",
         runner=runner,
     )
-    receipt = ImpactValidationDAGReceipt.from_dict(
-        report["impact_validation_receipt"]
-    )
+    receipt = ImpactValidationDAGReceipt.from_dict(report["impact_validation_receipt"])
     nodes = {node.check_id: node for node in receipt.nodes}
 
     assert report["passed"] is False
     assert report["first_useful_failure_check_id"] == "integration"
     assert report["time_to_first_useful_failure_ms"] >= 0
-    assert set(calls).issuperset(
-        {"syntax", "type", "interface", "unit", "integration"}
-    )
+    assert set(calls).issuperset({"syntax", "type", "interface", "unit", "integration"})
     assert nodes["integration"].disposition is ValidationNodeDisposition.FAILED
-    assert (
-        nodes["integration"].observed_seeded_defect_id
-        == "seed:provider-defect"
-    )
+    assert nodes["integration"].observed_seeded_defect_id == "seed:provider-defect"
     assert nodes["runtime"].disposition is ValidationNodeDisposition.BLOCKED
     assert nodes["runtime"].blocked_by == ("integration",)
-    assert (
-        nodes["unrelated-unit"].disposition
-        is ValidationNodeDisposition.OMITTED
-    )
+    assert nodes["unrelated-unit"].disposition is ValidationNodeDisposition.OMITTED
     assert len(nodes) == len(_impact_checks())
     assert report["selection_reasons"]["integration"]
     assert report["skipped_reasons"]["unrelated-unit"]

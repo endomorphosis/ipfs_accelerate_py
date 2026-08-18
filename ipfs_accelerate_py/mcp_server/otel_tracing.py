@@ -30,7 +30,9 @@ except ImportError:
     OTLP_GRPC_AVAILABLE = False
 
 try:
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPHTTPSpanExporter  # type: ignore[import]
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+        OTLPSpanExporter as OTLPHTTPSpanExporter,
+    )  # type: ignore[import]
 
     OTLP_HTTP_AVAILABLE = True
 except ImportError:

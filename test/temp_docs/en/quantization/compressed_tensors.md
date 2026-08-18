@@ -55,11 +55,13 @@ Only models that have already been quantized can be loaded at the moment, and on
 ```python
 from transformers import AutoModelForCausalLM
 
-ct_model = AutoModelForCausalLM.from_pretrained("nm-testing/Meta-Llama-3.1-8B-Instruct-FP8-hf", device_map="auto")
+ct_model = AutoModelForCausalLM.from_pretrained(
+    "nm-testing/Meta-Llama-3.1-8B-Instruct-FP8-hf", device_map="auto"
+)
 
 # measure memory usage
-mem_params = sum([param.nelement()*param.element_size() for param in ct_model.parameters()])
-print(f"{mem_params/2**30:.4f} GB")
+mem_params = sum([param.nelement() * param.element_size() for param in ct_model.parameters()])
+print(f"{mem_params / 2**30:.4f} GB")
 # 8.4575 GB
 ```
 

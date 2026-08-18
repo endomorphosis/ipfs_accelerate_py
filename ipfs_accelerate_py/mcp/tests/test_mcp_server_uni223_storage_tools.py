@@ -28,7 +28,7 @@ class TestMCPServerUNI223StorageTools(unittest.TestCase):
 
         by_name = {c["name"]: c for c in manager.calls}
         schema = by_name["manage_collections"]["input_schema"]
-        metadata_schema = (schema.get("properties", {}).get("metadata") or {})
+        metadata_schema = schema.get("properties", {}).get("metadata") or {}
         property_names = metadata_schema.get("propertyNames") or {}
         self.assertEqual(property_names.get("minLength"), 1)
 

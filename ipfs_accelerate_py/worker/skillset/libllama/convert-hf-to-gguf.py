@@ -37,12 +37,13 @@ else:
 if TYPE_CHECKING:
     from torch import Tensor
 
-if 'NO_LOCAL_GGUF' not in os.environ:
-    sys.path.insert(1, str(Path(__file__).parent / 'gguf-py'))
+if "NO_LOCAL_GGUF" not in os.environ:
+    sys.path.insert(1, str(Path(__file__).parent / "gguf-py"))
 import gguf
 
 
 ###### MODEL DEFINITIONS ######
+
 
 class SentencePieceTokenTypes(IntEnum):
     NORMAL = 1
@@ -61,11 +62,15 @@ class Model:
         self.is_big_endian = is_big_endian
         self.endianess = gguf.GGUFEndian.BIG if is_big_endian else gguf.GGUFEndian.LITTLE
         self.is_safetensors = self._is_model_safetensors()
-        self.num_parts = Model.count_model_parts(self.dir_model, ".safetensors" if self.is_safetensors else ".bin")
+        self.num_parts = Model.count_model_parts(
+            self.dir_model, ".safetensors" if self.is_safetensors else ".bin"
+        )
         self.part_names = self._get_part_names()
         self.hparams = Model.load_hparams(self.dir_model)
         self.model_arch = self._get_model_architecture()
-        self.gguf_writer = gguf.GGUFWriter(fname_out, gguf.MODEL_ARCH_NAMES[self.model_arch], endianess=self.endianess)
+        self.gguf_writer = gguf.GGUFWriter(
+            fname_out, gguf.MODEL_ARCH_NAMES[self.model_arch], endianess=self.endianess
+        )
 
     def set_vocab(self):
         self._set_vocab_gpt2()
@@ -76,9 +81,20 @@ class Model:
             ctx: ContextManager[Any]
             if self.is_safetensors:
                 from safetensors import safe_open
-                ctx = cast(ContextManager[Any], safe_open(self.dir_model / part_name, framework="pt", device="cpu"))
+
+                ctx = cast(
+                    ContextManager[Any],
+                    safe_open(self.dir_model / part_name, framework="pt", device="cpu"),
+                )
             else:
-                ctx = contextlib.nullcontext(torch.load(str(self.dir_model / part_name), map_location="cpu", mmap=True, weights_only=True))
+                ctx = contextlib.nullcontext(
+                    torch.load(
+                        str(self.dir_model / part_name),
+                        map_location="cpu",
+                        mmap=True,
+                        weights_only=True,
+                    )
+                )
 
             with ctx as model_part:
                 for name in model_part.keys():
@@ -87,9 +103,12 @@ class Model:
 
     def set_gguf_parameters(self):
         self.gguf_writer.add_name(self.dir_model.name)
-        self.gguf_writer.add_block_count(self.hparams.get(
-            "n_layers", self.hparams.get("num_hidden_layers", self.hparams.get("n_layer")),
-        ))
+        self.gguf_writer.add_block_count(
+            self.hparams.get(
+                "n_layers",
+                self.hparams.get("num_hidden_layers", self.hparams.get("n_layer")),
+            )
+        )
         if (n_ctx := self.hparams.get("max_position_embeddings")) is not None:
             self.gguf_writer.add_context_length(n_ctx)
         if (n_embd := self.hparams.get("hidden_size")) is not None:
@@ -101,11 +120,15 @@ class Model:
         self.gguf_writer.add_parallel_residual(self.hparams.get("use_parallel_residual", True))
 
     def write_tensors(self):
-        block_count = self.hparams.get("n_layers", self.hparams.get("num_hidden_layers", self.hparams.get("n_layer")))
+        block_count = self.hparams.get(
+            "n_layers", self.hparams.get("num_hidden_layers", self.hparams.get("n_layer"))
+        )
         tensor_map = gguf.get_tensor_name_map(self.model_arch, block_count)
         for name, data_torch in self.get_tensors():
             # we don't need these
-            if name.endswith((".attention.masked_bias", ".attention.bias", ".attention.rotary_emb.inv_freq")):
+            if name.endswith(
+                (".attention.masked_bias", ".attention.bias", ".attention.rotary_emb.inv_freq")
+            ):
                 continue
 
             old_dtype = data_torch.dtype
@@ -134,7 +157,12 @@ class Model:
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if self.ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                self.ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
             print(f"{new_name}, n_dims = {n_dims}, {old_dtype} --> {data.dtype}")
@@ -196,11 +224,16 @@ class Model:
         if self.is_safetensors:
             if self.num_parts == 1:  # there's only one .safetensors file
                 return ("model.safetensors",)
-            return (f"model-{n:05}-of-{self.num_parts:05}.safetensors" for n in range(1, self.num_parts + 1))
+            return (
+                f"model-{n:05}-of-{self.num_parts:05}.safetensors"
+                for n in range(1, self.num_parts + 1)
+            )
 
         if self.num_parts == 1:  # there's only one .bin file
             return ("pytorch_model.bin",)
-        return (f"pytorch_model-{n:05}-of-{self.num_parts:05}.bin" for n in range(1, self.num_parts + 1))
+        return (
+            f"pytorch_model-{n:05}-of-{self.num_parts:05}.bin" for n in range(1, self.num_parts + 1)
+        )
 
     def _get_model_architecture(self) -> gguf.MODEL_ARCH:
         arch = self.hparams["architectures"][0]
@@ -232,6 +265,7 @@ class Model:
         toktypes: list[int] = []
 
         from transformers import AutoTokenizer  # type: ignore[attr-defined]
+
         tokenizer = AutoTokenizer.from_pretrained(dir_model)
         vocab_size = hparams.get("vocab_size", len(tokenizer.vocab))
         assert max(tokenizer.vocab.values()) < vocab_size
@@ -241,7 +275,7 @@ class Model:
 
         for i in range(vocab_size):
             if i not in reverse_vocab:
-                pad_token = f"[PAD{i}]".encode('utf-8')
+                pad_token = f"[PAD{i}]".encode("utf-8")
                 tokens.append(bytearray(pad_token))
                 toktypes.append(gguf.TokenType.USER_DEFINED)
             elif reverse_vocab[i] in added_vocab:
@@ -264,18 +298,18 @@ class Model:
     def _set_vocab_sentencepiece(self):
         from sentencepiece import SentencePieceProcessor
 
-        tokenizer_path = self.dir_model / 'tokenizer.model'
+        tokenizer_path = self.dir_model / "tokenizer.model"
 
         tokens: list[bytes] = []
         scores: list[float] = []
         toktypes: list[int] = []
 
         if not tokenizer_path.is_file():
-            print(f'Error: Missing {tokenizer_path}', file=sys.stderr)
+            print(f"Error: Missing {tokenizer_path}", file=sys.stderr)
             sys.exit(1)
 
         tokenizer = SentencePieceProcessor(str(tokenizer_path))
-        vocab_size = self.hparams.get('vocab_size', tokenizer.vocab_size())
+        vocab_size = self.hparams.get("vocab_size", tokenizer.vocab_size())
 
         for token_id in range(vocab_size):
             piece = tokenizer.id_to_piece(token_id)
@@ -296,7 +330,7 @@ class Model:
             scores.append(score)
             toktypes.append(toktype)
 
-        added_tokens_file = self.dir_model / 'added_tokens.json'
+        added_tokens_file = self.dir_model / "added_tokens.json"
         if added_tokens_file.is_file():
             with open(added_tokens_file, "r", encoding="utf-8") as f:
                 added_tokens_json = json.load(f)
@@ -325,7 +359,10 @@ class GPTNeoXModel(Model):
         self.gguf_writer.add_block_count(block_count)
         self.gguf_writer.add_feed_forward_length(self.hparams["intermediate_size"])
         self.gguf_writer.add_rope_dimension_count(
-            int(self.hparams["rotary_pct"] * (self.hparams["hidden_size"] // self.hparams["num_attention_heads"])),
+            int(
+                self.hparams["rotary_pct"]
+                * (self.hparams["hidden_size"] // self.hparams["num_attention_heads"])
+            ),
         )
         self.gguf_writer.add_head_count(self.hparams["num_attention_heads"])
         self.gguf_writer.add_parallel_residual(self.hparams.get("use_parallel_residual", True))
@@ -358,7 +395,7 @@ class BloomModel(Model):
             if "lm_head.weight" not in tensors.keys() and "output.weight" not in tensors.keys():
                 has_lm_head = False
 
-            name = re.sub(r'transformer\.', '', name)
+            name = re.sub(r"transformer\.", "", name)
 
             old_dtype = data_torch.dtype
 
@@ -412,7 +449,12 @@ class BloomModel(Model):
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if self.ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                self.ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
             print(f"=> {new_name}, shape = {data.shape}, {old_dtype} --> {data.dtype}")
@@ -445,7 +487,9 @@ class MPTModel(Model):
         tensor_map = gguf.get_tensor_name_map(self.model_arch, block_count)
         for name, data_torch in self.get_tensors():
             # we don't need these
-            if name.endswith((".attention.masked_bias", ".attention.bias", ".attention.rotary_emb.inv_freq")):
+            if name.endswith(
+                (".attention.masked_bias", ".attention.bias", ".attention.rotary_emb.inv_freq")
+            ):
                 continue
 
             old_dtype = data_torch.dtype
@@ -474,7 +518,12 @@ class MPTModel(Model):
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if self.ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                self.ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
             print(f"{new_name}, n_dims = {n_dims}, {old_dtype} --> {data.dtype}")
@@ -515,12 +564,17 @@ class BaichuanModel(Model):
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
         self.gguf_writer.add_feed_forward_length(self.hparams["intermediate_size"])
-        self.gguf_writer.add_rope_dimension_count(self.hparams["hidden_size"] // self.hparams["num_attention_heads"])
+        self.gguf_writer.add_rope_dimension_count(
+            self.hparams["hidden_size"] // self.hparams["num_attention_heads"]
+        )
         self.gguf_writer.add_head_count(head_count)
         self.gguf_writer.add_head_count_kv(head_count_kv)
         self.gguf_writer.add_layer_norm_rms_eps(self.hparams["rms_norm_eps"])
 
-        if self.hparams.get("rope_scaling") is not None and "factor" in self.hparams["rope_scaling"]:
+        if (
+            self.hparams.get("rope_scaling") is not None
+            and "factor" in self.hparams["rope_scaling"]
+        ):
             if self.hparams["rope_scaling"].get("type") == "linear":
                 self.gguf_writer.add_rope_scaling_type(gguf.RopeScalingType.LINEAR)
                 self.gguf_writer.add_rope_scaling_factor(self.hparams["rope_scaling"]["factor"])
@@ -536,12 +590,13 @@ class BaichuanModel(Model):
         for i in range(block_count):
             if (w := model_kv.get(f"model.layers.{i}.self_attn.W_pack.weight")) is not None:
                 print(f"Unpacking and permuting layer {i}")
-                model_kv[f"model.layers.{i}.self_attn.q_proj.weight"] = \
+                model_kv[f"model.layers.{i}.self_attn.q_proj.weight"] = (
                     self._reverse_hf_permute_part(w, 0, head_count, head_count)
-                model_kv[f"model.layers.{i}.self_attn.k_proj.weight"] = \
+                )
+                model_kv[f"model.layers.{i}.self_attn.k_proj.weight"] = (
                     self._reverse_hf_permute_part(w, 1, head_count, head_count_kv)
-                model_kv[f"model.layers.{i}.self_attn.v_proj.weight"] = \
-                    self._reverse_hf_part(w, 2)
+                )
+                model_kv[f"model.layers.{i}.self_attn.v_proj.weight"] = self._reverse_hf_part(w, 2)
                 del model_kv[f"model.layers.{i}.self_attn.W_pack.weight"]
 
         for name, data_torch in model_kv.items():
@@ -575,13 +630,20 @@ class BaichuanModel(Model):
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if self.ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                self.ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
             print(f"{name} -> {new_name}, n_dims = {n_dims}, {old_dtype} --> {data.dtype}")
             self.gguf_writer.add_tensor(new_name, data)
 
-    def _reverse_hf_permute(self, weights: Tensor, n_head: int, n_kv_head: int | None = None) -> Tensor:
+    def _reverse_hf_permute(
+        self, weights: Tensor, n_head: int, n_kv_head: int | None = None
+    ) -> Tensor:
         if n_kv_head is not None and n_head != n_kv_head:
             n_head //= n_kv_head
 
@@ -592,14 +654,20 @@ class BaichuanModel(Model):
         )
 
     def _reverse_hf_permute_part(
-        self, weights: Tensor, n_part: int, n_head: int, n_head_kv: int | None = None,
+        self,
+        weights: Tensor,
+        n_part: int,
+        n_head: int,
+        n_head_kv: int | None = None,
     ) -> Tensor:
         r = weights.shape[0] // 3
-        return self._reverse_hf_permute(weights[r * n_part:r * n_part + r, ...], n_head, n_head_kv)
+        return self._reverse_hf_permute(
+            weights[r * n_part : r * n_part + r, ...], n_head, n_head_kv
+        )
 
     def _reverse_hf_part(self, weights: Tensor, n_part: int) -> Tensor:
         r = weights.shape[0] // 3
-        return weights[r * n_part:r * n_part + r, ...]
+        return weights[r * n_part : r * n_part + r, ...]
 
 
 class FalconModel(Model):
@@ -661,7 +729,9 @@ class FalconModel(Model):
             # ref: https://github.com/jploski/ggml/blob/falcon40b/examples/falcon/convert-hf-to-ggml.py
 
             if "query_key_value" in name:
-                qkv = data_torch.view(n_head_kv, n_head // n_head_kv + 2, head_dim, head_dim * n_head)
+                qkv = data_torch.view(
+                    n_head_kv, n_head // n_head_kv + 2, head_dim, head_dim * n_head
+                )
                 q = qkv[:, :-2].reshape(n_head * head_dim, head_dim * n_head)
                 k = qkv[:, [-2]].reshape(n_head_kv * head_dim, head_dim * n_head)
                 v = qkv[:, [-1]].reshape(n_head_kv * head_dim, head_dim * n_head)
@@ -687,7 +757,12 @@ class FalconModel(Model):
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if self.ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                self.ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
             print(f"{new_name}, n_dims = {n_dims}, {old_dtype} --> {data.dtype}")
@@ -748,8 +823,8 @@ class RefactModel(Model):
         tensors = dict(self.get_tensors())
         for i in range(block_count):
             if (w := tensors.get(f"transformer.h.{i}.attn.kv.weight")) is not None:
-                tensors[f"model.layers.{i}.self_attn.k_proj.weight"] = w[:n_head_kv * head_dim]
-                tensors[f"model.layers.{i}.self_attn.v_proj.weight"] = w[n_head_kv * head_dim:]
+                tensors[f"model.layers.{i}.self_attn.k_proj.weight"] = w[: n_head_kv * head_dim]
+                tensors[f"model.layers.{i}.self_attn.v_proj.weight"] = w[n_head_kv * head_dim :]
                 del tensors[f"transformer.h.{i}.attn.kv.weight"]
             if (w := tensors.get(f"transformer.h.{i}.attn.q.weight")) is not None:
                 tensors[f"model.layers.{i}.self_attn.q_proj.weight"] = w
@@ -786,7 +861,12 @@ class RefactModel(Model):
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if self.ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                self.ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
             print(f"{new_name}, n_dims = {n_dims}, {old_dtype} --> {data.dtype}")
@@ -801,7 +881,7 @@ class PersimmonModel(Model):
         head_count_kv = head_count
         hidden_size = self.hparams["hidden_size"]
 
-        self.gguf_writer.add_name('persimmon-8b-chat')
+        self.gguf_writer.add_name("persimmon-8b-chat")
         self.gguf_writer.add_embedding_length(hidden_size)
         self.gguf_writer.add_block_count(block_count)
         self.gguf_writer.add_feed_forward_length(self.hparams["intermediate_size"])
@@ -846,31 +926,46 @@ class StableLMModel(Model):
         self.gguf_writer.add_embedding_length(hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
         self.gguf_writer.add_feed_forward_length(hparams["intermediate_size"])
-        self.gguf_writer.add_rope_dimension_count(int(hparams["rope_pct"] * (hparams["hidden_size"] // hparams["num_attention_heads"])))
+        self.gguf_writer.add_rope_dimension_count(
+            int(hparams["rope_pct"] * (hparams["hidden_size"] // hparams["num_attention_heads"]))
+        )
         self.gguf_writer.add_head_count(hparams["num_attention_heads"])
-        self.gguf_writer.add_parallel_residual(hparams["use_parallel_residual"] if "use_parallel_residual" in hparams else True)
+        self.gguf_writer.add_parallel_residual(
+            hparams["use_parallel_residual"] if "use_parallel_residual" in hparams else True
+        )
         self.gguf_writer.add_layer_norm_eps(1e-5)
+
 
 ###### CONVERSION LOGIC ######
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert a huggingface model to a GGML compatible file")
+    parser = argparse.ArgumentParser(
+        description="Convert a huggingface model to a GGML compatible file"
+    )
     parser.add_argument(
-        "--vocab-only", action="store_true",
+        "--vocab-only",
+        action="store_true",
         help="extract only the vocab",
     )
     parser.add_argument(
-        "--outfile", type=Path,
+        "--outfile",
+        type=Path,
         help="path to write to; default: based on input",
     )
     parser.add_argument(
-        "--outtype", type=str, choices=["f32", "f16"], default="f16",
+        "--outtype",
+        type=str,
+        choices=["f32", "f16"],
+        default="f16",
         help="output format - use f32 for float32, f16 for float16",
     )
-    parser.add_argument("--bigendian", action="store_true", help="model is executed on big endian machine")
     parser.add_argument(
-        "model", type=Path,
+        "--bigendian", action="store_true", help="model is executed on big endian machine"
+    )
+    parser.add_argument(
+        "model",
+        type=Path,
         help="directory containing model file",
     )
 
@@ -881,7 +976,7 @@ args = parse_args()
 
 dir_model = args.model
 if not dir_model.is_dir():
-    print(f'Error: {args.model} is not a directory', file=sys.stderr)
+    print(f"Error: {args.model} is not a directory", file=sys.stderr)
     sys.exit(1)
 
 ftype_map = {
@@ -893,7 +988,7 @@ if args.outfile is not None:
     fname_out = args.outfile
 else:
     # output in the same directory as the model by default
-    fname_out = dir_model / f'ggml-model-{args.outtype}.gguf'
+    fname_out = dir_model / f"ggml-model-{args.outtype}.gguf"
 
 print(f"Loading model: {dir_model.name}")
 

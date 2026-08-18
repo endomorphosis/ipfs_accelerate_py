@@ -60,9 +60,7 @@ FORMAL_PLAN_VALIDATION_SCHEMA: Final = (
 FORMAL_PLAN_VALIDATION_BOUNDS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-validation-bounds@1"
 )
-FORMAL_PLAN_FINDING_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-plan-finding@1"
-)
+FORMAL_PLAN_FINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-plan-finding@1"
 FORMAL_PLAN_COUNTERMODEL_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-countermodel@1"
 )
@@ -124,6 +122,7 @@ class PlanCheckKind(str, Enum):
     PARENT_REFINEMENT = "parent_refinement"
     EVIDENCE_FRESHNESS = "evidence_freshness"
     CIRCULAR_EVIDENCE = "circular_evidence"
+    CAMPAIGN_LEASE_BINDING = "campaign_lease_binding"
 
 
 class FindingDisposition(str, Enum):
@@ -170,6 +169,9 @@ class PlanFindingCode(str, Enum):
     EQUIVALENT_REFINEMENT_VIOLATED = "equivalent_refinement_violated"
     STALE_EVIDENCE = "stale_evidence"
     CIRCULAR_EVIDENCE = "circular_evidence"
+    UNRESOLVED_DEPENDENCY_OUTPUT = "unresolved_dependency_output"
+    CAMPAIGN_LEASE_BLOCKED = "campaign_lease_blocked"
+    CAMPAIGN_ROLE_MISSING = "campaign_role_missing"
 
 
 @dataclass(frozen=True)
@@ -212,13 +214,7 @@ class ValidationBounds:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ValidationBounds":
-        return cls(
-            **{
-                name: payload[name]
-                for name in cls.__dataclass_fields__
-                if name in payload
-            }
-        )
+        return cls(**{name: payload[name] for name in cls.__dataclass_fields__ if name in payload})
 
 
 FormalPlanValidationBounds = ValidationBounds
@@ -236,9 +232,7 @@ class AppliedValidationBounds:
     truncated_dimensions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        sizes = {
-            str(key): int(value) for key, value in sorted(self.domain_sizes.items())
-        }
+        sizes = {str(key): int(value) for key, value in sorted(self.domain_sizes.items())}
         if any(value < 0 for value in sizes.values()):
             raise ValueError("domain sizes must be non-negative")
         object.__setattr__(self, "domain_sizes", sizes)
@@ -311,15 +305,7 @@ class PlanValidationAssumption:
         object.__setattr__(
             self,
             "subject_ids",
-            tuple(
-                sorted(
-                    {
-                        str(item).strip()
-                        for item in self.subject_ids
-                        if str(item).strip()
-                    }
-                )
-            ),
+            tuple(sorted({str(item).strip() for item in self.subject_ids if str(item).strip()})),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -343,9 +329,7 @@ class PlanValidationAssumption:
 PlanAssumption = PlanValidationAssumption
 
 
-def _assumption(
-    kind: str, statement: str, *subject_ids: str
-) -> PlanValidationAssumption:
+def _assumption(kind: str, statement: str, *subject_ids: str) -> PlanValidationAssumption:
     subjects = tuple(sorted({item for item in subject_ids if item}))
     return PlanValidationAssumption(
         assumption_id=content_identity(
@@ -378,15 +362,7 @@ class PlanValidationFinding:
         object.__setattr__(
             self,
             "subject_ids",
-            tuple(
-                sorted(
-                    {
-                        str(item).strip()
-                        for item in self.subject_ids
-                        if str(item).strip()
-                    }
-                )
-            ),
+            tuple(sorted({str(item).strip() for item in self.subject_ids if str(item).strip()})),
         )
         if self.logical_time is not None and (
             isinstance(self.logical_time, bool)
@@ -485,9 +461,7 @@ class CountermodelState:
             event_ids=tuple(payload.get("event_ids") or ()),
             task_states=payload.get("task_states") or {},
             available_evidence_ids=tuple(payload.get("available_evidence_ids") or ()),
-            satisfied_subgoal_ids=tuple(
-                payload.get("satisfied_subgoal_ids") or ()
-            ),
+            satisfied_subgoal_ids=tuple(payload.get("satisfied_subgoal_ids") or ()),
         )
 
 
@@ -503,9 +477,7 @@ class PlanCountermodel:
             raise ValueError("violation_finding_id is required")
         object.__setattr__(self, "violation_finding_id", finding_id)
         states = tuple(
-            item
-            if isinstance(item, CountermodelState)
-            else CountermodelState.from_dict(item)
+            item if isinstance(item, CountermodelState) else CountermodelState.from_dict(item)
             for item in self.states
         )
         if tuple(item.logical_time for item in states) != tuple(
@@ -533,9 +505,7 @@ class PlanCountermodel:
         result = cls(
             violation_finding_id=str(payload.get("violation_finding_id") or ""),
             states=tuple(
-                item
-                if isinstance(item, CountermodelState)
-                else CountermodelState.from_dict(item)
+                item if isinstance(item, CountermodelState) else CountermodelState.from_dict(item)
                 for item in (payload.get("states") or ())
             ),
             complete_prefix=payload.get("complete_prefix", True),
@@ -571,9 +541,7 @@ class PlanCheckEvidence:
         object.__setattr__(self, "plan_id", str(self.plan_id or "").strip())
         object.__setattr__(self, "bounds_id", str(self.bounds_id or "").strip())
         object.__setattr__(self, "formula_ids", tuple(sorted(set(self.formula_ids))))
-        object.__setattr__(
-            self, "assumption_ids", tuple(sorted(set(self.assumption_ids)))
-        )
+        object.__setattr__(self, "assumption_ids", tuple(sorted(set(self.assumption_ids))))
         if not isinstance(self.reconstructed, bool):
             raise ValueError("reconstructed must be a boolean")
         if not isinstance(self.accepted, bool):
@@ -633,9 +601,7 @@ class PlanCheckEvidence:
                 or content_identity(dict(payload))
             ),
             backend_id=backend_id,
-            backend_role=str(
-                payload.get("backend_role") or payload.get("role") or "native"
-            ),
+            backend_role=str(payload.get("backend_role") or payload.get("role") or "native"),
             outcome=str(payload.get("outcome") or payload.get("status") or "success"),
             plan_id=str(payload.get("plan_id") or ""),
             formula_ids=tuple(payload.get("formula_ids") or ()),
@@ -679,9 +645,7 @@ class PlanValidationResult:
             raise ValueError("validator_version must be a positive integer")
         object.__setattr__(self, "status", PlanValidationStatus(self.status))
         object.__setattr__(self, "outcome", PlanValidationOutcome(self.outcome))
-        object.__setattr__(
-            self, "consistency_level", PlanConsistencyLevel(self.consistency_level)
-        )
+        object.__setattr__(self, "consistency_level", PlanConsistencyLevel(self.consistency_level))
         object.__setattr__(
             self,
             "assumptions",
@@ -717,10 +681,7 @@ class PlanValidationResult:
                 )
             ),
         )
-        if (
-            self.outcome is PlanValidationOutcome.COUNTERMODEL
-            and self.countermodel is None
-        ):
+        if self.outcome is PlanValidationOutcome.COUNTERMODEL and self.countermodel is None:
             raise ValueError("countermodel outcomes require a countermodel")
         if self.status is PlanValidationStatus.CONSISTENT and self.findings:
             raise ValueError("consistent results cannot contain findings")
@@ -792,8 +753,7 @@ class PlanValidationResult:
             "assumptions": [item.to_dict() for item in self.assumptions],
             "formula_ids": list(self.formula_ids),
             "findings": [
-                {**item.to_dict(), "finding_id": item.finding_id}
-                for item in self.findings
+                {**item.to_dict(), "finding_id": item.finding_id} for item in self.findings
             ],
             "countermodel": (
                 self.countermodel.to_dict() if self.countermodel is not None else None
@@ -840,24 +800,16 @@ class PlanValidationResult:
                 countermodel
                 if isinstance(countermodel, PlanCountermodel)
                 else (
-                    PlanCountermodel.from_dict(countermodel)
-                    if countermodel is not None
-                    else None
+                    PlanCountermodel.from_dict(countermodel) if countermodel is not None else None
                 )
             ),
             evidence=tuple(
-                item
-                if isinstance(item, PlanCheckEvidence)
-                else PlanCheckEvidence.from_dict(item)
+                item if isinstance(item, PlanCheckEvidence) else PlanCheckEvidence.from_dict(item)
                 for item in (payload.get("evidence") or ())
             ),
-            consistency_level=payload.get(
-                "consistency_level", PlanConsistencyLevel.INCONCLUSIVE
-            ),
+            consistency_level=payload.get("consistency_level", PlanConsistencyLevel.INCONCLUSIVE),
             checks_performed=tuple(payload.get("checks_performed") or ()),
-            validator_version=payload.get(
-                "validator_version", FORMAL_PLAN_VALIDATOR_VERSION
-            ),
+            validator_version=payload.get("validator_version", FORMAL_PLAN_VALIDATOR_VERSION),
         )
         claimed = payload.get("validation_id") or payload.get("result_id")
         if claimed and claimed != result.validation_id:
@@ -1054,9 +1006,7 @@ class FormalPlanValidator:
                 limit=self.bounds.max_provider_evidence,
             )
             domain_sizes["provider_evidence"] = (
-                self.bounds.max_provider_evidence + 1
-                if evidence_exceeded
-                else len(evidence)
+                self.bounds.max_provider_evidence + 1 if evidence_exceeded else len(evidence)
             )
         except _Cancelled:
             return self._result(
@@ -1177,8 +1127,7 @@ class FormalPlanValidator:
                 )
             if findings:
                 resource_finding = any(
-                    item.disposition is FindingDisposition.RESOURCE_EXHAUSTED
-                    for item in findings
+                    item.disposition is FindingDisposition.RESOURCE_EXHAUSTED for item in findings
                 )
                 return self._result(
                     plan,
@@ -1212,6 +1161,8 @@ class FormalPlanValidator:
                     PlanCheckKind.ACTOR_AUTHORITY,
                 }
             )
+            if isinstance(plan.metadata.get("ir_learning_campaign_binding"), Mapping):
+                checks.add(PlanCheckKind.CAMPAIGN_LEASE_BINDING)
             if static_findings:
                 findings.extend(static_findings)
                 return self._result(
@@ -1449,9 +1400,7 @@ class FormalPlanValidator:
                 )
                 continue
             try:
-                formula = (
-                    value if isinstance(value, Formula) else Formula.from_dict(value)
-                )
+                formula = value if isinstance(value, Formula) else Formula.from_dict(value)
             except (TypeError, ValueError) as exc:
                 findings.append(
                     PlanValidationFinding(
@@ -1470,11 +1419,7 @@ class FormalPlanValidator:
             *(subgoal.satisfaction_formula_id for subgoal in plan.subgoals),
             *(item.formula_id for item in plan.preconditions),
             *(item.formula_id for item in plan.temporal_constraints),
-            *(
-                item.activation_formula_id
-                for item in plan.norms
-                if item.activation_formula_id
-            ),
+            *(item.activation_formula_id for item in plan.norms if item.activation_formula_id),
         }
         for formula_id in sorted(referenced):
             if formula_id not in formulas:
@@ -1586,17 +1531,14 @@ class FormalPlanValidator:
     ) -> list[PlanValidationFinding]:
         findings: list[PlanValidationFinding] = []
         tasks = {item.task_id: item for item in plan.tasks}
+        findings.extend(self._campaign_checks(plan, tasks, guard))
 
         grouped_norms: dict[tuple[str, str], list[Any]] = defaultdict(list)
         for norm in plan.norms:
             guard.checkpoint()
             grouped_norms[(norm.bearer_actor_id, norm.action_id)].append(norm)
             issuer = (
-                next(
-                    item
-                    for item in plan.actors
-                    if item.actor_id == norm.issuer_actor_id
-                )
+                next(item for item in plan.actors if item.actor_id == norm.issuer_actor_id)
                 if norm.issuer_actor_id
                 else None
             )
@@ -1645,9 +1587,7 @@ class FormalPlanValidator:
                     if NormKind.PROHIBITION in kinds and (
                         NormKind.OBLIGATION in kinds or NormKind.PERMISSION in kinds
                     ):
-                        if (
-                            left.activation_formula_id or right.activation_formula_id
-                        ) and (
+                        if (left.activation_formula_id or right.activation_formula_id) and (
                             left.activation_formula_id != right.activation_formula_id
                         ):
                             # Distinct activation conditions are not assumed
@@ -1665,9 +1605,7 @@ class FormalPlanValidator:
 
         lease_owner: dict[str, tuple[str, str]] = {}
         lease_fence: dict[str, int] = {}
-        for event in sorted(
-            plan.events, key=lambda item: (item.logical_time, item.event_id)
-        ):
+        for event in sorted(plan.events, key=lambda item: (item.logical_time, item.event_id)):
             guard.checkpoint()
             lease_ids = _string_values(event.metadata.get("lease_ids"))
             tokens = _fencing_values(event.metadata)
@@ -1748,6 +1686,104 @@ class FormalPlanValidator:
                     )
         return findings
 
+    def _campaign_checks(
+        self,
+        plan: FormalWorkPlan,
+        tasks: Mapping[str, Any],
+        guard: _BudgetGuard,
+    ) -> list[PlanValidationFinding]:
+        """Fail closed when a campaign revision still has unresolved RESULT outputs."""
+
+        binding = plan.metadata.get("ir_learning_campaign_binding")
+        if not isinstance(binding, Mapping) or not binding:
+            return []
+        findings: list[PlanValidationFinding] = []
+        guard.checkpoint()
+        declared_roles = {
+            str(item).strip()
+            for item in (binding.get("roles") or ())
+            if str(item).strip()
+        }
+        required_roles = {
+            "inventory",
+            "corpus",
+            "split",
+            "lineage",
+            "compiler",
+            "decompiler",
+            "tokenizer",
+            "curriculum",
+            "training_run",
+            "proof",
+            "evaluation",
+            "checkpoint",
+            "promotion",
+            "publication",
+            "resource",
+            "campaign_control",
+        }
+        missing = sorted(required_roles.difference(declared_roles))
+        if missing:
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.CAMPAIGN_ROLE_MISSING,
+                    FindingDisposition.CONTRADICTION,
+                    PlanCheckKind.CAMPAIGN_LEASE_BINDING,
+                    "campaign is missing required work-graph roles",
+                    tuple(missing),
+                    details={"missing_roles": missing},
+                )
+            )
+        blocked = {
+            str(item).strip()
+            for item in (binding.get("blocked_task_ids") or ())
+            if str(item).strip()
+        }
+        unresolved = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in (binding.get("unresolved_result_ids") or ())
+                    if str(item).strip()
+                }
+            )
+        )
+        claimed_eligible = {
+            str(item).strip()
+            for item in (binding.get("lease_eligible_task_ids") or ())
+            if str(item).strip()
+        }
+        illegally_leased = sorted(blocked.intersection(claimed_eligible))
+        for task_id, task in sorted(tasks.items()):
+            guard.checkpoint()
+            metadata = task.metadata if isinstance(task.metadata, Mapping) else {}
+            claims_lease = metadata.get("lease_eligible") is True
+            if task_id in blocked and claims_lease:
+                illegally_leased.append(task_id)
+        illegally_leased = sorted(set(illegally_leased))
+        if illegally_leased:
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.CAMPAIGN_LEASE_BLOCKED,
+                    FindingDisposition.CONTRADICTION,
+                    PlanCheckKind.CAMPAIGN_LEASE_BINDING,
+                    "campaign lease is blocked while RESULT identities remain unresolved",
+                    tuple(illegally_leased),
+                    details={"unresolved_result_ids": list(unresolved)},
+                )
+            )
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.UNRESOLVED_DEPENDENCY_OUTPUT,
+                    FindingDisposition.CONTRADICTION,
+                    PlanCheckKind.CAMPAIGN_LEASE_BINDING,
+                    "task revision binds unresolved dependency outputs before lease",
+                    unresolved,
+                    details={"blocked_task_ids": illegally_leased},
+                )
+            )
+        return findings
+
     def _build_and_check_trace(
         self,
         plan: FormalWorkPlan,
@@ -1757,9 +1793,7 @@ class FormalPlanValidator:
     ) -> tuple[_TraceModel, list[PlanValidationFinding]]:
         tasks = {item.task_id: item for item in plan.tasks}
         actors = {item.actor_id: item for item in plan.actors}
-        requirements = {
-            item.requirement_id: item for item in plan.evidence_requirements
-        }
+        requirements = {item.requirement_id: item for item in plan.evidence_requirements}
         evidence_dependencies = _evidence_dependencies(requirements)
         circular_evidence = _cyclic_nodes(evidence_dependencies, guard)
         events_by_time: dict[int, list[PlanEvent]] = defaultdict(list)
@@ -1887,8 +1921,7 @@ class FormalPlanValidator:
                     allowed = authorization.get((event.actor_id, event.task_id), False)
                     actor = actors[event.actor_id]
                     if actor.authority_ids and not (
-                        event.task_id in actor.authority_ids
-                        or "*" in actor.authority_ids
+                        event.task_id in actor.authority_ids or "*" in actor.authority_ids
                     ):
                         allowed = False
                     if not allowed:
@@ -1920,13 +1953,9 @@ class FormalPlanValidator:
                 if event.kind in {EventKind.STARTED, EventKind.EXECUTED}:
                     for dependency in task.depends_on:
                         dependency_task = tasks[dependency]
-                        dependency_evidence = set(
-                            dependency_task.evidence_requirement_ids
-                        )
-                        missing_dependency_evidence, stale_dependency_evidence = (
-                            evidence_status(
-                                dependency_evidence, logical_time, dependency
-                            )
+                        dependency_evidence = set(dependency_task.evidence_requirement_ids)
+                        missing_dependency_evidence, stale_dependency_evidence = evidence_status(
+                            dependency_evidence, logical_time, dependency
                         )
                         if (
                             dependency not in completed_at
@@ -1942,20 +1971,14 @@ class FormalPlanValidator:
                                     dependency,
                                     details={
                                         "dependency_state": state[dependency],
-                                        "missing_evidence_ids": sorted(
-                                            missing_dependency_evidence
-                                        ),
-                                        "stale_evidence_ids": sorted(
-                                            stale_dependency_evidence
-                                        ),
+                                        "missing_evidence_ids": sorted(missing_dependency_evidence),
+                                        "stale_evidence_ids": sorted(stale_dependency_evidence),
                                     },
                                 )
                             )
                     if task.subgoal_id:
                         subgoal = next(
-                            item
-                            for item in plan.subgoals
-                            if item.subgoal_id == task.subgoal_id
+                            item for item in plan.subgoals if item.subgoal_id == task.subgoal_id
                         )
                         for dependency in subgoal.depends_on:
                             if dependency not in subgoal_satisfied_at:
@@ -1981,9 +2004,7 @@ class FormalPlanValidator:
                         and norm.bearer_actor_id == event.actor_id
                         and norm.action_id in {event.task_id, event.event_id}
                         and (norm.valid_from is None or norm.valid_from <= logical_time)
-                        and (
-                            norm.valid_until is None or logical_time <= norm.valid_until
-                        )
+                        and (norm.valid_until is None or logical_time <= norm.valid_until)
                     ):
                         findings.append(
                             _finding(
@@ -2014,14 +2035,10 @@ class FormalPlanValidator:
 
                 produced = set(_string_values(event.metadata.get("requirement_ids")))
                 produced.update(_string_values(event.metadata.get("evidence_ids")))
-                produced.update(
-                    item for item in event.provenance_ids if item in requirements
-                )
+                produced.update(item for item in event.provenance_ids if item in requirements)
                 if event.kind is EventKind.EVIDENCE_PRODUCED:
                     available.update(produced)
-                    observed_at.update(
-                        {evidence_id: logical_time for evidence_id in produced}
-                    )
+                    observed_at.update({evidence_id: logical_time for evidence_id in produced})
 
                 if event.kind in _TERMINAL_EVENT_STATES:
                     terminal_state = _TERMINAL_EVENT_STATES[event.kind]
@@ -2040,9 +2057,7 @@ class FormalPlanValidator:
                         if event.kind is EventKind.COMPLETED
                         else set()
                     )
-                    missing, stale = evidence_status(
-                        required, logical_time, task.task_id
-                    )
+                    missing, stale = evidence_status(required, logical_time, task.task_id)
                     for requirement_id, produced_at in stale.items():
                         requirement = requirements[requirement_id]
                         findings.append(
@@ -2102,11 +2117,7 @@ class FormalPlanValidator:
                     applicable_effects.extend(effect_by_task_terminal[event.task_id])
                 for effect in applicable_effects:
                     guard.checkpoint()
-                    value = (
-                        str(effect.value).strip().lower()
-                        if effect.value is not None
-                        else ""
-                    )
+                    value = str(effect.value).strip().lower() if effect.value is not None else ""
                     forbidden = set(_DEFAULT_FORBIDDEN_MERGE_STATES)
                     forbidden.update(
                         value.lower()
@@ -2129,9 +2140,7 @@ class FormalPlanValidator:
                         missing_dependencies = [
                             dep for dep in task.depends_on if dep not in completed_at
                         ]
-                        missing_evidence = sorted(
-                            set(task.evidence_requirement_ids) - available
-                        )
+                        missing_evidence = sorted(set(task.evidence_requirement_ids) - available)
                         if (
                             missing_dependencies
                             or missing_evidence
@@ -2157,12 +2166,8 @@ class FormalPlanValidator:
             # assumption is explicit and is only allowed when the requirement
             # declares a reviewed production path.
             for goal in plan.goals:
-                goal_tasks = [
-                    item for item in plan.tasks if item.goal_id == goal.goal_id
-                ]
-                if not goal_tasks or not all(
-                    item.task_id in completed_at for item in goal_tasks
-                ):
+                goal_tasks = [item for item in plan.tasks if item.goal_id == goal.goal_id]
+                if not goal_tasks or not all(item.task_id in completed_at for item in goal_tasks):
                     continue
                 unavailable, stale = evidence_status(
                     goal.evidence_requirement_ids, logical_time, goal.goal_id
@@ -2224,17 +2229,13 @@ class FormalPlanValidator:
                     if subgoal.subgoal_id in subgoal_satisfied_at:
                         continue
                     subgoal_tasks = [
-                        item
-                        for item in plan.tasks
-                        if item.subgoal_id == subgoal.subgoal_id
+                        item for item in plan.tasks if item.subgoal_id == subgoal.subgoal_id
                     ]
                     if not subgoal_tasks or not all(
                         item.task_id in completed_at for item in subgoal_tasks
                     ):
                         continue
-                    missing_dependencies = set(subgoal.depends_on).difference(
-                        subgoal_satisfied_at
-                    )
+                    missing_dependencies = set(subgoal.depends_on).difference(subgoal_satisfied_at)
                     if missing_dependencies:
                         if subgoal.subgoal_id not in reported_subgoal_dependency:
                             reported_subgoal_dependency.add(subgoal.subgoal_id)
@@ -2315,11 +2316,7 @@ class FormalPlanValidator:
                                             *sorted(unavailable),
                                         ),
                                         logical_time,
-                                        {
-                                            "missing_evidence_ids": sorted(
-                                                unavailable
-                                            )
-                                        },
+                                        {"missing_evidence_ids": sorted(unavailable)},
                                     )
                                 )
                         continue
@@ -2486,14 +2483,10 @@ class FormalPlanValidator:
                             formula.formula_id,
                             parent_formula.formula_id,
                         ),
-                        trace.subgoal_satisfied_at.get(
-                            subgoal.subgoal_id, trace.facts.bound
-                        ),
+                        trace.subgoal_satisfied_at.get(subgoal.subgoal_id, trace.facts.bound),
                         {
                             "refinement_mode": subgoal.refinement_mode.value,
-                            "child_witness_at": trace.subgoal_satisfied_at.get(
-                                subgoal.subgoal_id
-                            ),
+                            "child_witness_at": trace.subgoal_satisfied_at.get(subgoal.subgoal_id),
                         },
                     )
                 )
@@ -2520,13 +2513,9 @@ class FormalPlanValidator:
                 )
         return findings
 
-    def _countermodel(
-        self, finding: PlanValidationFinding, trace: _TraceModel
-    ) -> PlanCountermodel:
+    def _countermodel(self, finding: PlanValidationFinding, trace: _TraceModel) -> PlanCountermodel:
         end = (
-            finding.logical_time
-            if finding.logical_time is not None
-            else len(trace.task_states) - 1
+            finding.logical_time if finding.logical_time is not None else len(trace.task_states) - 1
         )
         start = max(0, end - self.bounds.max_countermodel_steps + 1)
         states = tuple(
@@ -2668,11 +2657,7 @@ def _fencing_values(metadata: Mapping[str, Any]) -> tuple[int, ...]:
         raw = metadata.get("fencing_token")
     if raw is None:
         return ()
-    values = (
-        raw
-        if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes))
-        else (raw,)
-    )
+    values = raw if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) else (raw,)
     result: list[int] = []
     for value in values:
         if isinstance(value, bool):
@@ -2752,10 +2737,7 @@ def _authorization_map(
                 or "*" in actor.authority_ids
                 or (
                     actor.kind is ActorKind.SUPERVISOR
-                    and (
-                        "execute" in actor.capabilities
-                        or "enforce_policy" in actor.capabilities
-                    )
+                    and ("execute" in actor.capabilities or "enforce_policy" in actor.capabilities)
                 )
             )
     for precondition in plan.preconditions:
@@ -2837,9 +2819,7 @@ def _evidence_dependencies(
     known = set(requirements)
     result: dict[str, tuple[str, ...]] = {}
     for requirement_id, requirement in requirements.items():
-        values: set[str] = {
-            item for item in requirement.fallback_check_ids if item in known
-        }
+        values: set[str] = {item for item in requirement.fallback_check_ids if item in known}
         for field_name in (
             "depends_on",
             "depends_on_evidence_ids",
@@ -2856,9 +2836,7 @@ def _evidence_dependencies(
     return result
 
 
-def _cyclic_nodes(
-    graph: Mapping[str, tuple[str, ...]], guard: _BudgetGuard
-) -> set[str]:
+def _cyclic_nodes(graph: Mapping[str, tuple[str, ...]], guard: _BudgetGuard) -> set[str]:
     """Return every node in a directed evidence dependency cycle.
 
     The two iterative DFS passes implement Kosaraju's algorithm.  Avoiding
@@ -2936,9 +2914,7 @@ def _finding(
     )
 
 
-def _check_fencing_observation(
-    event: PlanEvent, findings: list[PlanValidationFinding]
-) -> None:
+def _check_fencing_observation(event: PlanEvent, findings: list[PlanValidationFinding]) -> None:
     observed = _fencing_values(event.metadata)
     current = event.metadata.get("current_fencing_token")
     mutation = event.metadata.get("mutation_fencing_token")
@@ -3001,9 +2977,7 @@ def _finite_trace(
                 EventKind.COMPLETED: ReviewedPredicate.TASK_COMPLETED,
             }.get(event.kind)
             if predicate is not None:
-                facts.append(
-                    TraceFact(predicate, (constant(TermSort.TASK, event.task_id),))
-                )
+                facts.append(TraceFact(predicate, (constant(TermSort.TASK, event.task_id),)))
         for task_id in task_states[index]:
             # TASK_STARTED is an occurrence predicate above, not an
             # indefinitely persistent state.
@@ -3090,9 +3064,7 @@ def _finite_trace(
         facts_by_step[index] = list(unique.values())
     return FiniteTrace(
         tuple(
-            TraceStep(
-                index, tuple(facts_by_step[index]), tuple(sorted(evidence[index]))
-            )
+            TraceStep(index, tuple(facts_by_step[index]), tuple(sorted(evidence[index])))
             for index in range(bound + 1)
         ),
         bound,
@@ -3113,15 +3085,9 @@ def _evaluate_supported(
     if operator is FormulaOperator.NOT:
         return not _evaluate_supported(formula.operands[0], trace, plan, index=index)
     if operator is FormulaOperator.AND:
-        return all(
-            _evaluate_supported(item, trace, plan, index=index)
-            for item in formula.operands
-        )
+        return all(_evaluate_supported(item, trace, plan, index=index) for item in formula.operands)
     if operator is FormulaOperator.OR:
-        return any(
-            _evaluate_supported(item, trace, plan, index=index)
-            for item in formula.operands
-        )
+        return any(_evaluate_supported(item, trace, plan, index=index) for item in formula.operands)
     if operator is FormulaOperator.IMPLIES:
         return not _evaluate_supported(
             formula.operands[0], trace, plan, index=index
@@ -3196,11 +3162,7 @@ def _evidence_records(
         if limit is not None and index >= limit:
             exceeded = True
             break
-        item = (
-            value
-            if isinstance(value, PlanCheckEvidence)
-            else PlanCheckEvidence.from_dict(value)
-        )
+        item = value if isinstance(value, PlanCheckEvidence) else PlanCheckEvidence.from_dict(value)
         result[item.evidence_id] = item
     return tuple(result[key] for key in sorted(result)), exceeded
 

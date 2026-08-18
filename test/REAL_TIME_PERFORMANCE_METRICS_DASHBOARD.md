@@ -147,11 +147,7 @@ drm = DynamicResourceManager()
 
 # Create dashboard
 dashboard = DRMRealTimeDashboard(
-    dynamic_resource_manager=drm,
-    port=8085,
-    update_interval=5,
-    retention_window=60,
-    theme="dark"
+    dynamic_resource_manager=drm, port=8085, update_interval=5, retention_window=60, theme="dark"
 )
 
 # Start dashboard in background

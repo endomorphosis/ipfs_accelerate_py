@@ -46,18 +46,10 @@ from .recovery_diagnostics import RecoveryDiagnosis
 from ..self_improvement.supervisor_v2_contracts import MAX_PROJECTION_BYTES, MAX_RECEIPT_BYTES
 
 
-BOUNDED_RECOVERY_REQUIREMENT_ID: Final = (
-    "asi-118:bounded-crash-recovery-and-repair-evidence"
-)
-RECOVERY_CHECKPOINT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/recovery-checkpoint@1"
-)
-REPAIR_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/repair-receipt@1"
-)
-RECOVERY_INCIDENT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/recovery-incident@1"
-)
+BOUNDED_RECOVERY_REQUIREMENT_ID: Final = "asi-118:bounded-crash-recovery-and-repair-evidence"
+RECOVERY_CHECKPOINT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/recovery-checkpoint@1"
+REPAIR_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/repair-receipt@1"
+RECOVERY_INCIDENT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/recovery-incident@1"
 PROGRAMMATIC_RECOVERY_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/programmatic-recovery-receipt@1"
 )
@@ -108,9 +100,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError, RecursionError) as exc:
-        raise RecoveryIntegrityError(
-            "recovery artifacts require canonical JSON values"
-        ) from exc
+        raise RecoveryIntegrityError("recovery artifacts require canonical JSON values") from exc
 
 
 def _content_id(kind: str, value: Any) -> str:
@@ -119,37 +109,23 @@ def _content_id(kind: str, value: Any) -> str:
 
 def _freeze_json(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {
-                str(key): _freeze_json(member)
-                for key, member in value.items()
-            }
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+        return MappingProxyType({str(key): _freeze_json(member) for key, member in value.items()})
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return tuple(_freeze_json(member) for member in value)
     return value
 
 
 def _plain_json(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {
-            str(key): _plain_json(member)
-            for key, member in value.items()
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+        return {str(key): _plain_json(member) for key, member in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_plain_json(member) for member in value]
     return value
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -179,12 +155,8 @@ def _serialize_incident(method: Callable[..., RepairReceipt]):
     """Collapse concurrent recovery of one incident to one persisted receipt."""
 
     @wraps(method)
-    def wrapped(
-        self: "SupervisorRecovery", *args: Any, **kwargs: Any
-    ) -> RepairReceipt:
-        incident_id = _required_text(
-            kwargs.get("incident_id"), "incident_id"
-        )
+    def wrapped(self: "SupervisorRecovery", *args: Any, **kwargs: Any) -> RepairReceipt:
+        incident_id = _required_text(kwargs.get("incident_id"), "incident_id")
         digest = hashlib.sha256(incident_id.encode("utf-8")).hexdigest()
         lock_path = self.state_dir / "incident-locks" / f"{digest}.lock"
         with self._thread_lock:
@@ -271,9 +243,7 @@ class RecoveryCheckpoint:
             self, "repository_id", _required_text(self.repository_id, "repository_id")
         )
         object.__setattr__(self, "tree_id", _required_text(self.tree_id, "tree_id"))
-        object.__setattr__(
-            self, "created_at", _required_text(self.created_at, "created_at")
-        )
+        object.__setattr__(self, "created_at", _required_text(self.created_at, "created_at"))
         if (
             isinstance(self.generation, bool)
             or not isinstance(self.generation, int)
@@ -329,9 +299,7 @@ class RecoveryCheckpoint:
             "generation": self.generation,
             "state": dict(self.state),
             "cursor": self.cursor.to_record(),
-            "accepted_merged_tree_evidence": list(
-                self.accepted_merged_tree_evidence
-            ),
+            "accepted_merged_tree_evidence": list(self.accepted_merged_tree_evidence),
             "created_at": self.created_at,
         }
         # Empty additions are omitted so generation-2 @1 checkpoints retain
@@ -367,14 +335,10 @@ class RecoveryCheckpoint:
             generation=value.get("generation"),  # type: ignore[arg-type]
             state=value.get("state") or {},
             cursor=EventCursor.from_dict(value.get("cursor") or {}),
-            accepted_merged_tree_evidence=tuple(
-                value.get("accepted_merged_tree_evidence") or ()
-            ),
+            accepted_merged_tree_evidence=tuple(value.get("accepted_merged_tree_evidence") or ()),
             semantic_roots=value.get("semantic_roots") or {},
             proof_index_id=str(value.get("proof_index_id") or ""),
-            cas_invalidation_id=str(
-                value.get("cas_invalidation_id") or ""
-            ),
+            cas_invalidation_id=str(value.get("cas_invalidation_id") or ""),
             fencing_epoch=value.get("fencing_epoch", 0),
             created_at=str(value.get("created_at") or ""),
             checkpoint_id=str(value.get("checkpoint_id") or ""),
@@ -432,12 +396,8 @@ class RecoveryCheckpointStore:
         if not isinstance(value, Mapping):
             raise RecoveryIntegrityError("recovery checkpoint must be an object")
         checkpoint = RecoveryCheckpoint.from_dict(value)
-        if path.parent == self.checkpoints and path != self._checkpoint_path(
-            checkpoint
-        ):
-            raise RecoveryIntegrityError(
-                "recovery checkpoint path does not match its identity"
-            )
+        if path.parent == self.checkpoints and path != self._checkpoint_path(checkpoint):
+            raise RecoveryIntegrityError("recovery checkpoint path does not match its identity")
         return checkpoint
 
     def _checkpoint_path(self, checkpoint: RecoveryCheckpoint) -> Path:
@@ -452,27 +412,21 @@ class RecoveryCheckpointStore:
             current = self._load_last_valid_unlocked(quarantine_invalid=False)
             if current is not None:
                 if checkpoint.generation < current.generation:
-                    raise RecoveryIntegrityError(
-                        "recovery checkpoint generation moved backwards"
-                    )
+                    raise RecoveryIntegrityError("recovery checkpoint generation moved backwards")
                 if (
                     checkpoint.generation == current.generation
                     and checkpoint.checkpoint_id != current.checkpoint_id
                 ):
-                    raise RecoveryIntegrityError(
-                        "recovery checkpoint generation conflicts"
-                    )
+                    raise RecoveryIntegrityError("recovery checkpoint generation conflicts")
                 if checkpoint.checkpoint_id == current.checkpoint_id:
                     return False
                 if (
                     checkpoint.cursor.stream_id != current.cursor.stream_id
-                    or checkpoint.cursor.snapshot_id
-                    != current.cursor.snapshot_id
+                    or checkpoint.cursor.snapshot_id != current.cursor.snapshot_id
                     or checkpoint.cursor.position < current.cursor.position
                     or (
                         checkpoint.cursor.position == current.cursor.position
-                        and checkpoint.cursor.last_event_id
-                        != current.cursor.last_event_id
+                        and checkpoint.cursor.last_event_id != current.cursor.last_event_id
                     )
                 ):
                     raise RecoveryIntegrityError(
@@ -514,18 +468,14 @@ class RecoveryCheckpointStore:
         if size > self.policy.max_quarantine_bytes:
             return ""
         self.quarantine.mkdir(parents=True, exist_ok=True)
-        target = self.quarantine / (
-            f"{path.name}.invalid-{int(time.time_ns())}"
-        )
+        target = self.quarantine / (f"{path.name}.invalid-{int(time.time_ns())}")
         try:
             os.replace(path, target)
         except OSError:
             return ""
         return str(target)
 
-    def _load_last_valid_unlocked(
-        self, *, quarantine_invalid: bool
-    ) -> RecoveryCheckpoint | None:
+    def _load_last_valid_unlocked(self, *, quarantine_invalid: bool) -> RecoveryCheckpoint | None:
         for path in self._candidates()[: self.policy.max_checkpoints + 1]:
             try:
                 return self._decode(path)
@@ -536,9 +486,7 @@ class RecoveryCheckpointStore:
 
     def load_last_valid(self) -> RecoveryCheckpoint | None:
         with self._guard():
-            checkpoint = self._load_last_valid_unlocked(
-                quarantine_invalid=True
-            )
+            checkpoint = self._load_last_valid_unlocked(quarantine_invalid=True)
             if checkpoint is not None:
                 expected_head = {
                     "schema": RECOVERY_CHECKPOINT_SCHEMA,
@@ -610,9 +558,7 @@ class RepairReceipt:
     resulting_projection_ids: tuple[str, ...] = ()
     stale_actor_fenced: bool = False
     replay_cursor: EventCursor | None = None
-    checkpoint_semantic_roots: Mapping[str, str] = field(
-        default_factory=dict
-    )
+    checkpoint_semantic_roots: Mapping[str, str] = field(default_factory=dict)
     result_semantic_roots: Mapping[str, str] = field(default_factory=dict)
     precrash_permit_ids: tuple[str, ...] = ()
     invalidated_permit_ids: tuple[str, ...] = ()
@@ -637,9 +583,7 @@ class RepairReceipt:
             "started_at",
             "finished_at",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         if not isinstance(self.fault, RecoveryFault):
             object.__setattr__(self, "fault", RecoveryFault(str(self.fault)))
         if not isinstance(self.disposition, RecoveryDisposition):
@@ -675,9 +619,7 @@ class RepairReceipt:
                 name,
                 tuple(sorted(set(getattr(self, name)))),
             )
-        if self.replay_cursor is not None and not isinstance(
-            self.replay_cursor, EventCursor
-        ):
+        if self.replay_cursor is not None and not isinstance(self.replay_cursor, EventCursor):
             raise TypeError("replay_cursor must be an EventCursor or None")
         for name in (
             "checkpoint_semantic_roots",
@@ -690,26 +632,16 @@ class RepairReceipt:
                 self,
                 name,
                 {
-                    _required_text(key, f"{name} key"): _required_text(
-                        item, f"{name} identity"
-                    )
+                    _required_text(key, f"{name} key"): _required_text(item, f"{name} identity")
                     for key, item in sorted(value.items())
                 },
             )
         for name in ("proof_index_id", "cas_invalidation_id"):
-            object.__setattr__(
-                self, name, str(getattr(self, name) or "").strip()
-            )
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
         for name in ("fencing_epoch", "observed_fencing_epoch"):
             value = getattr(self, name)
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, int)
-                or value < 0
-            ):
-                raise ValueError(
-                    f"{name} must be a nonnegative integer"
-                )
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a nonnegative integer")
         body = self.to_dict(include_id=False)
         expected = _content_id("repair-receipt", body)
         if self.receipt_id and self.receipt_id != expected:
@@ -753,9 +685,7 @@ class RepairReceipt:
             "reason_code": self.reason_code,
             "quarantined_paths": list(self.quarantined_paths),
             "preserved_evidence_ids": list(self.preserved_evidence_ids),
-            "resulting_projection_ids": list(
-                self.resulting_projection_ids
-            ),
+            "resulting_projection_ids": list(self.resulting_projection_ids),
             "stale_actor_fenced": self.stale_actor_fenced,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -763,21 +693,13 @@ class RepairReceipt:
         if self.replay_cursor is not None:
             value["replay_cursor"] = self.replay_cursor.to_record()
         if self.checkpoint_semantic_roots:
-            value["checkpoint_semantic_roots"] = dict(
-                self.checkpoint_semantic_roots
-            )
+            value["checkpoint_semantic_roots"] = dict(self.checkpoint_semantic_roots)
         if self.result_semantic_roots:
-            value["result_semantic_roots"] = dict(
-                self.result_semantic_roots
-            )
+            value["result_semantic_roots"] = dict(self.result_semantic_roots)
         if self.invalidated_permit_ids:
-            value["invalidated_permit_ids"] = list(
-                self.invalidated_permit_ids
-            )
+            value["invalidated_permit_ids"] = list(self.invalidated_permit_ids)
         if self.precrash_permit_ids:
-            value["precrash_permit_ids"] = list(
-                self.precrash_permit_ids
-            )
+            value["precrash_permit_ids"] = list(self.precrash_permit_ids)
         if self.proof_index_id:
             value["proof_index_id"] = self.proof_index_id
         if self.cas_invalidation_id:
@@ -797,9 +719,7 @@ class RepairReceipt:
         return cls(
             incident_id=str(value.get("incident_id") or ""),
             fault=RecoveryFault(str(value.get("fault") or "")),
-            disposition=RecoveryDisposition(
-                str(value.get("disposition") or "")
-            ),
+            disposition=RecoveryDisposition(str(value.get("disposition") or "")),
             repository_id=str(value.get("repository_id") or ""),
             tree_id=str(value.get("tree_id") or ""),
             checkpoint_id=str(value.get("checkpoint_id") or ""),
@@ -811,37 +731,22 @@ class RepairReceipt:
             actions=tuple(value.get("actions") or ()),
             reason_code=str(value.get("reason_code") or ""),
             quarantined_paths=tuple(value.get("quarantined_paths") or ()),
-            preserved_evidence_ids=tuple(
-                value.get("preserved_evidence_ids") or ()
-            ),
-            resulting_projection_ids=tuple(
-                value.get("resulting_projection_ids") or ()
-            ),
+            preserved_evidence_ids=tuple(value.get("preserved_evidence_ids") or ()),
+            resulting_projection_ids=tuple(value.get("resulting_projection_ids") or ()),
             stale_actor_fenced=bool(value.get("stale_actor_fenced", False)),
             replay_cursor=(
                 EventCursor.from_dict(value.get("replay_cursor") or {})
                 if value.get("replay_cursor") is not None
                 else None
             ),
-            checkpoint_semantic_roots=value.get(
-                "checkpoint_semantic_roots"
-            )
-            or {},
+            checkpoint_semantic_roots=value.get("checkpoint_semantic_roots") or {},
             result_semantic_roots=value.get("result_semantic_roots") or {},
-            precrash_permit_ids=tuple(
-                value.get("precrash_permit_ids") or ()
-            ),
-            invalidated_permit_ids=tuple(
-                value.get("invalidated_permit_ids") or ()
-            ),
+            precrash_permit_ids=tuple(value.get("precrash_permit_ids") or ()),
+            invalidated_permit_ids=tuple(value.get("invalidated_permit_ids") or ()),
             proof_index_id=str(value.get("proof_index_id") or ""),
-            cas_invalidation_id=str(
-                value.get("cas_invalidation_id") or ""
-            ),
+            cas_invalidation_id=str(value.get("cas_invalidation_id") or ""),
             fencing_epoch=value.get("fencing_epoch", 0),
-            observed_fencing_epoch=value.get(
-                "observed_fencing_epoch", 0
-            ),
+            observed_fencing_epoch=value.get("observed_fencing_epoch", 0),
             started_at=str(value.get("started_at") or ""),
             finished_at=str(value.get("finished_at") or ""),
             requirement_id=str(value.get("requirement_id") or ""),
@@ -908,9 +813,7 @@ class SupervisorRecovery:
     ) -> None:
         self.state_dir = Path(state_dir)
         self.policy = policy or RecoveryPolicy()
-        self.checkpoints = RecoveryCheckpointStore(
-            self.state_dir, policy=self.policy
-        )
+        self.checkpoints = RecoveryCheckpointStore(self.state_dir, policy=self.policy)
         self.receipts_dir = self.state_dir / "receipts"
         self.incidents_dir = self.state_dir / "incidents"
         self.quarantine_dir = self.state_dir / "quarantine"
@@ -937,9 +840,7 @@ class SupervisorRecovery:
             generation=generation,
             state=state,
             cursor=cursor,
-            accepted_merged_tree_evidence=tuple(
-                accepted_merged_tree_evidence
-            ),
+            accepted_merged_tree_evidence=tuple(accepted_merged_tree_evidence),
             semantic_roots=semantic_roots or {},
             proof_index_id=proof_index_id,
             cas_invalidation_id=cas_invalidation_id,
@@ -993,9 +894,7 @@ class SupervisorRecovery:
         if size > self.policy.max_quarantine_bytes:
             return ""
         self.quarantine_dir.mkdir(parents=True, exist_ok=True)
-        digest = hashlib.sha256(
-            f"{incident_id}:{path}".encode("utf-8")
-        ).hexdigest()
+        digest = hashlib.sha256(f"{incident_id}:{path}".encode("utf-8")).hexdigest()
         target = self.quarantine_dir / f"{digest}-{path.name}"
         try:
             if path.is_dir():
@@ -1054,12 +953,7 @@ class SupervisorRecovery:
             for key, item in sorted((current_semantic_roots or {}).items())
         }
         permit_ids = tuple(
-            sorted(
-                {
-                    _required_text(item, "precrash permit ID")
-                    for item in precrash_permit_ids
-                }
-            )
+            sorted({_required_text(item, "precrash permit ID") for item in precrash_permit_ids})
         )
         if isinstance(current_event_cursor, str):
             expected_cursor = EventCursor.from_token(current_event_cursor)
@@ -1070,12 +964,8 @@ class SupervisorRecovery:
         elif current_event_cursor is None:
             expected_cursor = None
         else:
-            raise TypeError(
-                "current_event_cursor must be a cursor, record, token, or None"
-            )
-        selected_fault = (
-            fault if isinstance(fault, RecoveryFault) else RecoveryFault(str(fault))
-        )
+            raise TypeError("current_event_cursor must be a cursor, record, token, or None")
+        selected_fault = fault if isinstance(fault, RecoveryFault) else RecoveryFault(str(fault))
         existing = self.receipt(incident_id)
         if existing is not None:
             if (
@@ -1084,27 +974,17 @@ class SupervisorRecovery:
                 or existing.tree_id != tree_id
                 or existing.policy_id != self.policy.policy_id
                 or existing.process_tree_id != process_tree_id
-                or existing.resulting_projection_ids
-                != tuple(resulting_projection_ids)
-                or (
-                    selected_roots
-                    and dict(existing.result_semantic_roots)
-                    != selected_roots
-                )
-                or (
-                    expected_cursor is not None
-                    and existing.replay_cursor != expected_cursor
-                )
+                or existing.resulting_projection_ids != tuple(resulting_projection_ids)
+                or (selected_roots and dict(existing.result_semantic_roots) != selected_roots)
+                or (expected_cursor is not None and existing.replay_cursor != expected_cursor)
                 or existing.precrash_permit_ids != permit_ids
                 or (
                     current_proof_index_id
-                    and existing.proof_index_id
-                    != str(current_proof_index_id)
+                    and existing.proof_index_id != str(current_proof_index_id)
                 )
                 or (
                     current_cas_invalidation_id
-                    and existing.cas_invalidation_id
-                    != str(current_cas_invalidation_id)
+                    and existing.cas_invalidation_id != str(current_cas_invalidation_id)
                 )
                 or (
                     current_fencing_token is not None
@@ -1112,8 +992,7 @@ class SupervisorRecovery:
                 )
                 or (
                     observed_fencing_token is not None
-                    and existing.observed_fencing_epoch
-                    != observed_fencing_token
+                    and existing.observed_fencing_epoch != observed_fencing_token
                 )
             ):
                 raise RecoveryIntegrityError(
@@ -1131,17 +1010,12 @@ class SupervisorRecovery:
         checkpoint_roots: dict[str, str] = {}
         result_roots = dict(selected_roots)
         result_proof_index_id = str(current_proof_index_id or "")
-        result_cas_invalidation_id = str(
-            current_cas_invalidation_id or ""
-        )
+        result_cas_invalidation_id = str(current_cas_invalidation_id or "")
         result_fencing_epoch = int(current_fencing_token or 0)
         root_reader_failed = False
         try:
             root_snapshot_before = (
-                {
-                    str(key): str(item)
-                    for key, item in root_reader().items()
-                }
+                {str(key): str(item) for key, item in root_reader().items()}
                 if root_reader is not None
                 else None
             )
@@ -1152,16 +1026,11 @@ class SupervisorRecovery:
         if checkpoint is None:
             disposition = RecoveryDisposition.FAILED_CLOSED
             reason = "no_valid_checkpoint"
-            cursor = EventCursor.initial(
-                f"recovery:{repository_id}", snapshot_id=f"tree:{tree_id}"
-            )
+            cursor = EventCursor.initial(f"recovery:{repository_id}", snapshot_id=f"tree:{tree_id}")
             checkpoint_id = ""
             state_id = _content_id("recovery-state", {})
             evidence: tuple[str, ...] = ()
-        elif (
-            checkpoint.repository_id != repository_id
-            or checkpoint.tree_id != tree_id
-        ):
+        elif checkpoint.repository_id != repository_id or checkpoint.tree_id != tree_id:
             disposition = RecoveryDisposition.FAILED_CLOSED
             reason = "checkpoint_binding_mismatch"
             cursor = checkpoint.cursor
@@ -1176,9 +1045,7 @@ class SupervisorRecovery:
                 result_proof_index_id = checkpoint.proof_index_id
             if not result_cas_invalidation_id:
                 result_cas_invalidation_id = checkpoint.cas_invalidation_id
-            result_fencing_epoch = max(
-                result_fencing_epoch, checkpoint.fencing_epoch
-            )
+            result_fencing_epoch = max(result_fencing_epoch, checkpoint.fencing_epoch)
             cursor = checkpoint.cursor
             checkpoint_id = checkpoint.checkpoint_id
             state_id = checkpoint.state_id
@@ -1212,18 +1079,13 @@ class SupervisorRecovery:
                 current_cas_invalidation_id
                 and checkpoint.cas_invalidation_id
                 and replay_events is None
-                and checkpoint.cas_invalidation_id
-                != current_cas_invalidation_id
+                and checkpoint.cas_invalidation_id != current_cas_invalidation_id
             ):
                 disposition = RecoveryDisposition.FAILED_CLOSED
                 reason = "checkpoint_cas_head_mismatch"
 
-            if (
-                disposition != RecoveryDisposition.FAILED_CLOSED
-                and (
-                current_fencing_token is not None
-                or observed_fencing_token is not None
-                )
+            if disposition != RecoveryDisposition.FAILED_CLOSED and (
+                current_fencing_token is not None or observed_fencing_token is not None
             ):
                 if (
                     isinstance(current_fencing_token, bool)
@@ -1261,17 +1123,11 @@ class SupervisorRecovery:
                         disposition = RecoveryDisposition.FAILED_CLOSED
                         reason = "stale_actor_fence_failed"
 
-            if (
-                disposition != RecoveryDisposition.FAILED_CLOSED
-                and permit_ids
-            ):
+            if disposition != RecoveryDisposition.FAILED_CLOSED and permit_ids:
                 if fence_permits is not None:
                     try:
                         permits_fenced = (
-                            fence_permits(
-                                permit_ids, int(current_fencing_token or 0)
-                            )
-                            is True
+                            fence_permits(permit_ids, int(current_fencing_token or 0)) is True
                         )
                     except Exception:
                         permits_fenced = False
@@ -1286,10 +1142,7 @@ class SupervisorRecovery:
                     disposition = RecoveryDisposition.FAILED_CLOSED
                     reason = "precrash_permit_fence_failed"
 
-            if (
-                disposition != RecoveryDisposition.FAILED_CLOSED
-                and event_log_path is not None
-            ):
+            if disposition != RecoveryDisposition.FAILED_CLOSED and event_log_path is not None:
                 log_result = recover_jsonl_event_log_tail(
                     event_log_path,
                     checkpoint=checkpoint.cursor,
@@ -1305,16 +1158,11 @@ class SupervisorRecovery:
                     reason = str(log_result.get("reason") or "event_log_repaired")
                     actions.append("repair_event_log_tail")
 
-            if (
-                disposition != RecoveryDisposition.FAILED_CLOSED
-                and replay_events is not None
-            ):
+            if disposition != RecoveryDisposition.FAILED_CLOSED and replay_events is not None:
                 try:
                     replay_result = replay_events(checkpoint)
                     if not isinstance(replay_result, Mapping):
-                        raise TypeError(
-                            "replay_events must return a mapping"
-                        )
+                        raise TypeError("replay_events must return a mapping")
                     raw_cursor = replay_result.get("event_cursor")
                     if isinstance(raw_cursor, EventCursor):
                         replay_cursor = raw_cursor
@@ -1323,60 +1171,41 @@ class SupervisorRecovery:
                     elif isinstance(raw_cursor, Mapping):
                         replay_cursor = EventCursor.from_dict(raw_cursor)
                     else:
-                        raise RecoveryIntegrityError(
-                            "replay result is missing its event cursor"
-                        )
+                        raise RecoveryIntegrityError("replay result is missing its event cursor")
                     replay_roots = replay_result.get("semantic_roots")
                     if not isinstance(replay_roots, Mapping):
-                        raise RecoveryIntegrityError(
-                            "replay result is missing semantic roots"
-                        )
+                        raise RecoveryIntegrityError("replay result is missing semantic roots")
                     result_roots = {
-                        _required_text(key, "replay semantic root kind"):
-                        _required_text(item, "replay semantic root identity")
+                        _required_text(key, "replay semantic root kind"): _required_text(
+                            item, "replay semantic root identity"
+                        )
                         for key, item in sorted(replay_roots.items())
                     }
                     result_proof_index_id = str(
-                        replay_result.get("proof_index_id")
-                        or result_proof_index_id
+                        replay_result.get("proof_index_id") or result_proof_index_id
                     )
                     result_cas_invalidation_id = str(
-                        replay_result.get("cas_invalidation_id")
-                        or result_cas_invalidation_id
+                        replay_result.get("cas_invalidation_id") or result_cas_invalidation_id
                     )
                     replay_permits = tuple(
                         sorted(
                             {
                                 str(item)
-                                for item in replay_result.get(
-                                    "invalidated_permit_ids", ()
-                                )
+                                for item in replay_result.get("invalidated_permit_ids", ())
                                 if str(item)
                             }
                         )
                     )
                     if not set(permit_ids).issubset(replay_permits):
-                        raise RecoveryIntegrityError(
-                            "replay did not fence every pre-crash permit"
-                        )
+                        raise RecoveryIntegrityError("replay did not fence every pre-crash permit")
                     if selected_roots and result_roots != selected_roots:
                         raise RecoveryIntegrityError(
                             "replay semantic roots do not match current roots"
                         )
-                    if (
-                        expected_cursor is None
-                        and event_log_path is not None
-                    ):
-                        expected_cursor = latest_event_cursor(
-                            event_log_path
-                        )
-                    if (
-                        expected_cursor is not None
-                        and replay_cursor != expected_cursor
-                    ):
-                        raise RecoveryIntegrityError(
-                            "replay cursor does not match the event head"
-                        )
+                    if expected_cursor is None and event_log_path is not None:
+                        expected_cursor = latest_event_cursor(event_log_path)
+                    if expected_cursor is not None and replay_cursor != expected_cursor:
+                        raise RecoveryIntegrityError("replay cursor does not match the event head")
                     actions.append("replay_dependency_events")
                     disposition = RecoveryDisposition.RECOVERED
                     reason = "event_replay_verified"
@@ -1402,17 +1231,12 @@ class SupervisorRecovery:
                 elif head_cursor is not None:
                     replay_cursor = head_cursor
 
-            if (
-                disposition != RecoveryDisposition.FAILED_CLOSED
-                and runtime_cas is not None
-            ):
+            if disposition != RecoveryDisposition.FAILED_CLOSED and runtime_cas is not None:
                 try:
                     audit = runtime_cas.audit(rebuild=True)
                     if not audit.healthy:
                         disposition = RecoveryDisposition.QUARANTINED
-                        reason = "corrupt_runtime_cas:" + ",".join(
-                            audit.issue_codes
-                        )
+                        reason = "corrupt_runtime_cas:" + ",".join(audit.issue_codes)
                     else:
                         actions.append("verify_runtime_cas")
                 except Exception as exc:
@@ -1435,21 +1259,13 @@ class SupervisorRecovery:
                     proof_index.revalidate_canonical_artifacts(
                         canonical_artifacts=canonical_artifacts
                     )
-                    if (
-                        result_proof_index_id
-                        and proof_index.index_id != result_proof_index_id
-                    ):
-                        raise RecoveryIntegrityError(
-                            "restored proof index identity is stale"
-                        )
+                    if result_proof_index_id and proof_index.index_id != result_proof_index_id:
+                        raise RecoveryIntegrityError("restored proof index identity is stale")
                     result_proof_index_id = proof_index.index_id
                     actions.append("verify_proof_scope_index")
                 except Exception as exc:
                     disposition = RecoveryDisposition.QUARANTINED
-                    reason = (
-                        "stale_restored_artifact:"
-                        + type(exc).__name__
-                    )
+                    reason = "stale_restored_artifact:" + type(exc).__name__
 
             if (
                 disposition
@@ -1470,10 +1286,7 @@ class SupervisorRecovery:
                             attempt=attempts,
                         )
                         result = repair(checkpoint, attempts)
-                        if (
-                            time.monotonic() - repair_started
-                            > self.policy.slow_operation_seconds
-                        ):
+                        if time.monotonic() - repair_started > self.policy.slow_operation_seconds:
                             last_error = "slow_operation_bound_exceeded"
                             break
                         if result is not False:
@@ -1509,19 +1322,13 @@ class SupervisorRecovery:
 
         if root_reader is not None:
             try:
-                root_snapshot_after = {
-                    str(key): str(item)
-                    for key, item in root_reader().items()
-                }
+                root_snapshot_after = {str(key): str(item) for key, item in root_reader().items()}
             except Exception:
                 root_snapshot_after = None
             if root_snapshot_after is None:
                 disposition = RecoveryDisposition.FAILED_CLOSED
                 reason = "root_reader_failed"
-            elif (
-                root_snapshot_before is not None
-                and root_snapshot_after != root_snapshot_before
-            ):
+            elif root_snapshot_before is not None and root_snapshot_after != root_snapshot_before:
                 disposition = RecoveryDisposition.FAILED_CLOSED
                 reason = "root_race"
             elif result_roots and root_snapshot_after != result_roots:
@@ -1540,10 +1347,7 @@ class SupervisorRecovery:
                     source_size = source.stat().st_size
                 except OSError:
                     source_size = 0
-                if (
-                    quarantined_bytes + source_size
-                    > self.policy.max_quarantine_bytes
-                ):
+                if quarantined_bytes + source_size > self.policy.max_quarantine_bytes:
                     reason = "quarantine_bound_exceeded"
                     disposition = RecoveryDisposition.FAILED_CLOSED
                     break
@@ -1574,9 +1378,7 @@ class SupervisorRecovery:
             checkpoint_semantic_roots=checkpoint_roots,
             result_semantic_roots=result_roots,
             precrash_permit_ids=permit_ids,
-            invalidated_permit_ids=(
-                permit_ids if permits_fenced else ()
-            ),
+            invalidated_permit_ids=(permit_ids if permits_fenced else ()),
             proof_index_id=result_proof_index_id,
             cas_invalidation_id=result_cas_invalidation_id,
             fencing_epoch=result_fencing_epoch,
@@ -1636,9 +1438,7 @@ class ProgrammaticRecoveryPolicy:
 
     @property
     def policy_cid(self) -> str:
-        return prompt_workflow_cid(
-            {"schema": "programmatic-recovery-policy@1", **self.to_dict()}
-        )
+        return prompt_workflow_cid({"schema": "programmatic-recovery-policy@1", **self.to_dict()})
 
 
 @dataclass(frozen=True)
@@ -1656,12 +1456,8 @@ class RecoveryActionSpec:
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation, RescueOperation):
-            object.__setattr__(
-                self, "operation", RescueOperation(str(self.operation))
-            )
-        if self.compensation is not None and not isinstance(
-            self.compensation, RescueOperation
-        ):
+            object.__setattr__(self, "operation", RescueOperation(str(self.operation)))
+        if self.compensation is not None and not isinstance(self.compensation, RescueOperation):
             object.__setattr__(
                 self,
                 "compensation",
@@ -1691,9 +1487,7 @@ class RecoveryActionSpec:
             "operation": self.operation.value,
             "preconditions": list(self.preconditions),
             "expected_effects": list(self.expected_effects),
-            "compensation": (
-                self.compensation.value if self.compensation is not None else ""
-            ),
+            "compensation": (self.compensation.value if self.compensation is not None else ""),
             "max_attempts": self.max_attempts,
             "cooldown_ms": self.cooldown_ms,
             "deadline_ms": self.deadline_ms,
@@ -1730,30 +1524,21 @@ class RecoveryActionObservation:
         object.__setattr__(
             self,
             "observed_effects",
-            tuple(
-                _required_text(item, "observed effect")
-                for item in self.observed_effects
-            ),
+            tuple(_required_text(item, "observed effect") for item in self.observed_effects),
         )
         if not isinstance(self.post_action_health, Mapping):
             raise TypeError("post_action_health must be a mapping")
-        health = json.loads(
-            _canonical_bytes(_plain_json(self.post_action_health))
-        )
+        health = json.loads(_canonical_bytes(_plain_json(self.post_action_health)))
         if not isinstance(health, dict):
             raise TypeError("post_action_health must be a JSON object")
-        object.__setattr__(
-            self, "post_action_health", _freeze_json(health)
-        )
+        object.__setattr__(self, "post_action_health", _freeze_json(health))
         object.__setattr__(self, "reason", str(self.reason or "").strip())
 
     @property
     def healthy(self) -> bool:
-        return (
-            self.post_action_health.get("healthy") is True
-            or str(self.post_action_health.get("status") or "").lower()
-            in {"healthy", "ok", "recovered"}
-        )
+        return self.post_action_health.get("healthy") is True or str(
+            self.post_action_health.get("status") or ""
+        ).lower() in {"healthy", "ok", "recovered"}
 
 
 @dataclass(frozen=True)
@@ -1784,13 +1569,9 @@ class ProgrammaticRecoveryReceipt:
             "run_cid",
             "target_id",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         if not isinstance(self.operation, RescueOperation):
-            object.__setattr__(
-                self, "operation", RescueOperation(str(self.operation))
-            )
+            object.__setattr__(self, "operation", RescueOperation(str(self.operation)))
         if not isinstance(self.action, RecoveryActionSpec):
             raise TypeError("action must be a RecoveryActionSpec")
         if self.action.operation is not self.operation:
@@ -1803,18 +1584,13 @@ class ProgrammaticRecoveryReceipt:
             raise TypeError("attempts must contain RecoveryAttempt records")
         if (
             self.attempts[-1].operation is not self.operation
-            or self.attempts[-1].outcome
-            is not RecoveryAttemptOutcome.SUCCEEDED
+            or self.attempts[-1].outcome is not RecoveryAttemptOutcome.SUCCEEDED
         ):
             raise RecoveryIntegrityError(
                 "programmatic recovery receipt requires a successful final attempt"
             )
-        if any(
-            item.target_id != self.target_id for item in self.attempts
-        ):
-            raise RecoveryIntegrityError(
-                "programmatic recovery attempts changed target"
-            )
+        if any(item.target_id != self.target_id for item in self.attempts):
+            raise RecoveryIntegrityError("programmatic recovery attempts changed target")
         if not isinstance(self.disposition, RecoveryDisposition):
             object.__setattr__(
                 self,
@@ -1841,18 +1617,13 @@ class ProgrammaticRecoveryReceipt:
             )
         if not isinstance(self.post_action_health, Mapping):
             raise TypeError("post_action_health must be a mapping")
-        health = json.loads(
-            _canonical_bytes(_plain_json(self.post_action_health))
-        )
+        health = json.loads(_canonical_bytes(_plain_json(self.post_action_health)))
         if not isinstance(health, dict):
             raise TypeError("post_action_health must be a JSON object")
-        object.__setattr__(
-            self, "post_action_health", _freeze_json(health)
-        )
+        object.__setattr__(self, "post_action_health", _freeze_json(health))
         if not (
             health.get("healthy") is True
-            or str(health.get("status") or "").lower()
-            in {"healthy", "ok", "recovered"}
+            or str(health.get("status") or "").lower() in {"healthy", "ok", "recovered"}
         ):
             raise RecoveryIntegrityError(
                 "programmatic recovery receipt requires post-action health"
@@ -1861,9 +1632,7 @@ class ProgrammaticRecoveryReceipt:
             self,
             "compensations",
             tuple(
-                item
-                if isinstance(item, RescueOperation)
-                else RescueOperation(str(item))
+                item if isinstance(item, RescueOperation) else RescueOperation(str(item))
                 for item in self.compensations
             ),
         )
@@ -1873,9 +1642,7 @@ class ProgrammaticRecoveryReceipt:
                 raise ValueError(f"{name} must be a nonnegative integer")
         expected = prompt_workflow_cid(self.to_dict(include_id=False))
         if self.receipt_cid and self.receipt_cid != expected:
-            raise RecoveryIntegrityError(
-                "programmatic recovery receipt identity mismatch"
-            )
+            raise RecoveryIntegrityError("programmatic recovery receipt identity mismatch")
         object.__setattr__(self, "receipt_cid", expected)
 
     @property
@@ -1909,58 +1676,36 @@ class ProgrammaticRecoveryReceipt:
         return result
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "ProgrammaticRecoveryReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "ProgrammaticRecoveryReceipt":
         if value.get("schema") != PROGRAMMATIC_RECOVERY_RECEIPT_SCHEMA:
-            raise RecoveryIntegrityError(
-                "unsupported programmatic recovery receipt schema"
-            )
+            raise RecoveryIntegrityError("unsupported programmatic recovery receipt schema")
         raw_action = value.get("action")
         if not isinstance(raw_action, Mapping):
-            raise RecoveryIntegrityError(
-                "programmatic recovery action binding is missing"
-            )
+            raise RecoveryIntegrityError("programmatic recovery action binding is missing")
         compensation = str(raw_action.get("compensation") or "")
         return cls(
             incident_cid=str(value.get("incident_cid") or ""),
-            repository_root_cid=str(
-                value.get("repository_root_cid") or ""
-            ),
+            repository_root_cid=str(value.get("repository_root_cid") or ""),
             policy_root=str(value.get("policy_root") or ""),
             run_cid=str(value.get("run_cid") or ""),
             operation=RescueOperation(str(value.get("operation") or "")),
             target_id=str(value.get("target_id") or ""),
-            attempts=tuple(
-                RecoveryAttempt.from_dict(item)
-                for item in value.get("attempts") or ()
-            ),
+            attempts=tuple(RecoveryAttempt.from_dict(item) for item in value.get("attempts") or ()),
             action=RecoveryActionSpec(
-                operation=RescueOperation(
-                    str(raw_action.get("operation") or "")
-                ),
+                operation=RescueOperation(str(raw_action.get("operation") or "")),
                 preconditions=tuple(raw_action.get("preconditions") or ()),
-                expected_effects=tuple(
-                    raw_action.get("expected_effects") or ()
-                ),
-                compensation=(
-                    RescueOperation(compensation) if compensation else None
-                ),
+                expected_effects=tuple(raw_action.get("expected_effects") or ()),
+                compensation=(RescueOperation(compensation) if compensation else None),
                 max_attempts=raw_action.get("max_attempts"),  # type: ignore[arg-type]
                 cooldown_ms=raw_action.get("cooldown_ms"),  # type: ignore[arg-type]
                 deadline_ms=raw_action.get("deadline_ms"),  # type: ignore[arg-type]
-                post_health_required=raw_action.get(
-                    "post_health_required", True
-                ),
+                post_health_required=raw_action.get("post_health_required", True),
             ),
-            disposition=RecoveryDisposition(
-                str(value.get("disposition") or "")
-            ),
+            disposition=RecoveryDisposition(str(value.get("disposition") or "")),
             observed_effects=tuple(value.get("observed_effects") or ()),
             post_action_health=value.get("post_action_health") or {},
             compensations=tuple(
-                RescueOperation(str(item))
-                for item in value.get("compensations") or ()
+                RescueOperation(str(item)) for item in value.get("compensations") or ()
             ),
             started_at_ms=value.get("started_at_ms", 0),
             finished_at_ms=value.get("finished_at_ms", 0),
@@ -1980,9 +1725,7 @@ class ProgrammaticRecoveryResult:
 
     def __post_init__(self) -> None:
         if (self.receipt is None) == (self.exhaustion_receipt is None):
-            raise ValueError(
-                "exactly one recovery or exhaustion receipt is required"
-            )
+            raise ValueError("exactly one recovery or exhaustion receipt is required")
 
     @property
     def recovered(self) -> bool:
@@ -1994,8 +1737,7 @@ class ProgrammaticRecoveryResult:
             (self.receipt is not None and self.receipt.quarantined)
             or (
                 self.exhaustion_receipt is not None
-                and self.exhaustion_receipt.status
-                is RecordStatus.QUARANTINED
+                and self.exhaustion_receipt.status is RecordStatus.QUARANTINED
             )
         )
 
@@ -2168,17 +1910,11 @@ PROGRAMMATIC_RECOVERY_CATALOG_CID: Final = prompt_workflow_cid(
                     "operation": operation.value,
                     "preconditions": list(preconditions),
                     "expected_effects": list(effects),
-                    "compensation": (
-                        compensation.value
-                        if compensation is not None
-                        else ""
-                    ),
+                    "compensation": (compensation.value if compensation is not None else ""),
                 }
                 for operation, preconditions, effects, compensation in specs
             ]
-            for kind, specs in sorted(
-                _RECOVERY_LADDER.items(), key=lambda item: item[0].value
-            )
+            for kind, specs in sorted(_RECOVERY_LADDER.items(), key=lambda item: item[0].value)
         },
     }
 )
@@ -2198,20 +1934,14 @@ def _serialize_semantic_incident(
     ) -> ProgrammaticRecoveryResult:
         if not isinstance(diagnosis, RecoveryDiagnosis):
             raise TypeError("diagnosis must be a RecoveryDiagnosis")
-        digest = hashlib.sha256(
-            diagnosis.incident_cid.encode("utf-8")
-        ).hexdigest()
-        lock_path = (
-            self.state_dir / "programmatic-locks" / f"{digest}.lock"
-        )
+        digest = hashlib.sha256(diagnosis.incident_cid.encode("utf-8")).hexdigest()
+        lock_path = self.state_dir / "programmatic-locks" / f"{digest}.lock"
         with self._thread_lock:
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             with lock_path.open("a+b") as stream:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
                 try:
-                    return method(
-                        self, diagnosis, *args, **kwargs
-                    )
+                    return method(self, diagnosis, *args, **kwargs)
                 finally:
                     fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
@@ -2230,9 +1960,7 @@ class ProgrammaticRecoveryController:
             Callable[[ProgrammaticRecoveryContext], Any],
         ]
         | None = None,
-        health_check: Callable[
-            [ProgrammaticRecoveryContext, RecoveryActionObservation], Any
-        ]
+        health_check: Callable[[ProgrammaticRecoveryContext, RecoveryActionObservation], Any]
         | None = None,
         policy: ProgrammaticRecoveryPolicy | None = None,
         clock_ms: Callable[[], int] | None = None,
@@ -2241,11 +1969,7 @@ class ProgrammaticRecoveryController:
         self.state_dir = Path(state_dir)
         self.policy = policy or ProgrammaticRecoveryPolicy()
         self.handlers = {
-            (
-                key
-                if isinstance(key, RescueOperation)
-                else RescueOperation(str(key))
-            ): handler
+            (key if isinstance(key, RescueOperation) else RescueOperation(str(key))): handler
             for key, handler in (handlers or {}).items()
         }
         if not all(callable(item) for item in self.handlers.values()):
@@ -2268,53 +1992,32 @@ class ProgrammaticRecoveryController:
         ).hexdigest()
         return self.results_dir / f"{digest}.json"
 
-    def _load(
-        self, diagnosis: RecoveryDiagnosis
-    ) -> ProgrammaticRecoveryResult | None:
+    def _load(self, diagnosis: RecoveryDiagnosis) -> ProgrammaticRecoveryResult | None:
         path = self._result_path(diagnosis.incident_cid)
         try:
             raw = path.read_bytes()
         except FileNotFoundError:
             return None
         if len(raw) > self.policy.max_receipt_bytes:
-            raise RecoveryIntegrityError(
-                "programmatic recovery result exceeds byte bound"
-            )
+            raise RecoveryIntegrityError("programmatic recovery result exceeds byte bound")
         try:
             value = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RecoveryIntegrityError(
-                "programmatic recovery result is malformed"
-            ) from exc
+            raise RecoveryIntegrityError("programmatic recovery result is malformed") from exc
         if not isinstance(value, Mapping):
-            raise RecoveryIntegrityError(
-                "programmatic recovery result must be an object"
-            )
+            raise RecoveryIntegrityError("programmatic recovery result must be an object")
         if value.get("schema") != "programmatic-recovery-result@1":
-            raise RecoveryIntegrityError(
-                "unsupported programmatic recovery result schema"
-            )
+            raise RecoveryIntegrityError("unsupported programmatic recovery result schema")
         if value.get("incident_cid") != diagnosis.incident_cid:
-            raise RecoveryIntegrityError(
-                "programmatic recovery result incident mismatch"
-            )
+            raise RecoveryIntegrityError("programmatic recovery result incident mismatch")
         if value.get("recovery_policy_cid") != self.policy.policy_cid:
-            raise RecoveryIntegrityError(
-                "programmatic recovery result policy mismatch"
-            )
-        if (
-            value.get("recovery_catalog_cid")
-            != PROGRAMMATIC_RECOVERY_CATALOG_CID
-        ):
-            raise RecoveryIntegrityError(
-                "programmatic recovery result catalog mismatch"
-            )
+            raise RecoveryIntegrityError("programmatic recovery result policy mismatch")
+        if value.get("recovery_catalog_cid") != PROGRAMMATIC_RECOVERY_CATALOG_CID:
+            raise RecoveryIntegrityError("programmatic recovery result catalog mismatch")
         kind = value.get("terminal_kind")
         terminal = value.get("terminal")
         if not isinstance(terminal, Mapping):
-            raise RecoveryIntegrityError(
-                "programmatic recovery terminal receipt is missing"
-            )
+            raise RecoveryIntegrityError("programmatic recovery terminal receipt is missing")
         if kind == "recovery":
             receipt = ProgrammaticRecoveryReceipt.from_dict(terminal)
             self._verify_terminal_bindings(
@@ -2331,9 +2034,7 @@ class ProgrammaticRecoveryController:
                 deduplicated=True,
             )
         if kind == "exhaustion":
-            exhaustion = ProgrammaticRecoveryExhaustionReceipt.from_dict(
-                terminal
-            )
+            exhaustion = ProgrammaticRecoveryExhaustionReceipt.from_dict(terminal)
             self._verify_terminal_bindings(
                 diagnosis,
                 incident_cid=exhaustion.incident_cid,
@@ -2342,11 +2043,8 @@ class ProgrammaticRecoveryController:
                 run_cid=exhaustion.run_cid,
             )
             if (
-                exhaustion.exhaustion_reason
-                == "action_cooldown_active"
-                and not self._any_action_in_cooldown(
-                    diagnosis, self.clock_ms()
-                )
+                exhaustion.exhaustion_reason == "action_cooldown_active"
+                and not self._any_action_in_cooldown(diagnosis, self.clock_ms())
             ):
                 return None
             return ProgrammaticRecoveryResult(
@@ -2355,9 +2053,7 @@ class ProgrammaticRecoveryController:
                 exhaustion_receipt=exhaustion,
                 deduplicated=True,
             )
-        raise RecoveryIntegrityError(
-            "programmatic recovery terminal kind is unsupported"
-        )
+        raise RecoveryIntegrityError("programmatic recovery terminal kind is unsupported")
 
     @staticmethod
     def _verify_terminal_bindings(
@@ -2375,9 +2071,7 @@ class ProgrammaticRecoveryController:
             or policy_root != incident.policy_root
             or run_cid != incident.run_cid
         ):
-            raise RecoveryIntegrityError(
-                "programmatic recovery terminal binding mismatch"
-            )
+            raise RecoveryIntegrityError("programmatic recovery terminal binding mismatch")
 
     def _store(
         self,
@@ -2390,30 +2084,25 @@ class ProgrammaticRecoveryController:
             assert result.exhaustion_receipt is not None
             kind = "exhaustion"
             terminal = result.exhaustion_receipt.to_record()
-        payload = _canonical_bytes(
-            {
-                "schema": "programmatic-recovery-result@1",
-                "incident_cid": result.diagnosis.incident_cid,
-                "recovery_policy_cid": self.policy.policy_cid,
-                "recovery_catalog_cid": PROGRAMMATIC_RECOVERY_CATALOG_CID,
-                "terminal_kind": kind,
-                "terminal": terminal,
-            }
-        ) + b"\n"
-        if len(payload) > self.policy.max_receipt_bytes:
-            raise RecoveryBoundExceeded(
-                "programmatic recovery result exceeds byte bound"
+        payload = (
+            _canonical_bytes(
+                {
+                    "schema": "programmatic-recovery-result@1",
+                    "incident_cid": result.diagnosis.incident_cid,
+                    "recovery_policy_cid": self.policy.policy_cid,
+                    "recovery_catalog_cid": PROGRAMMATIC_RECOVERY_CATALOG_CID,
+                    "terminal_kind": kind,
+                    "terminal": terminal,
+                }
             )
-        _atomic_write(
-            self._result_path(result.diagnosis.incident_cid), payload
+            + b"\n"
         )
+        if len(payload) > self.policy.max_receipt_bytes:
+            raise RecoveryBoundExceeded("programmatic recovery result exceeds byte bound")
+        _atomic_write(self._result_path(result.diagnosis.incident_cid), payload)
 
-    def _specs(
-        self, diagnosis: RecoveryDiagnosis
-    ) -> tuple[RecoveryActionSpec, ...]:
-        raw_specs = _RECOVERY_LADDER[diagnosis.kind][
-            : self.policy.max_actions
-        ]
+    def _specs(self, diagnosis: RecoveryDiagnosis) -> tuple[RecoveryActionSpec, ...]:
+        raw_specs = _RECOVERY_LADDER[diagnosis.kind][: self.policy.max_actions]
         return tuple(
             RecoveryActionSpec(
                 operation=operation,
@@ -2428,9 +2117,7 @@ class ProgrammaticRecoveryController:
         )
 
     @staticmethod
-    def _observation(
-        raw: Any, spec: RecoveryActionSpec
-    ) -> RecoveryActionObservation:
+    def _observation(raw: Any, spec: RecoveryActionSpec) -> RecoveryActionObservation:
         if isinstance(raw, RecoveryActionObservation):
             return raw
         if isinstance(raw, bool):
@@ -2454,16 +2141,11 @@ class ProgrammaticRecoveryController:
                     )
                     or ()
                 ),
-                post_action_health=raw.get(
-                    "post_action_health", raw.get("health", {})
-                )
-                or {},
+                post_action_health=raw.get("post_action_health", raw.get("health", {})) or {},
                 reason=str(raw.get("reason") or ""),
                 partial=raw.get("partial", False),
             )
-        raise TypeError(
-            "recovery handler must return bool, mapping, or observation"
-        )
+        raise TypeError("recovery handler must return bool, mapping, or observation")
 
     def _in_cooldown(
         self,
@@ -2477,9 +2159,7 @@ class ProgrammaticRecoveryController:
                 continue
             if str(item.value.get("operation") or "") != operation.value:
                 continue
-            finished = item.value.get(
-                "finished_at_ms", item.value.get("updated_at_ms", 0)
-            )
+            finished = item.value.get("finished_at_ms", item.value.get("updated_at_ms", 0))
             if (
                 isinstance(finished, int)
                 and not isinstance(finished, bool)
@@ -2524,9 +2204,7 @@ class ProgrammaticRecoveryController:
         for precondition in spec.preconditions:
             keys = denial_keys.get(precondition, ())
             if any(
-                key in record and record.get(key) is False
-                for record in evidence
-                for key in keys
+                key in record and record.get(key) is False for record in evidence for key in keys
             ):
                 return False
             if precondition == "owner_not_live" and any(
@@ -2538,19 +2216,12 @@ class ProgrammaticRecoveryController:
                 record.get("objective_gap") is True
                 or record.get("objective_reconcile_required") is True
                 for record in evidence
-            ) and any(
-                record.get("policy_permits") is True
-                for record in evidence
-            )
+            ) and any(record.get("policy_permits") is True for record in evidence)
         if spec.operation is RescueOperation.BACKLOG_REFILL:
             return any(
-                record.get("backlog_empty") is True
-                or record.get("backlog_refill_required") is True
+                record.get("backlog_empty") is True or record.get("backlog_refill_required") is True
                 for record in evidence
-            ) and any(
-                record.get("policy_permits") is True
-                for record in evidence
-            )
+            ) and any(record.get("policy_permits") is True for record in evidence)
         return True
 
     def _attempt_receipt(
@@ -2575,12 +2246,8 @@ class ProgrammaticRecoveryController:
             "observation": (
                 {
                     "succeeded": observation.succeeded,
-                    "observed_effects": list(
-                        observation.observed_effects
-                    ),
-                    "post_action_health": _plain_json(
-                        observation.post_action_health
-                    ),
+                    "observed_effects": list(observation.observed_effects),
+                    "post_action_health": _plain_json(observation.post_action_health),
                     "reason": observation.reason,
                     "partial": observation.partial,
                 }
@@ -2620,11 +2287,7 @@ class ProgrammaticRecoveryController:
             raise TypeError("diagnosis must be a RecoveryDiagnosis")
         selected_handlers = dict(self.handlers)
         for key, handler in (handlers or {}).items():
-            operation = (
-                key
-                if isinstance(key, RescueOperation)
-                else RescueOperation(str(key))
-            )
+            operation = key if isinstance(key, RescueOperation) else RescueOperation(str(key))
             if not callable(handler):
                 raise TypeError("every recovery handler must be callable")
             selected_handlers[operation] = handler
@@ -2634,14 +2297,8 @@ class ProgrammaticRecoveryController:
             if existing is not None:
                 return existing
             started = self.clock_ms()
-            if (
-                isinstance(started, bool)
-                or not isinstance(started, int)
-                or started < 0
-            ):
-                raise RecoveryIntegrityError(
-                    "recovery clock returned an invalid timestamp"
-                )
+            if isinstance(started, bool) or not isinstance(started, int) or started < 0:
+                raise RecoveryIntegrityError("recovery clock returned an invalid timestamp")
             overall_deadline = started + self.policy.deadline_ms
             attempts: list[RecoveryAttempt] = []
             compensations: list[RescueOperation] = []
@@ -2669,9 +2326,7 @@ class ProgrammaticRecoveryController:
                     inapplicable.add(spec.operation)
                     last_reason = "action_cooldown_active"
                     continue
-                action_deadline = min(
-                    overall_deadline, now + spec.deadline_ms
-                )
+                action_deadline = min(overall_deadline, now + spec.deadline_ms)
                 for action_attempt in range(1, spec.max_attempts + 1):
                     if total_attempts >= self.policy.max_total_attempts:
                         last_reason = "total_attempt_bound_exhausted"
@@ -2697,29 +2352,20 @@ class ProgrammaticRecoveryController:
                             operation=spec.operation.value,
                             attempt=action_attempt,
                         )
-                        observation = self._observation(
-                            handler(context), spec
-                        )
+                        observation = self._observation(handler(context), spec)
                     except Exception as exc:
                         error = type(exc).__name__
                     finished = self.clock_ms()
                     timed_out = finished >= action_deadline
                     expected = set(spec.expected_effects)
                     observed = (
-                        set(observation.observed_effects)
-                        if observation is not None
-                        else set()
+                        set(observation.observed_effects) if observation is not None else set()
                     )
                     effects_match = expected == observed
-                    health_ok = bool(
-                        observation is not None
-                        and observation.healthy
-                    )
+                    health_ok = bool(observation is not None and observation.healthy)
                     if observation is not None and self.health_check is not None:
                         try:
-                            checked = self.health_check(
-                                context, observation
-                            )
+                            checked = self.health_check(context, observation)
                             if isinstance(checked, Mapping):
                                 observation = RecoveryActionObservation(
                                     succeeded=observation.succeeded,
@@ -2769,9 +2415,7 @@ class ProgrammaticRecoveryController:
                         )
                         receipt = ProgrammaticRecoveryReceipt(
                             incident_cid=diagnosis.incident_cid,
-                            repository_root_cid=(
-                                diagnosis.incident.repository_root_cid
-                            ),
+                            repository_root_cid=(diagnosis.incident.repository_root_cid),
                             policy_root=diagnosis.incident.policy_root,
                             run_cid=diagnosis.incident.run_cid,
                             operation=spec.operation,
@@ -2779,12 +2423,8 @@ class ProgrammaticRecoveryController:
                             attempts=tuple(attempts),
                             action=spec,
                             disposition=disposition,
-                            observed_effects=(
-                                observation.observed_effects
-                            ),
-                            post_action_health=(
-                                observation.post_action_health
-                            ),
+                            observed_effects=(observation.observed_effects),
+                            post_action_health=(observation.post_action_health),
                             compensations=tuple(compensations),
                             started_at_ms=started,
                             finished_at_ms=finished,
@@ -2802,49 +2442,31 @@ class ProgrammaticRecoveryController:
                         if timed_out
                         else (
                             "post_action_health_failed"
-                            if observation is not None
-                            and observation.succeeded
-                            and effects_match
+                            if observation is not None and observation.succeeded and effects_match
                             else (
                                 "expected_effects_missing"
-                                if observation is not None
-                                and observation.succeeded
+                                if observation is not None and observation.succeeded
                                 else "action_failed:"
-                                + (
-                                    error
-                                    or (
-                                        observation.reason
-                                        if observation
-                                        else "unknown"
-                                    )
-                                )
+                                + (error or (observation.reason if observation else "unknown"))
                             )
                         )
                     )
                     if (
                         observation is not None
                         and spec.compensation is not None
-                        and (
-                            observation.partial
-                            or bool(observation.observed_effects)
-                        )
+                        and (observation.partial or bool(observation.observed_effects))
                     ):
-                        compensation = selected_handlers.get(
-                            spec.compensation
-                        )
+                        compensation = selected_handlers.get(spec.compensation)
                         if compensation is None:
                             last_reason = "compensation_unavailable"
                             halt_recovery = True
                             break
                         else:
                             if (
-                                total_attempts
-                                >= self.policy.max_total_attempts
+                                total_attempts >= self.policy.max_total_attempts
                                 or finished >= action_deadline
                             ):
-                                last_reason = (
-                                    "compensation_bound_exhausted"
-                                )
+                                last_reason = "compensation_bound_exhausted"
                                 halt_recovery = True
                                 break
                             compensation_spec = RecoveryActionSpec(
@@ -2854,22 +2476,18 @@ class ProgrammaticRecoveryController:
                                 compensation=None,
                                 max_attempts=1,
                                 cooldown_ms=0,
-                                deadline_ms=max(
-                                    1, action_deadline - finished
-                                ),
+                                deadline_ms=max(1, action_deadline - finished),
                             )
                             total_attempts += 1
                             compensation_observation = None
                             compensation_error = ""
                             try:
-                                compensation_context = (
-                                    ProgrammaticRecoveryContext(
-                                        incident=diagnosis.incident,
-                                        action=compensation_spec,
-                                        attempt=1,
-                                        started_at_ms=finished,
-                                        deadline_at_ms=action_deadline,
-                                    )
+                                compensation_context = ProgrammaticRecoveryContext(
+                                    incident=diagnosis.incident,
+                                    action=compensation_spec,
+                                    attempt=1,
+                                    started_at_ms=finished,
+                                    deadline_at_ms=action_deadline,
                                 )
                                 compensation_observation = self._observation(
                                     compensation(compensation_context),
@@ -2881,12 +2499,8 @@ class ProgrammaticRecoveryController:
                             compensation_succeeded = bool(
                                 compensation_observation is not None
                                 and compensation_observation.succeeded
-                                and set(
-                                    compensation_observation.observed_effects
-                                )
-                                == set(
-                                    compensation_spec.expected_effects
-                                )
+                                and set(compensation_observation.observed_effects)
+                                == set(compensation_spec.expected_effects)
                                 and compensation_observation.healthy
                                 and compensation_finished < action_deadline
                             )
@@ -2900,8 +2514,7 @@ class ProgrammaticRecoveryController:
                                         if compensation_succeeded
                                         else (
                                             RecoveryAttemptOutcome.TIMED_OUT
-                                            if compensation_finished
-                                            >= action_deadline
+                                            if compensation_finished >= action_deadline
                                             else RecoveryAttemptOutcome.FAILED
                                         )
                                     ),
@@ -2928,23 +2541,18 @@ class ProgrammaticRecoveryController:
             finished = self.clock_ms()
             exhaustion = ProgrammaticRecoveryExhaustionReceipt(
                 incident_cid=diagnosis.incident_cid,
-                repository_root_cid=(
-                    diagnosis.incident.repository_root_cid
-                ),
+                repository_root_cid=(diagnosis.incident.repository_root_cid),
                 policy_root=diagnosis.incident.policy_root,
                 run_cid=diagnosis.incident.run_cid,
                 attempts=tuple(attempts),
                 inapplicable_operations=tuple(inapplicable),
                 exhaustion_reason=last_reason,
                 budget=PromptWorkflowBudget(
-                    max_latency_ms=min(
-                        self.policy.deadline_ms, 3_600_000
-                    ),
+                    max_latency_ms=min(self.policy.deadline_ms, 3_600_000),
                     max_rescue_actions=self.policy.max_actions,
                 ),
                 circuit_open=(
-                    total_attempts >= self.policy.max_total_attempts
-                    or finished >= overall_deadline
+                    total_attempts >= self.policy.max_total_attempts or finished >= overall_deadline
                 ),
                 status=RecordStatus.QUARANTINED,
                 created_at_ms=started,
@@ -2978,9 +2586,7 @@ def recover_programmatically(
         RescueOperation | str,
         Callable[[ProgrammaticRecoveryContext], Any],
     ],
-    health_check: Callable[
-        [ProgrammaticRecoveryContext, RecoveryActionObservation], Any
-    ]
+    health_check: Callable[[ProgrammaticRecoveryContext, RecoveryActionObservation], Any]
     | None = None,
     policy: ProgrammaticRecoveryPolicy | None = None,
     clock_ms: Callable[[], int] | None = None,
@@ -3006,9 +2612,7 @@ def verify_repair_receipt(
 ) -> RepairReceipt:
     """Validate identity and optional current-tree bindings."""
 
-    receipt = (
-        value if isinstance(value, RepairReceipt) else RepairReceipt.from_dict(value)
-    )
+    receipt = value if isinstance(value, RepairReceipt) else RepairReceipt.from_dict(value)
     if repository_id is not None and receipt.repository_id != repository_id:
         raise RecoveryIntegrityError("repair receipt repository binding mismatch")
     if tree_id is not None and receipt.tree_id != tree_id:

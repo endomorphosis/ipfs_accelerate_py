@@ -28,7 +28,11 @@ from .core import (
 from .cli import build_lifecycle_arg_parser, daemon_spec_payload, run_lifecycle_cli
 from .specs import env_float, env_int, env_path, env_path_in_dir, env_value, repo_root_from_env
 from .supervisor import heartbeat_snapshot, worktree_phase_worker_status
-from .wrapper import launch_restarting_wrapper, pid_matches_command_fragments, restarting_wrapper_alive
+from .wrapper import (
+    launch_restarting_wrapper,
+    pid_matches_command_fragments,
+    restarting_wrapper_alive,
+)
 
 
 JsonDict = Dict[str, Any]
@@ -60,7 +64,9 @@ def build_legal_parser_spec(repo_root: Optional[str] = None) -> ManagedDaemonSpe
     root = _repo_root(repo_root)
     daemon_dir = _daemon_dir()
     output_dir = env_path("OUTPUT_DIR", "artifacts/legal_parser_optimizer_daemon")
-    run_script = env_path("RUN_SCRIPT", "scripts/ops/legal_data/run_legal_parser_optimizer_daemon.sh")
+    run_script = env_path(
+        "RUN_SCRIPT", "scripts/ops/legal_data/run_legal_parser_optimizer_daemon.sh"
+    )
     worktree_root = env_path("LEGAL_PARSER_DAEMON_WORKTREE_ROOT", ".daemon/legal-parser-worktrees")
     return ManagedDaemonSpec(
         name="legal-parser",
@@ -86,17 +92,25 @@ def build_legal_parser_spec(repo_root: Optional[str] = None) -> ManagedDaemonSpe
             daemon_dir,
             "legal_parser_daemon_supervisor.out",
         ),
-        ensure_status_path=env_path_in_dir("ENSURE_STATUS_PATH", daemon_dir, "legal_parser_daemon_ensure.status.json"),
-        ensure_check_path=env_path_in_dir("CHECK_LOG_PATH", daemon_dir, "legal_parser_daemon_ensure_check.json"),
+        ensure_status_path=env_path_in_dir(
+            "ENSURE_STATUS_PATH", daemon_dir, "legal_parser_daemon_ensure.status.json"
+        ),
+        ensure_check_path=env_path_in_dir(
+            "CHECK_LOG_PATH", daemon_dir, "legal_parser_daemon_ensure_check.json"
+        ),
         supervisor_lock_path=env_path_in_dir(
             "SUPERVISOR_LOCK_PATH",
             daemon_dir,
             "legal_parser_daemon_supervisor.lock",
         ),
-        latest_log_path=env_path_in_dir("LATEST_LOG_PATH", daemon_dir, "legal_parser_daemon_overnight.log"),
+        latest_log_path=env_path_in_dir(
+            "LATEST_LOG_PATH", daemon_dir, "legal_parser_daemon_overnight.log"
+        ),
         tmux_session_name=_env("TMUX_SESSION_NAME", "legal-parser-daemon"),
         worktree_root=worktree_root,
-        daemon_process_match_all=("ipfs_accelerate_py.agent_supervisor.todo_daemon.legal_parser_daemon",),
+        daemon_process_match_all=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.legal_parser_daemon",
+        ),
         llm_process_match_any=(
             worktree_root.as_posix(),
             str(root / worktree_root),
@@ -112,7 +126,10 @@ def build_legal_parser_spec(repo_root: Optional[str] = None) -> ManagedDaemonSpe
 
 def _wrapper_pid_path(spec: ManagedDaemonSpec) -> Path:
     return spec.repo_root / Path(
-        _env("WRAPPER_PID_PATH", f"{spec.daemon_dir.as_posix()}/legal_parser_daemon_supervisor_wrapper.pid")
+        _env(
+            "WRAPPER_PID_PATH",
+            f"{spec.daemon_dir.as_posix()}/legal_parser_daemon_supervisor_wrapper.pid",
+        )
     )
 
 
@@ -172,7 +189,9 @@ def check_legal_parser_health(
     heartbeat_age = heartbeat.age_seconds
 
     daemon_pid = heartbeat.pid
-    supervisor_pid = supervisor.get("supervisor_pid") or read_pid_file(spec.resolve(spec.supervisor_pid_path))
+    supervisor_pid = supervisor.get("supervisor_pid") or read_pid_file(
+        spec.resolve(spec.supervisor_pid_path)
+    )
     supervisor_alive = pid_alive(supervisor_pid) if supervisor_pid else False
     daemon_alive = heartbeat.pid_alive
 
@@ -188,7 +207,9 @@ def check_legal_parser_health(
     )
     daemon_fresh = heartbeat.fresh
     alive = bool(supervisor_alive and ((daemon_alive and daemon_fresh) or maintenance.fresh))
-    status_label = "maintenance_running" if maintenance.fresh else "running" if alive else "stale_or_stopped"
+    status_label = (
+        "maintenance_running" if maintenance.fresh else "running" if alive else "stale_or_stopped"
+    )
 
     try:
         worktree_no_child_threshold = float(
@@ -259,7 +280,9 @@ def check_legal_parser_health(
             worktree_no_child_threshold,
         ),
         "supervisor_status": supervisor.get("status"),
-        "active_agentic_maintenance_started_at": supervisor.get("active_agentic_maintenance_started_at"),
+        "active_agentic_maintenance_started_at": supervisor.get(
+            "active_agentic_maintenance_started_at"
+        ),
         "active_agentic_maintenance_timeout_seconds": supervisor.get(
             "active_agentic_maintenance_timeout_seconds"
         ),
@@ -279,7 +302,9 @@ def check_legal_parser_health(
         "stalled_metric_cycles": progress.get("stalled_metric_cycles"),
         "cycles_since_meaningful_progress": progress.get("cycles_since_meaningful_progress"),
         "meaningful_progress_definition": progress.get("meaningful_progress_definition"),
-        "rolled_back_since_meaningful_progress": progress.get("rolled_back_since_meaningful_progress"),
+        "rolled_back_since_meaningful_progress": progress.get(
+            "rolled_back_since_meaningful_progress"
+        ),
         "rolled_back_reasons_since_meaningful_progress": progress.get(
             "rolled_back_reasons_since_meaningful_progress"
         ),
@@ -293,8 +318,12 @@ def check_legal_parser_health(
             "dirty_legal_parser_targets_diff_summary"
         ),
         "progress_dirty_legal_parser_targets": progress.get("dirty_legal_parser_targets"),
-        "progress_dirty_legal_parser_targets_valid": progress.get("dirty_legal_parser_targets_valid"),
-        "progress_dirty_legal_parser_targets_error": progress.get("dirty_legal_parser_targets_error"),
+        "progress_dirty_legal_parser_targets_valid": progress.get(
+            "dirty_legal_parser_targets_valid"
+        ),
+        "progress_dirty_legal_parser_targets_error": progress.get(
+            "dirty_legal_parser_targets_error"
+        ),
         "progress_dirty_legal_parser_targets_fingerprint": progress.get(
             "dirty_legal_parser_targets_fingerprint"
         ),
@@ -316,8 +345,12 @@ def check_legal_parser_health(
         "supervisor_dirty_legal_parser_targets_confirmed": supervisor_state.get(
             "dirty_legal_parser_targets_confirmed"
         ),
-        "supervisor_dirty_target_detection_valid": supervisor_state.get("dirty_target_detection_valid"),
-        "supervisor_dirty_target_detection_errors": supervisor_state.get("dirty_target_detection_errors"),
+        "supervisor_dirty_target_detection_valid": supervisor_state.get(
+            "dirty_target_detection_valid"
+        ),
+        "supervisor_dirty_target_detection_errors": supervisor_state.get(
+            "dirty_target_detection_errors"
+        ),
         "supervisor_dirty_legal_parser_targets_deferred": supervisor_state.get(
             "dirty_legal_parser_targets_deferred"
         ),
@@ -327,7 +360,9 @@ def check_legal_parser_health(
         "supervisor_dirty_legal_parser_targets_pending_confirmation": supervisor_state.get(
             "dirty_legal_parser_targets_pending_confirmation"
         ),
-        "supervisor_dirty_rejection_active_targets": supervisor_state.get("dirty_rejection_active_targets"),
+        "supervisor_dirty_rejection_active_targets": supervisor_state.get(
+            "dirty_rejection_active_targets"
+        ),
         "supervisor_effective_phase_stall_threshold_seconds": supervisor_state.get(
             "effective_phase_stall_threshold_seconds"
         ),
@@ -531,7 +566,9 @@ def stop_legal_parser_daemon(
     payload.update(
         {
             "schema": "ipfs_datasets_py.legal_parser_daemon.stop",
-            "status": "stopped" if stopped or result.payload.get("status") == "stopped" else "not_running",
+            "status": "stopped"
+            if stopped or result.payload.get("status") == "stopped"
+            else "not_running",
             "stopped_pids": sorted(set(stopped)),
             "wrapper_pid": wrapper_pid,
         }
@@ -554,7 +591,9 @@ def run_legal_parser_daemon_runtime(argv: Optional[Sequence[str]] = None) -> int
     todo-daemon package dispatcher.
     """
 
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.legal_parser_daemon import main as runtime_main
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.legal_parser_daemon import (
+        main as runtime_main,
+    )
 
     return runtime_main(argv)
 

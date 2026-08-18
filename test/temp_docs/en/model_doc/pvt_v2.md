@@ -75,7 +75,7 @@ model = AutoModelForObjectDetection.from_config(
     config=AutoConfig.from_pretrained(
         "SenseTime/deformable-detr",
         backbone_config=AutoConfig.from_pretrained("OpenGVLab/pvt_v2_b5"),
-        use_timm_backbone=False
+        use_timm_backbone=False,
     ),
 )
 

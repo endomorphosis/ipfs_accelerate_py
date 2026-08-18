@@ -78,8 +78,7 @@ def test_declared_import_dependency_justifies_contract_companion() -> None:
             _entry(
                 "pkg/compiler.py",
                 "def compile_text():\n    return None\n",
-                "from .contracts import Contract\n"
-                "def compile_text():\n    return Contract()\n",
+                "from .contracts import Contract\ndef compile_text():\n    return Contract()\n",
             ),
             _entry(
                 "pkg/contracts.py",
@@ -152,15 +151,11 @@ def test_explicit_validation_target_justifies_guarded_integration_test() -> None
                 "    assert subprocess.run(['legal-ir']).returncode == 0\n",
             ),
         ),
-        validation_commands=(
-            "python -m pytest test/test_cli.py",
-        ),
+        validation_commands=("python -m pytest test/test_cli.py",),
     )
 
     assert receipt.justified is True
-    assert receipt.decisions[0].reason_codes == (
-        ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
-    )
+    assert receipt.decisions[0].reason_codes == (ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,)
 
 
 def test_leading_cd_resolves_validation_target_from_repository_root() -> None:
@@ -318,15 +313,11 @@ def test_changed_golden_fixture_cannot_claim_validation_target() -> None:
                 "v2\n",
             ),
         ),
-        validation_commands=(
-            "python -m pytest test/fixtures/legal-ir.case",
-        ),
+        validation_commands=("python -m pytest test/fixtures/legal-ir.case",),
     )
 
     assert receipt.accepted is False
-    assert receipt.decisions[0].reason_codes == (
-        ScopeExpansionReason.TEST_CHANGE_UNVERIFIABLE,
-    )
+    assert receipt.decisions[0].reason_codes == (ScopeExpansionReason.TEST_CHANGE_UNVERIFIABLE,)
 
 
 def test_unrelated_same_package_path_remains_denied() -> None:
@@ -347,9 +338,7 @@ def test_unrelated_same_package_path_remains_denied() -> None:
 
     assert receipt.accepted is False
     assert receipt.denied_paths == ("pkg/unrelated.py",)
-    assert receipt.decisions[0].reason_codes == (
-        ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,
-    )
+    assert receipt.decisions[0].reason_codes == (ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,)
 
 
 def test_package_import_closure_justifies_lazy_provider_fix(
@@ -376,9 +365,7 @@ def test_package_import_closure_justifies_lazy_provider_fix(
         encoding="utf-8",
     )
     test_source = (
-        "from pkg.control import status\n\n"
-        "def test_status():\n"
-        "    assert status() == 'ready'\n"
+        "from pkg.control import status\n\ndef test_status():\n    assert status() == 'ready'\n"
     )
     (tmp_path / "test" / "test_control.py").write_text(
         test_source,
@@ -400,9 +387,7 @@ def test_package_import_closure_justifies_lazy_provider_fix(
             _entry(
                 "pkg/provider_bridge.py",
                 "import optional_provider\nprovider = optional_provider\n",
-                (tmp_path / "pkg" / "provider_bridge.py").read_text(
-                    encoding="utf-8"
-                ),
+                (tmp_path / "pkg" / "provider_bridge.py").read_text(encoding="utf-8"),
             ),
         ),
         scope=("pkg/control.py", "test/test_control.py"),
@@ -412,10 +397,7 @@ def test_package_import_closure_justifies_lazy_provider_fix(
     assert receipt.justified is True
     assert receipt.justified_paths == ("pkg/provider_bridge.py",)
     assert receipt.decisions[0].reason_codes == (
-        (
-            ScopeExpansionReason
-            .DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE
-        ),
+        (ScopeExpansionReason.DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE),
     )
     assert receipt.decisions[0].evidence_paths == (
         "pkg/__init__.py",
@@ -446,9 +428,7 @@ def test_test_weakening_is_denied_even_with_direct_import() -> None:
     )
 
     assert receipt.accepted is False
-    assert receipt.decisions[0].reason_codes == (
-        ScopeExpansionReason.TEST_WEAKENING,
-    )
+    assert receipt.decisions[0].reason_codes == (ScopeExpansionReason.TEST_WEAKENING,)
 
 
 def test_non_scope_gate_and_expansion_limit_fail_closed() -> None:
@@ -478,10 +458,9 @@ def test_non_scope_gate_and_expansion_limit_fail_closed() -> None:
         ScopeExpansionReason.INITIAL_GATE_NOT_SCOPE_ONLY,
     )
     assert two_extras.accepted is False
-    assert {
-        decision.reason_codes
-        for decision in two_extras.decisions
-    } == {(ScopeExpansionReason.EXPANSION_LIMIT_EXCEEDED,)}
+    assert {decision.reason_codes for decision in two_extras.decisions} == {
+        (ScopeExpansionReason.EXPANSION_LIMIT_EXCEEDED,)
+    }
 
 
 class _PassingValidationScheduler:
@@ -571,9 +550,7 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
     )
 
     assert proposal_validation.accepted is True
-    assert proposal_validation.policy.policy_version.endswith(
-        "+scope-adjudication-v1"
-    )
+    assert proposal_validation.policy.policy_version.endswith("+scope-adjudication-v1")
     canonical_scheduler_result = ValidationScheduler().run_validated(
         proposal_validation,
         (),
@@ -581,9 +558,7 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
         require_impact_graph=False,
     )
     assert (
-        canonical_scheduler_result["proposal_validation"]["proposal"][
-            "proposal_id"
-        ]
+        canonical_scheduler_result["proposal_validation"]["proposal"]["proposal_id"]
         == proposal_validation.proposal.proposal_id
     )
     validation_result = daemon._run_validation_commands(
@@ -594,23 +569,16 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
     )
     assert validation_result["passed"] is True
     assert validation_result["scope_adjudication"]["accepted"] is True
-    assert validation_result["scope_adjudication"][
-        "authorized_policy_id"
-    ] == proposal_validation.policy.policy_id
-    assert validation_result["scope_adjudication"]["authorized_paths"] == [
-        "test/test_compiler.py"
-    ]
+    assert (
+        validation_result["scope_adjudication"]["authorized_policy_id"]
+        == proposal_validation.policy.policy_id
+    )
+    assert validation_result["scope_adjudication"]["authorized_paths"] == ["test/test_compiler.py"]
     events = [
         json.loads(line)
-        for line in (repo / "events.jsonl").read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in (repo / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert [
-        event["type"]
-        for event in events
-        if event["type"].startswith("implementation_")
-    ] == [
+    assert [event["type"] for event in events if event["type"].startswith("implementation_")] == [
         "implementation_scope_adjudicated",
         "implementation_expected_outputs_checked",
         "implementation_proposal_validated",
@@ -726,14 +694,10 @@ def test_daemon_keeps_unrelated_expansion_rejected(tmp_path: Path) -> None:
     )
 
     assert result.accepted is False
-    assert {
-        finding.code.value for finding in result.findings
-    } == {"path_outside_scope"}
+    assert {finding.code.value for finding in result.findings} == {"path_outside_scope"}
     receipt = next(iter(daemon._implementation_scope_adjudications.values()))
     assert receipt.denied_paths == ("pkg/unrelated.py",)
-    assert receipt.decisions[0].reason_codes == (
-        ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,
-    )
+    assert receipt.decisions[0].reason_codes == (ScopeExpansionReason.NO_DEPENDENCY_EVIDENCE,)
 
 
 @pytest.mark.parametrize(
@@ -760,8 +724,7 @@ def test_daemon_examines_secret_finding_scope_without_overriding_policy(
     _git(repo, "commit", "-m", "baseline")
     baseline = _git(repo, "rev-parse", "HEAD")
     compiler_path.write_text(
-        "VALUE = 2\n"
-        + _secret_assignment("sk-live-concrete-credential-value"),
+        "VALUE = 2\n" + _secret_assignment("sk-live-concrete-credential-value"),
         encoding="utf-8",
     )
     daemon = PortalImplementationDaemon(
@@ -796,14 +759,10 @@ def test_daemon_examines_secret_finding_scope_without_overriding_policy(
         assert "path_outside_scope" in finding_codes
     events = [
         json.loads(line)
-        for line in (repo / "events.jsonl").read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in (repo / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     examination = next(
-        event
-        for event in events
-        if event["type"] == "implementation_secret_change_scope_examined"
+        event for event in events if event["type"] == "implementation_secret_change_scope_examined"
     )
     assert examination["scope_classification"] == scope_classification
     assert examination["examined_paths"] == ["pkg/compiler.py"]
@@ -835,10 +794,7 @@ def test_merge_binding_rejects_detached_or_forged_scope_receipt() -> None:
             "completion_authoritative": False,
         },
     }
-    check = (
-        PortalImplementationDaemon
-        ._scope_adjudication_merge_binding_error
-    )
+    check = PortalImplementationDaemon._scope_adjudication_merge_binding_error
 
     assert check(valid) == ""
     mutations = {

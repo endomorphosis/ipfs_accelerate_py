@@ -82,11 +82,7 @@ def _roots() -> tuple[SemanticRoot, ...]:
                 SemanticRoot(
                     kind=kind,
                     artifact=_ref(f"root-{kind.value}"),
-                    coverage=(
-                        coverage
-                        if kind is SemanticRootKind.DIRTY_WORKTREE
-                        else ()
-                    ),
+                    coverage=(coverage if kind is SemanticRootKind.DIRTY_WORKTREE else ()),
                 )
                 for kind in SemanticRootKind
             ),
@@ -135,9 +131,7 @@ def _action(**changes: object) -> ActionEnvelope:
             DecisionTarget(
                 target_id="target:decision-contract",
                 resource_type="repository-file",
-                repository_paths=(
-                    "ipfs_accelerate_py/agent_supervisor/decision_contracts.py",
-                ),
+                repository_paths=("ipfs_accelerate_py/agent_supervisor/decision_contracts.py",),
             ),
         ),
     }
@@ -153,15 +147,10 @@ def _effect(
         kind=EffectKind.WRITE,
         authority=DecisionAuthority.MUTATION,
         target_ids=("target:decision-contract",),
-        repository_paths=(
-            "ipfs_accelerate_py/agent_supervisor/decision_contracts.py",
-        ),
+        repository_paths=("ipfs_accelerate_py/agent_supervisor/decision_contracts.py",),
         description="Write the canonical decision contracts",
         verification={
-            "command": (
-                "python -m pytest "
-                "test/api/test_agent_supervisor_decision_contracts.py -q"
-            )
+            "command": ("python -m pytest test/api/test_agent_supervisor_decision_contracts.py -q")
         },
     )
 
@@ -292,22 +281,16 @@ def test_every_decision_changing_binding_changes_the_request_identity() -> None:
 
 def test_all_mandatory_roots_and_dirty_worktree_coverage_are_required() -> None:
     roots = _roots()
-    without_policy = tuple(
-        item for item in roots if item.kind is not SemanticRootKind.POLICY
-    )
+    without_policy = tuple(item for item in roots if item.kind is not SemanticRootKind.POLICY)
     with pytest.raises(MissingSemanticRootError, match="policy"):
         _request(semantic_roots=without_policy)
 
-    dirty = next(
-        item for item in roots if item.kind is SemanticRootKind.DIRTY_WORKTREE
-    )
+    dirty = next(item for item in roots if item.kind is SemanticRootKind.DIRTY_WORKTREE)
     with pytest.raises(MissingSemanticRootError, match="untracked"):
         replace(
             dirty,
             coverage=tuple(
-                item
-                for item in dirty.coverage
-                if item is not WorktreeCoverage.UNTRACKED
+                item for item in dirty.coverage if item is not WorktreeCoverage.UNTRACKED
             ),
         )
 
@@ -360,11 +343,7 @@ def test_authority_capability_lease_fence_and_idempotency_are_exact() -> None:
 
 def test_exact_targets_effects_and_repository_paths_are_bound() -> None:
     with pytest.raises(DecisionBindingError, match="undeclared action target"):
-        _request(
-            expected_effects=(
-                replace(_effect(), target_ids=("target:other",)),
-            )
-        )
+        _request(expected_effects=(replace(_effect(), target_ids=("target:other",)),))
     with pytest.raises(DecisionPathEscapeError, match="repository-relative"):
         _action(arguments={"path": "../../etc/passwd"})
     with pytest.raises(DecisionPathEscapeError, match="repository-relative"):

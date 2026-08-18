@@ -10,146 +10,147 @@ systems, notification systems, etc.)
 import abc
 from typing import Dict, List, Any, Optional, Union
 
+
 class ExternalSystemInterface(abc.ABC):
     """
     Abstract base class defining the standard interface for all external system connectors.
-    
+
     This interface ensures that all external system connectors implement a consistent set of methods,
     making it easier to switch between systems or create new implementations.
     """
-    
+
     @abc.abstractmethod
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """
         Initialize the external system connector with configuration.
-        
+
         Args:
             config: Configuration dictionary containing provider-specific settings
-            
+
         Returns:
             True if initialization succeeded
         """
         pass
-    
+
     @abc.abstractmethod
     async def connect(self) -> bool:
         """
         Establish connection to the external system.
-        
+
         Returns:
             True if connection succeeded
         """
         pass
-    
+
     @abc.abstractmethod
     async def is_connected(self) -> bool:
         """
         Check if the connector is currently connected to the external system.
-        
+
         Returns:
             True if connected
         """
         pass
-    
+
     @abc.abstractmethod
     async def execute_operation(self, operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute an operation on the external system.
-        
+
         Args:
             operation: The operation to execute
             params: Parameters for the operation
-            
+
         Returns:
             Dictionary with operation result
         """
         pass
-    
+
     @abc.abstractmethod
     async def query(self, query_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Query the external system for data.
-        
+
         Args:
             query_params: Query parameters
-            
+
         Returns:
             List of query results
         """
         pass
-    
+
     @abc.abstractmethod
     async def create_item(self, item_type: str, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create an item in the external system.
-        
+
         Args:
             item_type: Type of item to create
             item_data: Item data
-            
+
         Returns:
             Dictionary with created item details
         """
         pass
-    
+
     @abc.abstractmethod
     async def update_item(self, item_type: str, item_id: str, update_data: Dict[str, Any]) -> bool:
         """
         Update an item in the external system.
-        
+
         Args:
             item_type: Type of item to update
             item_id: ID of the item to update
             update_data: Data to update
-            
+
         Returns:
             True if update succeeded
         """
         pass
-    
+
     @abc.abstractmethod
     async def delete_item(self, item_type: str, item_id: str) -> bool:
         """
         Delete an item from the external system.
-        
+
         Args:
             item_type: Type of item to delete
             item_id: ID of the item to delete
-            
+
         Returns:
             True if deletion succeeded
         """
         pass
-    
+
     @abc.abstractmethod
     async def get_item(self, item_type: str, item_id: str) -> Dict[str, Any]:
         """
         Get an item from the external system.
-        
+
         Args:
             item_type: Type of item to get
             item_id: ID of the item to get
-            
+
         Returns:
             Dictionary with item details
         """
         pass
-    
+
     @abc.abstractmethod
     async def system_info(self) -> Dict[str, Any]:
         """
         Get information about the external system.
-        
+
         Returns:
             Dictionary with system information
         """
         pass
-    
+
     @abc.abstractmethod
     async def close(self) -> None:
         """
         Close the connection to the external system and clean up resources.
-        
+
         Returns:
             None
         """
@@ -159,11 +160,11 @@ class ExternalSystemInterface(abc.ABC):
 class ConnectorCapabilities:
     """
     Class representing the capabilities of an external system connector.
-    
+
     This class provides a standardized way to describe the features supported
     by a particular external system connector.
     """
-    
+
     def __init__(
         self,
         supports_create: bool = True,
@@ -180,11 +181,11 @@ class ConnectorCapabilities:
         query_operators: List[str] = None,
         max_batch_size: int = 0,
         rate_limit: int = 0,
-        **additional_capabilities
+        **additional_capabilities,
     ):
         """
         Initialize connector capabilities.
-        
+
         Args:
             supports_create: Whether the connector supports creating items
             supports_update: Whether the connector supports updating items
@@ -213,18 +214,28 @@ class ConnectorCapabilities:
         self.supports_relationships = supports_relationships
         self.supports_history = supports_history
         self.item_types = item_types or []
-        self.query_operators = query_operators or ["=", "!=", "<", "<=", ">", ">=", "IN", "NOT IN", "LIKE"]
+        self.query_operators = query_operators or [
+            "=",
+            "!=",
+            "<",
+            "<=",
+            ">",
+            ">=",
+            "IN",
+            "NOT IN",
+            "LIKE",
+        ]
         self.max_batch_size = max_batch_size
         self.rate_limit = rate_limit
-        
+
         # Add additional capabilities
         for key, value in additional_capabilities.items():
             setattr(self, key, value)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert to dictionary.
-        
+
         Returns:
             Dictionary representation
         """
@@ -242,17 +253,17 @@ class ConnectorCapabilities:
             "item_types": self.item_types,
             "query_operators": self.query_operators,
             "max_batch_size": self.max_batch_size,
-            "rate_limit": self.rate_limit
+            "rate_limit": self.rate_limit,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ConnectorCapabilities':
+    def from_dict(cls, data: Dict[str, Any]) -> "ConnectorCapabilities":
         """
         Create from dictionary.
-        
+
         Args:
             data: Dictionary representation
-            
+
         Returns:
             ConnectorCapabilities instance
         """
@@ -262,11 +273,11 @@ class ConnectorCapabilities:
 class ExternalSystemResult:
     """
     Standardized representation of operation results from external systems.
-    
+
     This class provides a common structure for operation results, making it easier to
     process and handle results regardless of the external system used.
     """
-    
+
     def __init__(
         self,
         success: bool,
@@ -274,11 +285,11 @@ class ExternalSystemResult:
         result_data: Optional[Any] = None,
         error_message: Optional[str] = None,
         error_code: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize an operation result.
-        
+
         Args:
             success: Whether the operation succeeded
             operation: The operation that was performed
@@ -293,11 +304,11 @@ class ExternalSystemResult:
         self.error_message = error_message
         self.error_code = error_code
         self.metadata = metadata or {}
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert to dictionary.
-        
+
         Returns:
             Dictionary representation
         """
@@ -307,17 +318,17 @@ class ExternalSystemResult:
             "result_data": self.result_data,
             "error_message": self.error_message,
             "error_code": self.error_code,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ExternalSystemResult':
+    def from_dict(cls, data: Dict[str, Any]) -> "ExternalSystemResult":
         """
         Create from dictionary.
-        
+
         Args:
             data: Dictionary representation
-            
+
         Returns:
             ExternalSystemResult instance
         """
@@ -327,73 +338,75 @@ class ExternalSystemResult:
             result_data=data.get("result_data"),
             error_message=data.get("error_message"),
             error_code=data.get("error_code"),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
         )
 
 
 class ExternalSystemFactory:
     """
     Factory for creating external system connector instances.
-    
+
     This factory makes it easy to create the appropriate connector based on
     the system type, abstracting away the implementation details.
     """
-    
+
     _connectors = {}
-    
+
     @classmethod
     def register_connector(cls, system_type: str, connector_class: type) -> None:
         """
         Register an external system connector class.
-        
+
         Args:
             system_type: External system type identifier
             connector_class: Connector class
         """
         cls._connectors[system_type] = connector_class
-    
+
     @classmethod
-    async def create_connector(cls, system_type: str, config: Dict[str, Any]) -> ExternalSystemInterface:
+    async def create_connector(
+        cls, system_type: str, config: Dict[str, Any]
+    ) -> ExternalSystemInterface:
         """
         Create an external system connector instance.
-        
+
         Args:
             system_type: External system type identifier
             config: Configuration for the connector
-            
+
         Returns:
             External system connector instance
-        
+
         Raises:
             ValueError: If system type is not registered
         """
         if system_type not in cls._connectors:
             raise ValueError(f"Unknown external system type: {system_type}")
-        
+
         connector_class = cls._connectors[system_type]
         connector = connector_class()
         await connector.initialize(config)
-        
+
         return connector
-    
+
     @classmethod
     def get_available_connectors(cls) -> List[str]:
         """
         Get list of available connector types.
-        
+
         Returns:
             List of connector type identifiers
         """
         return list(cls._connectors.keys())
-    
+
     @classmethod
     def get_connector_class(cls, system_type: str) -> Optional[type]:
         """
         Get the connector class for a system type.
-        
+
         Args:
             system_type: External system type identifier
-            
+
         Returns:
             Connector class or None if not found
         """

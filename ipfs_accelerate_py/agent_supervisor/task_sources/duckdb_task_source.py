@@ -40,28 +40,18 @@ from .duckdb_state import (
     is_quack_transport_target,
 )
 
-DUCKDB_TASK_SOURCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/duckdb-task-source@1"
-)
+DUCKDB_TASK_SOURCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/duckdb-task-source@1"
 DUCKDB_TASK_SOURCE_SCHEMA_VERSION: Final = 1
 WORKFLOW_SCHEMA: Final = DUCKDB_TASK_SOURCE_SCHEMA
 WORKFLOW_SCHEMA_VERSION: Final = DUCKDB_TASK_SOURCE_SCHEMA_VERSION
 SCHEMA_VERSION: Final = DUCKDB_TASK_SOURCE_SCHEMA_VERSION
-TASK_SOURCE_SNAPSHOT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-source-snapshot@1"
-)
-TASK_SOURCE_PAGE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-source-page@1"
-)
+TASK_SOURCE_SNAPSHOT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-source-snapshot@1"
+TASK_SOURCE_PAGE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-source-page@1"
 TASK_SOURCE_EVENT_PAGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-source-event-page@1"
 )
-TASK_SOURCE_CAS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-source-cas@1"
-)
-TASK_SOURCE_INTEGRITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/task-source-integrity@1"
-)
+TASK_SOURCE_CAS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-source-cas@1"
+TASK_SOURCE_INTEGRITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/task-source-integrity@1"
 TASK_SOURCE_MIGRATION_PREVIEW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-source-migration-preview@1"
 )
@@ -111,9 +101,7 @@ _TERMINAL_STATUSES: Final = frozenset(
     {"completed", "cancelled", "skipped", "failed", "quarantined"}
 )
 _COMPLETED_STATUSES: Final = frozenset({"completed", "skipped"})
-_READY_STATUSES: Final = frozenset(
-    {"proposed", "admitted", "pending", "ready", "retrying"}
-)
+_READY_STATUSES: Final = frozenset({"proposed", "admitted", "pending", "ready", "retrying"})
 _TASK_STATUSES: Final = frozenset(
     {
         *_READY_STATUSES,
@@ -653,9 +641,7 @@ def _identifier(value: Any, *, noun: str) -> str:
         or len(selected.encode("utf-8")) > MAX_IDENTIFIER_BYTES
         or not _SAFE_IDENTIFIER.fullmatch(selected)
     ):
-        raise TaskSourceInjectionError(
-            f"{noun} must be a bounded, single-line opaque identifier"
-        )
+        raise TaskSourceInjectionError(f"{noun} must be a bounded, single-line opaque identifier")
     return selected
 
 
@@ -724,17 +710,13 @@ def _without_fields(value: Any, excluded: frozenset[str]) -> Any:
             for key, member in value.items()
             if str(key) not in excluded
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_without_fields(member, excluded) for member in value]
     return value
 
 
 def _task_identity_payload(record: Mapping[str, Any]) -> dict[str, Any]:
-    value = _without_fields(
-        record, _MUTABLE_IDENTITY_FIELDS | _IDENTITY_ALIAS_FIELDS
-    )
+    value = _without_fields(record, _MUTABLE_IDENTITY_FIELDS | _IDENTITY_ALIAS_FIELDS)
     if not isinstance(value, dict):
         raise TypeError("task identity payload must be an object")
     return value
@@ -766,9 +748,7 @@ def _cursor_decode(cursor: str, plan_root: str, revision: int) -> int:
     except Exception as exc:
         raise TaskSourceConflictError("task cursor is malformed") from exc
     canonical_payload = _canonical(payload, noun="task cursor").encode("utf-8")
-    expected = hashlib.sha256(
-        b"duckdb-task-cursor-v1\0" + canonical_payload
-    ).hexdigest()
+    expected = hashlib.sha256(b"duckdb-task-cursor-v1\0" + canonical_payload).hexdigest()
     if not isinstance(digest, str) or not hmac.compare_digest(digest, expected):
         raise TaskSourceConflictError("task cursor identity does not match")
     if (
@@ -828,9 +808,7 @@ def _meta_value(metadata: Mapping[str, tuple[str, str]], key: str) -> str:
         ) from exc
     decoded = _decode_canonical(value_json, noun=f"workflow metadata {key}")
     if decoded != value:
-        raise TaskSourceIntegrityError(
-            f"workflow metadata {key!r} text and JSON values disagree"
-        )
+        raise TaskSourceIntegrityError(f"workflow metadata {key!r} text and JSON values disagree")
     return value
 
 
@@ -874,9 +852,7 @@ def _section_bundle(source: Mapping[str, Any]) -> dict[str, Any]:
             identity = content_identity(record)
             previous = unique.get(identity)
             if previous is not None and previous != record:
-                raise TaskSourceIntegrityError(
-                    f"conflicting canonical {section} record {identity}"
-                )
+                raise TaskSourceIntegrityError(f"conflicting canonical {section} record {identity}")
             unique[identity] = record
         bundle[section] = [unique[key] for key in sorted(unique)]
     return bundle
@@ -899,21 +875,16 @@ def _source_and_projection(
         tree_id = _identifier(repository_tree_id, noun="repository_tree_id")
         graph_record = _as_mapping(source, noun="prompt goal graph")
         graph_record["content_id"] = source.plan_root_cid
-        formal = prompt_goal_graph_to_formal_input(
-            source, repository_tree_id=tree_id
-        )
+        formal = prompt_goal_graph_to_formal_input(source, repository_tree_id=tree_id)
         return _as_mapping(formal, noun="formal plan input"), graph_record
 
     record = _as_mapping(source, noun="formal plan input")
-    if (
-        PromptGoalGraph is not None
-        and record.get("schema") == getattr(PromptGoalGraph, "SCHEMA", object())
+    if PromptGoalGraph is not None and record.get("schema") == getattr(
+        PromptGoalGraph, "SCHEMA", object()
     ):
         graph = PromptGoalGraph.from_dict(record)
         tree_id = _identifier(repository_tree_id, noun="repository_tree_id")
-        formal = prompt_goal_graph_to_formal_input(
-            graph, repository_tree_id=tree_id
-        )
+        formal = prompt_goal_graph_to_formal_input(graph, repository_tree_id=tree_id)
         return _as_mapping(formal, noun="formal plan input"), record
     return record, graph_record
 
@@ -924,10 +895,7 @@ def _goal_rows(
 ) -> list[tuple[str, str, str, int, str, str]]:
     records: list[dict[str, Any]] = []
     if graph is not None:
-        records = [
-            _as_mapping(item, noun="goal record")
-            for item in _values(graph.get("goals"))
-        ]
+        records = [_as_mapping(item, noun="goal record") for item in _values(graph.get("goals"))]
     else:
         for objective in bundle["objectives"]:
             records.append(dict(objective))
@@ -983,9 +951,7 @@ def _goal_rows(
             raise TaskSourceIntegrityError("goal CIDs and aliases must be unique")
         cids.add(cid)
         aliases.add(alias)
-        parent = _first(
-            record, "parent_goal_cid", "parent_id", "parent_goal_id"
-        )
+        parent = _first(record, "parent_goal_cid", "parent_id", "parent_goal_id")
         if parent:
             parent = _identifier(parent, noun="parent_goal_cid")
         result.append(
@@ -1000,14 +966,10 @@ def _goal_rows(
         )
     cid_set = {row[0] for row in result}
     if any(alias != cid and alias in cid_set for cid, alias, *_rest in result):
-        raise TaskSourceIntegrityError(
-            "goal alias collides with another goal CID"
-        )
+        raise TaskSourceIntegrityError("goal alias collides with another goal CID")
     for cid, _alias, parent, *_rest in result:
         if parent and parent not in cid_set:
-            raise TaskSourceIntegrityError(
-                f"goal {cid!r} references unknown parent {parent!r}"
-            )
+            raise TaskSourceIntegrityError(f"goal {cid!r} references unknown parent {parent!r}")
         if parent == cid:
             raise TaskSourceIntegrityError("goal cannot parent itself")
     _assert_acyclic({row[0]: (() if not row[2] else (row[2],)) for row in result}, "goal")
@@ -1052,9 +1014,8 @@ def _task_rows(
         "id",
     )
     for ordinal, record in enumerate(sorted(records, key=sort_key)):
-        if (
-            PromptTaskRecord is not None
-            and record.get("schema") == getattr(PromptTaskRecord, "SCHEMA", object())
+        if PromptTaskRecord is not None and record.get("schema") == getattr(
+            PromptTaskRecord, "SCHEMA", object()
         ):
             parsed = PromptTaskRecord.from_dict(record)
             claimed = _first(record, "task_cid", "content_id")
@@ -1156,9 +1117,7 @@ def _dependencies(
         selected: list[str] = []
         for dependency in _values(raw):
             if isinstance(dependency, Mapping):
-                dependency = _first(
-                    dependency, "task_cid", "dependency_task_cid", "task_id", "id"
-                )
+                dependency = _first(dependency, "task_cid", "dependency_task_cid", "task_id", "id")
             key = str(dependency or "").strip()
             resolved = aliases.get(key, key)
             resolved = _identifier(resolved, noun="dependency_task_cid")
@@ -1206,9 +1165,7 @@ def _nested_rows(
             output_paths.add(path)
             outputs.append((cid, ordinal, path, _canonical(item, noun="task output")))
 
-        raw_validations = record.get("validations") or record.get(
-            "validation_commands"
-        ) or ()
+        raw_validations = record.get("validations") or record.get("validation_commands") or ()
         for ordinal, raw in enumerate(_values(raw_validations)):
             if isinstance(raw, Mapping) or hasattr(raw, "to_dict"):
                 item = _as_mapping(raw, noun="task validation")
@@ -1236,9 +1193,7 @@ def _nested_rows(
                 )
             )
 
-        raw_acceptance = record.get("acceptance") or record.get(
-            "acceptance_criteria"
-        ) or ()
+        raw_acceptance = record.get("acceptance") or record.get("acceptance_criteria") or ()
         for ordinal, raw in enumerate(_values(raw_acceptance)):
             if isinstance(raw, Mapping) or hasattr(raw, "to_dict"):
                 item = _as_mapping(raw, noun="acceptance criterion")
@@ -1327,9 +1282,7 @@ def _projection_identity(connection: Any) -> str:
         )
         selected = ", ".join(f'"{name}"' for name in identity_columns)
         order = ", ".join(f'"{name}"' for name in columns[:2])
-        rows = connection.execute(
-            f'SELECT {selected} FROM "{table}" ORDER BY {order}'
-        ).fetchall()
+        rows = connection.execute(f'SELECT {selected} FROM "{table}" ORDER BY {order}').fetchall()
         payload[table] = [list(row) for row in rows]
     return content_identity(payload)
 
@@ -1371,13 +1324,10 @@ def _validate_dynamic_state(
     if len(task_rows) > MAX_TASKS:
         raise TaskSourceIntegrityError("task population exceeds its state bound")
     current_tasks = {
-        str(task_cid): (str(status), int(revision))
-        for task_cid, status, revision in task_rows
+        str(task_cid): (str(status), int(revision)) for task_cid, status, revision in task_rows
     }
     if set(initial_statuses) != set(current_tasks):
-        raise TaskSourceIntegrityError(
-            "initial task status population does not match tasks"
-        )
+        raise TaskSourceIntegrityError("initial task status population does not match tasks")
     for task_cid, status_value in initial_statuses.items():
         try:
             _status(status_value)
@@ -1398,17 +1348,11 @@ def _validate_dynamic_state(
     cursor = int(_meta_value(metadata, "event_sequence"))
     global_revision = int(_meta_value(metadata, "revision"))
     if cursor != len(event_rows) or global_revision != len(event_rows) + 1:
-        raise TaskSourceIntegrityError(
-            "workflow revision/cursor does not match committed events"
-        )
-    status_chains: dict[str, list[Mapping[str, Any]]] = {
-        task_cid: [] for task_cid in current_tasks
-    }
+        raise TaskSourceIntegrityError("workflow revision/cursor does not match committed events")
+    status_chains: dict[str, list[Mapping[str, Any]]] = {task_cid: [] for task_cid in current_tasks}
     for sequence, revision, task_cid, event_type, body_json in event_rows:
         if int(revision) != int(sequence) + 1:
-            raise TaskSourceIntegrityError(
-                "event revisions are not contiguous and monotonic"
-            )
+            raise TaskSourceIntegrityError("event revisions are not contiguous and monotonic")
         selected_task = str(task_cid)
         if selected_task not in current_tasks:
             raise TaskSourceIntegrityError("event references an unknown task")
@@ -1427,9 +1371,7 @@ def _validate_dynamic_state(
                 or event.get("previous_status") != expected_status
                 or event.get("task_revision") != expected_revision
             ):
-                raise TaskSourceIntegrityError(
-                    f"task {task_cid!r} status event chain is corrupt"
-                )
+                raise TaskSourceIntegrityError(f"task {task_cid!r} status event chain is corrupt")
             try:
                 expected_status = _status(event.get("status"))
             except ValueError as exc:
@@ -1488,9 +1430,7 @@ class DuckDBTaskSource:
         if lock_timeout_seconds <= 0:
             raise ValueError("lock_timeout_seconds must be positive")
         self.lock_timeout_seconds = float(lock_timeout_seconds)
-        self._lock_path = self.database_path.with_name(
-            f".{self.database_path.name}.lock"
-        )
+        self._lock_path = self.database_path.with_name(f".{self.database_path.name}.lock")
         self._installing_path = self.database_path.with_name(
             f".{self.database_path.name}.installing"
         )
@@ -1509,9 +1449,7 @@ class DuckDBTaskSource:
     def _recover_atomic_install(self) -> None:
         if not self._installing_path.exists():
             return
-        with exclusive_file_lock(
-            self._lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with exclusive_file_lock(self._lock_path, timeout_seconds=self.lock_timeout_seconds):
             if not self._installing_path.exists():
                 return
             if self.database_path.exists():
@@ -1529,9 +1467,7 @@ class DuckDBTaskSource:
                         connection, require_complete=True, check_projection=True
                     )
                     if _meta_value(metadata, "installation_state") != "complete":
-                        raise TaskSourceIntegrityError(
-                            "atomic-install file is incomplete"
-                        )
+                        raise TaskSourceIntegrityError("atomic-install file is incomplete")
                 finally:
                     connection.close()
             except Exception:
@@ -1573,9 +1509,7 @@ class DuckDBTaskSource:
         writer_id: str | None = None,
         fencing_token: int | None = None,
     ) -> Iterator[tuple[Any, dict[str, tuple[str, str]]]]:
-        selected_writer = _identifier(
-            writer_id or self.writer_id, noun="writer_id"
-        )
+        selected_writer = _identifier(writer_id or self.writer_id, noun="writer_id")
         selected_fence = self.fencing_token if fencing_token is None else fencing_token
         if (
             isinstance(selected_fence, bool)
@@ -1583,9 +1517,7 @@ class DuckDBTaskSource:
             or selected_fence < 1
         ):
             raise ValueError("fencing_token must be a positive integer")
-        with exclusive_file_lock(
-            self._lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with exclusive_file_lock(self._lock_path, timeout_seconds=self.lock_timeout_seconds):
             connection = _connect(self.database_path, read_only=False)
             try:
                 connection.execute("BEGIN TRANSACTION")
@@ -1597,9 +1529,7 @@ class DuckDBTaskSource:
                 if selected_fence < current_fence:
                     raise TaskSourceConflictError("writer fencing token is stale")
                 if selected_fence == current_fence and selected_writer != current_writer:
-                    raise TaskSourceConflictError(
-                        "writer fencing token belongs to another writer"
-                    )
+                    raise TaskSourceConflictError("writer fencing token belongs to another writer")
                 if selected_fence > current_fence:
                     _set_metadata(connection, "writer_id", selected_writer)
                     _set_metadata(connection, "writer_fence", selected_fence)
@@ -1627,14 +1557,12 @@ class DuckDBTaskSource:
         missing = expected_tables - tables
         if missing:
             raise TaskSourceIntegrityError(
-                "DuckDB task source is partial; missing tables: "
-                + ", ".join(sorted(missing))
+                "DuckDB task source is partial; missing tables: " + ", ".join(sorted(missing))
             )
         unexpected = tables - expected_tables
         if unexpected:
             raise TaskSourceIntegrityError(
-                "DuckDB task source contains unexpected tables: "
-                + ", ".join(sorted(unexpected))
+                "DuckDB task source contains unexpected tables: " + ", ".join(sorted(unexpected))
             )
         for table, columns in _TABLE_COLUMNS.items():
             actual = _table_columns(connection, table)
@@ -1651,17 +1579,13 @@ class DuckDBTaskSource:
             event_sequence = int(_meta_value(metadata, "event_sequence"))
             writer_fence = int(_meta_value(metadata, "writer_fence"))
         except ValueError as exc:
-            raise TaskSourceIntegrityError(
-                "numeric workflow metadata is malformed"
-            ) from exc
+            raise TaskSourceIntegrityError("numeric workflow metadata is malformed") from exc
         if version != DUCKDB_TASK_SOURCE_SCHEMA_VERSION:
             raise TaskSourceIntegrityError(
                 f"unsupported DuckDB task-source schema version {version}"
             )
         if revision < 1 or event_sequence < 0 or writer_fence < 1:
-            raise TaskSourceIntegrityError(
-                "workflow revision, cursor, or writer fence is invalid"
-            )
+            raise TaskSourceIntegrityError("workflow revision, cursor, or writer fence is invalid")
         state = _meta_value(metadata, "installation_state")
         if require_complete and state != "complete":
             raise TaskSourceIntegrityError("DuckDB task source is only partially installed")
@@ -1670,9 +1594,7 @@ class DuckDBTaskSource:
             noun="initial task statuses",
         )
         if not isinstance(initial_statuses, Mapping):
-            raise TaskSourceIntegrityError(
-                "initial task statuses must be a JSON object"
-            )
+            raise TaskSourceIntegrityError("initial task statuses must be a JSON object")
         _validate_dynamic_state(connection, metadata, initial_statuses)
         plan_root = _meta_value(metadata, "plan_root_cid")
         repository_tree = _meta_value(metadata, "repository_tree_id")
@@ -1687,18 +1609,11 @@ class DuckDBTaskSource:
             try:
                 _identifier(value, noun=key)
             except TaskSourceInjectionError as exc:
-                raise TaskSourceIntegrityError(
-                    f"workflow metadata {key!r} is malformed"
-                ) from exc
+                raise TaskSourceIntegrityError(f"workflow metadata {key!r} is malformed") from exc
         if self.expected_plan_root_cid and plan_root != self.expected_plan_root_cid:
             raise TaskSourceIntegrityError("DuckDB task source has a foreign plan root")
-        if (
-            self.expected_repository_tree_id
-            and repository_tree != self.expected_repository_tree_id
-        ):
-            raise TaskSourceIntegrityError(
-                "DuckDB task source has a foreign repository root"
-            )
+        if self.expected_repository_tree_id and repository_tree != self.expected_repository_tree_id:
+            raise TaskSourceIntegrityError("DuckDB task source has a foreign repository root")
         if check_projection:
             claimed = _meta_value(metadata, "projection_cid")
             if claimed != _projection_identity(connection):
@@ -1726,23 +1641,14 @@ class DuckDBTaskSource:
         """
 
         _duckdb_module()
-        formal_source, graph = _source_and_projection(
-            source, repository_tree_id=repository_tree_id
-        )
+        formal_source, graph = _source_and_projection(source, repository_tree_id=repository_tree_id)
         bundle = _section_bundle(formal_source)
         source_tree_id = str(bundle.get("repository_tree_id") or "")
-        if (
-            repository_tree_id
-            and source_tree_id
-            and repository_tree_id != source_tree_id
-        ):
+        if repository_tree_id and source_tree_id and repository_tree_id != source_tree_id:
             raise TaskSourceIntegrityError(
                 "supplied repository root disagrees with formal plan input"
             )
-        tree_id = (
-            repository_tree_id
-            or source_tree_id
-        )
+        tree_id = repository_tree_id or source_tree_id
         tree_id = _identifier(tree_id, noun="repository_tree_id")
         bundle["repository_tree_id"] = tree_id
         # Check projection identities before formal compilation.  Otherwise a
@@ -1750,10 +1656,7 @@ class DuckDBTaskSource:
         # formal effect/dependency collision and obscure the identity failure.
         _task_rows(bundle, graph)
         compile_result = FormalPlanCompiler().compile(formal_source)
-        if (
-            compile_result.status is not CompilationStatus.COMPILED
-            or compile_result.plan is None
-        ):
+        if compile_result.status is not CompilationStatus.COMPILED or compile_result.plan is None:
             diagnostics = "; ".join(item.message for item in compile_result.issues[:5])
             raise TaskSourceIntegrityError(
                 "formal plan input did not compile successfully"
@@ -1762,11 +1665,7 @@ class DuckDBTaskSource:
         claimed_root = (
             str(graph.get("content_id") or "")
             if graph is not None
-            else str(
-                formal_source.get("plan_root_cid")
-                or formal_source.get("plan_cid")
-                or ""
-            )
+            else str(formal_source.get("plan_root_cid") or formal_source.get("plan_cid") or "")
         )
         if plan_root_cid and claimed_root and plan_root_cid != claimed_root:
             raise TaskSourceIntegrityError(
@@ -1776,17 +1675,10 @@ class DuckDBTaskSource:
         root = _identifier(root, noun="plan_root_cid")
         if self.expected_plan_root_cid and root != self.expected_plan_root_cid:
             raise TaskSourceIntegrityError("materialization has a foreign plan root")
-        if (
-            self.expected_repository_tree_id
-            and tree_id != self.expected_repository_tree_id
-        ):
-            raise TaskSourceIntegrityError(
-                "materialization has a foreign repository root"
-            )
+        if self.expected_repository_tree_id and tree_id != self.expected_repository_tree_id:
+            raise TaskSourceIntegrityError("materialization has a foreign repository root")
 
-        with exclusive_file_lock(
-            self._lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with exclusive_file_lock(self._lock_path, timeout_seconds=self.lock_timeout_seconds):
             if self.database_path.exists():
                 if expected_absent:
                     raise TaskSourceConflictError("DuckDB task source already exists")
@@ -1802,9 +1694,7 @@ class DuckDBTaskSource:
                     existing = self.snapshot()
                     return {
                         "schema": MATERIALIZATION_RECEIPT_SCHEMA,
-                        "receipt_cid": _meta_value(
-                            metadata, "materialization_receipt_cid"
-                        ),
+                        "receipt_cid": _meta_value(metadata, "materialization_receipt_cid"),
                         "plan_root_cid": root,
                         "projection_cid": existing.projection_cid,
                         "revision": existing.revision,
@@ -1814,12 +1704,8 @@ class DuckDBTaskSource:
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
             if self._installing_path.exists():
                 self._installing_path.unlink()
-            selected_writer = _identifier(
-                writer_id or self.writer_id, noun="writer_id"
-            )
-            selected_fence = (
-                self.fencing_token if fencing_token is None else fencing_token
-            )
+            selected_writer = _identifier(writer_id or self.writer_id, noun="writer_id")
+            selected_fence = self.fencing_token if fencing_token is None else fencing_token
             if (
                 isinstance(selected_fence, bool)
                 or not isinstance(selected_fence, int)
@@ -1863,15 +1749,11 @@ class DuckDBTaskSource:
                         raise TaskSourceIntegrityError(
                             f"task {cid!r} references unknown goal {goal!r}"
                         )
-                    normalized_task_rows.append(
-                        (cid, alias, resolved_goal, *rest)
-                    )
+                    normalized_task_rows.append((cid, alias, resolved_goal, *rest))
                     normalized_tasks[cid] = task_records[cid]
                     task_aliases[alias] = cid
                     if alias != cid and alias in task_records:
-                        raise TaskSourceIntegrityError(
-                            "task alias collides with another task CID"
-                        )
+                        raise TaskSourceIntegrityError("task alias collides with another task CID")
                 dependencies = _dependencies(normalized_tasks, task_aliases)
                 outputs, validations, acceptance = _nested_rows(normalized_tasks)
                 artifacts = _artifact_rows(bundle)
@@ -1923,8 +1805,7 @@ class DuckDBTaskSource:
                 if (
                     independently_compiled.status is not CompilationStatus.COMPILED
                     or independently_compiled.plan_id != compile_result.plan_id
-                    or independently_compiled.source_identity
-                    != compile_result.source_identity
+                    or independently_compiled.source_identity != compile_result.source_identity
                 ):
                     raise TaskSourceIntegrityError(
                         "independent DuckDB recompilation disagrees with original plan"
@@ -1950,9 +1831,7 @@ class DuckDBTaskSource:
                     ((receipt_cid, root, 1, _canonical(receipt_body)),),
                 )
                 _set_metadata(connection, "projection_cid", projection_cid)
-                _set_metadata(
-                    connection, "materialization_receipt_cid", receipt_cid
-                )
+                _set_metadata(connection, "materialization_receipt_cid", receipt_cid)
                 _set_metadata(connection, "installation_state", "complete")
                 connection.execute("COMMIT")
             except BaseException:
@@ -2197,12 +2076,8 @@ class DuckDBTaskSource:
             "expected_absent",
             "fault_injector",
         }
-        constructor = {
-            key: value for key, value in kwargs.items() if key not in materialize_keys
-        }
-        materialize = {
-            key: value for key, value in kwargs.items() if key in materialize_keys
-        }
+        constructor = {key: value for key, value in kwargs.items() if key not in materialize_keys}
+        materialize = {key: value for key, value in kwargs.items() if key in materialize_keys}
         result = cls(database_path, **constructor)
         result.materialize(source, **materialize)
         return result
@@ -2236,7 +2111,9 @@ class DuckDBTaskSource:
                 terminal=nonterminal == 0,
             )
 
-    def _task_records(self, connection: Any, rows: Sequence[Sequence[Any]]) -> tuple[TaskRecord, ...]:
+    def _task_records(
+        self, connection: Any, rows: Sequence[Sequence[Any]]
+    ) -> tuple[TaskRecord, ...]:
         if not rows:
             return ()
         cids = [str(row[0]) for row in rows]
@@ -2314,9 +2191,7 @@ class DuckDBTaskSource:
             rows = rows[:selected_limit]
             tasks = self._task_records(connection, rows)
             next_cursor = (
-                _cursor_encode(plan_root, revision, offset + len(rows))
-                if has_more
-                else ""
+                _cursor_encode(plan_root, revision, offset + len(rows)) if has_more else ""
             )
             return TaskPage(tasks=tasks, revision=revision, next_cursor=next_cursor)
 
@@ -2345,13 +2220,8 @@ class DuckDBTaskSource:
         limit: int = DEFAULT_QUERY_LIMIT,
     ) -> TaskPage:
         selected_limit = _positive_limit(limit)
-        completed = {
-            _identifier(item, noun="completed task identifier")
-            for item in completed_ids
-        }
-        blocked = {
-            _identifier(item, noun="blocked task identifier") for item in blocked_ids
-        }
+        completed = {_identifier(item, noun="completed task identifier") for item in completed_ids}
+        blocked = {_identifier(item, noun="blocked task identifier") for item in blocked_ids}
         if completed & blocked:
             raise ValueError("completed_ids and blocked_ids must be disjoint")
         with self._read_connection() as (connection, metadata):
@@ -2369,17 +2239,12 @@ class DuckDBTaskSource:
             unknown = (resolved_completed | resolved_blocked) - set(by_id)
             if unknown:
                 raise TaskSourceIntegrityError(
-                    "readiness input references unknown tasks: "
-                    + ", ".join(sorted(unknown))
+                    "readiness input references unknown tasks: " + ", ".join(sorted(unknown))
                 )
             durable_completed = {
-                item.task_cid
-                for item in tasks
-                if item.status in _COMPLETED_STATUSES
+                item.task_cid for item in tasks if item.status in _COMPLETED_STATUSES
             }
-            durable_blocked = {
-                item.task_cid for item in tasks if item.status == "blocked"
-            }
+            durable_blocked = {item.task_cid for item in tasks if item.status == "blocked"}
             satisfied = durable_completed | resolved_completed
             unavailable = durable_blocked | resolved_blocked
             ready = tuple(
@@ -2404,9 +2269,7 @@ class DuckDBTaskSource:
         expected_fencing_token: int | None = None,
     ) -> WriterFence:
         selected = _identifier(writer_id, noun="writer_id")
-        with exclusive_file_lock(
-            self._lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with exclusive_file_lock(self._lock_path, timeout_seconds=self.lock_timeout_seconds):
             connection = _connect(self.database_path, read_only=False)
             try:
                 connection.execute("BEGIN TRANSACTION")
@@ -2414,10 +2277,7 @@ class DuckDBTaskSource:
                     connection, require_complete=True, check_projection=True
                 )
                 current = int(_meta_value(metadata, "writer_fence"))
-                if (
-                    expected_fencing_token is not None
-                    and expected_fencing_token != current
-                ):
+                if expected_fencing_token is not None and expected_fencing_token != current:
                     raise TaskSourceConflictError("writer fence CAS is stale")
                 new_fence = current + 1
                 _set_metadata(connection, "writer_id", selected)
@@ -2458,9 +2318,10 @@ class DuckDBTaskSource:
             raise ValueError("expected_revision must be a positive integer")
         new_status = _status(status)
         receipt_record = _as_mapping(receipt or {}, noun="CAS receipt")
-        with self._write_connection(
-            writer_id=writer_id, fencing_token=fencing_token
-        ) as (connection, metadata):
+        with self._write_connection(writer_id=writer_id, fencing_token=fencing_token) as (
+            connection,
+            metadata,
+        ):
             rows = connection.execute(
                 "SELECT task_cid, task_alias, goal_cid, ordinal, status, "
                 "revision, identity_json, body_json FROM tasks "
@@ -2490,9 +2351,7 @@ class DuckDBTaskSource:
             global_revision = int(_meta_value(metadata, "revision")) + 1
             event_sequence = int(_meta_value(metadata, "event_sequence")) + 1
             if event_sequence > MAX_EVENTS:
-                raise TaskSourceBoundsError(
-                    "event population exceeds the durable state bound"
-                )
+                raise TaskSourceBoundsError("event population exceeds the durable state bound")
             new_task_revision = current_task_revision + 1
             event_body = {
                 "schema": TASK_SOURCE_CAS_SCHEMA,
@@ -2512,13 +2371,15 @@ class DuckDBTaskSource:
                 }
             )
             connection.execute(
-                "UPDATE tasks SET status = ?, revision = ? "
-                "WHERE task_cid = ? AND revision = ?",
+                "UPDATE tasks SET status = ?, revision = ? WHERE task_cid = ? AND revision = ?",
                 [new_status, new_task_revision, task_cid, current_task_revision],
             )
-            if connection.execute(
-                "SELECT revision FROM tasks WHERE task_cid = ?", [task_cid]
-            ).fetchone()[0] != new_task_revision:
+            if (
+                connection.execute(
+                    "SELECT revision FROM tasks WHERE task_cid = ?", [task_cid]
+                ).fetchone()[0]
+                != new_task_revision
+            ):
                 raise TaskSourceConflictError("task revision changed concurrently")
             _insert_many(
                 connection,
@@ -2562,16 +2423,10 @@ class DuckDBTaskSource:
         writer_id: str | None = None,
     ) -> Mapping[str, Any]:
         body = _as_mapping(event, noun="task event")
-        task_key = _identifier(
-            _first(body, "task_cid", "task_id"), noun="event task identifier"
-        )
-        event_type = _identifier(
-            _first(body, "event_type", "type", "kind"), noun="event_type"
-        )
+        task_key = _identifier(_first(body, "task_cid", "task_id"), noun="event task identifier")
+        event_type = _identifier(_first(body, "event_type", "type", "kind"), noun="event_type")
         if event_type == "status_changed":
-            raise ValueError(
-                "status_changed is reserved for compare_and_set_status"
-            )
+            raise ValueError("status_changed is reserved for compare_and_set_status")
         lease_record = _as_mapping(lease or {}, noun="event lease")
         selected_fence = fence
         if selected_fence is None and lease_record:
@@ -2579,25 +2434,22 @@ class DuckDBTaskSource:
             if raw_fence is not None:
                 selected_fence = int(raw_fence)
         selected_fence = self.fencing_token if selected_fence is None else selected_fence
-        with self._write_connection(
-            writer_id=writer_id, fencing_token=selected_fence
-        ) as (connection, metadata):
+        with self._write_connection(writer_id=writer_id, fencing_token=selected_fence) as (
+            connection,
+            metadata,
+        ):
             task_row = connection.execute(
                 "SELECT task_cid FROM tasks WHERE task_cid = ? OR task_alias = ? "
                 "ORDER BY task_cid LIMIT 2",
                 [task_key, task_key],
             ).fetchall()
             if len(task_row) != 1:
-                raise TaskSourceIntegrityError(
-                    "event must reference exactly one existing task"
-                )
+                raise TaskSourceIntegrityError("event must reference exactly one existing task")
             task_cid = str(task_row[0][0])
             current_revision = int(_meta_value(metadata, "revision"))
             sequence = int(_meta_value(metadata, "event_sequence")) + 1
             if sequence > MAX_EVENTS:
-                raise TaskSourceBoundsError(
-                    "event population exceeds the durable state bound"
-                )
+                raise TaskSourceBoundsError("event population exceeds the durable state bound")
             persisted = {
                 **body,
                 "task_cid": task_cid,
@@ -2618,9 +2470,7 @@ class DuckDBTaskSource:
                     or str(existing[3]) != event_type
                     or str(existing[4]) != encoded
                 ):
-                    raise TaskSourceConflictError(
-                        "event CID was replayed with different content"
-                    )
+                    raise TaskSourceConflictError("event CID was replayed with different content")
                 return {
                     "event_cid": event_cid,
                     "sequence": int(existing[0]),
@@ -2733,8 +2583,7 @@ class DuckDBTaskSource:
         order = ", ".join(f'"{name}"' for name in columns[:2])
         with self._read_connection() as (connection, _metadata_value):
             rows = connection.execute(
-                f'SELECT {selected} FROM "{table}" '
-                f"ORDER BY {order} LIMIT ? OFFSET ?",
+                f'SELECT {selected} FROM "{table}" ORDER BY {order} LIMIT ? OFFSET ?',
                 [selected_limit, cursor],
             ).fetchall()
         return tuple(dict(zip(columns, row)) for row in rows)
@@ -2771,7 +2620,7 @@ class DuckDBTaskSource:
             goal_graph: dict[str, tuple[str, ...]] = {}
             for goal_cid, parent, body_json in goal_rows:
                 _decode_canonical(body_json, noun=f"goal {goal_cid} body")
-                goal_graph[str(goal_cid)] = (() if not parent else (str(parent),))
+                goal_graph[str(goal_cid)] = () if not parent else (str(parent),)
             _assert_acyclic(goal_graph, "goal")
             task_ids = {str(row[0]) for row in task_rows}
             aliases = {str(row[1]) for row in task_rows}
@@ -2783,10 +2632,7 @@ class DuckDBTaskSource:
                 _meta_value(metadata, "initial_task_statuses"),
                 noun="initial task statuses",
             )
-            if (
-                not isinstance(initial_statuses, Mapping)
-                or set(initial_statuses) != task_ids
-            ):
+            if not isinstance(initial_statuses, Mapping) or set(initial_statuses) != task_ids:
                 raise TaskSourceIntegrityError(
                     "initial task status population does not match tasks"
                 )
@@ -2798,43 +2644,31 @@ class DuckDBTaskSource:
                         f"task {task_cid!r} has an invalid initial status"
                     ) from exc
             for row in task_rows:
-                task_cid, _alias, goal_cid, _ordinal, status, revision, identity_json, body_json = row
+                task_cid, _alias, goal_cid, _ordinal, status, revision, identity_json, body_json = (
+                    row
+                )
                 if str(goal_cid) not in goal_ids:
-                    raise TaskSourceIntegrityError(
-                        f"task {task_cid!r} references unknown goal"
-                    )
+                    raise TaskSourceIntegrityError(f"task {task_cid!r} references unknown goal")
                 _status(status)
                 if int(revision) < 1:
                     raise TaskSourceIntegrityError("task revision is invalid")
                 if int(revision) > global_revision:
-                    raise TaskSourceIntegrityError(
-                        "task revision exceeds the source revision"
-                    )
-                identity = _decode_canonical(
-                    identity_json, noun=f"task {task_cid} identity"
-                )
+                    raise TaskSourceIntegrityError("task revision exceeds the source revision")
+                identity = _decode_canonical(identity_json, noun=f"task {task_cid} identity")
                 body = _decode_canonical(body_json, noun=f"task {task_cid} body")
                 if not isinstance(identity, Mapping) or not isinstance(body, Mapping):
-                    raise TaskSourceIntegrityError(
-                        "task identity and body must be JSON objects"
-                    )
+                    raise TaskSourceIntegrityError("task identity and body must be JSON objects")
                 if _task_identity_payload(body) != identity:
-                    raise TaskSourceIntegrityError(
-                        f"task {task_cid!r} immutable identity changed"
-                    )
+                    raise TaskSourceIntegrityError(f"task {task_cid!r} immutable identity changed")
             dependency_rows = connection.execute(
                 "SELECT task_cid, dependency_task_cid FROM task_dependencies "
                 "ORDER BY task_cid, dependency_task_cid"
             ).fetchall()
             if len(dependency_rows) > MAX_EDGES:
-                raise TaskSourceIntegrityError(
-                    "task dependency population exceeds integrity bound"
-                )
+                raise TaskSourceIntegrityError("task dependency population exceeds integrity bound")
             for task_cid, dependency in dependency_rows:
                 if str(task_cid) not in task_ids or str(dependency) not in task_ids:
-                    raise TaskSourceIntegrityError(
-                        "task dependency references an unknown task"
-                    )
+                    raise TaskSourceIntegrityError("task dependency references an unknown task")
                 task_graph[str(task_cid)].append(str(dependency))
             _assert_acyclic(task_graph, "task dependency")
             for table in (
@@ -2843,14 +2677,10 @@ class DuckDBTaskSource:
                 "task_acceptance",
                 "task_events",
             ):
-                rows = connection.execute(
-                    f'SELECT DISTINCT task_cid FROM "{table}"'
-                ).fetchall()
+                rows = connection.execute(f'SELECT DISTINCT task_cid FROM "{table}"').fetchall()
                 unknown = {str(row[0]) for row in rows} - task_ids
                 if unknown:
-                    raise TaskSourceIntegrityError(
-                        f"{table} references an unknown task"
-                    )
+                    raise TaskSourceIntegrityError(f"{table} references an unknown task")
             plan_root = _meta_value(metadata, "plan_root_cid")
             receipt_roots = {
                 str(row[0])
@@ -2885,9 +2715,7 @@ class DuckDBTaskSource:
             sequences = [int(row[0]) for row in event_rows]
             if sequences != list(range(1, len(sequences) + 1)):
                 raise TaskSourceIntegrityError("event sequence is not contiguous")
-            if sequences and sequences[-1] != int(
-                _meta_value(metadata, "event_sequence")
-            ):
+            if sequences and sequences[-1] != int(_meta_value(metadata, "event_sequence")):
                 raise TaskSourceIntegrityError("event cursor metadata is stale")
             if not sequences and int(_meta_value(metadata, "event_sequence")) != 0:
                 raise TaskSourceIntegrityError("event cursor metadata is corrupt")
@@ -2896,22 +2724,16 @@ class DuckDBTaskSource:
                     "source revision is not monotonic with committed events"
                 )
             if any(int(row[1]) != int(row[0]) + 1 for row in event_rows):
-                raise TaskSourceIntegrityError(
-                    "event revisions are not contiguous and monotonic"
-                )
+                raise TaskSourceIntegrityError("event revisions are not contiguous and monotonic")
             status_chains: dict[str, list[Mapping[str, Any]]] = {
                 task_cid: [] for task_cid in task_ids
             }
             for _sequence, _revision, task_cid, event_type, body_json in event_rows:
                 if str(event_type) != "status_changed":
                     continue
-                body = _decode_canonical(
-                    body_json, noun=f"status event for {task_cid}"
-                )
+                body = _decode_canonical(body_json, noun=f"status event for {task_cid}")
                 if not isinstance(body, Mapping):
-                    raise TaskSourceIntegrityError(
-                        "status event body must be an object"
-                    )
+                    raise TaskSourceIntegrityError("status event body must be an object")
                 status_chains[str(task_cid)].append(body)
             current_rows = {str(row[0]): row for row in task_rows}
             for task_cid, chain in status_chains.items():
@@ -2934,10 +2756,7 @@ class DuckDBTaskSource:
                             f"task {task_cid!r} status event is invalid"
                         ) from exc
                 current = current_rows[task_cid]
-                if (
-                    str(current[4]) != expected_status
-                    or int(current[5]) != expected_task_revision
-                ):
+                if str(current[4]) != expected_status or int(current[5]) != expected_task_revision:
                     raise TaskSourceIntegrityError(
                         f"task {task_cid!r} status/revision has no valid event history"
                     )
@@ -2982,9 +2801,7 @@ class DuckDBTaskSource:
             "base_revision": revision,
             "statement_digests": list(statements),
         }
-        rollback_identity = content_identity(
-            {"namespace": "duckdb-schema-rollback", **material}
-        )
+        rollback_identity = content_identity({"namespace": "duckdb-schema-rollback", **material})
         return MigrationPreview(
             preview_id=content_identity(material),
             database_identity=database_identity,
@@ -3011,17 +2828,16 @@ class DuckDBTaskSource:
             raise TypeError("preview must be a MigrationPreview")
         if not preview.supported:
             raise UnsupportedSchemaMigrationError(
-                f"schema migration {preview.from_version}->{preview.to_version} "
-                "is not supported"
+                f"schema migration {preview.from_version}->{preview.to_version} is not supported"
             )
-        with self._write_connection(
-            writer_id=writer_id, fencing_token=fencing_token
-        ) as (connection, metadata):
+        with self._write_connection(writer_id=writer_id, fencing_token=fencing_token) as (
+            connection,
+            metadata,
+        ):
             if (
                 _database_identity(metadata) != preview.database_identity
                 or int(_meta_value(metadata, "revision")) != preview.base_revision
-                or int(_meta_value(metadata, "schema_version"))
-                != preview.from_version
+                or int(_meta_value(metadata, "schema_version")) != preview.from_version
             ):
                 raise TaskSourceConflictError("schema migration preview is stale")
             if callable(fault_injector):
@@ -3064,9 +2880,7 @@ class DuckDBTaskSource:
                     ),
                 )
             elif str(existing[0]) != encoded:
-                raise TaskSourceConflictError(
-                    "schema migration receipt identity collision"
-                )
+                raise TaskSourceConflictError("schema migration receipt identity collision")
             return MigrationReceipt(
                 receipt_cid=receipt_cid,
                 preview_id=preview.preview_id,
@@ -3089,14 +2903,14 @@ class DuckDBTaskSource:
             raise TypeError("receipt must be a MigrationReceipt")
         if receipt.changed:
             raise UnsupportedSchemaMigrationError(
-                "committed cross-version rollback requires a registered "
-                "version-specific rollback"
+                "committed cross-version rollback requires a registered version-specific rollback"
             )
         # A no-op migration has no bytes to restore.  Return an identity-bound
         # rollback receipt after revalidating the source and writer fence.
-        with self._write_connection(
-            writer_id=writer_id, fencing_token=fencing_token
-        ) as (_connection, metadata):
+        with self._write_connection(writer_id=writer_id, fencing_token=fencing_token) as (
+            _connection,
+            metadata,
+        ):
             if int(_meta_value(metadata, "schema_version")) != receipt.to_version:
                 raise TaskSourceConflictError("migration rollback source is stale")
             body = {

@@ -61,7 +61,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 model = AutoModelForCausalLM.from_pretrained("ai21labs/Jamba-v0.1")
 tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
 
-input_ids = tokenizer("In the recent Super Bowl LVIII,", return_tensors='pt').to(model.device)["input_ids"]
+input_ids = tokenizer("In the recent Super Bowl LVIII,", return_tensors="pt").to(model.device)[
+    "input_ids"
+]
 
 outputs = model.generate(input_ids, max_new_tokens=216)
 
@@ -77,6 +79,7 @@ The published checkpoint is saved in BF16. In order to load it into RAM in BF16/
 ```python
 from transformers import AutoModelForCausalLM
 import torch
+
 model = AutoModelForCausalLM.from_pretrained("ai21labs/Jamba-v0.1", torch_dtype=torch.bfloat16)
 # you can also use torch_dtype=torch.float16
 ```
@@ -85,10 +88,13 @@ When using half precision, you can enable the [FlashAttention2](https://github.c
 ```python
 from transformers import AutoModelForCausalLM
 import torch
-model = AutoModelForCausalLM.from_pretrained("ai21labs/Jamba-v0.1",
-                                             torch_dtype=torch.bfloat16,
-                                             attn_implementation="flash_attention_2",
-                                             device_map="auto")
+
+model = AutoModelForCausalLM.from_pretrained(
+    "ai21labs/Jamba-v0.1",
+    torch_dtype=torch.bfloat16,
+    attn_implementation="flash_attention_2",
+    device_map="auto",
+)
 ```
 
 </details>
@@ -98,9 +104,13 @@ model = AutoModelForCausalLM.from_pretrained("ai21labs/Jamba-v0.1",
 
 ```python
 from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+
 quantization_config = BitsAndBytesConfig(load_in_8bit=True, llm_int8_skip_modules=["mamba"])
 model = AutoModelForCausalLM.from_pretrained(
-    "ai21labs/Jamba-v0.1", torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", quantization_config=quantization_config
+    "ai21labs/Jamba-v0.1",
+    torch_dtype=torch.bfloat16,
+    attn_implementation="flash_attention_2",
+    quantization_config=quantization_config,
 )
 ```
 </details>

@@ -48,7 +48,7 @@ from ..runtime.provider_batch_scheduler import (
 
 PromptBuilder = Callable[[object, str], str]
 BootstrapCallback = Callable[[], None]
-DEFAULT_OPEN_TASK_STATUSES = ("to" "do", "ready")
+DEFAULT_OPEN_TASK_STATUSES = ("todo", "ready")
 DEFAULT_TASK_PROPOSAL_TEST_OUTPUT = "tests and fixtures needed"
 TASK_IMPLEMENTATION_PROPOSAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-implementation-proposal@1"
@@ -96,9 +96,7 @@ def _route_decision_runtime(
         return callback()
     authorize = getattr(runtime, "authorize_mutation", None)
     if not callable(authorize):
-        raise TypeError(
-            "decision_runtime must expose authorize_mutation() for writes"
-        )
+        raise TypeError("decision_runtime must expose authorize_mutation() for writes")
 
     def dispatch() -> dict[str, Any]:
         value = callback()
@@ -141,9 +139,7 @@ TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA: dict[str, Any] = {
                 "required": ["path", "operation", "rationale_references"],
                 "properties": {
                     "path": {"type": "string", "minLength": 1},
-                    "operation": {
-                        "enum": sorted(TASK_PROPOSAL_OPERATIONS)
-                    },
+                    "operation": {"enum": sorted(TASK_PROPOSAL_OPERATIONS)},
                     "rationale_references": {
                         "type": "array",
                         "minItems": 1,
@@ -323,10 +319,14 @@ def build_task_proposal_route_paths(
     else:
         if not artifact_namespace:
             raise ValueError("artifact_namespace is required when artifact_dir is not configured")
-        resolved_artifact_dir = _repo_path(root, artifact_root) / str(artifact_namespace) / Path(artifact_leaf)
+        resolved_artifact_dir = (
+            _repo_path(root, artifact_root) / str(artifact_namespace) / Path(artifact_leaf)
+        )
     return TaskProposalRoutePaths(
         task_board_path=repo_task_board_path(root, task_board_stem, docs_dir=task_board_dir),
-        plan_path=repo_doc_path(root, f"{plan_stem or task_board_stem}.md", docs_dir=plan_dir or task_board_dir),
+        plan_path=repo_doc_path(
+            root, f"{plan_stem or task_board_stem}.md", docs_dir=plan_dir or task_board_dir
+        ),
         artifact_dir=resolved_artifact_dir,
     )
 
@@ -925,9 +925,7 @@ def _router_tree_id(repo_root: Path, *, fallback_material: str) -> str:
     value = str(result.stdout or "").strip()
     if result.returncode == 0 and value:
         return value
-    return "tree:sha256:" + hashlib.sha256(
-        fallback_material.encode("utf-8")
-    ).hexdigest()
+    return "tree:sha256:" + hashlib.sha256(fallback_material.encode("utf-8")).hexdigest()
 
 
 def _router_repository_id(repo_root: Path) -> str:
@@ -942,16 +940,16 @@ def _router_repository_id(repo_root: Path) -> str:
         check=False,
     )
     raw_git_dir = str(git_dir.stdout or "").strip()
-    material = str(
-        (
-            Path(raw_git_dir)
-            if Path(raw_git_dir).is_absolute()
-            else resolved / raw_git_dir
-        ).resolve()
-    ) if git_dir.returncode == 0 and raw_git_dir else str(resolved)
-    return "repository:sha256:" + hashlib.sha256(
-        material.encode("utf-8")
-    ).hexdigest()
+    material = (
+        str(
+            (
+                Path(raw_git_dir) if Path(raw_git_dir).is_absolute() else resolved / raw_git_dir
+            ).resolve()
+        )
+        if git_dir.returncode == 0 and raw_git_dir
+        else str(resolved)
+    )
+    return "repository:sha256:" + hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def _context_artifact_path(path: Path, repo_root: Path) -> str:
@@ -977,12 +975,7 @@ def compile_task_proposal_context(
         raise TaskProposalRouterError("plan text must be a string")
     task_id = _task_value(task, "task_id")
     allowed_paths = tuple(
-        sorted(
-            {
-                _normalize_proposal_path(path)
-                for path in _task_values(task, "outputs")
-            }
-        )
+        sorted({_normalize_proposal_path(path) for path in _task_values(task, "outputs")})
     )
     validation_commands = tuple(_task_values(task, "validation"))
     # Existing wrappers own their domain-specific wording.  Calling them with
@@ -994,14 +987,17 @@ def compile_task_proposal_context(
         "response_contract": TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
         "schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
     }
-    policy_revision = "sha256:" + hashlib.sha256(
-        json.dumps(
-            policy_payload,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
-    ).hexdigest()
+    policy_revision = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                policy_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
     repository_id = _router_repository_id(config.repo_root)
     roadmap_references = build_text_context_references(
         plan_text,
@@ -1027,9 +1023,7 @@ def compile_task_proposal_context(
     budget = ContextBudget(
         max_input_tokens=max(1, int(configured_input)),
         reserved_output_tokens=max(0, int(max_new_tokens)),
-        reserved_tool_tokens=max(
-            0, int(config.context_reserved_tool_tokens)
-        ),
+        reserved_tool_tokens=max(0, int(config.context_reserved_tool_tokens)),
         max_items=256,
         max_item_bytes=16_384,
         max_serialized_bytes=262_144,
@@ -1086,15 +1080,9 @@ def compile_task_proposal_context(
 
 def _proposal_json_depth(value: Any, depth: int = 0) -> int:
     if isinstance(value, Mapping):
-        return max(
-            (depth, *(_proposal_json_depth(item, depth + 1) for item in value.values()))
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        return max(
-            (depth, *(_proposal_json_depth(item, depth + 1) for item in value))
-        )
+        return max((depth, *(_proposal_json_depth(item, depth + 1) for item in value.values())))
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return max((depth, *(_proposal_json_depth(item, depth + 1) for item in value)))
     return depth
 
 
@@ -1203,15 +1191,9 @@ def parse_task_implementation_proposal(
                 reason_code=reason_code,
             )
 
-    normalized_allowed = tuple(
-        sorted({_normalize_proposal_path(path) for path in allowed_paths})
-    )
+    normalized_allowed = tuple(sorted({_normalize_proposal_path(path) for path in allowed_paths}))
     raw_files = payload.get("files")
-    if (
-        not isinstance(raw_files, list)
-        or not raw_files
-        or len(raw_files) > TASK_PROPOSAL_MAX_FILES
-    ):
+    if not isinstance(raw_files, list) or not raw_files or len(raw_files) > TASK_PROPOSAL_MAX_FILES:
         raise TaskProposalRouterError(
             "proposal files must be a bounded non-empty array",
             reason_code="missing_required_field",
@@ -1236,8 +1218,7 @@ def parse_task_implementation_proposal(
                 reason_code="operation_mismatch",
             )
         if operation == "delete" and (
-            path.startswith(("test/", "tests/"))
-            or path.rsplit("/", 1)[-1].startswith("test_")
+            path.startswith(("test/", "tests/")) or path.rsplit("/", 1)[-1].startswith("test_")
         ):
             raise TaskProposalRouterError(
                 "proposal cannot delete tests",
@@ -1256,9 +1237,7 @@ def parse_task_implementation_proposal(
             {
                 "path": path,
                 "operation": operation,
-                "rationale_references": sorted(
-                    {str(value).strip() for value in references}
-                ),
+                "rationale_references": sorted({str(value).strip() for value in references}),
             }
         )
     proposed_paths = tuple(sorted(item["path"] for item in normalized_files))
@@ -1393,15 +1372,9 @@ def _call_text_provider(
                 operation=operation,
                 context_limit=max(0, int(context_limit)),
                 policy={
-                    "allow_local_fallback": bool(
-                        invocation.allow_local_fallback
-                    ),
-                    "reject_effective_provider_name": (
-                        invocation.reject_effective_provider_name
-                    ),
-                    "required_effective_providers": tuple(
-                        invocation.required_effective_providers
-                    ),
+                    "allow_local_fallback": bool(invocation.allow_local_fallback),
+                    "reject_effective_provider_name": (invocation.reject_effective_provider_name),
+                    "required_effective_providers": tuple(invocation.required_effective_providers),
                     "response_contract": response_contract,
                 },
                 generation_settings={
@@ -1432,9 +1405,9 @@ def _call_text_provider(
             )
         return result.output, result
 
-    mode_raw = str(
-        os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
-    ).strip().casefold()
+    mode_raw = (
+        str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
+    )
     if (not usage_migrate) or mode_raw in {"", "off"}:
         return _legacy_dispatch()
 
@@ -1468,9 +1441,7 @@ def _call_text_provider(
         lane=str(provenance_map.get("lane") or "lane-0"),
         task_id=str(provenance_map.get("task_id") or route),
         goal_id=str(provenance_map.get("goal_id") or "goal:task-proposal"),
-        objective_id=str(
-            provenance_map.get("objective_id") or consumer.value
-        ),
+        objective_id=str(provenance_map.get("objective_id") or consumer.value),
         tree_id=str(provenance_map.get("repository_tree_id") or "tree:unknown"),
         estimated_output_tokens=max(0, int(invocation.max_new_tokens or 0)),
         metadata={
@@ -1549,12 +1520,8 @@ def run_task_proposal_router(
         "context_input_limit": compiled_context.receipt.effective_input_limit,
         "context_truncated": compiled_context.capsule.truncated,
         "context_estimator": compiled_context.receipt.estimator_name,
-        "context_estimator_error_bps": (
-            compiled_context.receipt.estimator_error_bps
-        ),
-        "context_decisions": [
-            decision.to_dict() for decision in compiled_context.decisions
-        ],
+        "context_estimator_error_bps": (compiled_context.receipt.estimator_error_bps),
+        "context_decisions": [decision.to_dict() for decision in compiled_context.decisions],
     }
     runtime_payload = {
         "task_id": _task_value(selected, "task_id"),
@@ -1603,17 +1570,13 @@ def run_task_proposal_router(
     if batch_result is not None:
         payload["provider_batch"] = batch_result.to_dict()
     task_name = (_task_value(selected, "task_id") or "task").lower()
-    context_receipt_path = (
-        config.artifact_dir / f"{task_name}-context-receipt.json"
-    )
+    context_receipt_path = config.artifact_dir / f"{task_name}-context-receipt.json"
     _route_decision_runtime(
         config.decision_runtime,
         "file_mutation",
         {
             **runtime_payload,
-            "path": _artifact_relative_path(
-                context_receipt_path, config.repo_root
-            ),
+            "path": _artifact_relative_path(context_receipt_path, config.repo_root),
             "artifact_kind": "context_receipt",
         },
         lambda: (
@@ -1625,9 +1588,7 @@ def run_task_proposal_router(
         )[-1],
         mutation=True,
     )
-    payload["context_receipt"] = _artifact_relative_path(
-        context_receipt_path, config.repo_root
-    )
+    payload["context_receipt"] = _artifact_relative_path(context_receipt_path, config.repo_root)
     try:
         proposal = parse_task_implementation_proposal(
             raw_proposal,
@@ -1638,26 +1599,19 @@ def run_task_proposal_router(
             allowed_validation_commands=_task_values(selected, "validation"),
         )
     except TaskProposalRouterError as exc:
-        rejection_path = (
-            config.artifact_dir / f"{task_name}-proposal-rejection.json"
-        )
+        rejection_path = config.artifact_dir / f"{task_name}-proposal-rejection.json"
         _route_decision_runtime(
             config.decision_runtime,
             "file_mutation",
             {
                 **runtime_payload,
-                "path": _artifact_relative_path(
-                    rejection_path, config.repo_root
-                ),
+                "path": _artifact_relative_path(rejection_path, config.repo_root),
                 "artifact_kind": "proposal_rejection",
             },
             lambda: rejection_path.write_text(
                 json.dumps(
                     {
-                        "schema": (
-                            "ipfs_accelerate_py/agent-supervisor/"
-                            "task-proposal-rejection@1"
-                        ),
+                        "schema": ("ipfs_accelerate_py/agent-supervisor/task-proposal-rejection@1"),
                         "accepted": False,
                         "task_id": _task_value(selected, "task_id"),
                         "repository_tree_id": repository_tree_id,
@@ -1701,7 +1655,9 @@ def run_task_proposal_router(
     return payload
 
 
-def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> argparse.ArgumentParser:
+def build_task_proposal_router_parser(
+    config: TaskProposalRouterCliConfig,
+) -> argparse.ArgumentParser:
     """Build the standard CLI parser for a project-specific proposal wrapper."""
 
     parser = argparse.ArgumentParser(description=config.description)
@@ -1716,7 +1672,11 @@ def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> ar
         parser.add_argument(option, dest="task_board_path", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--plan-path", type=Path, default=config.router_config.plan_path)
     parser.add_argument("--artifact-dir", type=Path, default=config.router_config.artifact_dir)
-    parser.add_argument("--generate", action="store_true", help="Actually call llm_router. Default is dry-run/preflight.")
+    parser.add_argument(
+        "--generate",
+        action="store_true",
+        help="Actually call llm_router. Default is dry-run/preflight.",
+    )
     if config.include_dry_run_flag:
         parser.add_argument(
             "--dry-run",
@@ -1731,7 +1691,9 @@ def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> ar
     return parser
 
 
-def run_task_proposal_router_cli(config: TaskProposalRouterCliConfig, argv: list[str] | None = None) -> int:
+def run_task_proposal_router_cli(
+    config: TaskProposalRouterCliConfig, argv: list[str] | None = None
+) -> int:
     """Run the standard dry-run/generate CLI for one project-specific task board."""
 
     parser = build_task_proposal_router_parser(config)
@@ -1844,11 +1806,7 @@ class PlanRoutingResult:
             "used_fallback": self.used_fallback,
             "router_succeeded": self.router_succeeded,
             "router_error": self.router_error,
-            "batch_result": (
-                None
-                if self.batch_result is None
-                else self.batch_result.to_dict()
-            ),
+            "batch_result": (None if self.batch_result is None else self.batch_result.to_dict()),
             "response_bytes": len(response_bytes),
             "response_sha256": (
                 "sha256:" + hashlib.sha256(response_bytes).hexdigest()
@@ -1897,8 +1855,7 @@ class AnalysisProposalRoutingResult:
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         response_bytes = tuple(
-            item.encode("utf-8", errors="surrogatepass")
-            for item in self.raw_responses
+            item.encode("utf-8", errors="surrogatepass") for item in self.raw_responses
         )
         return {
             "proposals": [item.to_dict(profile_g=profile_g) for item in self.proposals],
@@ -1918,14 +1875,11 @@ class AnalysisProposalRoutingResult:
             "response_count": len(response_bytes),
             "response_bytes": sum(len(item) for item in response_bytes),
             "response_sha256": [
-                "sha256:" + hashlib.sha256(item).hexdigest()
-                for item in response_bytes
+                "sha256:" + hashlib.sha256(item).hexdigest() for item in response_bytes
             ],
             "router_call_timestamps": list(self.router_call_timestamps),
             "limit_reason": self.limit_reason,
-            "batch_results": [
-                item.to_dict() for item in self.batch_results
-            ],
+            "batch_results": [item.to_dict() for item in self.batch_results],
         }
 
 
@@ -1955,9 +1909,7 @@ def _jsonable_subgoal(subgoal: object) -> dict[str, Any]:
     elif hasattr(subgoal, "to_dict") and callable(getattr(subgoal, "to_dict")):
         converted = subgoal.to_dict()
         source = (
-            dict(converted)
-            if isinstance(converted, Mapping)
-            else {"description": str(converted)}
+            dict(converted) if isinstance(converted, Mapping) else {"description": str(converted)}
         )
     elif hasattr(subgoal, "__dict__"):
         source = dict(vars(subgoal))
@@ -2009,31 +1961,37 @@ def _planning_capsule_prompt(
         "scope": scope,
         "acceptance": acceptance,
     }
-    revision = "sha256:" + hashlib.sha256(
-        json.dumps(
-            invariant,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
+    revision = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                invariant,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
     tree_id = _router_tree_id(
         config.repo_root,
         fallback_material=revision,
     )
-    policy_revision = "sha256:" + hashlib.sha256(
-        json.dumps(
-            {
-                "authority": authority,
-                "acceptance": acceptance,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
+    policy_revision = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                {
+                    "authority": authority,
+                    "acceptance": acceptance,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
     ranked_evidence = tuple(evidence)
     if evidence_text:
         ranked_evidence = (
@@ -2123,15 +2081,9 @@ def build_structured_plan_prompt(
             "completion_authoritative": False,
         },
         scope={
-            "predicted_files": context.get(
-                "predicted_files", context.get("outputs", ())
-            ),
-            "predicted_symbols": context.get(
-                "predicted_symbols", context.get("ast_symbols", ())
-            ),
-            "dependencies": context.get(
-                "dependencies", context.get("depends_on", ())
-            ),
+            "predicted_files": context.get("predicted_files", context.get("outputs", ())),
+            "predicted_symbols": context.get("predicted_symbols", context.get("ast_symbols", ())),
+            "dependencies": context.get("dependencies", context.get("depends_on", ())),
         },
         acceptance={
             "response_schema": PLAN_BRANCH_JSON_SCHEMA,
@@ -2168,9 +2120,7 @@ def _decode_router_json(text: str) -> Any:
             ),
         )
     except (json.JSONDecodeError, ValueError) as exc:
-        raise PlanBranchValidationError(
-            f"llm_router response is not valid JSON: {exc}"
-        ) from exc
+        raise PlanBranchValidationError(f"llm_router response is not valid JSON: {exc}") from exc
 
 
 def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
@@ -2180,33 +2130,21 @@ def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
     if isinstance(payload, Mapping):
         unknown = sorted(str(key) for key in payload if key != "branches")
         if unknown:
-            raise PlanBranchValidationError(
-                f"unknown top-level plan fields: {', '.join(unknown)}"
-            )
+            raise PlanBranchValidationError(f"unknown top-level plan fields: {', '.join(unknown)}")
         if "branches" not in payload:
-            raise PlanBranchValidationError(
-                "router JSON object must contain 'branches'"
-            )
+            raise PlanBranchValidationError("router JSON object must contain 'branches'")
         raw_branches = payload["branches"]
     else:
         raw_branches = payload
-    if isinstance(raw_branches, (str, bytes)) or not isinstance(
-        raw_branches, Sequence
-    ):
+    if isinstance(raw_branches, (str, bytes)) or not isinstance(raw_branches, Sequence):
         raise PlanBranchValidationError("branches must be a JSON array")
     if not raw_branches:
-        raise PlanBranchValidationError(
-            "branches must contain at least one candidate"
-        )
-    required_fields = set(
-        PLAN_BRANCH_JSON_SCHEMA["properties"]["branches"]["items"]["required"]
-    )
+        raise PlanBranchValidationError("branches must contain at least one candidate")
+    required_fields = set(PLAN_BRANCH_JSON_SCHEMA["properties"]["branches"]["items"]["required"])
     branches_list: list[PlanBranch] = []
     for index, item in enumerate(raw_branches):
         if not isinstance(item, Mapping):
-            raise PlanBranchValidationError(
-                f"branches[{index}] must be a JSON object"
-            )
+            raise PlanBranchValidationError(f"branches[{index}] must be a JSON object")
         fields = {str(key) for key in item}
         missing = sorted(required_fields - fields)
         unknown = sorted(fields - required_fields)
@@ -2220,19 +2158,13 @@ def parse_structured_plan_branches(text: str) -> tuple[PlanBranch, ...]:
             )
         branch = PlanBranch.from_dict(item)
         if branch.source != "llm_router":
-            raise PlanBranchValidationError(
-                f"branches[{index}].source must be 'llm_router'"
-            )
+            raise PlanBranchValidationError(f"branches[{index}].source must be 'llm_router'")
         branches_list.append(branch)
     branches = tuple(branches_list)
     branch_ids = [branch.branch_id for branch in branches]
-    duplicates = sorted(
-        {item for item in branch_ids if branch_ids.count(item) > 1}
-    )
+    duplicates = sorted({item for item in branch_ids if branch_ids.count(item) > 1})
     if duplicates:
-        raise PlanBranchValidationError(
-            f"duplicate branch ids: {', '.join(duplicates)}"
-        )
+        raise PlanBranchValidationError(f"duplicate branch ids: {', '.join(duplicates)}")
     return branches
 
 
@@ -2267,12 +2199,8 @@ def _compact_ast_planning_evidence(
     }
     for name in sequence_fields:
         raw = ast_evidence.get(name)
-        if isinstance(raw, Sequence) and not isinstance(
-            raw, (str, bytes, bytearray)
-        ):
-            compact[name] = [
-                str(item) for item in raw if isinstance(item, (str, int, float))
-            ]
+        if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
+            compact[name] = [str(item) for item in raw if isinstance(item, (str, int, float))]
     pipeline = ast_evidence.get("analysis_pipeline")
     if isinstance(pipeline, Mapping):
         pipeline_fields = (
@@ -2426,28 +2354,20 @@ def deterministic_plan_branches(
 
     requested = max(1, int(branch_count))
     identifier = str(
-        _object_value(subgoal, "task_id", "goal_id", "subgoal_cid", "id")
-        or "subgoal"
+        _object_value(subgoal, "task_id", "goal_id", "subgoal_cid", "id") or "subgoal"
     ).strip()
-    safe_identifier = (
-        re.sub(r"[^A-Za-z0-9._:-]+", "-", identifier).strip("-.") or "subgoal"
-    )
+    safe_identifier = re.sub(r"[^A-Za-z0-9._:-]+", "-", identifier).strip("-.") or "subgoal"
     title = str(
-        _object_value(subgoal, "title", "summary", "goal", "description")
-        or identifier
+        _object_value(subgoal, "title", "summary", "goal", "description") or identifier
     ).strip()
     files = _values(subgoal, "predicted_files", "outputs", "files") or (
         "objective-plan.unspecified",
     )
-    symbols = _values(
-        subgoal, "predicted_symbols", "ast_symbols", "symbols", "interfaces"
-    ) or (re.sub(r"\W+", "_", safe_identifier).strip("_") or "objective_subgoal",)
-    dependencies = _values(
-        subgoal, "dependencies", "depends_on", "dependency_task_cids"
+    symbols = _values(subgoal, "predicted_symbols", "ast_symbols", "symbols", "interfaces") or (
+        re.sub(r"\W+", "_", safe_identifier).strip("_") or "objective_subgoal",
     )
-    validations = _values(subgoal, "validation_commands", "validation") or (
-        "git diff --check",
-    )
+    dependencies = _values(subgoal, "dependencies", "depends_on", "dependency_task_cids")
+    validations = _values(subgoal, "validation_commands", "validation") or ("git diff --check",)
     proof = tuple(f"{command} exits with status 0" for command in validations)
     variants = (
         ("focused", 1.0, 0.20, 0.70),
@@ -2495,9 +2415,7 @@ def _default_structured_router(
         timeout_seconds=config.timeout_seconds,
         max_new_tokens=config.max_new_tokens,
         temperature=config.temperature,
-        reject_effective_provider_name=(
-            None if config.allow_local_fallback else "local_hf"
-        ),
+        reject_effective_provider_name=(None if config.allow_local_fallback else "local_hf"),
     )
     context_limits = [int(config.context_max_input_tokens)]
     if config.provider_max_input_tokens is not None:
@@ -2506,8 +2424,7 @@ def _default_structured_router(
         context_limits.append(
             max(
                 0,
-                int(config.provider_context_window)
-                - int(config.max_new_tokens),
+                int(config.provider_context_window) - int(config.max_new_tokens),
             )
         )
     response, batch_result = _call_text_provider(
@@ -2539,9 +2456,7 @@ def generate_structured_plan_branches(
     """Generate validated branches, falling back without blocking ready work."""
 
     resolved_config = config or StructuredPlanRouterConfig()
-    count = int(
-        branch_count if branch_count is not None else resolved_config.branch_count
-    )
+    count = int(branch_count if branch_count is not None else resolved_config.branch_count)
     if count < 1:
         raise ValueError("branch_count must be at least 1")
     prompt = build_structured_plan_prompt(
@@ -2587,13 +2502,16 @@ def generate_structured_plan_branches(
             batch_result=batch_results[-1] if batch_results else None,
         )
     except Exception as exc:
-        if type(exc).__name__.startswith("DecisionRuntime") or type(
-            exc
-        ).__name__ in {
-            "DecisionRuntimeCancelled",
-            "CancelledError",
-            "CancellationError",
-        } or _runtime_cancelled(resolved_config.cancellation):
+        if (
+            type(exc).__name__.startswith("DecisionRuntime")
+            or type(exc).__name__
+            in {
+                "DecisionRuntimeCancelled",
+                "CancelledError",
+                "CancellationError",
+            }
+            or _runtime_cancelled(resolved_config.cancellation)
+        ):
             raise
         error = f"{type(exc).__name__}: {exc}"[:1000]
         planner = fallback_planner or deterministic_plan_branches
@@ -2604,8 +2522,7 @@ def generate_structured_plan_branches(
         )
         if not fallback_branches:
             raise TaskProposalRouterError(
-                "llm_router failed and fallback planner returned no branches: "
-                f"{error}"
+                f"llm_router failed and fallback planner returned no branches: {error}"
             ) from exc
         return PlanRoutingResult(
             branches=fallback_branches,
@@ -2660,9 +2577,7 @@ def analysis_proposals_to_objective_work(
     work: list[ObjectiveWorkProposal] = []
     for value in proposals:
         proposal = (
-            value
-            if isinstance(value, AnalysisProposal)
-            else AnalysisProposal.from_dict(value)
+            value if isinstance(value, AnalysisProposal) else AnalysisProposal.from_dict(value)
         )
         branch = proposal.branch
         work.append(
@@ -2819,13 +2734,16 @@ def generate_analysis_proposals(
             reasons = ", ".join(item.reason for item in last_evaluation.rejected)
             errors.append(f"all router proposals rejected: {reasons or 'no accepted proposals'}")
         except Exception as exc:
-            if type(exc).__name__.startswith("DecisionRuntime") or type(
-                exc
-            ).__name__ in {
-                "DecisionRuntimeCancelled",
-                "CancelledError",
-                "CancellationError",
-            } or _runtime_cancelled(resolved.cancellation):
+            if (
+                type(exc).__name__.startswith("DecisionRuntime")
+                or type(exc).__name__
+                in {
+                    "DecisionRuntimeCancelled",
+                    "CancelledError",
+                    "CancellationError",
+                }
+                or _runtime_cancelled(resolved.cancellation)
+            ):
                 raise
             errors.append(f"{type(exc).__name__}: {exc}"[:1000])
 
@@ -2841,14 +2759,18 @@ def generate_analysis_proposals(
             fallback_proposals.append(item)
         elif isinstance(item, PlanBranch):
             fallback_proposals.append(
-                AnalysisProposal(item, 1.0, 1.0, tuple(objective_terms) or ("unresolved objective",))
+                AnalysisProposal(
+                    item, 1.0, 1.0, tuple(objective_terms) or ("unresolved objective",)
+                )
             )
         elif isinstance(item, Mapping) and "branch" in item:
             fallback_proposals.append(AnalysisProposal.from_dict(item))
         else:
             branch = PlanBranch.from_dict(item)
             fallback_proposals.append(
-                AnalysisProposal(branch, 1.0, 1.0, tuple(objective_terms) or ("unresolved objective",))
+                AnalysisProposal(
+                    branch, 1.0, 1.0, tuple(objective_terms) or ("unresolved objective",)
+                )
             )
     if not fallback_proposals:
         raise TaskProposalRouterError(
@@ -2952,19 +2874,14 @@ class CandidateGenerationBounds:
             raise ValueError("max_total_candidates must reserve the baseline")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateGenerationBounds":
         allowed = set(cls.__dataclass_fields__)
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
-            raise ValueError(
-                "unknown candidate-generation bound fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown candidate-generation bound fields: " + ", ".join(unknown))
         return cls(**dict(payload))
 
 
@@ -3003,9 +2920,7 @@ def _canonical_payload(value: Any) -> Any:
 
 def _deep_freeze_json(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _deep_freeze_json(item) for key, item in value.items()}
-        )
+        return MappingProxyType({key: _deep_freeze_json(item) for key, item in value.items()})
     if isinstance(value, list):
         return tuple(_deep_freeze_json(item) for item in value)
     return value
@@ -3058,9 +2973,7 @@ class FrozenCandidateGenerationRequest:
         object.__setattr__(self, "context", _deep_freeze_json(context))
         object.__setattr__(self, "policy", _deep_freeze_json(policy))
         if not isinstance(self.bounds, CandidateGenerationBounds):
-            object.__setattr__(
-                self, "bounds", CandidateGenerationBounds(**dict(self.bounds))
-            )
+            object.__setattr__(self, "bounds", CandidateGenerationBounds(**dict(self.bounds)))
 
     @classmethod
     def freeze(
@@ -3100,9 +3013,7 @@ class FrozenCandidateGenerationRequest:
             )
         return cls(
             goal_id=str(value("goal_id") or ""),
-            goal_content_id=str(
-                value("goal_content_id") or value("frozen_goal_id") or ""
-            ),
+            goal_content_id=str(value("goal_content_id") or value("frozen_goal_id") or ""),
             repository_tree_id=str(value("repository_tree_id") or ""),
             policy_digest=str(policy_digest or ""),
             context_id=_payload_identity(detached),
@@ -3128,9 +3039,7 @@ class FrozenCandidateGenerationRequest:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "FrozenCandidateGenerationRequest":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "FrozenCandidateGenerationRequest":
         allowed = {
             "goal_id",
             "goal_content_id",
@@ -3143,14 +3052,10 @@ class FrozenCandidateGenerationRequest:
         }
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
-            raise ValueError(
-                "unknown frozen candidate-request fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown frozen candidate-request fields: " + ", ".join(unknown))
         missing = sorted(allowed - set(payload))
         if missing:
-            raise ValueError(
-                "missing frozen candidate-request fields: " + ", ".join(missing)
-            )
+            raise ValueError("missing frozen candidate-request fields: " + ", ".join(missing))
         return cls(
             goal_id=payload["goal_id"],
             goal_content_id=payload["goal_content_id"],
@@ -3179,9 +3084,7 @@ class CandidateProviderOutcome:
     resource_cost_millionths: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "provider_kind", AdaptiveCandidateProviderKind(self.provider_kind)
-        )
+        object.__setattr__(self, "provider_kind", AdaptiveCandidateProviderKind(self.provider_kind))
         object.__setattr__(self, "status", CandidateProviderStatus(self.status))
         request_id = str(self.request_id or "").strip()
         if not request_id:
@@ -3226,9 +3129,7 @@ class CandidateProviderOutcome:
         allowed = set(cls.__dataclass_fields__)
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
-            raise ValueError(
-                "unknown provider-outcome fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown provider-outcome fields: " + ", ".join(unknown))
         return cls(**dict(payload))
 
 
@@ -3244,12 +3145,8 @@ def _decode_profile_evidence_candidate(
         branch.pop("expected_objective_delta_millionths") / 1_000_000
     )
     values["novelty"] = values.pop("novelty_millionths") / 1_000_000
-    values["estimated_resource_cost"] = (
-        values.pop("estimated_resource_cost_millionths") / 1_000_000
-    )
-    values["estimated_runtime_seconds"] = (
-        values.pop("estimated_runtime_milliseconds", 0) / 1_000
-    )
+    values["estimated_resource_cost"] = values.pop("estimated_resource_cost_millionths") / 1_000_000
+    values["estimated_runtime_seconds"] = values.pop("estimated_runtime_milliseconds", 0) / 1_000
     return EvidenceAwarePlanCandidate.from_dict({"branch": branch, **values})
 
 
@@ -3287,8 +3184,7 @@ class AdaptiveCandidateRoutingResult:
     @property
     def used_fallback(self) -> bool:
         return all(
-            item.status is not CandidateProviderStatus.SUCCEEDED
-            for item in self.outcomes[1:]
+            item.status is not CandidateProviderStatus.SUCCEEDED for item in self.outcomes[1:]
         )
 
     @property
@@ -3308,9 +3204,7 @@ class AdaptiveCandidateRoutingResult:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "AdaptiveCandidateRoutingResult":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveCandidateRoutingResult":
         allowed = {
             "schema",
             "routing_id",
@@ -3321,20 +3215,16 @@ class AdaptiveCandidateRoutingResult:
         }
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
-            raise ValueError(
-                "unknown adaptive-routing fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown adaptive-routing fields: " + ", ".join(unknown))
         if payload.get("schema") != ADAPTIVE_CANDIDATE_ROUTER_SCHEMA:
             raise ValueError("unsupported adaptive-candidate routing schema")
         result = cls(
             request=FrozenCandidateGenerationRequest.from_dict(payload["request"]),
             candidates=tuple(
-                _decode_profile_evidence_candidate(item)
-                for item in payload.get("candidates") or ()
+                _decode_profile_evidence_candidate(item) for item in payload.get("candidates") or ()
             ),
             outcomes=tuple(
-                CandidateProviderOutcome.from_dict(item)
-                for item in payload.get("outcomes") or ()
+                CandidateProviderOutcome.from_dict(item) for item in payload.get("outcomes") or ()
             ),
         )
         if bool(payload.get("used_fallback")) != result.used_fallback:
@@ -3395,9 +3285,7 @@ def deterministic_evidence_aware_candidate(
     )
     runtime = float(detached.get("estimated_runtime_seconds", branch.estimated_cost))
     tokens = int(detached.get("estimated_tokens", 0))
-    resource_cost = float(
-        detached.get("estimated_resource_cost", branch.estimated_cost)
-    )
+    resource_cost = float(detached.get("estimated_resource_cost", branch.estimated_cost))
     return EvidenceAwarePlanCandidate(
         branch=branch,
         covered_acceptance_criteria=policy.acceptance_criteria,
@@ -3447,11 +3335,7 @@ def _provider_result_candidates(value: Any) -> tuple[Any, ...]:
 
 def _provider_metric(value: Any, *names: str) -> int:
     for name in names:
-        observed = (
-            value.get(name)
-            if isinstance(value, Mapping)
-            else getattr(value, name, None)
-        )
+        observed = value.get(name) if isinstance(value, Mapping) else getattr(value, name, None)
         if observed is None:
             continue
         try:
@@ -3465,11 +3349,7 @@ def _provider_metric(value: Any, *names: str) -> int:
 def _provider_declared_degradation(
     value: Any,
 ) -> tuple[CandidateProviderStatus, str] | None:
-    observed = (
-        value.get("status")
-        if isinstance(value, Mapping)
-        else getattr(value, "status", None)
-    )
+    observed = value.get("status") if isinstance(value, Mapping) else getattr(value, "status", None)
     if isinstance(observed, Enum):
         observed = observed.value
     status = str(observed or "").strip().casefold()
@@ -3537,7 +3417,8 @@ def route_adaptive_plan_candidates(
     providers: Mapping[
         AdaptiveCandidateProviderKind | str,
         Callable[[FrozenCandidateGenerationRequest], Any] | None,
-    ] | None = None,
+    ]
+    | None = None,
     bounds: CandidateGenerationBounds | None = None,
     baseline_factory: Callable[
         [object, Mapping[str, Any]], EvidenceAwarePlanCandidate | Mapping[str, Any]
@@ -3545,9 +3426,7 @@ def route_adaptive_plan_candidates(
 ) -> AdaptiveCandidateRoutingResult:
     """Route one frozen capsule through fixed, bounded, failure-isolated lanes."""
 
-    request = FrozenCandidateGenerationRequest.freeze(
-        frozen_goal, context, bounds=bounds
-    )
+    request = FrozenCandidateGenerationRequest.freeze(frozen_goal, context, bounds=bounds)
     baseline_value = baseline_factory(frozen_goal, request.context)
     baseline = (
         baseline_value
@@ -3563,8 +3442,7 @@ def route_adaptive_plan_candidates(
             ),
         )
     if (
-        baseline.estimated_tokens
-        > request.bounds.max_estimated_tokens_per_candidate
+        baseline.estimated_tokens > request.bounds.max_estimated_tokens_per_candidate
         or baseline.estimated_runtime_seconds
         > request.bounds.max_estimated_runtime_seconds_per_candidate
         or baseline.estimated_resource_cost
@@ -3643,8 +3521,7 @@ def route_adaptive_plan_candidates(
             continue
         declared_degradation = _provider_declared_degradation(raw)
         if (
-            _provider_metric(raw, "input_tokens", "prompt_tokens")
-            > request.bounds.max_input_tokens
+            _provider_metric(raw, "input_tokens", "prompt_tokens") > request.bounds.max_input_tokens
             or _provider_metric(raw, "output_tokens", "completion_tokens")
             > request.bounds.max_output_tokens
         ):
@@ -3674,9 +3551,7 @@ def route_adaptive_plan_candidates(
                         elapsed_ms,
                         _provider_metric(raw, "runtime_milliseconds", "elapsed_ms"),
                     ),
-                    resource_cost_millionths=_provider_metric(
-                        raw, "resource_cost_millionths"
-                    ),
+                    resource_cost_millionths=_provider_metric(raw, "resource_cost_millionths"),
                 )
             )
             continue
@@ -3726,8 +3601,7 @@ def route_adaptive_plan_candidates(
             accepted: list[EvidenceAwarePlanCandidate] = []
             for item in sorted(normalized, key=lambda candidate: candidate.candidate_id):
                 if (
-                    item.estimated_tokens
-                    > request.bounds.max_estimated_tokens_per_candidate
+                    item.estimated_tokens > request.bounds.max_estimated_tokens_per_candidate
                     or item.estimated_runtime_seconds
                     > request.bounds.max_estimated_runtime_seconds_per_candidate
                     or item.estimated_resource_cost
@@ -3757,9 +3631,7 @@ def route_adaptive_plan_candidates(
                 observed_ids.add(item.candidate_id)
                 accepted.append(item)
             if not accepted:
-                raise PlanBranchValidationError(
-                    "provider returned only duplicate candidates"
-                )
+                raise PlanBranchValidationError("provider returned only duplicate candidates")
             candidates.extend(accepted)
             outcomes.append(
                 CandidateProviderOutcome(
@@ -3774,9 +3646,7 @@ def route_adaptive_plan_candidates(
                         elapsed_ms,
                         _provider_metric(raw, "runtime_milliseconds", "elapsed_ms"),
                     ),
-                    resource_cost_millionths=_provider_metric(
-                        raw, "resource_cost_millionths"
-                    ),
+                    resource_cost_millionths=_provider_metric(raw, "resource_cost_millionths"),
                 )
             )
         except OverflowError as exc:

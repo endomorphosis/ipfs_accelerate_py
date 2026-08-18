@@ -496,6 +496,7 @@ WantedBy=multi-user.target
 ```python
 # Before
 from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
+
 server = IPFSAccelerateMCPServer()
 server.run()
 
@@ -503,9 +504,11 @@ server.run()
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
 
+
 async def main():
     server = TrioMCPServer()
     await server.run()
+
 
 trio.run(main)
 ```

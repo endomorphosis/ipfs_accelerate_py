@@ -108,9 +108,7 @@ def test_normal_reads_never_probe_and_refresh_uses_only_injected_probe():
             "diagnostics": ["warmup in progress"],
         }
 
-    source = ServedEndpointDeploymentSource(
-        [served()], probe=probe, clock=fixed_clock
-    )
+    source = ServedEndpointDeploymentSource([served()], probe=probe, clock=fixed_clock)
     initial = source.load()
     assert calls == []
     assert initial.deployments[0].state.reachable is None
@@ -277,9 +275,7 @@ def test_duplicate_endpoints_coalesce_and_snapshots_are_deterministic():
         served(endpoint="http://127.0.0.1:8080/v1/"),
     ]
     forward = adapt_served_endpoints(rows, observed_at=NOW, clock=fixed_clock)
-    reverse = adapt_served_endpoints(
-        list(reversed(rows)), observed_at=NOW, clock=fixed_clock
-    )
+    reverse = adapt_served_endpoints(list(reversed(rows)), observed_at=NOW, clock=fixed_clock)
 
     # Trailing slash is endpoint identity, while exact duplicate advertisements
     # coalesce independent of source ordering.
@@ -329,9 +325,7 @@ def test_backend_dataclass_shape_and_multiple_models_are_projected():
 
 def test_probe_errors_and_diagnostics_are_redacted_and_bounded():
     def failing_probe(target):
-        raise RuntimeError(
-            "Authorization Bearer abcdefghijklmnopqrstuvwxyz " + "x" * 2_000
-        )
+        raise RuntimeError("Authorization Bearer abcdefghijklmnopqrstuvwxyz " + "x" * 2_000)
 
     result = ServedEndpointDeploymentSource(
         [served()], probe=failing_probe, clock=fixed_clock
@@ -340,9 +334,7 @@ def test_probe_errors_and_diagnostics_are_redacted_and_bounded():
 
     assert len(result.health_samples) == 1
     assert result.health_samples[0].reachable is None
-    assert result.health_samples[0].diagnostics == (
-        "credential-shaped diagnostic was redacted",
-    )
+    assert result.health_samples[0].diagnostics == ("credential-shaped diagnostic was redacted",)
     assert result.diagnostics[-1].code == "probe_failed"
     assert "abcdefghijklmnopqrstuvwxyz" not in rendered
 

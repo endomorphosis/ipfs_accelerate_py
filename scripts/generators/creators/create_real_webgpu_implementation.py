@@ -2,7 +2,7 @@
 """
 Create Real WebGPU/WebNN Implementation
 
-This script creates the necessary files and configurations for a real 
+This script creates the necessary files and configurations for a real
 WebGPU and WebNN implementation that connects to actual browsers.
 
 Key features:
@@ -27,21 +27,22 @@ import argparse
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 # Dependency check
 def check_dependencies():
     """Check if required dependencies are installed."""
     required_packages = {
-        'websockets': 'websockets>=10.0',
-        'selenium': 'selenium>=4.10.0',
-        'websocket-client': 'websocket-client>=1.0.0',
-        'webdriver-manager': 'webdriver-manager>=3.0.0'
+        "websockets": "websockets>=10.0",
+        "selenium": "selenium>=4.10.0",
+        "websocket-client": "websocket-client>=1.0.0",
+        "webdriver-manager": "webdriver-manager>=3.0.0",
     }
-    
+
     missing_packages = []
-    
+
     for package, spec in required_packages.items():
         try:
             __import__(package)
@@ -49,16 +50,17 @@ def check_dependencies():
         except ImportError:
             logger.error(f"❌ {package} is not installed")
             missing_packages.append(spec)
-    
+
     if missing_packages:
         logger.error(f"Missing dependencies: {', '.join(missing_packages)}")
         print("Installing missing dependencies...")
         subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing_packages)
         logger.info("All dependencies installed")
         return True
-    
+
     logger.info("All dependencies are installed")
     return True
+
 
 def create_html_template():
     """Create HTML template for browser bridge."""
@@ -778,38 +780,41 @@ def create_html_template():
 </body>
 </html>
 """
-    
+
     # Write template to file
-    template_path = os.path.join(os.path.dirname(__file__), 'webgpu_webnn_bridge.html')
-    with open(template_path, 'w') as f:
+    template_path = os.path.join(os.path.dirname(__file__), "webgpu_webnn_bridge.html")
+    with open(template_path, "w") as f:
         f.write(html_template)
-    
+
     logger.info(f"HTML template created at {template_path}")
     return template_path
+
 
 def create_python_bridge():
     """Create Python bridge for WebGPU/WebNN communication."""
     bridge_code = """#!/usr/bin/env python3
 """
     # Create bridge module file
-    bridge_path = os.path.join(os.path.dirname(__file__), 'webgpu_webnn_bridge.py')
-    with open(bridge_path, 'w') as f:
+    bridge_path = os.path.join(os.path.dirname(__file__), "webgpu_webnn_bridge.py")
+    with open(bridge_path, "w") as f:
         f.write(bridge_code)
-    
+
     logger.info(f"Python bridge created at {bridge_path}")
     return bridge_path
+
 
 def create_test_script():
     """Create test script for WebGPU/WebNN implementation."""
     test_code = """#!/usr/bin/env python3
 """
     # Create test script file
-    test_path = os.path.join(os.path.dirname(__file__), 'test_webgpu_webnn_bridge.py')
-    with open(test_path, 'w') as f:
+    test_path = os.path.join(os.path.dirname(__file__), "test_webgpu_webnn_bridge.py")
+    with open(test_path, "w") as f:
         f.write(test_code)
-    
+
     logger.info(f"Test script created at {test_path}")
     return test_path
+
 
 def install_browser_drivers():
     """Install browser drivers for WebGPU/WebNN testing."""
@@ -818,23 +823,24 @@ def install_browser_drivers():
         from webdriver_manager.chrome import ChromeDriverManager
         from webdriver_manager.firefox import GeckoDriverManager
         from webdriver_manager.microsoft import EdgeChromiumDriverManager
-        
+
         # Install Chrome driver
         chrome_driver_path = ChromeDriverManager().install()
         logger.info(f"Chrome WebDriver installed at: {chrome_driver_path}")
-        
+
         # Install Firefox driver
         firefox_driver_path = GeckoDriverManager().install()
         logger.info(f"Firefox WebDriver installed at: {firefox_driver_path}")
-        
+
         # Install Edge driver
         edge_driver_path = EdgeChromiumDriverManager().install()
         logger.info(f"Edge WebDriver installed at: {edge_driver_path}")
-        
+
         return True
     except Exception as e:
         logger.error(f"Failed to install browser drivers: {e}")
         return False
+
 
 def test_browser_capabilities():
     """Test browser capabilities for WebGPU/WebNN support."""
@@ -844,22 +850,22 @@ def test_browser_capabilities():
         from selenium.webdriver.chrome.service import Service as ChromeService
         from selenium.webdriver.chrome.options import Options
         from webdriver_manager.chrome import ChromeDriverManager
-        
+
         # Set up options
         options = Options()
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        
+
         # Enable WebGPU
         options.add_argument("--enable-features=WebGPU")
         options.add_argument("--enable-unsafe-webgpu")
-        
+
         # Create service and driver
         service = ChromeService(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
-        
+
         # Load test page
         html_content = """
         <!DOCTYPE html>
@@ -904,104 +910,114 @@ def test_browser_capabilities():
         </body>
         </html>
         """
-        
+
         # Create temp HTML file
-        with tempfile.NamedTemporaryFile('w', delete=False, suffix='.html') as f:
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".html") as f:
             f.write(html_content)
             temp_html = f.name
-        
+
         # Load the file
         driver.get(f"file://{temp_html}")
-        
+
         # Wait for test to complete
         import time
+
         max_wait = 10
         start_time = time.time()
         while time.time() - start_time < max_wait:
-            if driver.execute_script("return document.body.getAttribute('data-test-complete') === 'true'"):
+            if driver.execute_script(
+                "return document.body.getAttribute('data-test-complete') === 'true'"
+            ):
                 break
             time.sleep(0.5)
-        
+
         # Get test results
         results = driver.execute_script("return window.test_results")
         driver.quit()
-        
+
         # Display results
         logger.info("Browser capabilities:")
         logger.info(f"WebGPU: {'✅ Available' if results.get('webgpu') else '❌ Not available'}")
         logger.info(f"WebNN: {'✅ Available' if results.get('webnn') else '❌ Not available'}")
         logger.info(f"WebGL: {'✅ Available' if results.get('webgl') else '❌ Not available'}")
         logger.info(f"WebAssembly: {'✅ Available' if results.get('wasm') else '❌ Not available'}")
-        
+
         # Clean up temp file
         os.unlink(temp_html)
-        
+
         return results
     except Exception as e:
         logger.error(f"Failed to test browser capabilities: {e}")
         return None
 
+
 def fix_implementation_files():
     """Fix implementation files for WebGPU/WebNN."""
     try:
         # Fix webgpu_implementation.py
-        webgpu_impl_path = os.path.join(os.path.dirname(__file__), 'fixed_web_platform/webgpu_implementation.py')
+        webgpu_impl_path = os.path.join(
+            os.path.dirname(__file__), "fixed_web_platform/webgpu_implementation.py"
+        )
         if os.path.exists(webgpu_impl_path):
-            with open(webgpu_impl_path, 'r') as f:
+            with open(webgpu_impl_path, "r") as f:
                 content = f.read()
-            
+
             # Fix syntax errors
             content = content.replace(
                 "if impl_type != # This file has been updated to use real browser implementation\nUSING_REAL_IMPLEMENTATION = True\nWEBGPU_IMPLEMENTATION_TYPE:",
-                "if impl_type != WEBGPU_IMPLEMENTATION_TYPE:"
+                "if impl_type != WEBGPU_IMPLEMENTATION_TYPE:",
             )
             content = content.replace(
                 "return # This file has been updated to use real browser implementation\nUSING_REAL_IMPLEMENTATION = True\nWEBGPU_IMPLEMENTATION_TYPE",
-                "return WEBGPU_IMPLEMENTATION_TYPE"
+                "return WEBGPU_IMPLEMENTATION_TYPE",
             )
-            
-            with open(webgpu_impl_path, 'w') as f:
+
+            with open(webgpu_impl_path, "w") as f:
                 f.write(content)
-            
+
             logger.info(f"Fixed WebGPU implementation file: {webgpu_impl_path}")
-        
+
         # Fix webnn_implementation.py
-        webnn_impl_path = os.path.join(os.path.dirname(__file__), 'fixed_web_platform/webnn_implementation.py')
+        webnn_impl_path = os.path.join(
+            os.path.dirname(__file__), "fixed_web_platform/webnn_implementation.py"
+        )
         if os.path.exists(webnn_impl_path):
-            with open(webnn_impl_path, 'r') as f:
+            with open(webnn_impl_path, "r") as f:
                 content = f.read()
-            
+
             # Fix syntax errors
             content = content.replace(
                 "if impl_type != # This file has been updated to use real browser implementation\nUSING_REAL_IMPLEMENTATION = True\nWEBNN_IMPLEMENTATION_TYPE:",
-                "if impl_type != WEBNN_IMPLEMENTATION_TYPE:"
+                "if impl_type != WEBNN_IMPLEMENTATION_TYPE:",
             )
             content = content.replace(
                 "return # This file has been updated to use real browser implementation\nUSING_REAL_IMPLEMENTATION = True\nWEBNN_IMPLEMENTATION_TYPE",
-                "return WEBNN_IMPLEMENTATION_TYPE"
+                "return WEBNN_IMPLEMENTATION_TYPE",
             )
-            
-            with open(webnn_impl_path, 'w') as f:
+
+            with open(webnn_impl_path, "w") as f:
                 f.write(content)
-            
+
             logger.info(f"Fixed WebNN implementation file: {webnn_impl_path}")
-        
+
         return True
     except Exception as e:
         logger.error(f"Failed to fix implementation files: {e}")
         return False
+
 
 def create_websocket_server():
     """Create WebSocket server for browser communication."""
     server_code = """#!/usr/bin/env python3
 """
     # Create server file
-    server_path = os.path.join(os.path.dirname(__file__), 'websocket_server.py')
-    with open(server_path, 'w') as f:
+    server_path = os.path.join(os.path.dirname(__file__), "websocket_server.py")
+    with open(server_path, "w") as f:
         f.write(server_code)
-    
+
     logger.info(f"WebSocket server created at {server_path}")
     return server_path
+
 
 def main():
     """Main function."""
@@ -1011,35 +1027,36 @@ def main():
     parser.add_argument("--test-browsers", action="store_true", help="Test browser capabilities")
     parser.add_argument("--fix-files", action="store_true", help="Fix implementation files")
     parser.add_argument("--all", action="store_true", help="Perform all operations")
-    
+
     args = parser.parse_args()
-    
+
     # Check dependencies
     if args.check_deps or args.all:
         if not check_dependencies():
             return 1
-    
+
     # Install browser drivers
     if args.install_drivers or args.all:
         install_browser_drivers()
-    
+
     # Test browser capabilities
     if args.test_browsers or args.all:
         test_browser_capabilities()
-    
+
     # Fix implementation files
     if args.fix_files or args.all:
         fix_implementation_files()
-    
+
     # Create HTML template
     if args.all:
         create_html_template()
         create_python_bridge()
         create_test_script()
         create_websocket_server()
-    
+
     logger.info("All tasks completed successfully")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

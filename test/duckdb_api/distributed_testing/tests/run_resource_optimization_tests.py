@@ -22,8 +22,7 @@ from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("resource_optimization_tests")
 
@@ -36,11 +35,11 @@ if parent_dir not in sys.path:
 def run_tests(verbose=False, quick=False):
     """
     Run tests for the ResourceOptimizer component.
-    
+
     Args:
         verbose (bool): Whether to show verbose output
         quick (bool): Whether to run a smaller subset of tests for faster execution
-        
+
     Returns:
         bool: True if all tests passed, False otherwise
     """
@@ -48,40 +47,40 @@ def run_tests(verbose=False, quick=False):
     from test_resource_optimization import (
         TestResourceOptimizer,
         TestResourceOptimizerIntegration,
-        TestResourceOptimizerPerformance
+        TestResourceOptimizerPerformance,
     )
-    
+
     # Create a test suite
     suite = unittest.TestSuite()
-    
+
     # Add test cases
     suite.addTest(unittest.makeSuite(TestResourceOptimizer))
     suite.addTest(unittest.makeSuite(TestResourceOptimizerIntegration))
-    
+
     # Add performance tests only if not in quick mode
     if not quick:
         suite.addTest(unittest.makeSuite(TestResourceOptimizerPerformance))
-    
+
     # Create a test runner
     verbosity = 2 if verbose else 1
     runner = unittest.TextTestRunner(verbosity=verbosity)
-    
+
     # Run the tests
     logger.info("Running ResourceOptimizer tests...")
     start_time = time.time()
     result = runner.run(suite)
     end_time = time.time()
-    
+
     # Calculate test duration
     duration = end_time - start_time
-    
+
     # Generate test summary
     logger.info(f"Test run completed in {duration:.2f} seconds")
     logger.info(f"Ran {result.testsRun} tests")
     logger.info(f"Failures: {len(result.failures)}")
     logger.info(f"Errors: {len(result.errors)}")
     logger.info(f"Skipped: {len(result.skipped)}")
-    
+
     # Return True if all tests passed
     return len(result.failures) == 0 and len(result.errors) == 0
 
@@ -93,10 +92,10 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Show verbose output")
     parser.add_argument("--quick", action="store_true", help="Run a smaller subset of tests")
     args = parser.parse_args()
-    
+
     # Run tests
     success = run_tests(verbose=args.verbose, quick=args.quick)
-    
+
     # Exit with appropriate status code
     sys.exit(0 if success else 1)
 

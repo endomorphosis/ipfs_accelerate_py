@@ -32,12 +32,15 @@ The circuit breaker pattern prevents cascading failures by temporarily disabling
 Usage example:
 ```python
 from duckdb_api.distributed_testing.circuit_breaker import (
-    create_worker_circuit_breaker, create_endpoint_circuit_breaker,
-    worker_circuit_breaker, endpoint_circuit_breaker
+    create_worker_circuit_breaker,
+    create_endpoint_circuit_breaker,
+    worker_circuit_breaker,
+    endpoint_circuit_breaker,
 )
 
 # Create a circuit breaker for a worker
 worker_circuit = create_worker_circuit_breaker("worker1")
+
 
 # Use the decorator pattern
 @worker_circuit_breaker("worker1")
@@ -58,10 +61,12 @@ The circuit breaker pattern is integrated with the hardware-aware fault toleranc
 Usage example:
 ```python
 from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
-    HardwareAwareFaultToleranceManager, FailureContext
+    HardwareAwareFaultToleranceManager,
+    FailureContext,
 )
 from duckdb_api.distributed_testing.fault_tolerance_integration import (
-    create_fault_tolerance_integration, apply_recovery_with_circuit_breaker
+    create_fault_tolerance_integration,
+    apply_recovery_with_circuit_breaker,
 )
 
 # Create fault tolerance integration
@@ -73,7 +78,7 @@ failure_context = FailureContext(
     task_id="task1",
     worker_id="worker1",
     error_type=FailureType.HARDWARE_ERROR,
-    error_message="GPU memory exhausted"
+    error_message="GPU memory exhausted",
 )
 
 # Apply recovery with circuit breaker protection
@@ -81,7 +86,7 @@ apply_recovery_with_circuit_breaker(
     task_id="task1",
     failure_context=failure_context,
     integration=integration,
-    coordinator=coordinator
+    coordinator=coordinator,
 )
 ```
 
@@ -246,22 +251,26 @@ The fault tolerance system can be configured through various parameters:
 Example configuration:
 ```python
 # Configure worker circuits
-integration.configure_worker_circuits({
-    "failure_threshold": 5,
-    "recovery_timeout": 60.0,
-    "reset_timeout_factor": 2.0,
-    "max_reset_timeout": 600.0,
-    "success_threshold": 3
-})
+integration.configure_worker_circuits(
+    {
+        "failure_threshold": 5,
+        "recovery_timeout": 60.0,
+        "reset_timeout_factor": 2.0,
+        "max_reset_timeout": 600.0,
+        "success_threshold": 3,
+    }
+)
 
 # Configure hardware circuits
-integration.configure_hardware_circuits({
-    "failure_threshold": 3,
-    "recovery_timeout": 120.0,
-    "reset_timeout_factor": 1.5,
-    "max_reset_timeout": 1800.0,
-    "success_threshold": 5
-})
+integration.configure_hardware_circuits(
+    {
+        "failure_threshold": 3,
+        "recovery_timeout": 120.0,
+        "reset_timeout_factor": 1.5,
+        "max_reset_timeout": 1800.0,
+        "success_threshold": 5,
+    }
+)
 ```
 
 ## Examples
@@ -270,7 +279,8 @@ integration.configure_hardware_circuits({
 
 ```python
 from duckdb_api.distributed_testing.fault_tolerance_integration import (
-    create_fault_tolerance_integration, apply_recovery_with_circuit_breaker
+    create_fault_tolerance_integration,
+    apply_recovery_with_circuit_breaker,
 )
 
 # Create fault tolerance integration
@@ -284,15 +294,12 @@ apply_recovery_with_circuit_breaker(
     task_id="task1",
     failure_context=failure_context,
     integration=integration,
-    coordinator=coordinator
+    coordinator=coordinator,
 )
 
 # Track success for updating circuit state
 integration.track_success(
-    task_id="task2",
-    worker_id="worker1",
-    hardware_class="GPU",
-    task_type="benchmark"
+    task_id="task2", worker_id="worker1", hardware_class="GPU", task_type="benchmark"
 )
 ```
 

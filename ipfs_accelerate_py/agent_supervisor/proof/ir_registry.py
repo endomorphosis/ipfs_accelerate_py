@@ -33,15 +33,9 @@ from ..context.decision_contracts import (
 
 
 IR_REGISTRY_VERSION: Final[int] = 1
-IR_CAPABILITY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/ir-capability@1"
-)
-IR_LOAD_REQUEST_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/ir-load-request@1"
-)
-IR_LOAD_RESULT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/ir-load-result@1"
-)
+IR_CAPABILITY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/ir-capability@1"
+IR_LOAD_REQUEST_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/ir-load-request@1"
+IR_LOAD_RESULT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/ir-load-result@1"
 IR_ARTIFACT_ENVELOPE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/ir-artifact-envelope@1"
 )
@@ -228,9 +222,7 @@ def _strings(
 
 def _deep_freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _deep_freeze(item) for key, item in sorted(value.items())}
-        )
+        return MappingProxyType({key: _deep_freeze(item) for key, item in sorted(value.items())})
     if isinstance(value, list):
         return tuple(_deep_freeze(item) for item in value)
     return value
@@ -383,9 +375,7 @@ class IRCapability:
 
     def __post_init__(self) -> None:
         for name in ("provider_id", "capability_revision", "provider_version"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
         if isinstance(self.schemas, (str, bytes)) or not isinstance(self.schemas, Sequence):
             raise IRRegistryError("schemas must be a sequence")
         schemas = tuple(
@@ -498,9 +488,7 @@ class IRLoadRequest:
             "reference": self.reference.to_dict(),
             "family": self.family.value,
             "root_reference": (
-                self.root_reference.to_dict()
-                if self.root_reference is not None
-                else None
+                self.root_reference.to_dict() if self.root_reference is not None else None
             ),
             "required": self.required,
             "provider_id": self.provider_id,
@@ -538,9 +526,7 @@ class IRFailure:
             )
         if not isinstance(self.required, bool):
             raise IRRegistryError("failure.required must be a boolean")
-        object.__setattr__(
-            self, "details", _strings(self.details, "details", maximum=256)
-        )
+        object.__setattr__(self, "details", _strings(self.details, "details", maximum=256))
 
     @property
     def fail_closed(self) -> bool:
@@ -615,8 +601,7 @@ class VerifiedIRArtifact:
             {
                 key: item
                 for key, item in provenance.items()
-                if key in reference_fields
-                and (item is None or isinstance(item, (str, bool, int)))
+                if key in reference_fields and (item is None or isinstance(item, (str, bool, int)))
             }
             for provenance in self.provenance
         ]
@@ -734,9 +719,7 @@ def _metadata_text(
     raise KeyError(name)
 
 
-def _authority_allowed(
-    declared: IRDeclaredAuthority, reference: ReferenceAuthority
-) -> bool:
+def _authority_allowed(declared: IRDeclaredAuthority, reference: ReferenceAuthority) -> bool:
     if declared is IRDeclaredAuthority.AUTHORITATIVE:
         return reference is ReferenceAuthority.AUTHORITATIVE
     if declared is IRDeclaredAuthority.VERIFIED:
@@ -821,9 +804,7 @@ class IRRegistry:
             provider = getattr(imported, member)
             return provider() if inspect.isclass(provider) else provider
 
-        self.register_lazy_provider(
-            capability, factory=factory, replace_existing=replace_existing
-        )
+        self.register_lazy_provider(capability, factory=factory, replace_existing=replace_existing)
 
     register_ipfs_datasets_provider = register_optional_module
 
@@ -891,9 +872,7 @@ class IRRegistry:
                 metadata={
                     "family": request.family.value,
                     "artifact_schema": request.reference.artifact_schema,
-                    "artifact_schema_version": (
-                        request.reference.artifact_schema_version
-                    ),
+                    "artifact_schema_version": (request.reference.artifact_schema_version),
                 },
             )
             result = await transport.dispatch(transport_request)
@@ -901,9 +880,7 @@ class IRRegistry:
                 AnalysisTransportStatus.COMPLETED,
                 AnalysisTransportStatus.FALLBACK,
             }:
-                raise FileNotFoundError(
-                    f"analysis transport: {result.status.value}"
-                )
+                raise FileNotFoundError(f"analysis transport: {result.status.value}")
             if result.truncated:
                 raise FileNotFoundError("analysis transport result was truncated")
             matches = tuple(
@@ -912,8 +889,7 @@ class IRRegistry:
                 if (
                     item.get("artifact_id") == request.reference.artifact_id
                     and item.get("digest") == request.reference.supervisor_digest
-                    and item.get("cid", request.reference.cid_v1)
-                    == request.reference.cid_v1
+                    and item.get("cid", request.reference.cid_v1) == request.reference.cid_v1
                 )
             )
             if len(matches) != 1:
@@ -930,9 +906,7 @@ class IRRegistry:
                 return value
             path_value = location.get("path")
             if not isinstance(path_value, str):
-                raise FileNotFoundError(
-                    "remote reference requires an explicit byte resolver"
-                )
+                raise FileNotFoundError("remote reference requires an explicit byte resolver")
             path = Path(path_value)
             if not path.is_absolute():
                 raise FileNotFoundError("transport artifact path must be absolute")
@@ -953,9 +927,7 @@ class IRRegistry:
 
     register_analysis_transport_provider = register_analysis_transport
 
-    def _register(
-        self, registration: _ProviderRegistration, *, replace_existing: bool
-    ) -> None:
+    def _register(self, registration: _ProviderRegistration, *, replace_existing: bool) -> None:
         provider_id = registration.capability.provider_id
         if provider_id in self._providers and not replace_existing:
             raise IRRegistryError(f"provider already registered: {provider_id}")
@@ -978,10 +950,7 @@ class IRRegistry:
             registration.capability
             for provider_id in self._provider_order
             for registration in (self._providers[provider_id],)
-            if (
-                normalized_family is None
-                or normalized_family in registration.capability.families
-            )
+            if (normalized_family is None or normalized_family in registration.capability.families)
             and (
                 normalized_operation is None
                 or normalized_operation in registration.capability.operations
@@ -1006,22 +975,16 @@ class IRRegistry:
             )
         )
 
-    def register_local_artifact(
-        self, reference: PinnedArtifactRef, canonical_bytes: bytes
-    ) -> None:
+    def register_local_artifact(self, reference: PinnedArtifactRef, canonical_bytes: bytes) -> None:
         """Register deterministic immutable fixture bytes after exact verification."""
 
         if not isinstance(reference, PinnedArtifactRef):
             raise IRRegistryError("reference must be a PinnedArtifactRef")
         if not reference.verify_canonical_bytes(canonical_bytes):
             raise IRRegistryError("local artifact bytes do not match pinned reference")
-        self._local_artifacts[
-            (reference.cid_v1, reference.supervisor_digest)
-        ] = canonical_bytes
+        self._local_artifacts[(reference.cid_v1, reference.supervisor_digest)] = canonical_bytes
 
-    def register_local_path(
-        self, reference: PinnedArtifactRef, path: str | Path
-    ) -> None:
+    def register_local_path(self, reference: PinnedArtifactRef, path: str | Path) -> None:
         """Register an exact file path; bytes are read and verified only on load."""
 
         if not isinstance(reference, PinnedArtifactRef):
@@ -1029,9 +992,7 @@ class IRRegistry:
         candidate = Path(path)
         if not candidate.is_absolute():
             raise IRRegistryError("local artifact path must be absolute")
-        self._local_artifacts[
-            (reference.cid_v1, reference.supervisor_digest)
-        ] = candidate
+        self._local_artifacts[(reference.cid_v1, reference.supervisor_digest)] = candidate
 
     def _load_local(self, request: IRLoadRequest) -> bytes:
         source = self._local_artifacts.get(
@@ -1050,15 +1011,11 @@ class IRRegistry:
                 + 1
             )
 
-    def _candidate_registrations(
-        self, request: IRLoadRequest
-    ) -> tuple[_ProviderRegistration, ...]:
+    def _candidate_registrations(self, request: IRLoadRequest) -> tuple[_ProviderRegistration, ...]:
         return tuple(
             self._providers[provider_id]
             for provider_id in self._provider_order
-            if (
-                not request.provider_id or provider_id == request.provider_id
-            )
+            if (not request.provider_id or provider_id == request.provider_id)
             and self._providers[provider_id].capability.supports(
                 request.reference, family=request.family
             )
@@ -1115,17 +1072,11 @@ class IRRegistry:
                         f"{registration.capability.provider_id}: asynchronous loader"
                     )
                     continue
-                return self._verify(
-                    request, value, provider_id=registration.capability.provider_id
-                )
+                return self._verify(request, value, provider_id=registration.capability.provider_id)
             except (FileNotFoundError, ModuleNotFoundError, ImportError, AttributeError) as exc:
-                unavailable.append(
-                    f"{registration.capability.provider_id}: {type(exc).__name__}"
-                )
+                unavailable.append(f"{registration.capability.provider_id}: {type(exc).__name__}")
             except Exception as exc:
-                unavailable.append(
-                    f"{registration.capability.provider_id}: {type(exc).__name__}"
-                )
+                unavailable.append(f"{registration.capability.provider_id}: {type(exc).__name__}")
         return self._failure(
             request,
             IRFailureCode.UNAVAILABLE,
@@ -1173,17 +1124,11 @@ class IRRegistry:
                 value = loader(request)
                 if inspect.isawaitable(value):
                     value = await value
-                return self._verify(
-                    request, value, provider_id=registration.capability.provider_id
-                )
+                return self._verify(request, value, provider_id=registration.capability.provider_id)
             except (FileNotFoundError, ModuleNotFoundError, ImportError, AttributeError) as exc:
-                unavailable.append(
-                    f"{registration.capability.provider_id}: {type(exc).__name__}"
-                )
+                unavailable.append(f"{registration.capability.provider_id}: {type(exc).__name__}")
             except Exception as exc:
-                unavailable.append(
-                    f"{registration.capability.provider_id}: {type(exc).__name__}"
-                )
+                unavailable.append(f"{registration.capability.provider_id}: {type(exc).__name__}")
         return self._failure(
             request,
             IRFailureCode.UNAVAILABLE,
@@ -1193,9 +1138,7 @@ class IRRegistry:
         )
 
     def _preflight_bounds(self, request: IRLoadRequest) -> IRLoadResult | None:
-        maximum = min(
-            self.bounds.max_artifact_bytes, request.bounds.max_artifact_bytes
-        )
+        maximum = min(self.bounds.max_artifact_bytes, request.bounds.max_artifact_bytes)
         if request.reference.size_bytes > maximum:
             return self._failure(
                 request,
@@ -1219,9 +1162,7 @@ class IRRegistry:
                 return loader
         raise AttributeError("provider has no IR artifact load operation")
 
-    def _verify(
-        self, request: IRLoadRequest, value: Any, *, provider_id: str
-    ) -> IRLoadResult:
+    def _verify(self, request: IRLoadRequest, value: Any, *, provider_id: str) -> IRLoadResult:
         if isinstance(value, Mapping):
             value = canonical_artifact_bytes(value)
         if not isinstance(value, bytes):
@@ -1231,9 +1172,7 @@ class IRRegistry:
                 "provider did not return canonical artifact bytes",
                 provider_id=provider_id,
             )
-        effective_max = min(
-            self.bounds.max_artifact_bytes, request.bounds.max_artifact_bytes
-        )
+        effective_max = min(self.bounds.max_artifact_bytes, request.bounds.max_artifact_bytes)
         if len(value) > effective_max or len(value) != request.reference.size_bytes:
             return self._failure(
                 request,
@@ -1330,7 +1269,11 @@ class IRRegistry:
         else:
             producer_id = producer or payload.get("producer_id")
             configuration_id = payload.get("producer_configuration_id")
-        if producer_id != ref.producer_id or not isinstance(configuration_id, str) or not configuration_id:
+        if (
+            producer_id != ref.producer_id
+            or not isinstance(configuration_id, str)
+            or not configuration_id
+        ):
             return self._failure(
                 request,
                 IRFailureCode.QUARANTINED,
@@ -1379,15 +1322,11 @@ class IRRegistry:
             )
             review = _enum(review_raw, IRReviewState, "review state")
             trust = _enum(trust_raw, IRTrustState, "trust state")
-            authority_value = payload.get(
-                "authority", payload.get("declared_authority")
-            )
+            authority_value = payload.get("authority", payload.get("declared_authority"))
             if isinstance(authority_value, Mapping):
                 authority_value = authority_value.get(
                     "class",
-                    authority_value.get(
-                        "authority", authority_value.get("declared_authority")
-                    ),
+                    authority_value.get("authority", authority_value.get("declared_authority")),
                 )
             authority = _enum(
                 authority_value,
@@ -1461,9 +1400,7 @@ class IRRegistry:
 
         root = request.effective_root
         if ref != root:
-            membership = payload.get(
-                "root_membership", payload.get("semantic_root")
-            )
+            membership = payload.get("root_membership", payload.get("semantic_root"))
             if not isinstance(membership, Mapping):
                 return self._failure(
                     request,
@@ -1473,9 +1410,7 @@ class IRRegistry:
                 )
             if (
                 membership.get("root_cid_v1", membership.get("cid_v1")) != root.cid_v1
-                or membership.get(
-                    "root_supervisor_digest", membership.get("supervisor_digest")
-                )
+                or membership.get("root_supervisor_digest", membership.get("supervisor_digest"))
                 != root.supervisor_digest
                 or membership.get("member_cid_v1", ref.cid_v1) != ref.cid_v1
             ):
@@ -1557,11 +1492,7 @@ def deterministic_ir_fixture(
         "result_authority": (
             dict(result_authority)
             if isinstance(result_authority, Mapping)
-            else (
-                result_authority
-                if isinstance(result_authority, str)
-                else list(result_authority)
-            )
+            else (result_authority if isinstance(result_authority, str) else list(result_authority))
         ),
         "ambiguities": [],
         "contradictions": [],
@@ -1588,9 +1519,7 @@ def deterministic_ir_fixture(
     return reference, encoded
 
 
-def create_default_ir_registry(
-    *, include_optional_ipfs_datasets: bool = False
-) -> IRRegistry:
+def create_default_ir_registry(*, include_optional_ipfs_datasets: bool = False) -> IRRegistry:
     """Create the local registry, optionally declaring (not importing) datasets."""
 
     registry = IRRegistry()
@@ -1606,9 +1535,7 @@ def create_default_ir_registry(
     return registry
 
 
-def verify_ir_artifact(
-    request: IRLoadRequest, canonical_bytes: bytes
-) -> IRLoadResult:
+def verify_ir_artifact(request: IRLoadRequest, canonical_bytes: bytes) -> IRLoadResult:
     """Verify exact caller-supplied bytes without retaining them in shared state."""
 
     if not isinstance(request, IRLoadRequest):
@@ -1619,9 +1546,7 @@ def verify_ir_artifact(
     else:
         # Verification still returns a typed quarantined result instead of
         # failing during fixture registration.
-        return registry._verify(
-            request, canonical_bytes, provider_id="caller-supplied-ir"
-        )
+        return registry._verify(request, canonical_bytes, provider_id="caller-supplied-ir")
     return registry.load(replace(request, provider_id="supervisor-local-ir"))
 
 
