@@ -487,3 +487,34 @@ def test_learning_checkpoint_rejects_promotion_authority(tmp_path: Path) -> None
             fence=1,
             extra={"promotion_authority": True},
         )
+
+
+def test_integrated_security_matrix_covers_q_rejections_and_safe_restart(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.rescue.security_fault_matrix import (
+        SecurityFaultMatrix,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.integrated_security import (
+        ALL_Q_REJECTIONS,
+        MATERIAL_STAGES,
+        SecurityStage,
+        evaluate_integrated_security,
+        hostile_fixture,
+    )
+
+    matrix = SecurityFaultMatrix(tmp_path / "security-matrix")
+    receipt = matrix.run()
+    assert receipt.closed
+    assert receipt.missing_rejections == ()
+    assert receipt.duplicate_accepted_work == 0
+    assert {item.reason for item in receipt.cases} == set(ALL_Q_REJECTIONS)
+    assert {item.stage for item in receipt.recovery} == set(MATERIAL_STAGES)
+    assert evaluate_integrated_security(hostile_fixture("partial_checkpoint")).admitted is False
+    recovered = matrix.recover_stage(
+        SecurityStage.CHECKPOINT,
+        incident_id="api-partial-checkpoint",
+        evidence_ids=("merged-tree-proof",),
+    )
+    assert "merged-tree-proof" in recovered.preserved_evidence_ids
+    assert recovered.duplicate_accepted_work == 0
