@@ -1330,7 +1330,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-111 Qualify, publish or reject, and issue the next board
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
