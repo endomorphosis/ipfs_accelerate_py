@@ -507,8 +507,13 @@ def _strictly_fence_pid_tree(
     own_group = int(owned_process_group_id or 0)
     if own_group in {1, os.getpgrp()}:
         own_group = 0
+    try:
+        caller_session = os.getsid(0)
+    except OSError:
+        caller_session = 0
     tracked: Dict[int, Tuple[str, int]] = {}
     tracked_groups: set[int] = {own_group} if own_group > 1 else set()
+    tracked_sessions: set[int] = set()
     initial_table = _process_identity_snapshot()
     initial_root = initial_table.get(pid)
     root_starttime = (
@@ -535,8 +540,8 @@ def _strictly_fence_pid_tree(
     ) -> set[int]:
         selected = {
             process_id
-            for process_id, (_state, _parent, process_group, _session, _start) in table.items()
-            if process_group in tracked_groups
+            for process_id, (_state, _parent, process_group, session, _start) in table.items()
+            if process_group in tracked_groups or session in tracked_sessions
         }
         root = table.get(pid)
         if root is not None and root[4] == root_starttime:
@@ -562,7 +567,7 @@ def _strictly_fence_pid_tree(
         selected = closure(table)
         new_member = False
         for process_id in selected:
-            state, _parent, process_group, _session, starttime = table[process_id]
+            state, _parent, process_group, session, starttime = table[process_id]
             existing = tracked.get(process_id)
             if existing is None or existing[0] != starttime:
                 tracked[process_id] = (starttime, 0)
@@ -573,6 +578,8 @@ def _strictly_fence_pid_tree(
                 os.getpgrp(),
             }:
                 tracked_groups.add(process_group)
+            if session == process_id and session not in {0, 1, caller_session}:
+                tracked_sessions.add(session)
 
         # Stop owned groups first, then every exact member. Repeating the scan
         # catches children created in the interval before their parent stopped.
@@ -614,7 +621,7 @@ def _strictly_fence_pid_tree(
     while True:
         table = _process_identity_snapshot()
         for process_id in closure(table):
-            state, _parent, process_group, _session, starttime = table[process_id]
+            state, _parent, process_group, session, starttime = table[process_id]
             existing = tracked.get(process_id)
             if existing is None or existing[0] != starttime:
                 tracked[process_id] = (starttime, 0)
@@ -624,6 +631,8 @@ def _strictly_fence_pid_tree(
                 os.getpgrp(),
             }:
                 tracked_groups.add(process_group)
+            if session == process_id and session not in {0, 1, caller_session}:
+                tracked_sessions.add(session)
 
         live_members = {
             process_id
@@ -656,6 +665,57 @@ def _strictly_fence_pid_tree(
         time.sleep(0.02)
 
 
+def _expand_snapshot_by_owned_sessions(
+    snapshot: List[Tuple[int, int, int]],
+    relationships: Dict[int, Tuple[int, int]],
+) -> List[Tuple[int, int, int]]:
+    """Add members of descendant-owned sessions that left the parent tree.
+
+    ``start_new_session=True`` children remain parent-linked until the parent
+    exits.  Once reparented they are still in the session they created.  Session
+    expansion never crosses into the caller's session.
+    """
+
+    if not snapshot:
+        return snapshot
+    identities = _process_identity_snapshot()
+    if not identities:
+        return snapshot
+    try:
+        caller_session = os.getsid(0)
+    except OSError:
+        caller_session = 0
+    visited = {process_id for process_id, _group, _depth in snapshot}
+    owned_sessions: set[int] = set()
+    for process_id, _group, _depth in snapshot:
+        record = identities.get(process_id)
+        if record is None:
+            continue
+        session = record[3]
+        if session > 1 and session != caller_session and session == process_id:
+            owned_sessions.add(session)
+    if not owned_sessions:
+        return snapshot
+    expanded = list(snapshot)
+    max_depth = max(depth for _pid, _group, depth in snapshot)
+    changed = True
+    while changed:
+        changed = False
+        for process_id, (state, _parent, process_group, session, _start) in identities.items():
+            if process_id in visited or state == "Z":
+                continue
+            if session not in owned_sessions:
+                continue
+            visited.add(process_id)
+            relation = relationships.get(process_id)
+            group = relation[1] if relation is not None else process_group
+            expanded.append((process_id, group, max_depth + 1))
+            changed = True
+            if process_id == session and session not in {0, 1, caller_session}:
+                owned_sessions.add(session)
+    return expanded
+
+
 def _snapshot_pid_tree(pid: int) -> List[Tuple[int, int, int]]:
     """Return ``(pid, process_group, depth)`` before any ancestor is stopped."""
 
@@ -680,6 +740,7 @@ def _snapshot_pid_tree(pid: int) -> List[Tuple[int, int, int]]:
                 (child, depth + 1)
                 for child in children_by_parent.get(process_id, ())
             )
+        snapshot = _expand_snapshot_by_owned_sessions(snapshot, relationships)
         return snapshot
 
     # Non-/proc platforms retain the previous pgrep-based behavior, but still
