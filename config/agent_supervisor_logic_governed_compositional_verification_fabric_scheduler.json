@@ -1,0 +1,195 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.logic_governed_compositional_verification_fabric.scheduler_config@1",
+  "taskboard_path": "docs/architecture/logic_governed_compositional_verification_fabric.todo.md",
+  "objectives_path": "docs/architecture/logic_governed_compositional_verification_fabric.objectives.md",
+  "plan_path": "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md",
+  "formal_plan_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/formal_work_plan.json",
+  "validator_path": "scripts/validate_logic_governed_compositional_verification_fabric_plan.py",
+  "materializer_path": "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py",
+  "task_prefix": "LGCVF-",
+  "goal_prefix": "LGCVF-G",
+  "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+  "merge_target_branch": "agent/logic-governed-compositional-verification-fabric-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+    "accelerator_required_branch": "agent/logic-governed-compositional-verification-fabric-v1",
+    "bootstrap_task_source": "duckdb",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "11fa6e8d37c4d90b8d4905572f96ee95b9443448",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "plan_binding": {
+    "formal_plan_content_id": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
+    "predecessor_plan_cid": "sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e",
+    "predecessor_board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
+    "historical_status_is_rewritten": false
+  },
+  "initial_projection": {
+    "task_count": 27,
+    "completed_task_ids": [
+      "LGCVF-001",
+      "LGCVF-002",
+      "LGCVF-010",
+      "LGCVF-020",
+      "LGCVF-030",
+      "LGCVF-040",
+      "LGCVF-050"
+    ],
+    "ready_task_ids": [
+      "LGCVF-051",
+      "LGCVF-060",
+      "LGCVF-070",
+      "LGCVF-080"
+    ],
+    "blocked_task_ids": [
+      "LGCVF-121",
+      "LGCVF-123"
+    ],
+    "terminal_task_id": "LGCVF-124",
+    "goal_count": 14,
+    "root_goal_id": "LGCVF-G000"
+  },
+  "max_lanes": 1,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 30,
+  "check_interval_seconds": 15,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 180,
+  "max_restarts": 4,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 5400,
+  "implementation_max_timeout_seconds": 7200,
+  "implementation_log_stall_seconds": 900,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/formal_work_plan.json",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md",
+    "docs/architecture/logic_governed_compositional_verification_fabric.objectives.md",
+    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md",
+    "docs/architecture/logic_governed_compositional_verification/CURRENT_TREE_CAPABILITY_GAP_MATRIX.md",
+    "docs/architecture/logic_governed_compositional_verification/TRUST_AND_LIMITATIONS.md",
+    "docs/architecture/logic_governed_compositional_verification/current_tree_capability_gap_matrix.json",
+    "docs/architecture/logic_governed_compositional_verification/paired_benchmark_result.json",
+    "docs/architecture/logic_governed_compositional_verification/vertical_slice_result.json",
+    "docs/architecture/logic_governed_compositional_verification/FINAL_IMPLEMENTATION_REPORT.md",
+    "scripts/benchmark_lgcvf_symbolic_displacement.py",
+    "scripts/emit_logic_governed_compositional_verification_fabric_plan.py",
+    "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py",
+    "scripts/validate_logic_governed_compositional_verification_fabric_plan.py",
+    "test/api/test_agent_supervisor_compositional_verification_vertical.py",
+    "test/api/test_agent_supervisor_lgcvf_control_plane.py",
+    "test/api/test_agent_supervisor_lgcvf_symbolic_displacement_benchmark.py",
+    "test/fixtures/agent_supervisor/compositional_verification/config/schema.json",
+    "test/fixtures/agent_supervisor/compositional_verification/tests/test_selected.py",
+    "test/fixtures/agent_supervisor/compositional_verification/tests/test_unselected.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1",
+    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/state",
+    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/logs",
+    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "database_program": {
+    "authority_mode": "embedded",
+    "authoritative_transactional_data_model": true,
+    "authoritative_records_schema_cas_and_fencing": true,
+    "task_source_kind": "duckdb",
+    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/control.duckdb",
+    "store_generation": "lgcvf-run-v1",
+    "schema_revision": "datasets-authoritative-operational-v1",
+    "schema_profile": "datasets-authoritative-operational",
+    "semantic_relations_permitted": false,
+    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/registry",
+    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v1/worktrees",
+    "export_profile": "lgcvf-run-v1",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": false
+  },
+  "bootstrap_writer_policy": {
+    "maximum_processes": 1,
+    "quack_required": false,
+    "direct_multi_process_duckdb_permitted": false,
+    "automatic_installation_permitted": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "lgcvf-single-writer-lane",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "LGCVF-051",
+        "LGCVF-060",
+        "LGCVF-070",
+        "LGCVF-080"
+      ],
+      "initial_focus": "deterministic-compositional-verification-frontier"
+    }
+  ],
+  "task_groups": {
+    "LGCVF-G010": ["LGCVF-001", "LGCVF-002"],
+    "LGCVF-G020": ["LGCVF-010"],
+    "LGCVF-G030": ["LGCVF-020"],
+    "LGCVF-G040": ["LGCVF-030"],
+    "LGCVF-G050": ["LGCVF-040"],
+    "LGCVF-G060": ["LGCVF-050", "LGCVF-051"],
+    "LGCVF-G070": ["LGCVF-060", "LGCVF-061"],
+    "LGCVF-G080": ["LGCVF-070", "LGCVF-071"],
+    "LGCVF-G090": ["LGCVF-080", "LGCVF-081"],
+    "LGCVF-G100": ["LGCVF-090", "LGCVF-091"],
+    "LGCVF-G110": ["LGCVF-100", "LGCVF-101", "LGCVF-102"],
+    "LGCVF-G120": ["LGCVF-110", "LGCVF-111", "LGCVF-112"],
+    "LGCVF-G130": ["LGCVF-120", "LGCVF-121", "LGCVF-122", "LGCVF-123", "LGCVF-124"]
+  },
+  "provider": {
+    "provider_id": "codex",
+    "model_id": "gpt-5.6-terra",
+    "max_concurrency": 1,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "datasets_owns_semantic_truth": true,
+    "accelerator_owns_operational_coordination": true,
+    "provider_claim_is_verification_authority": false,
+    "task_status_is_completion_authority": false,
+    "unknown_stale_unavailable_or_unsupported_can_pass": false,
+    "manual_or_external_gate_can_be_automatically_completed": false,
+    "production_acceptance_requires_current_independent_evidence": true
+  },
+  "capability_policy": {
+    "automatic_dependency_installation_allowed": false,
+    "network_capability_acquisition_allowed": false,
+    "missing_optional_dependency_disposition": "typed_unavailable",
+    "quack_unavailable_disposition": "bounded_embedded_single_writer",
+    "direct_multi_process_duckdb_allowed": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "LGCVF-124",
+    "all_task_dependencies_terminal_required": true,
+    "current_tree_obligation_evidence_required": true,
+    "blocked_manual_and_external_tasks_remain_blocked": true,
+    "construction_status_is_not_release_qualification": true,
+    "release_qualification_is_not_production_authorization": true,
+    "final_report_required": true
+  }
+}

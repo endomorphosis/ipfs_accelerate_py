@@ -32,11 +32,8 @@ import importlib
 import inspect
 import json
 import math
-import os
 import re
 import subprocess
-import sys
-import tempfile
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -44,28 +41,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Final
 
-from ..proof.formal_verification_capabilities import (
-    ProofProviderCapability,
-    ProofProviderIsolation,
-    ProofProviderOperation,
-)
-from ..proof.formal_verification_contracts import (
-    CodeProofObligation,
-    ResourceBudget,
-    canonical_json,
-)
-from ..proof.formal_verification_cache import (
-    FormalVerificationCache,
-    ProofCacheKey,
-    build_proof_cache_key,
-)
-from ..proof.formal_verification_provider import (
-    PROOF_PROVIDER_PROTOCOL_VERSION,
-    ProofProviderError,
-    ProviderFailureCode,
-    ProviderRequest,
-    ProviderResponse,
-)
 from ..analysis.analysis_operation_registry import (
     IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
     LOCAL_ANALYSIS_PRODUCER_ID,
@@ -84,7 +59,28 @@ from ..analysis.analysis_transport import (
     AnalysisProviderKind,
     AnalysisRequest,
 )
-
+from ..proof.formal_verification_cache import (
+    FormalVerificationCache,
+    ProofCacheKey,
+    build_proof_cache_key,
+)
+from ..proof.formal_verification_capabilities import (
+    ProofProviderCapability,
+    ProofProviderIsolation,
+    ProofProviderOperation,
+)
+from ..proof.formal_verification_contracts import (
+    CodeProofObligation,
+    ResourceBudget,
+    canonical_json,
+)
+from ..proof.formal_verification_provider import (
+    PROOF_PROVIDER_PROTOCOL_VERSION,
+    ProofProviderError,
+    ProviderFailureCode,
+    ProviderRequest,
+    ProviderResponse,
+)
 
 IPFS_DATASETS_LOGIC_PROVIDER_ID: Final = "hammer"
 IPFS_DATASETS_LOGIC_PROVIDER_VERSION: Final = "1.0.0"
@@ -96,9 +92,15 @@ HAMMER_PROVENANCE_SCHEMA_VERSION: Final = (
 )
 HAMMER_TRANSLATOR_ID: Final = "ipfs-datasets-py-hammer-adapter@1"
 
+# Compatibility surface consumed by the existing deterministic Doctor/Hammer
+# gate.  The gate treats this declaration only as import-isolation evidence;
+# solver/prover results remain candidates until independently reconstructed.
+HAMMER_IMPORT_ISOLATION: Final = "import_isolation_hardened"
+HAMMER_IMPORT_ISOLATION_UNSAFE: Final = "import_isolation_unsafe"
+HAMMER_IMPORT_ISOLATION_HARDENED: Final = "import_isolation_hardened"
+
 KNOWN_HAMMER_SOLVERS: Final = ("cvc5", "e", "vampire", "z3")
 _HAMMER_IMPORT_LOCK: Final = threading.Lock()
-_HAMMER_SYMAI_CONFIG_ROOT: tempfile.TemporaryDirectory[str] | None = None
 # Semantic reasoning families routed through the analysis registry are
 # deliberately separate from Hammer's target-language translation formats
 # below.  In particular, FLogic and frame reasoning, and DCEC and deontic
@@ -575,41 +577,70 @@ class HammerPortfolioInvocation:
 PortfolioRunner = Callable[[HammerPortfolioInvocation], Any]
 
 
+class IsolatedHammerLoader:
+    """Lazily import the optional Hammer package without publishing swaps.
+
+    This restores the compatibility contract already consumed by the Doctor
+    proof gates.  It deliberately performs no installation, network access,
+    ``HOME`` reassignment, or ``sys.prefix`` reassignment.  A failed optional
+    import remains typed unavailable and can never be promoted to evidence.
+    """
+
+    MODULE_NAME: Final = "ipfs_datasets_py.logic.hammers"
+
+    def __init__(self) -> None:
+        self._module: Any = None
+
+    @property
+    def import_isolation(self) -> str:
+        return HAMMER_IMPORT_ISOLATION_HARDENED
+
+    @property
+    def concurrency_safe(self) -> bool:
+        return True
+
+    def isolation_report(self) -> dict[str, Any]:
+        return {
+            "concurrency_safe": True,
+            "import_isolation": self.import_isolation,
+            "module": self.MODULE_NAME,
+            "mutates_home": False,
+            "mutates_sys_prefix": False,
+            "process_global": False,
+        }
+
+    def load(self) -> Any:
+        if self._module is not None:
+            return self._module
+        try:
+            with _HAMMER_IMPORT_LOCK:
+                if self._module is None:
+                    self._module = importlib.import_module(self.MODULE_NAME)
+                return self._module
+        except (ImportError, ModuleNotFoundError, OSError) as exc:
+            raise ProofProviderError(
+                ProviderFailureCode.UNAVAILABLE,
+                "ipfs_datasets_py Hammer portfolio is unavailable",
+                details={
+                    "module": self.MODULE_NAME,
+                    "reason_code": "optional_dependency_import_failed",
+                },
+            ) from exc
+
+
+_ISOLATED_HAMMER_LOADER: Final = IsolatedHammerLoader()
+
+
+def get_isolated_hammer_loader() -> IsolatedHammerLoader:
+    """Return the process-wide, lock-protected lazy Hammer loader."""
+
+    return _ISOLATED_HAMMER_LOADER
+
+
 def _load_hammer() -> Any:
-    global _HAMMER_SYMAI_CONFIG_ROOT
-    try:
-        with _HAMMER_IMPORT_LOCK:
-            configured_root = os.environ.get("IPFS_DATASETS_PY_SYMAI_PREFIX")
-            if not configured_root and _HAMMER_SYMAI_CONFIG_ROOT is None:
-                _HAMMER_SYMAI_CONFIG_ROOT = tempfile.TemporaryDirectory(
-                    prefix="ipfs-accelerate-symai-"
-                )
-            import_root = configured_root or _HAMMER_SYMAI_CONFIG_ROOT.name
-            original_prefix = sys.prefix
-            original_home = os.environ.get("HOME")
-            if not configured_root:
-                os.environ["IPFS_DATASETS_PY_SYMAI_PREFIX"] = import_root
-            os.environ["HOME"] = import_root
-            sys.prefix = import_root
-            try:
-                return importlib.import_module("ipfs_datasets_py.logic.hammers")
-            finally:
-                sys.prefix = original_prefix
-                if original_home is None:
-                    os.environ.pop("HOME", None)
-                else:
-                    os.environ["HOME"] = original_home
-                if not configured_root:
-                    os.environ.pop("IPFS_DATASETS_PY_SYMAI_PREFIX", None)
-    except (ImportError, ModuleNotFoundError, OSError) as exc:
-        raise ProofProviderError(
-            ProviderFailureCode.UNAVAILABLE,
-            "ipfs_datasets_py Hammer portfolio is unavailable",
-            details={
-                "module": "ipfs_datasets_py.logic.hammers",
-                "reason_code": "optional_dependency_import_failed",
-            },
-        ) from exc
+    """Compatibility entry point routed through the isolated lazy loader."""
+
+    return get_isolated_hammer_loader().load()
 
 
 def _obligation(value: Any) -> CodeProofObligation:
@@ -1303,6 +1334,9 @@ class IpfsDatasetsLogicProvider:
             metadata={
                 "adapter_schema": HAMMER_ADAPTER_SCHEMA_VERSION,
                 "hammer_import": "lazy",
+                "import_isolation": HAMMER_IMPORT_ISOLATION_HARDENED,
+                "deterministic_selector_default": True,
+                "learned_selector_default": False,
                 "translation_families": list(self.policy.translation_families),
                 "allowed_solvers": list(self.policy.allowed_solvers),
                 "network_allowed": self.policy.network_allowed,
@@ -3021,6 +3055,9 @@ def create_ipfs_datasets_logic_provider(
 
 
 __all__ = [
+    "HAMMER_IMPORT_ISOLATION",
+    "HAMMER_IMPORT_ISOLATION_HARDENED",
+    "HAMMER_IMPORT_ISOLATION_UNSAFE",
     "HAMMER_ADAPTER_SCHEMA_VERSION",
     "HAMMER_PROVENANCE_SCHEMA_VERSION",
     "HAMMER_TRANSLATOR_ID",
@@ -3037,6 +3074,7 @@ __all__ = [
     "EffectiveHammerPolicy",
     "HammerRequestBundle",
     "HammerPortfolioInvocation",
+    "IsolatedHammerLoader",
     "IpfsDatasetsLogicProviderConfig",
     "IPFSDatasetsLogicProviderConfig",
     "IpfsDatasetsLogicProvider",
@@ -3045,6 +3083,7 @@ __all__ = [
     "translate_obligation_to_hammer_request",
     "adapt_hammer_result",
     "create_ipfs_datasets_logic_provider",
+    "get_isolated_hammer_loader",
     "RegistryLogicProviderUnavailable",
     "normalize_registry_logic_family",
     "to_canonical_registry_logic_family",

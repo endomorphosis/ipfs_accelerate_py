@@ -41,6 +41,30 @@ EXPECTED_SEMANTIC_STATE_API_SCHEMA = (
 EXPECTED_STATE_VIEW_INTERFACE = "SemanticStateView@1"
 EXPECTED_PRODUCER_INTERFACE = "SemanticStateProducer@1"
 EXPECTED_BLOCK_READER_INTERFACE = "SemanticStateBlockReader@1"
+EXPECTED_LOGIC_VERIFICATION_API_INTERFACE = "LogicVerificationAPI@1"
+EXPECTED_ABSTRACT_ANALYSIS_INTERFACE = "AbstractAnalysisResult@1"
+EXPECTED_ABSTRACT_ANALYSIS_SCHEMA = "software-abstract-analysis/v1"
+EXPECTED_COMPOSITIONAL_CONTRACT_INTERFACE = "CompositionalContract@1"
+EXPECTED_COMPOSITIONAL_CONTRACT_SCHEMA = "ipfs-datasets.software-contracts.compositional-contract@1"
+EXPECTED_ASSUME_GUARANTEE_INTERFACE = "AssumeGuaranteeDischarge@1"
+EXPECTED_ASSUME_GUARANTEE_RECEIPT_SCHEMA = "assume-guarantee-discharge-receipt/v1"
+EXPECTED_INCREMENTAL_VERIFICATION_INTERFACE = "IncrementalVerificationPlan@1"
+EXPECTED_INCREMENTAL_VERIFICATION_RECEIPT_SCHEMA = (
+    "ipfs-datasets.software-verification.incremental-plan-receipt@1"
+)
+EXPECTED_INCREMENTAL_SMT_INTERFACE = "IncrementalSmtSession@1"
+EXPECTED_INCREMENTAL_SMT_SCHEMA = "incremental-smt-session/v1"
+EXPECTED_INTERPOLATION_INTERFACE = "ValidatedCraigInterpolation@1"
+EXPECTED_INTERPOLATION_RECEIPT_SCHEMA = "validated-craig-interpolant/v1"
+
+COMPOSITIONAL_VERIFICATION_OPERATIONS = (
+    "analyze_abstract_state",
+    "compile_component_contract",
+    "discharge_assume_guarantee",
+    "plan_incremental_verification",
+    "open_incremental_smt_session",
+    "compute_and_validate_interpolant",
+)
 
 CONFIDENCE_VALUES = frozenset({"exact", "conservative", "heuristic", "opaque"})
 
@@ -312,11 +336,11 @@ def _load_pinned_modules() -> tuple[Any, Any, Any]:
         from ipfs_datasets_py.logic.software_contracts import (
             semantic_index as index_mod,
         )
-        from ipfs_datasets_py.logic.software_contracts.semantic_state import (
-            models as models_mod,
-        )
         from ipfs_datasets_py.logic.software_contracts import (
             semantic_state as state_mod,
+        )
+        from ipfs_datasets_py.logic.software_contracts.semantic_state import (
+            models as models_mod,
         )
     except Exception as exc:  # ImportError and ambient layout failures
         raise SemanticStateUnavailable(
@@ -465,6 +489,116 @@ def _load_pinned_surface() -> SimpleNamespace:
     return _build_surface(state_mod, index_mod, models_mod)
 
 
+def _build_verification_surface(api: Any) -> SimpleNamespace:
+    """Check and project the additive datasets VerificationAPI surface.
+
+    The projection retains datasets objects and return values verbatim.  It is
+    an authority-reducing call boundary, not a second implementation of any
+    semantic type or operation.
+    """
+
+    interface = _attr(api, "interface")
+    if interface != EXPECTED_LOGIC_VERIFICATION_API_INTERFACE:
+        raise SemanticStateUnavailable(
+            "load_verification_api",
+            "interface_mismatch",
+            f"LogicVerificationAPI interface is {interface!r}, expected "
+            f"{EXPECTED_LOGIC_VERIFICATION_API_INTERFACE!r}",
+            retryable=False,
+        )
+    missing = [
+        operation
+        for operation in COMPOSITIONAL_VERIFICATION_OPERATIONS
+        if not callable(_attr(api, operation))
+    ]
+    if missing:
+        raise SemanticStateUnavailable(
+            "load_verification_api",
+            "missing_exports",
+            "LogicVerificationAPI missing compositional operations: " + ", ".join(missing),
+            retryable=False,
+        )
+    describe = _attr(api, "to_dict")
+    if callable(describe):
+        descriptor = describe()
+        if not isinstance(descriptor, Mapping):
+            raise SemanticStateUnavailable(
+                "load_verification_api",
+                "invalid_descriptor",
+                "LogicVerificationAPI.to_dict() must return a mapping",
+                retryable=False,
+            )
+        advertised = descriptor.get("compositional_verification_operations")
+        if advertised is not None:
+            if isinstance(advertised, (str, bytes)) or not isinstance(advertised, Sequence):
+                raise SemanticStateUnavailable(
+                    "load_verification_api",
+                    "invalid_descriptor",
+                    "compositional_verification_operations must be a sequence",
+                    retryable=False,
+                )
+            absent = sorted(set(COMPOSITIONAL_VERIFICATION_OPERATIONS) - set(advertised))
+            if absent:
+                raise SemanticStateUnavailable(
+                    "load_verification_api",
+                    "missing_operations",
+                    "LogicVerificationAPI descriptor omits: " + ", ".join(absent),
+                    retryable=False,
+                )
+    return SimpleNamespace(
+        interface=interface,
+        **{
+            operation: getattr(api, operation)
+            for operation in COMPOSITIONAL_VERIFICATION_OPERATIONS
+        },
+    )
+
+
+def _load_pinned_verification_surface() -> SimpleNamespace:
+    """Load the additive VerificationAPI only when a new operation is used."""
+
+    try:
+        from ipfs_datasets_py.logic import verification_api as verification_mod
+    except Exception as exc:  # ImportError and ambient layout failures
+        raise SemanticStateUnavailable(
+            "load_verification_api",
+            "import_failed",
+            f"datasets VerificationAPI import failed: {exc}",
+            retryable=True,
+        ) from exc
+    _require_exports(
+        verification_mod,
+        (
+            "LOGIC_VERIFICATION_API_INTERFACE",
+            "COMPOSITIONAL_VERIFICATION_OPERATIONS",
+            "get_verification_api",
+        ),
+        "verification_api",
+    )
+    _check_schema_pin(
+        _attr(verification_mod, "LOGIC_VERIFICATION_API_INTERFACE"),
+        EXPECTED_LOGIC_VERIFICATION_API_INTERFACE,
+        "LOGIC_VERIFICATION_API_INTERFACE",
+    )
+    declared = _attr(verification_mod, "COMPOSITIONAL_VERIFICATION_OPERATIONS")
+    if isinstance(declared, (str, bytes)) or not isinstance(declared, Sequence):
+        raise SemanticStateUnavailable(
+            "load_verification_api",
+            "invalid_operations",
+            "COMPOSITIONAL_VERIFICATION_OPERATIONS must be a sequence",
+            retryable=False,
+        )
+    missing = sorted(set(COMPOSITIONAL_VERIFICATION_OPERATIONS) - set(declared))
+    if missing:
+        raise SemanticStateUnavailable(
+            "load_verification_api",
+            "missing_operations",
+            "datasets VerificationAPI omits required operations: " + ", ".join(missing),
+            retryable=False,
+        )
+    return _build_verification_surface(verification_mod.get_verification_api())
+
+
 class _LazySurface:
     """Attribute proxy that loads the sealed surface on first use."""
 
@@ -516,7 +650,12 @@ class IpfsDatasetsSemanticStateProvider:
     as validated forwarders that never rewrite identity.
     """
 
-    __slots__ = ("_api", "_capability", "_forbid_filesystem_source")
+    __slots__ = (
+        "_api",
+        "_capability",
+        "_forbid_filesystem_source",
+        "_verification_api",
+    )
 
     def __init__(
         self,
@@ -524,8 +663,15 @@ class IpfsDatasetsSemanticStateProvider:
         *,
         capability: SemanticStateCapability | None = None,
         forbid_filesystem_source: bool = True,
+        verification_api: Any | None = None,
     ) -> None:
         self._forbid_filesystem_source = bool(forbid_filesystem_source)
+        if verification_api is None:
+            self._verification_api = _LazySurface(_load_pinned_verification_surface)
+        else:
+            self._verification_api = _LazySurface(
+                lambda: _build_verification_surface(verification_api)
+            )
         if surface is not None:
             self._api = surface
             self._capability = capability or getattr(surface, "capability", None)
@@ -544,7 +690,12 @@ class IpfsDatasetsSemanticStateProvider:
                     view_interface=EXPECTED_STATE_VIEW_INTERFACE,
                     producer_interface=EXPECTED_PRODUCER_INTERFACE,
                     block_reader_interface=EXPECTED_BLOCK_READER_INTERFACE,
-                    operations=tuple(sorted(_FORWARDED_OPS | {"open_semantic_state", "scan_repository"})),
+                    operations=tuple(
+                        sorted(
+                            _FORWARDED_OPS
+                            | {"open_semantic_state", "scan_repository"}
+                        )
+                    ),
                 )
         else:
             self._capability = None
@@ -559,7 +710,7 @@ class IpfsDatasetsSemanticStateProvider:
     def capability(self) -> SemanticStateCapability:
         if self._capability is None:
             # Force lazy load
-            getattr(self._api, "capability")
+            _ = self._api.capability
         assert self._capability is not None
         return self._capability
 
@@ -567,6 +718,17 @@ class IpfsDatasetsSemanticStateProvider:
         cap = self.capability
         cap.require_available(operation)
         return self._api
+
+    def _require_verification(self, operation: str) -> Callable[..., Any]:
+        target = getattr(self._verification_api, operation)
+        if not callable(target):  # Defensive: the loader normally proves this.
+            raise SemanticStateUnavailable(
+                operation,
+                "missing_operation",
+                f"datasets VerificationAPI operation {operation!r} is not callable",
+                retryable=False,
+            )
+        return target
 
     # --- sealed pure-delegation methods (names fixed by AST audit) ----------
 
@@ -722,6 +884,44 @@ class IpfsDatasetsSemanticStateProvider:
             ) from exc
         return _validate_view(view, context="open_semantic_state", root_cid=root_cid)
 
+    # --- additive datasets VerificationAPI forwarding surface -------------
+
+    def analyze_abstract_state(self, source: str, **kwargs: Any) -> Any:
+        target = self._require_verification("analyze_abstract_state")
+        result = target(source, **kwargs)
+        return _validate_compositional_verification_result("analyze_abstract_state", result)
+
+    def compile_component_contract(self, contract: Any, **bindings: Any) -> Any:
+        target = self._require_verification("compile_component_contract")
+        result = target(contract, **bindings)
+        return _validate_compositional_verification_result("compile_component_contract", result)
+
+    def discharge_assume_guarantee(self, graph: Any, **kwargs: Any) -> Any:
+        target = self._require_verification("discharge_assume_guarantee")
+        result = target(graph, **kwargs)
+        return _validate_compositional_verification_result("discharge_assume_guarantee", result)
+
+    def plan_incremental_verification(
+        self, previous_state: Any, current_state: Any, **kwargs: Any
+    ) -> Any:
+        target = self._require_verification("plan_incremental_verification")
+        result = target(previous_state, current_state, **kwargs)
+        return _validate_compositional_verification_result("plan_incremental_verification", result)
+
+    def open_incremental_smt_session(self, **kwargs: Any) -> Any:
+        target = self._require_verification("open_incremental_smt_session")
+        result = target(**kwargs)
+        return _validate_compositional_verification_result("open_incremental_smt_session", result)
+
+    def compute_and_validate_interpolant(
+        self, partition_a: Any, partition_b: Any, **kwargs: Any
+    ) -> Any:
+        target = self._require_verification("compute_and_validate_interpolant")
+        result = target(partition_a, partition_b, **kwargs)
+        return _validate_compositional_verification_result(
+            "compute_and_validate_interpolant", result
+        )
+
     # --- generic forwarders for producer names sealed out of local defs -----
 
     def __getattr__(self, name: str) -> Any:
@@ -783,6 +983,111 @@ def _validate_view(
     return view
 
 
+_VERIFICATION_RESULT_CONTRACTS: Mapping[str, tuple[str, str | None, str | None]] = {
+    "analyze_abstract_state": (
+        EXPECTED_ABSTRACT_ANALYSIS_SCHEMA,
+        EXPECTED_ABSTRACT_ANALYSIS_INTERFACE,
+        "analysis_id",
+    ),
+    "compile_component_contract": (
+        EXPECTED_COMPOSITIONAL_CONTRACT_SCHEMA,
+        EXPECTED_COMPOSITIONAL_CONTRACT_INTERFACE,
+        "cid",
+    ),
+    "discharge_assume_guarantee": (
+        EXPECTED_ASSUME_GUARANTEE_RECEIPT_SCHEMA,
+        EXPECTED_ASSUME_GUARANTEE_INTERFACE,
+        "receipt_cid",
+    ),
+    "plan_incremental_verification": (
+        EXPECTED_INCREMENTAL_VERIFICATION_RECEIPT_SCHEMA,
+        EXPECTED_INCREMENTAL_VERIFICATION_INTERFACE,
+        "receipt_cid",
+    ),
+    "compute_and_validate_interpolant": (
+        EXPECTED_INTERPOLATION_RECEIPT_SCHEMA,
+        EXPECTED_INTERPOLATION_INTERFACE,
+        "receipt_cid",
+    ),
+}
+
+
+def _artifact_schema(value: Any) -> Any:
+    schema = getattr(value, "schema", None)
+    if schema is None:
+        schema = getattr(value, "schema_version", None)
+    return schema
+
+
+def _artifact_interface(value: Any) -> Any:
+    interface = getattr(value, "interface", None)
+    if interface is None:
+        interface = getattr(value, "INTERFACE", None)
+    if interface is not None:
+        return interface
+    identity_payload = getattr(value, "identity_payload", None)
+    if callable(identity_payload):
+        payload = identity_payload()
+        if isinstance(payload, Mapping):
+            return payload.get("interface")
+    return None
+
+
+def _validate_compositional_verification_result(operation: str, result: Any) -> Any:
+    """Validate a datasets-owned artifact without copying or re-authoring it."""
+
+    if result is None:
+        raise SemanticStateAdapterError(f"{operation} returned no result")
+    if operation == "open_incremental_smt_session":
+        interface = _artifact_interface(result)
+        if interface != EXPECTED_INCREMENTAL_SMT_INTERFACE:
+            raise SemanticStateAdapterError(
+                f"{operation}: interface {interface!r} does not match "
+                f"{EXPECTED_INCREMENTAL_SMT_INTERFACE!r}"
+            )
+        fingerprint = getattr(result, "fingerprint", None)
+        if fingerprint is None:
+            raise SemanticStateAdapterError(f"{operation}: session missing fingerprint")
+        schema = _artifact_schema(fingerprint)
+        if schema != EXPECTED_INCREMENTAL_SMT_SCHEMA:
+            raise SemanticStateAdapterError(
+                f"{operation}: fingerprint schema {schema!r} does not match "
+                f"{EXPECTED_INCREMENTAL_SMT_SCHEMA!r}"
+            )
+        for method in ("add_named_assertion", "push", "pop", "check", "close"):
+            if not callable(getattr(result, method, None)):
+                raise SemanticStateAdapterError(f"{operation}: session missing callable {method}")
+        return result
+
+    try:
+        expected_schema, expected_interface, identity_attr = _VERIFICATION_RESULT_CONTRACTS[
+            operation
+        ]
+    except KeyError as exc:  # pragma: no cover - closed internal dispatch
+        raise SemanticStateAdapterError(
+            f"unsupported compositional verification operation {operation!r}"
+        ) from exc
+    schema = _artifact_schema(result)
+    if schema != expected_schema:
+        raise SemanticStateAdapterError(
+            f"{operation}: schema {schema!r} does not match {expected_schema!r}"
+        )
+    interface = _artifact_interface(result)
+    if interface is not None and interface != expected_interface:
+        raise SemanticStateAdapterError(
+            f"{operation}: interface {interface!r} does not match {expected_interface!r}"
+        )
+    if identity_attr is not None:
+        identity = getattr(result, identity_attr, None)
+        if not isinstance(identity, str):
+            raise SemanticStateAdapterError(f"{operation}: result missing {identity_attr} identity")
+        try:
+            validate_opaque_cid(identity, identity_attr)
+        except Exception as exc:
+            raise SemanticStateAdapterError(f"{operation}: invalid {identity_attr}: {exc}") from exc
+    return result
+
+
 def _validate_bundle(bundle: Any, *, context: str) -> Any:
     if bundle is None:
         raise SemanticStateAdapterError(f"{context} returned no bundle")
@@ -815,11 +1120,14 @@ def _validate_capsule_result(result: Any, *, context: str) -> Any:
     return result
 
 
-def _forward_selection(target: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+def _forward_selection(
+    target: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> Any:
     """Always preserve previous/current views for delete/rename evidence."""
 
     # Preferred signature:
-    # select_tests_and_proofs(previous_state, current_state, invalidation, *, policy, explicit_rules=())
+    # select_tests_and_proofs(previous_state, current_state, invalidation,
+    #                         *, policy, explicit_rules=())
     if len(args) < 2 and "current_state" not in kwargs:
         raise SemanticStateAdapterError(
             "select_tests_and_proofs requires previous_state and current_state views"
@@ -838,7 +1146,7 @@ def _validate_selection(selection: Any) -> Any:
     _validate_identity_object(selection, context="select_tests_and_proofs")
     schema = getattr(selection, "schema", None)
     if schema is None and hasattr(selection, "selection_schema"):
-        schema = getattr(selection, "selection_schema")
+        schema = selection.selection_schema
     # Some producer models encode schema only in identity_payload.
     payload = getattr(selection, "identity_payload", None)
     if callable(payload):
@@ -928,6 +1236,7 @@ def load_semantic_state_provider(
     surface: Any | None = None,
     *,
     forbid_filesystem_source: bool = True,
+    verification_api: Any | None = None,
 ) -> IpfsDatasetsSemanticStateProvider:
     """Return a provider bound to the pinned datasets surface (or an inject)."""
 
@@ -936,9 +1245,11 @@ def load_semantic_state_provider(
             surface,
             capability=getattr(surface, "capability", None),
             forbid_filesystem_source=forbid_filesystem_source,
+            verification_api=verification_api,
         )
     provider = IpfsDatasetsSemanticStateProvider(
-        forbid_filesystem_source=forbid_filesystem_source
+        forbid_filesystem_source=forbid_filesystem_source,
+        verification_api=verification_api,
     )
     # Eager capability check so import-time ambient failures surface at load.
     try:
@@ -962,6 +1273,20 @@ __all__ = [
     "EXPECTED_CAPSULE_SCHEMA",
     "EXPECTED_SELECTION_SCHEMA",
     "EXPECTED_SEMANTIC_INDEX_SCHEMA",
+    "EXPECTED_LOGIC_VERIFICATION_API_INTERFACE",
+    "EXPECTED_ABSTRACT_ANALYSIS_INTERFACE",
+    "EXPECTED_ABSTRACT_ANALYSIS_SCHEMA",
+    "EXPECTED_COMPOSITIONAL_CONTRACT_INTERFACE",
+    "EXPECTED_COMPOSITIONAL_CONTRACT_SCHEMA",
+    "EXPECTED_ASSUME_GUARANTEE_INTERFACE",
+    "EXPECTED_ASSUME_GUARANTEE_RECEIPT_SCHEMA",
+    "EXPECTED_INCREMENTAL_VERIFICATION_INTERFACE",
+    "EXPECTED_INCREMENTAL_VERIFICATION_RECEIPT_SCHEMA",
+    "EXPECTED_INCREMENTAL_SMT_INTERFACE",
+    "EXPECTED_INCREMENTAL_SMT_SCHEMA",
+    "EXPECTED_INTERPOLATION_INTERFACE",
+    "EXPECTED_INTERPOLATION_RECEIPT_SCHEMA",
+    "COMPOSITIONAL_VERIFICATION_OPERATIONS",
     "SemanticStateAdapterError",
     "SemanticStateCapability",
     "SemanticStateProvider",

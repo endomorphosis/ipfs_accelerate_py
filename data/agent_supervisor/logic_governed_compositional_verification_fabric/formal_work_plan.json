@@ -1,0 +1,1868 @@
+{
+  "abstraction_ids": [],
+  "actors": [
+    {
+      "actor_id": "actor:lgcvf-implementer",
+      "authority_ids": [],
+      "capabilities": [
+        "analyze",
+        "emit-candidate-evidence",
+        "implement",
+        "test"
+      ],
+      "contract_version": 1,
+      "kind": "agent",
+      "metadata": {},
+      "principal_id": "",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    },
+    {
+      "actor_id": "actor:lgcvf-operator",
+      "authority_ids": [],
+      "capabilities": [
+        "authorize-production",
+        "authorize-release"
+      ],
+      "contract_version": 1,
+      "kind": "human",
+      "metadata": {},
+      "principal_id": "",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    },
+    {
+      "actor_id": "actor:lgcvf-supervisor",
+      "authority_ids": [],
+      "capabilities": [
+        "cancel",
+        "fence",
+        "lease",
+        "rollback",
+        "schedule",
+        "validate"
+      ],
+      "contract_version": 1,
+      "kind": "supervisor",
+      "metadata": {},
+      "principal_id": "",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    }
+  ],
+  "contract_version": 1,
+  "effects": [],
+  "events": [],
+  "evidence_requirements": [
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "artifact",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-final-report",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md"
+      ],
+      "subject_ids": [
+        "LGCVF-124",
+        "LGCVF-G000"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g010",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-001",
+        "LGCVF-002",
+        "LGCVF-G010"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g020",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-010",
+        "LGCVF-G020"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g030",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-020",
+        "LGCVF-G030"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g040",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-030",
+        "LGCVF-G040"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g050",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-040",
+        "LGCVF-G050"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g060",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-050",
+        "LGCVF-051",
+        "LGCVF-G060"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g070",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-060",
+        "LGCVF-061",
+        "LGCVF-G070"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g080",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-070",
+        "LGCVF-071",
+        "LGCVF-G080"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g090",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-080",
+        "LGCVF-081",
+        "LGCVF-G090"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g100",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-090",
+        "LGCVF-091",
+        "LGCVF-G100"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g110",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-100",
+        "LGCVF-101",
+        "LGCVF-102",
+        "LGCVF-G110"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g120",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-110",
+        "LGCVF-111",
+        "LGCVF-112",
+        "LGCVF-G120"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lgcvf-g130",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+      ],
+      "subject_ids": [
+        "LGCVF-120",
+        "LGCVF-121",
+        "LGCVF-122",
+        "LGCVF-123",
+        "LGCVF-124",
+        "LGCVF-G130"
+      ]
+    }
+  ],
+  "fluents": [],
+  "formulas": [
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G120",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G130",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G030",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G010",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "LGCVF-G000",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G020",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G110",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G080",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G040",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G100",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G050",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G070",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G060",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LGCVF-G090",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 128,
+      "vocabulary_version": 2
+    }
+  ],
+  "goals": [
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-final-report"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "status": "active",
+        "title": "Content-addressed deterministic-first compositional verification loop"
+      },
+      "owner_actor_id": "actor:lgcvf-supervisor",
+      "satisfaction_formula_id": "baguqeerajc27f4xnqbo3mnfrrfaqr2zm2ey7vceydm2mzd3zgmiozb65cmwa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    }
+  ],
+  "metadata": {
+    "accelerator_construction_head": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+    "accelerator_construction_tree": "96504e7744d741784bc8076456f4b169dd665ab5",
+    "authority_boundary": "datasets-semantic_accelerator-operational",
+    "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+    "datasets_construction_head": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "datasets_construction_tree": "6fdc81fabb04a86683d0f26200636fa8f61fd25c",
+    "predecessor_board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
+    "predecessor_plan_cid": "sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e",
+    "production_authorized": false,
+    "program": "logic-governed-compositional-verification-fabric",
+    "release_qualified": false,
+    "task_prefix": "LGCVF-"
+  },
+  "norms": [],
+  "preconditions": [],
+  "repository_tree_id": "git-tree:96504e7744d741784bc8076456f4b169dd665ab5",
+  "schema": "ipfs_accelerate_py/agent-supervisor/formal-work-plan@1",
+  "source_ids": [
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md",
+    "docs/architecture/logic_governed_compositional_verification_fabric.objectives.md",
+    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md"
+  ],
+  "subgoals": [
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g010"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P0 current-tree truth and immutable reconciliation"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerabvaktkmjrcm57iaag5uhglir7smmqgxqxbvtn6qsg25pzji2itka",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G010"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G010"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g020"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P1 canonical compositional contract kernel"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerala3tvapxplx4jnsgwhf7ngwvlhjodbnqy4ffaegtssu3pry5k3na",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G020"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G020"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g030"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P2 conservative abstract interpretation"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera4aqwicimlqjdui6lkj4eyvidsk6ymtgwghfe5adfemni3p67lbnq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G030"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G020",
+        "LGCVF-G030"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g040"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P3 assume-guarantee composition"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerapyx4y2iygevdjxrkjx5ed77ipgnlvckwi7tw4zgzclmkhg36j4hq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G040"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G030",
+        "LGCVF-G040"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g050"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P4 incremental semantic and verification state"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraw4rsbrh4tvjrdrdeivjmdzjhsesm7umpzg4wlji6cwbaqujqfjjq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G050"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G040",
+        "LGCVF-G050"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g060"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P5 reusable incremental SMT"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerazbs5tth4qdjrpfhlqmovjhmrcilzadyq2hfmyg2b4jkwlfgo5ctq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G060"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G060"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g070"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P6 validated interpolation and CEGAR"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraykyeboebdw5dmu6dnf6l34zlgqn72o4los6izpvtebqozq6z32ca",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G070"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G050",
+        "LGCVF-G060"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g080"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P7 translation receipts and obligation slicing"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraptu6vmjlxxt7x4b3ohmmimdjsl4bn5ox3tbxlxbdnru4wkkhp6dq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G080"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G040",
+        "LGCVF-G060"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g090"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P8 reviewed equality saturation and synthesis"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerazsz5jp3d5bnyzqjotz2utq7ijjufmrtwjsyqljupktkzmk453f6q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G090"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G070",
+        "LGCVF-G080",
+        "LGCVF-G090"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g100"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P9 proof-carrying artifact and context"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraqzwr7kwmyfkg7dykmqtm6vowxxjwtjzycrql36aqdzjjsmad3i7a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G100"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G050",
+        "LGCVF-G100"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g110"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P10 Planner/Doctor integration and deterministic routing"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeranwmkvdvftdv2e2ufwcsvghtafaqkn3nrwgecmk6wqqzwq5vkfe3q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G110"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G060",
+        "LGCVF-G070",
+        "LGCVF-G080",
+        "LGCVF-G090",
+        "LGCVF-G100",
+        "LGCVF-G110"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g120"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P11 complete vertical slice and adversarial qualification"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera224snsppmjr3nq7zjfafyadrfft5erzwxnubbzulnd7lliehtk6q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G120"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-G120"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g130"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "program": "logic-governed-compositional-verification-fabric-v1",
+        "title": "P12 paired benchmark, release evidence, and successors"
+      },
+      "parent_id": "LGCVF-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera2u5jnsgkt7ddftm65ojfi2qmvffegrv5fnckpfsc2yjbgccchqqa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LGCVF-G130"
+    }
+  ],
+  "tasks": [
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g010"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G010",
+      "task_id": "LGCVF-001",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-001"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g010"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G010",
+      "task_id": "LGCVF-002",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-002"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g020"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G020"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G020",
+      "task_id": "LGCVF-010",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-010"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g030"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G030"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G030",
+      "task_id": "LGCVF-020",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-010",
+        "LGCVF-020"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g040"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G040"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G040",
+      "task_id": "LGCVF-030",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-020",
+        "LGCVF-030"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g050"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G050"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G050",
+      "task_id": "LGCVF-040",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-030",
+        "LGCVF-040"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g060"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "completed",
+        "phase": "LGCVF-G060"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G060",
+      "task_id": "LGCVF-050",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-050"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g060"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G060"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G060",
+      "task_id": "LGCVF-051",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-050"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g070"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G070"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G070",
+      "task_id": "LGCVF-060",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-060"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g070"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G070"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G070",
+      "task_id": "LGCVF-061",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-040",
+        "LGCVF-050"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g080"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G080"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G080",
+      "task_id": "LGCVF-070",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-070"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g080"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G080"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G080",
+      "task_id": "LGCVF-071",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-030",
+        "LGCVF-050"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g090"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G090"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G090",
+      "task_id": "LGCVF-080",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-060",
+        "LGCVF-080"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g090"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G090"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G090",
+      "task_id": "LGCVF-081",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-061",
+        "LGCVF-071",
+        "LGCVF-081"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g100"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G100"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G100",
+      "task_id": "LGCVF-090",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-090"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g100"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G100"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G100",
+      "task_id": "LGCVF-091",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-090",
+        "LGCVF-091"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g110"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G110"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G110",
+      "task_id": "LGCVF-100",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-100"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g110"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G110"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G110",
+      "task_id": "LGCVF-101",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-100"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g110"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G110"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G110",
+      "task_id": "LGCVF-102",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-051",
+        "LGCVF-061",
+        "LGCVF-071",
+        "LGCVF-081",
+        "LGCVF-101",
+        "LGCVF-102"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g120"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G120"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G120",
+      "task_id": "LGCVF-110",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-110"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g120"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G120"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G120",
+      "task_id": "LGCVF-111",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-110"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g120"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G120"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G120",
+      "task_id": "LGCVF-112",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-111",
+        "LGCVF-112"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g130"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G130"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G130",
+      "task_id": "LGCVF-120",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-120"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g130"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "blocked_external_authority",
+        "phase": "LGCVF-G130"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G130",
+      "task_id": "LGCVF-121",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-120"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g130"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G130"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G130",
+      "task_id": "LGCVF-122",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-121",
+        "LGCVF-122"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g130"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "blocked_manual",
+        "phase": "LGCVF-G130"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G130",
+      "task_id": "LGCVF-123",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:lgcvf-implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LGCVF-120",
+        "LGCVF-122"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lgcvf-g130"
+      ],
+      "goal_id": "LGCVF-G000",
+      "metadata": {
+        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
+        "construction_status": "todo",
+        "phase": "LGCVF-G130"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LGCVF-G130",
+      "task_id": "LGCVF-124",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    }
+  ],
+  "temporal_constraints": [],
+  "trace_bound": 128,
+  "vocabulary_profile_id": "supervisor-reviewed-dcec-tdfol",
+  "vocabulary_version": 2
+}

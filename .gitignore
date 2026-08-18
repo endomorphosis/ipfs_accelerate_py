@@ -275,3 +275,11 @@ state/**/*.out
 !test/fixtures/adversarial_assurance/manifest.json
 !artifacts/agent_supervisor/adversarial_assurance/*.json
 !test/fixtures/semantic_governor/**/*.json
+
+# LGCVF immutable FormalWorkPlan@1 control projection. Runtime/benchmark JSON
+# remains ignored and must be admitted separately by its evidence policy.
+!config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/formal_work_plan.json
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json
+!docs/architecture/logic_governed_compositional_verification/vertical_slice_result.json
+!docs/architecture/logic_governed_compositional_verification/paired_benchmark_result.json

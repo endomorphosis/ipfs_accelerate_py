@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+"""Run and validate the hermetic LGCVF symbolic-displacement benchmark.
+
+The command is a transport wrapper around the public compositional-verification
+vertical-slice API. It does not implement a second benchmark or admit its own
+evidence. Threshold misses are valid results; non-zero exit means execution,
+schema, or checked-result reconstruction failure.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import tempfile
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from typing import Any, Final
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPOSITORY_ROOT))
+
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (  # noqa: E402
+    content_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.compositional_verification_vertical import (  # noqa: E402
+    VerticalSliceError,
+    run_compositional_verification_vertical_slice,
+)
+
+REPORT_SCHEMA: Final[str] = "lgcvf-symbolic-displacement-benchmark@1"
+REPORT_INTERFACE: Final[str] = "LgcvfSymbolicDisplacementBenchmark@1"
+PAIRED_RESULT_SCHEMA: Final[str] = "lgcvf-paired-benchmark@1"
+DEFAULT_OUTPUT: Final[Path] = (
+    _REPOSITORY_ROOT
+    / "data"
+    / "agent_supervisor"
+    / "logic_governed_compositional_verification_fabric"
+    / "benchmark_result.json"
+)
+
+REQUIRED_TASK_CLASSES: Final[tuple[str, ...]] = (
+    "local_bug_repair",
+    "cross_module_contract_change",
+    "exception_behavior_change",
+    "schema_serializer_change",
+    "configuration_change",
+    "dependency_api_migration",
+    "security_policy_change",
+    "concurrency_interference_change",
+    "proof_repair",
+    "behavior_preserving_refactor",
+    "dynamic_opaque_python_escalation",
+    "repeated_maintenance_warm_cache",
+)
+
+# Containing an exception or configuration edge does not count as mutating that
+# behavior. Only the classes actually exercised by this fixture are listed.
+OBSERVED_TASK_CLASSES: Final[tuple[str, ...]] = (
+    "local_bug_repair",
+    "cross_module_contract_change",
+    "repeated_maintenance_warm_cache",
+)
+
+
+class BenchmarkSchemaError(RuntimeError):
+    """The benchmark report cannot be admitted as the declared schema."""
+
+
+VerticalRunner = Callable[..., dict[str, Any]]
+
+
+def _threshold(
+    *,
+    threshold_id: str,
+    target: int | bool,
+    observed: int | bool | None,
+    comparison: str,
+    not_evaluated_reason: str = "",
+) -> dict[str, Any]:
+    """Evaluate one threshold without converting unavailable data to success."""
+
+    if observed is None:
+        return {
+            "comparison": comparison,
+            "disposition": "not_evaluated",
+            "observed": None,
+            "reason": not_evaluated_reason,
+            "target": target,
+            "threshold_id": threshold_id,
+        }
+    if comparison == "equal":
+        met = observed == target
+    elif comparison == "at_least":
+        if isinstance(observed, bool) or isinstance(target, bool):
+            raise BenchmarkSchemaError(f"{threshold_id}: at_least requires integer operands")
+        met = observed >= target
+    else:
+        raise BenchmarkSchemaError(f"{threshold_id}: unsupported comparison")
+    return {
+        "comparison": comparison,
+        "disposition": "met" if met else "missed",
+        "observed": observed,
+        "reason": "",
+        "target": target,
+        "threshold_id": threshold_id,
+    }
+
+
+def _build_thresholds(paired: Mapping[str, Any]) -> list[dict[str, Any]]:
+    comparison = paired["comparison"]
+    challenger = paired["challenger"]
+    return [
+        _threshold(
+            threshold_id="zero_safety_floor_violations",
+            target=0,
+            observed=comparison["safety_floor_violations"],
+            comparison="equal",
+        ),
+        _threshold(
+            threshold_id="zero_critical_omissions_accepted",
+            target=0,
+            observed=comparison["critical_omissions_accepted"],
+            comparison="equal",
+        ),
+        _threshold(
+            threshold_id="median_context_reduction_bps",
+            target=5_000,
+            observed=comparison["context_reduction_bps"],
+            comparison="at_least",
+        ),
+        _threshold(
+            threshold_id="warm_cache_model_call_reduction_bps",
+            target=5_000,
+            observed=None,
+            comparison="at_least",
+            not_evaluated_reason=(
+                "both fixture routes made zero model calls; a repeated task with "
+                "a nonzero baseline is required to measure displacement"
+            ),
+        ),
+        _threshold(
+            threshold_id="symbolically_closable_deterministic_route_share_bps",
+            target=2_500,
+            observed=10_000 if challenger["deterministic_closures"] == 1 else 0,
+            comparison="at_least",
+        ),
+        _threshold(
+            threshold_id="unaffected_proof_test_reuse_bps",
+            target=8_000,
+            observed=challenger["proof_test_reuse_bps"],
+            comparison="at_least",
+        ),
+        _threshold(
+            threshold_id="accepted_patch_quality_not_lower",
+            target=True,
+            observed=comparison["accepted_patch_quality_equal"],
+            comparison="equal",
+        ),
+        _threshold(
+            threshold_id="representative_task_class_coverage",
+            target=len(REQUIRED_TASK_CLASSES),
+            observed=len(OBSERVED_TASK_CLASSES),
+            comparison="at_least",
+        ),
+    ]
+
+
+def _overall_disposition(thresholds: Sequence[Mapping[str, Any]]) -> str:
+    safety_ids = {
+        "zero_safety_floor_violations",
+        "zero_critical_omissions_accepted",
+        "accepted_patch_quality_not_lower",
+    }
+    if any(
+        item["threshold_id"] in safety_ids and item["disposition"] != "met" for item in thresholds
+    ):
+        return "no_go"
+    if any(item["disposition"] != "met" for item in thresholds):
+        return "partial"
+    return "development_targets_met"
+
+
+def _reproducible_projection(report: Mapping[str, Any]) -> dict[str, Any]:
+    """Return evidence expected to reproduce despite fresh test-run receipts."""
+
+    return {
+        key: report.get(key)
+        for key in (
+            "schema",
+            "interface",
+            "cohort",
+            "production_authoritative",
+            "release_qualified",
+            "production_authorized",
+            "overall_disposition",
+            "pairing",
+            "task_class_coverage",
+            "paired_result",
+            "thresholds",
+            "excluded_cohorts",
+            "limitations",
+        )
+    }
+
+
+def build_report(vertical_result: Mapping[str, Any]) -> dict[str, Any]:
+    """Project independently checked public-route output into a paired report."""
+
+    paired = vertical_result.get("benchmark")
+    if not isinstance(paired, Mapping):
+        raise BenchmarkSchemaError("vertical result has no paired benchmark mapping")
+    thresholds = _build_thresholds(paired)
+    missing = sorted(set(REQUIRED_TASK_CLASSES) - set(OBSERVED_TASK_CLASSES))
+    artifact = vertical_result.get("proof_carrying_artifact")
+    artifact_verification = vertical_result.get("artifact_verification")
+    fixture = vertical_result.get("fixture")
+    if not all(isinstance(item, Mapping) for item in (artifact, artifact_verification, fixture)):
+        raise BenchmarkSchemaError("vertical evidence bindings are absent")
+    artifact_payload = artifact.get("payload")
+    if not isinstance(artifact_payload, Mapping):
+        raise BenchmarkSchemaError("proof-carrying artifact payload is absent")
+    if artifact_verification.get("valid") is not True:
+        raise BenchmarkSchemaError("proof-carrying artifact was not independently validated")
+
+    report: dict[str, Any] = {
+        "schema": REPORT_SCHEMA,
+        "interface": REPORT_INTERFACE,
+        "cohort": paired.get("cohort"),
+        "production_authoritative": paired.get("production_authoritative"),
+        "release_qualified": bool(vertical_result.get("release_qualified", False)),
+        "production_authorized": bool(vertical_result.get("production_authorized", False)),
+        "overall_disposition": _overall_disposition(thresholds),
+        "execution_evidence": {
+            # Test execution receipts intentionally bind per-run observations
+            # such as durations. Their identities need not reproduce; the
+            # semantic benchmark projection below must.
+            "vertical_result_cid": vertical_result.get("result_cid"),
+            "artifact_cid": artifact.get("artifact_cid"),
+            "artifact_verification_receipt_cid": artifact_verification.get("replay_receipt_cid"),
+            "fresh_execution_receipts_reproducible": False,
+        },
+        "pairing": {
+            "scope": "single_vertical_run_same_fixture_and_acceptance_oracle",
+            "repository_base_commit": fixture.get("base_commit"),
+            "repository_base_tree": fixture.get("base_tree"),
+            "policy_root": artifact_payload.get("policy_root"),
+            "model_invocation_count": vertical_result.get("model_invocation_count"),
+            "note": (
+                "the raw-source baseline is a context/test-selection projection; "
+                "separate baseline wall-time and resource execution is not measured"
+            ),
+        },
+        "task_class_coverage": {
+            "required": list(REQUIRED_TASK_CLASSES),
+            "observed": list(OBSERVED_TASK_CLASSES),
+            "missing": missing,
+        },
+        "paired_result": dict(paired),
+        "thresholds": thresholds,
+        "excluded_cohorts": [
+            "simulated",
+            "live_local_model_execution",
+            "live_remote_model_execution",
+            "production_authoritative_evidence",
+        ],
+        "limitations": [
+            "this is a hermetic local fixture, not a representative maintenance suite",
+            "threshold misses and unavailable measurements remain visible",
+            "no live-model, remote-model, external-verifier, release, or "
+            "production evidence is aggregated",
+        ],
+    }
+    report["reproducible_projection_cid"] = content_identity(_reproducible_projection(report))
+    report["report_cid"] = content_identity(report)
+    issues = validate_report(report)
+    if issues:
+        raise BenchmarkSchemaError("; ".join(issues))
+    return report
+
+
+def _is_nonnegative_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def validate_report(report: Mapping[str, Any]) -> tuple[str, ...]:
+    """Validate schema and identity only; a missed threshold remains valid data."""
+
+    issues: list[str] = []
+    if report.get("schema") != REPORT_SCHEMA:
+        issues.append("schema_mismatch")
+    if report.get("interface") != REPORT_INTERFACE:
+        issues.append("interface_mismatch")
+    if report.get("cohort") != "hermetic_local_execution":
+        issues.append("cohort_not_hermetic_local_execution")
+    if report.get("production_authoritative") is not False:
+        issues.append("hermetic_cohort_claims_production_authority")
+    if report.get("release_qualified") is not False:
+        issues.append("fixture_claims_release_qualification")
+    if report.get("production_authorized") is not False:
+        issues.append("fixture_claims_production_authorization")
+    if report.get("overall_disposition") not in {
+        "development_targets_met",
+        "partial",
+        "no_go",
+    }:
+        issues.append("invalid_overall_disposition")
+
+    execution_evidence = report.get("execution_evidence")
+    if not isinstance(execution_evidence, Mapping):
+        issues.append("execution_evidence_missing")
+    elif execution_evidence.get("fresh_execution_receipts_reproducible") is not False:
+        issues.append("fresh_execution_receipts_misclassified")
+    pairing = report.get("pairing")
+    if not isinstance(pairing, Mapping):
+        issues.append("pairing_missing")
+    elif not isinstance(pairing.get("policy_root"), str) or not pairing.get("policy_root"):
+        issues.append("pairing_policy_root_missing")
+
+    paired = report.get("paired_result")
+    if not isinstance(paired, Mapping):
+        issues.append("paired_result_missing")
+    else:
+        if paired.get("schema") != PAIRED_RESULT_SCHEMA:
+            issues.append("paired_result_schema_mismatch")
+        for section in ("baseline", "challenger", "comparison"):
+            if not isinstance(paired.get(section), Mapping):
+                issues.append(f"paired_result_{section}_missing")
+        if paired.get("cohort") != report.get("cohort"):
+            issues.append("paired_result_cohort_mismatch")
+        if paired.get("production_authoritative") is not False:
+            issues.append("paired_result_claims_production_authority")
+
+    thresholds = report.get("thresholds")
+    if not isinstance(thresholds, list) or not thresholds:
+        issues.append("thresholds_missing")
+    else:
+        seen: set[str] = set()
+        for index, item in enumerate(thresholds):
+            if not isinstance(item, Mapping):
+                issues.append(f"threshold_{index}_not_mapping")
+                continue
+            threshold_id = item.get("threshold_id")
+            if not isinstance(threshold_id, str) or not threshold_id:
+                issues.append(f"threshold_{index}_identity_missing")
+            elif threshold_id in seen:
+                issues.append(f"threshold_{threshold_id}_duplicate")
+            else:
+                seen.add(threshold_id)
+            if item.get("disposition") not in {"met", "missed", "not_evaluated"}:
+                issues.append(f"threshold_{index}_invalid_disposition")
+            observed = item.get("observed")
+            if observed is not None and not (
+                isinstance(observed, bool) or _is_nonnegative_integer(observed)
+            ):
+                issues.append(f"threshold_{index}_invalid_observed")
+
+    coverage = report.get("task_class_coverage")
+    if not isinstance(coverage, Mapping):
+        issues.append("task_class_coverage_missing")
+    else:
+        required = coverage.get("required")
+        observed = coverage.get("observed")
+        missing = coverage.get("missing")
+        if required != list(REQUIRED_TASK_CLASSES):
+            issues.append("required_task_classes_mismatch")
+        if not isinstance(observed, list) or not isinstance(missing, list):
+            issues.append("task_class_coverage_invalid")
+        elif sorted(set(required) - set(observed)) != missing:
+            issues.append("missing_task_classes_not_reconstructed")
+
+    claimed_cid = report.get("report_cid")
+    if not isinstance(claimed_cid, str) or not claimed_cid:
+        issues.append("report_cid_missing")
+    else:
+        payload = {key: value for key, value in report.items() if key != "report_cid"}
+        if content_identity(payload) != claimed_cid:
+            issues.append("report_cid_mismatch")
+    projection_cid = report.get("reproducible_projection_cid")
+    if not isinstance(projection_cid, str) or not projection_cid:
+        issues.append("reproducible_projection_cid_missing")
+    elif content_identity(_reproducible_projection(report)) != projection_cid:
+        issues.append("reproducible_projection_cid_mismatch")
+    return tuple(sorted(set(issues)))
+
+
+def run_benchmark(
+    *,
+    fixture_root: Path | None = None,
+    runner: VerticalRunner = run_compositional_verification_vertical_slice,
+) -> dict[str, Any]:
+    """Execute the existing public route and build its benchmark projection."""
+
+    result = runner(fixture_root=fixture_root)
+    return build_report(result)
+
+
+def write_report_atomic(report: Mapping[str, Any], destination: Path) -> Path:
+    """Write a validated report without exposing a partial output file."""
+
+    issues = validate_report(report)
+    if issues:
+        raise BenchmarkSchemaError("; ".join(issues))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".lgcvf-benchmark-", suffix=".tmp", dir=destination.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, destination)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+    return destination
+
+
+def _load_checked_report(path: Path) -> dict[str, Any]:
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise BenchmarkSchemaError(f"unable to read checked report: {error}") from error
+    if not isinstance(loaded, dict):
+        raise BenchmarkSchemaError("checked report is not a JSON object")
+    issues = validate_report(loaded)
+    if issues:
+        raise BenchmarkSchemaError("; ".join(issues))
+    return loaded
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    runner: VerticalRunner = run_compositional_verification_vertical_slice,
+) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fixture-root", type=Path, default=None)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="reconstruct and compare the checked machine result without writing",
+    )
+    parser.add_argument("--json", action="store_true", help="print the full report")
+    arguments = parser.parse_args(list(argv) if argv is not None else None)
+
+    try:
+        existing = _load_checked_report(arguments.output) if arguments.check else None
+        report = run_benchmark(fixture_root=arguments.fixture_root, runner=runner)
+        if existing is not None and _reproducible_projection(existing) != _reproducible_projection(
+            report
+        ):
+            raise BenchmarkSchemaError(
+                "checked_result_drift: fresh reproducible projection differs from output"
+            )
+        if not arguments.check:
+            write_report_atomic(report, arguments.output)
+    except (BenchmarkSchemaError, VerticalSliceError, OSError) as error:
+        print(
+            json.dumps(
+                {"error": str(error), "schema": REPORT_SCHEMA, "status": "failed"},
+                sort_keys=True,
+            )
+        )
+        return 1
+
+    summary = {
+        "cohort": report["cohort"],
+        "overall_disposition": report["overall_disposition"],
+        "output": str(arguments.output),
+        "report_cid": report["report_cid"],
+        "reproducible_projection_cid": report["reproducible_projection_cid"],
+        "status": "checked" if arguments.check else "completed",
+    }
+    print(json.dumps(report if arguments.json else summary, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
