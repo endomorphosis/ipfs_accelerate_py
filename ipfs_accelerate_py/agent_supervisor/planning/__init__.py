@@ -33,6 +33,7 @@ PLANNING_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.plannin
 # Stems owned by asref/planning in docs/architecture/asref/move_map.json.
 PLANNING_OWNED_MODULES: Final[tuple[str, ...]] = (
     "adaptive_planner",
+    "campaign_prompt_handoff",
     "formal_plan_compiler",
     "formal_plan_conformance",
     "formal_plan_context",

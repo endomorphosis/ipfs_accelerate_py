@@ -2617,11 +2617,14 @@ def test_campaign_operations_reuse_closed_control_catalog_without_expansion() ->
         CampaignOperationKind,
         CampaignOperationStatus,
         REQUIRED_CAMPAIGN_OPERATIONS,
+        STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS,
     )
 
     catalog = campaign_control_catalog()
     assert catalog["expands_control_catalog"] is False
-    assert set(CAMPAIGN_OPERATION_CONTROL_MAP) == set(REQUIRED_CAMPAIGN_OPERATIONS)
+    assert set(REQUIRED_CAMPAIGN_OPERATIONS).issubset(set(STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS))
+    assert set(CAMPAIGN_OPERATION_CONTROL_MAP) == set(CampaignOperationKind)
+    assert set(STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS) == set(CampaignOperationKind)
     assert set(CAMPAIGN_OPERATION_CONTROL_MAP.values()).issubset(set(Operation))
     assert set(catalog["operations"]) == {item.value for item in CampaignOperationKind}
     for kind, operation in CAMPAIGN_OPERATION_CONTROL_MAP.items():
@@ -2705,3 +2708,146 @@ def test_campaign_cannot_raise_authority_or_select_hidden_labels() -> None:
             _campaign_for_control(),
             parameters={"prompt_selected_authority": "mutation"},
         )
+
+
+def test_operational_campaign_start_and_resume_reuse_lifecycle_operations() -> None:
+    from ipfs_accelerate_py.agent_supervisor.control.campaign_public_api import (
+        OPERATIONAL_CAMPAIGN_CONTROL_MAP,
+        OPERATIONAL_CAMPAIGN_OPERATION_NAMES,
+        discover_operational_campaign_api,
+    )
+    from ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign import (
+        execute_campaign_operation,
+        resume_campaign,
+        start_campaign,
+    )
+    from ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign_contracts import (
+        CampaignOperationKind,
+        CampaignOperationStatus,
+    )
+    from ipfs_accelerate_py.agent_supervisor.proof.campaign_proof_replay import (
+        CAMPAIGN_PROOF_REPLAY_CONTROL_OPERATION,
+        campaign_proof_replay_binding,
+    )
+
+    campaign = _campaign_for_control(resolved=True)
+    started = start_campaign(campaign, idempotency_key="start:1")
+    resumed = resume_campaign(
+        campaign,
+        idempotency_key="resume:1",
+        parameters={"cursor": "exact"},
+    )
+    replayed = execute_campaign_operation(
+        CampaignOperationKind.PROOF_REPLAY,
+        campaign,
+        dry_run=True,
+    )
+    assert started.control_operation is Operation.START
+    assert started.authority is OperationAuthority.MUTATION
+    assert started.status is CampaignOperationStatus.SUCCEEDED
+    assert started.details["effect_kind"] == "start_process"
+    assert started.details["idempotency_key"] == "start:1"
+    assert resumed.control_operation is Operation.RESUME
+    assert resumed.details["effect_kind"] == "lifecycle_transition"
+    assert replayed.control_operation is CAMPAIGN_PROOF_REPLAY_CONTROL_OPERATION
+    assert replayed.authority is OperationAuthority.PROPOSAL
+    assert campaign_proof_replay_binding()["timeout_is_falsehood"] is False
+
+    blocked_start = start_campaign(_campaign_for_control(resolved=False))
+    blocked_resume = resume_campaign(_campaign_for_control(resolved=False))
+    assert blocked_start.status is CampaignOperationStatus.BLOCKED
+    assert blocked_resume.status is CampaignOperationStatus.BLOCKED
+
+    catalog = discover_operational_campaign_api()
+    assert catalog["expands_control_catalog"] is False
+    assert tuple(catalog["operation_names"]) == OPERATIONAL_CAMPAIGN_OPERATION_NAMES
+    assert OPERATIONAL_CAMPAIGN_CONTROL_MAP["start"] is Operation.START
+    assert OPERATIONAL_CAMPAIGN_CONTROL_MAP["resume"] is Operation.RESUME
+    first = start_campaign(campaign, idempotency_key="start:same")
+    second = start_campaign(campaign, idempotency_key="start:same")
+    assert first.content_id == second.content_id
+
+
+def test_operational_campaign_resume_is_exact_and_rejects_forks() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+        IncompatibleResumeError,
+        LearningCheckpointBinding,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.operational_campaign import (
+        exact_resume_operational_campaign,
+        execute_operational_campaign,
+    )
+
+    campaign = _campaign_for_control(resolved=True)
+    stored = LearningCheckpointBinding(
+        architecture_id="arch:1",
+        weights_id="weights:1",
+        optimizer_id="opt:1",
+        scheduler_id="sched:1",
+        tokenizer_id="tok:1",
+        vocab_id="vocab:1",
+        cursor_id="cursor:1",
+        corpus_id="corpus:1",
+        split_id="split:1",
+        curriculum_id="curr:1",
+        loss_id="loss:1",
+        random_id="rng:1",
+        env_id="env:1",
+        code_id="code:1",
+        compiler_id="compiler:1",
+        cursor_step=4,
+    )
+    exact = stored.replace_progress()
+    first = exact_resume_operational_campaign(
+        campaign,
+        stored,
+        exact,
+        idempotency_key="resume:exact",
+    )
+    second = exact_resume_operational_campaign(
+        campaign,
+        stored,
+        exact,
+        idempotency_key="resume:exact",
+    )
+    assert first.status.value == "succeeded"
+    assert first.content_id == second.content_id
+    assert first.details["resume_decision"]["compatible"] is True
+    assert first.details["stored_binding_id"] == stored.binding_id
+    assert first.control_operation is Operation.RESUME
+
+    forked = stored.replace_progress(random_id="rng:fork")
+    with pytest.raises(IncompatibleResumeError, match="forked"):
+        exact_resume_operational_campaign(campaign, stored, forked)
+    with pytest.raises(IncompatibleResumeError, match="stored and requested"):
+        execute_operational_campaign("resume", campaign)
+
+
+def test_operational_campaign_python_cli_mcp_parity_and_authorization() -> None:
+    from ipfs_accelerate_py.agent_supervisor.control import control_cli
+    from ipfs_accelerate_py.agent_supervisor.control.campaign_public_api import (
+        OPERATIONAL_CAMPAIGN_CLI_COMMANDS,
+        OPERATIONAL_CAMPAIGN_CONTROL_MAP,
+        discover_operational_campaign_api,
+        prompt_may_select_campaign_operation,
+    )
+    from ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools import (
+        native_agent_supervisor_tools as native_tools,
+    )
+
+    catalog = discover_operational_campaign_api()
+    python_ops = {Operation(item["control_operation"]) for item in catalog["operations"].values()}
+    cli_ops = {
+        control_cli.COMMAND_OPERATIONS[OPERATIONAL_CAMPAIGN_CLI_COMMANDS[name]]
+        for name in OPERATIONAL_CAMPAIGN_CONTROL_MAP
+    }
+    mcp_ops = set(native_tools.AGENT_SUPERVISOR_OPERATION_TOOLS)
+    assert python_ops == cli_ops
+    assert python_ops.issubset(mcp_ops)
+    assert python_ops.issubset(set(Operation))
+    assert prompt_may_select_campaign_operation("plan") is True
+    assert prompt_may_select_campaign_operation("start") is False
+    assert prompt_may_select_campaign_operation("promote") is False
+    for name, spec in catalog["operations"].items():
+        assert spec["cli_command"] == OPERATIONAL_CAMPAIGN_CLI_COMMANDS[name]
+        assert spec["mcp_tool"] == OPERATIONAL_CAMPAIGN_CONTROL_MAP[name].value

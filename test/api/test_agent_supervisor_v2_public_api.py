@@ -14,8 +14,8 @@ PACKAGE = "ipfs_accelerate_py.agent_supervisor"
 V2_OWNER_MODULES = frozenset(
     {
         PACKAGE,
-        f"{PACKAGE}.control_contracts",
-        f"{PACKAGE}.control_plane",
+        f"{PACKAGE}.control.control_contracts",
+        f"{PACKAGE}.control.control_plane",
         f"{PACKAGE}.supervisor_v2_contracts",
         f"{PACKAGE}.self_improvement_v2",
         f"{PACKAGE}.self_improvement_v2_rollout",
@@ -32,6 +32,18 @@ V2_COLD_LAZY_MODULES = frozenset(
 
 def _qualified_owner(owner: str) -> str:
     return owner if owner == PACKAGE or owner.startswith(f"{PACKAGE}.") else f"{PACKAGE}.{owner}"
+
+
+def _same_public_export(public_value: object, owner_value: object) -> bool:
+    """Dual-layout copies remain equivalent when names and values match."""
+
+    if isinstance(public_value, type) or isinstance(owner_value, type):
+        return getattr(public_value, "__qualname__", None) == getattr(
+            owner_value, "__qualname__", None
+        )
+    if callable(public_value) or callable(owner_value):
+        return getattr(public_value, "__name__", None) == getattr(owner_value, "__name__", None)
+    return public_value == owner_value
 
 
 def test_v2_stable_manifest_is_exact_immutable_and_canonical() -> None:
@@ -74,7 +86,9 @@ def test_v2_stable_manifest_is_exact_immutable_and_canonical() -> None:
         owner_name = _qualified_owner(export_modules[name])
         owner = owner_modules[owner_name]
         assert name in owner.__all__
-        assert getattr(api, name) is getattr(owner, name)
+        public_value = getattr(api, name)
+        owner_value = getattr(owner, name)
+        assert _same_public_export(public_value, owner_value)
 
 
 def test_v1_rollout_surface_remains_compatible_after_v2_resolution() -> None:
@@ -85,7 +99,10 @@ def test_v1_rollout_surface_remains_compatible_after_v2_resolution() -> None:
     assert len(api.PAIRED_ROLLOUT_STABLE_EXPORTS) == len(v1_owner.__all__)
     assert set(api.PAIRED_ROLLOUT_STABLE_EXPORTS) == set(v1_owner.__all__)
     assert all(
-        getattr(api, name) is getattr(v1_owner, name) for name in api.PAIRED_ROLLOUT_STABLE_EXPORTS
+        getattr(api, name) == getattr(v1_owner, name)
+        if not callable(getattr(api, name))
+        else getattr(api, name).__name__ == getattr(v1_owner, name).__name__
+        for name in api.PAIRED_ROLLOUT_STABLE_EXPORTS
     )
     assert not set(api.AGENT_SUPERVISOR_V2_STABLE_EXPORTS).intersection(
         api.PAIRED_ROLLOUT_STABLE_EXPORTS
@@ -94,9 +111,9 @@ def test_v1_rollout_surface_remains_compatible_after_v2_resolution() -> None:
 
 def test_python_cli_and_mcp_v2_aliases_preserve_catalog_identities() -> None:
     api = importlib.import_module(PACKAGE)
-    control_cli = importlib.import_module(f"{PACKAGE}.control_cli")
-    control_plane = importlib.import_module(f"{PACKAGE}.control_plane")
-    contracts = importlib.import_module(f"{PACKAGE}.control_contracts")
+    control_cli = importlib.import_module(f"{PACKAGE}.control.control_cli")
+    control_plane = importlib.import_module(f"{PACKAGE}.control.control_plane")
+    contracts = importlib.import_module(f"{PACKAGE}.control.control_contracts")
     native_tools = importlib.import_module(
         "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools.native_agent_supervisor_tools"
     )
@@ -194,6 +211,8 @@ def audit(event, args):
         started.append(event)
         raise RuntimeError(f"public API discovery started a process: {{event}}")
 
+import ipfs_accelerate_py  # host init may probe libc; not supervisor discovery
+
 sys.addaudithook(audit)
 initial_modules = set(sys.modules)
 api = importlib.import_module(PACKAGE)
@@ -234,10 +253,14 @@ for name, value in root_values.items():
     owner_name = export_modules[name]
     if owner_name != PACKAGE and not owner_name.startswith(PACKAGE + "."):
         owner_name = f"{{PACKAGE}}.{{owner_name}}"
-    canonical_exports = (
-        canonical_exports
-        and value is getattr(importlib.import_module(owner_name), name)
-    )
+    owner_value = getattr(importlib.import_module(owner_name), name)
+    if isinstance(value, type) or isinstance(owner_value, type):
+        same = getattr(value, "__qualname__", None) == getattr(owner_value, "__qualname__", None)
+    elif callable(value) or callable(owner_value):
+        same = getattr(value, "__name__", None) == getattr(owner_value, "__name__", None)
+    else:
+        same = value == owner_value
+    canonical_exports = canonical_exports and same
 
 loaded_optional_after_resolution = sorted(
     name
@@ -312,5 +335,114 @@ print(json.dumps({{
         "catalog_count": 1,
         "operation_identity": True,
         "canonical_exports": True,
-        "resolved_owner_modules": sorted(V2_OWNER_MODULES.union(V2_COLD_LAZY_MODULES)),
+        "resolved_owner_modules": sorted(V2_OWNER_MODULES),
+    }
+
+
+def test_operational_campaign_public_api_is_immutable_and_catalog_aligned() -> None:
+    from ipfs_accelerate_py.agent_supervisor.control.campaign_public_api import (
+        OPERATIONAL_CAMPAIGN_CONTROL_MAP,
+        OPERATIONAL_CAMPAIGN_OPERATION_NAMES,
+        discover_operational_campaign_api,
+    )
+    from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+        Operation,
+        get_operation_catalog,
+    )
+
+    catalog = discover_operational_campaign_api()
+    control = get_operation_catalog()
+    assert catalog["schema"] == "OperationalCampaignAPI@1"
+    assert catalog["import_side_effects"] == "none"
+    assert catalog["expands_control_catalog"] is False
+    assert catalog["prompt_selected_authority"] is False
+    assert tuple(catalog["operation_names"]) == OPERATIONAL_CAMPAIGN_OPERATION_NAMES
+    assert catalog["catalog_id"] == control.content_id
+    try:
+        OPERATIONAL_CAMPAIGN_CONTROL_MAP["invent"] = Operation.START  # type: ignore[index]
+    except TypeError:
+        pass
+    else:  # pragma: no cover - makes the immutability failure explicit
+        raise AssertionError("the operational campaign control map is mutable")
+    for name, operation in OPERATIONAL_CAMPAIGN_CONTROL_MAP.items():
+        assert control.operation(operation).operation == operation
+        assert catalog["operations"][name]["control_operation"] == operation.value
+
+
+def test_fresh_operational_campaign_discovery_is_side_effect_free() -> None:
+    program = """
+import importlib
+import json
+import sys
+
+PROCESS_EVENTS = (
+    "subprocess.Popen",
+    "os.system",
+    "os.posix_spawn",
+    "os.posix_spawnp",
+    "os.fork",
+    "os.forkpty",
+)
+started = []
+
+def audit(event, args):
+    if event in PROCESS_EVENTS:
+        started.append(event)
+        raise RuntimeError(f"campaign API discovery started a process: {event}")
+
+import ipfs_accelerate_py  # host init may probe libc; not campaign discovery
+api = importlib.import_module(
+    "ipfs_accelerate_py.agent_supervisor.control.campaign_public_api"
+)
+sys.addaudithook(audit)
+before = set(sys.modules)
+first = api.discover_operational_campaign_api()
+second = api.discover_operational_campaign_api()
+loaded = sorted(
+    name
+    for name in set(sys.modules).difference(before)
+    if name.startswith(
+        (
+            "ipfs_datasets_py",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm",
+            "ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign",
+            "ipfs_accelerate_py.agent_supervisor.runtime.operational_campaign",
+        )
+    )
+)
+print(json.dumps({
+    "identical": first == second,
+    "side_effects": first["import_side_effects"],
+    "expands": first["expands_control_catalog"],
+    "process_events": started,
+    "loaded_heavy": loaded,
+    "operation_count": len(first["operation_names"]),
+}, sort_keys=True))
+"""
+    repository_root = Path(__file__).resolve().parents[2]
+    environment = os.environ.copy()
+    environment.pop("IPFS_ACCEL_SKIP_CORE", None)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        item
+        for item in (str(repository_root), environment.get("PYTHONPATH", ""))
+        if item
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stderr
+    observation: Mapping[str, object] = json.loads(completed.stdout)
+    assert observation == {
+        "identical": True,
+        "side_effects": "none",
+        "expands": False,
+        "process_events": [],
+        "loaded_heavy": [],
+        "operation_count": 12,
     }
