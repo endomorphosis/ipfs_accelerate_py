@@ -285,3 +285,6 @@ state/**/*.out
 !docs/architecture/logic_governed_compositional_verification/paired_benchmark_result.json
 !docs/architecture/logic_governed_compositional_verification/current_tree_capability_gap_matrix.json
 !test/fixtures/agent_supervisor/compositional_verification/config/schema.json
+
+# LGCVF operational state is mutable, machine-local evidence and never source.
+data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
