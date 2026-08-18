@@ -97,10 +97,18 @@ REQUIRED_WORK_GRAPH_ROLES: Final[tuple[CampaignWorkGraphRole, ...]] = tuple(
 
 
 class CampaignOperationKind(str, Enum):
-    """Closed campaign operations declared by ``IRLearningCampaign@1``."""
+    """Closed campaign operations declared by ``IRLearningCampaign@1``.
+
+    The O2 public surface adds ``start`` and ``resume`` to the PGIR-060
+    create/plan/status/steer/refill/proof-replay/compare/promote/reject/report
+    set.  Both new verbs reuse existing control-catalog operations and do not
+    expand ``Operation``.
+    """
 
     CREATE = "create"
     PLAN = "plan"
+    START = "start"
+    RESUME = "resume"
     STATUS = "status"
     STEER = "steer"
     REFILL = "refill"
@@ -111,8 +119,35 @@ class CampaignOperationKind(str, Enum):
     REPORT = "report"
 
 
-REQUIRED_CAMPAIGN_OPERATIONS: Final[tuple[CampaignOperationKind, ...]] = tuple(
-    CampaignOperationKind
+# PGIR-060 board fixtures declare this set explicitly.  Start/resume are
+# published on the O2 surface and are defaulted when a campaign omits
+# ``operations``, but they are not required of already-admitted envelopes.
+REQUIRED_CAMPAIGN_OPERATIONS: Final[tuple[CampaignOperationKind, ...]] = (
+    CampaignOperationKind.CREATE,
+    CampaignOperationKind.PLAN,
+    CampaignOperationKind.STATUS,
+    CampaignOperationKind.STEER,
+    CampaignOperationKind.REFILL,
+    CampaignOperationKind.PROOF_REPLAY,
+    CampaignOperationKind.COMPARE,
+    CampaignOperationKind.PROMOTE,
+    CampaignOperationKind.REJECT,
+    CampaignOperationKind.REPORT,
+)
+
+STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS: Final[tuple[CampaignOperationKind, ...]] = (
+    CampaignOperationKind.CREATE,
+    CampaignOperationKind.PLAN,
+    CampaignOperationKind.START,
+    CampaignOperationKind.RESUME,
+    CampaignOperationKind.STATUS,
+    CampaignOperationKind.STEER,
+    CampaignOperationKind.REFILL,
+    CampaignOperationKind.PROOF_REPLAY,
+    CampaignOperationKind.COMPARE,
+    CampaignOperationKind.PROMOTE,
+    CampaignOperationKind.REJECT,
+    CampaignOperationKind.REPORT,
 )
 
 
@@ -182,6 +217,8 @@ class CampaignOperationStatus(str, Enum):
 CAMPAIGN_OPERATION_CONTROL_MAP: Final[Mapping[CampaignOperationKind, Operation]] = {
     CampaignOperationKind.CREATE: Operation.WORKFLOW_MATERIALIZE,
     CampaignOperationKind.PLAN: Operation.PLAN,
+    CampaignOperationKind.START: Operation.START,
+    CampaignOperationKind.RESUME: Operation.RESUME,
     CampaignOperationKind.STATUS: Operation.STATUS,
     CampaignOperationKind.STEER: Operation.OBJECTIVE_REFINE,
     CampaignOperationKind.REFILL: Operation.BACKLOG_REFILL,
@@ -199,6 +236,8 @@ CAMPAIGN_OPERATION_AUTHORITY: Final[Mapping[CampaignOperationKind, OperationAuth
 LEASE_REQUIRING_OPERATIONS: Final[frozenset[CampaignOperationKind]] = frozenset(
     {
         CampaignOperationKind.CREATE,
+        CampaignOperationKind.START,
+        CampaignOperationKind.RESUME,
         CampaignOperationKind.STEER,
         CampaignOperationKind.REFILL,
         CampaignOperationKind.PROOF_REPLAY,
@@ -1136,7 +1175,7 @@ class IRLearningCampaign(CampaignContract):
     repository_tree_id: str
     roles: tuple[CampaignWorkGraphRoleRecord, ...]
     tasks: tuple[CampaignBoardTask, ...]
-    operations: tuple[CampaignOperationKind, ...] = REQUIRED_CAMPAIGN_OPERATIONS
+    operations: tuple[CampaignOperationKind, ...] = STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS
     dependency_results: Mapping[str, str] = field(default_factory=dict)
     owner_actor_id: str = "supervisor"
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -1176,7 +1215,7 @@ class IRLearningCampaign(CampaignContract):
         )
         operations = tuple(
             _enum(item, CampaignOperationKind, field_name="operations")
-            for item in (self.operations or REQUIRED_CAMPAIGN_OPERATIONS)
+            for item in (self.operations or STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS)
         )
         unique_ops = tuple(sorted(set(operations), key=lambda item: item.value))
         missing_ops = [
@@ -1350,7 +1389,9 @@ class IRLearningCampaign(CampaignContract):
             owner_actor_id=payload.get("owner_actor_id", "supervisor"),
             roles=tuple(payload.get("roles") or ()),
             tasks=tuple(payload.get("tasks") or ()),
-            operations=tuple(payload.get("operations") or REQUIRED_CAMPAIGN_OPERATIONS),
+            operations=tuple(
+                payload.get("operations") or STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS
+            ),
             dependency_results=payload.get("dependency_results") or {},
             metadata=payload.get("metadata") or {},
         )
@@ -1362,7 +1403,7 @@ class IRLearningCampaign(CampaignContract):
 
 @dataclass(frozen=True)
 class CampaignOperationRequest(CampaignContract):
-    """One create/plan/status/steer/refill/proof-replay/compare/promote/reject/report call."""
+    """One create/plan/start/resume/status/steer/refill/proof-replay/compare/promote/reject/report call."""
 
     SCHEMA: ClassVar[str] = IR_LEARNING_CAMPAIGN_OPERATION_SCHEMA
 
@@ -1371,6 +1412,7 @@ class CampaignOperationRequest(CampaignContract):
     caller: str
     task_id: str = ""
     dry_run: bool = False
+    idempotency_key: str = ""
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -1385,14 +1427,33 @@ class CampaignOperationRequest(CampaignContract):
             raise ContractValidationError("campaign must be an IRLearningCampaign")
         object.__setattr__(self, "caller", _text(self.caller, field_name="caller", required=True))
         object.__setattr__(self, "task_id", _text(self.task_id, field_name="task_id"))
+        object.__setattr__(
+            self,
+            "idempotency_key",
+            _text(self.idempotency_key, field_name="idempotency_key"),
+        )
         if not isinstance(self.dry_run, bool):
             raise ContractValidationError("dry_run must be a boolean")
         object.__setattr__(self, "parameters", _mapping(self.parameters, field_name="parameters"))
         _reject_forbidden_authority(self.parameters, noun="campaign operation")
         if self.task_id:
             self.campaign.task_by_id(self.task_id)
-        if self.operation not in self.campaign.operations:
-            raise ContractValidationError("campaign does not declare the requested operation")
+        declared = set(self.campaign.operations)
+        if self.operation not in declared:
+            if self.operation not in {
+                CampaignOperationKind.START,
+                CampaignOperationKind.RESUME,
+            }:
+                raise ContractValidationError("campaign does not declare the requested operation")
+            missing = [
+                item.value
+                for item in REQUIRED_CAMPAIGN_OPERATIONS
+                if item not in declared
+            ]
+            if missing:
+                raise ContractValidationError(
+                    "campaign does not declare the requested operation"
+                )
 
     @property
     def control_operation(self) -> Operation:
@@ -1417,6 +1478,7 @@ class CampaignOperationRequest(CampaignContract):
                 "caller": self.caller,
                 "task_id": self.task_id,
                 "dry_run": self.dry_run,
+                "idempotency_key": self.idempotency_key,
                 "parameters": self.parameters,
                 "control_operation": self.control_operation.value,
                 "authority": self.authority.value,
@@ -1436,6 +1498,7 @@ class CampaignOperationRequest(CampaignContract):
             caller=payload.get("caller", ""),
             task_id=payload.get("task_id", ""),
             dry_run=payload.get("dry_run", False),
+            idempotency_key=payload.get("idempotency_key", ""),
             parameters=payload.get("parameters") or {},
         )
 
@@ -1545,6 +1608,8 @@ def campaign_control_catalog() -> dict[str, Any]:
     return {
         "schema": IR_LEARNING_CAMPAIGN_OPERATION_SCHEMA,
         "contract_version": IR_LEARNING_CAMPAIGN_CONTRACT_VERSION,
+        "stable_operations": [item.value for item in STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS],
+        "required_operations": [item.value for item in REQUIRED_CAMPAIGN_OPERATIONS],
         "operations": {
             kind.value: {
                 "control_operation": operation.value,
@@ -1553,6 +1618,7 @@ def campaign_control_catalog() -> dict[str, Any]:
                 "in_read_catalog": operation in READ_OPERATIONS,
                 "in_proposal_catalog": operation in PROPOSAL_OPERATIONS,
                 "in_mutation_catalog": operation in MUTATION_OPERATIONS,
+                "stable": kind in STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS,
             }
             for kind, operation in CAMPAIGN_OPERATION_CONTROL_MAP.items()
         },
