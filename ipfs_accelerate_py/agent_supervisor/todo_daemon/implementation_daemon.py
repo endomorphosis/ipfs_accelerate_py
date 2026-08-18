@@ -2642,6 +2642,8 @@ def _codex_implementation_command(
     command = [
         codex,
         "exec",
+        "--ignore-user-config",
+        "--ephemeral",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(workspace_path),

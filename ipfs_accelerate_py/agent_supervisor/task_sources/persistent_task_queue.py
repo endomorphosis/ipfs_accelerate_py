@@ -78,6 +78,13 @@ class TaskQueueEntry:
         self.merge_failure_count += 1
         self.selection_penalty += 500
 
+    def defer(self, seconds: float, *, reason: str = "") -> None:
+        """Apply an explicit non-consuming scheduler backoff."""
+
+        duration = max(0.0, float(seconds))
+        self.cooldown_until = max(self.cooldown_until, time.time() + duration)
+        self.notes = reason
+
     def reset_retry_state(self) -> None:
         """Clear scheduling backpressure after an accepted repair."""
 
@@ -331,7 +338,10 @@ class PersistentTaskQueue:
         target.last_selected_at = max(target.last_selected_at, source.last_selected_at)
         target.last_completed_at = max(target.last_completed_at, source.last_completed_at)
         target.consecutive_failures = max(target.consecutive_failures, source.consecutive_failures)
-        target.consecutive_no_change = max(target.consecutive_no_change, source.consecutive_no_change)
+        target.consecutive_no_change = max(
+            target.consecutive_no_change,
+            source.consecutive_no_change,
+        )
         target.merge_failure_count = max(target.merge_failure_count, source.merge_failure_count)
         target.cooldown_until = max(target.cooldown_until, source.cooldown_until)
         target.notes = target.notes or source.notes
@@ -494,6 +504,14 @@ class PersistentTaskQueue:
         entry.record_merge_failure()
         self._dirty = True
         self.save()
+
+    def defer(self, task_id: str, seconds: float, *, reason: str = "") -> None:
+        """Persist a non-consuming deferral for task selection."""
+
+        entry = self.get_or_create(task_id)
+        entry.defer(seconds, reason=reason)
+        self._dirty = True
+        self._maybe_save()
 
     def reset_retry_state(self, task_id: str) -> bool:
         """Clear retry penalties while preserving lifetime selection history."""

@@ -14,6 +14,9 @@ from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts impo
     FormalWorkPlan,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+    CODEX_MODEL_ENV,
+    PROVIDER_ENV,
+    configured_board_launch_plan,
     load_configured_board,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -70,6 +73,16 @@ def test_lgcvf_scheduler_is_single_writer_and_protects_control_evidence() -> Non
     assert program.task_source_kind == "duckdb"
     assert program.quack_endpoint == ""
     assert program.failover_policy == "fail_closed"
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+    )
+    assert launch["environment"][PROVIDER_ENV] == "codex"
+    # The daemon's reviewed direct-Codex default is gpt-5.6-terra. Exporting
+    # CODEX_MODEL_ENV here would be parsed as an incomplete sealed fallback
+    # route, so the one-provider launch must leave it absent.
+    assert CODEX_MODEL_ENV not in launch["environment"]
     protected = set(board.protected_paths)
     assert {
         str(config["formal_plan_path"]),

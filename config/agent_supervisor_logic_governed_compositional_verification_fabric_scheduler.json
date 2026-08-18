@@ -96,6 +96,7 @@
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py",
     "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
     "scripts/benchmark_lgcvf_symbolic_displacement.py",
     "scripts/emit_logic_governed_compositional_verification_fabric_plan.py",
@@ -107,6 +108,7 @@
     "test/api/test_agent_supervisor_database_implementation_daemon.py",
     "test/api/test_agent_supervisor_database_portal_bridge.py",
     "test/api/test_agent_supervisor_grok_router_compatibility.py",
+    "test/api/test_agent_supervisor_retry_deferral_queue.py",
     "test/api/test_agent_supervisor_scoped_dependency_contract_v3.py",
     "test/test_llm_router_grok_cli.py",
     "test/fixtures/agent_supervisor/compositional_verification/config/schema.json",
@@ -114,12 +116,12 @@
     "test/fixtures/agent_supervisor/compositional_verification/tests/test_unselected.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11",
-    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/state",
-    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/worktrees",
-    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/merge-queue",
-    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/logs",
-    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/evidence",
+    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12",
+    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/state",
+    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/logs",
+    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/evidence",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "database_program": {
@@ -127,15 +129,15 @@
     "authoritative_transactional_data_model": true,
     "authoritative_records_schema_cas_and_fencing": true,
     "task_source_kind": "duckdb",
-    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/control.duckdb",
-    "store_generation": "lgcvf-run-v11",
+    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/control.duckdb",
+    "store_generation": "lgcvf-run-v12",
     "schema_revision": "datasets-authoritative-operational-v1",
     "schema_profile": "datasets-authoritative-operational",
     "semantic_relations_permitted": false,
-    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/events",
-    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/registry",
-    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v11/worktrees",
-    "export_profile": "lgcvf-run-v11",
+    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/registry",
+    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v12/worktrees",
+    "export_profile": "lgcvf-run-v12",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
   },
@@ -175,10 +177,11 @@
     "LGCVF-G130": ["LGCVF-120", "LGCVF-121", "LGCVF-122", "LGCVF-123", "LGCVF-124"]
   },
   "provider": {
-    "provider_id": "grok_cli",
-    "model_id": "grok-4.6",
+    "provider_id": "codex",
     "max_concurrency": 1,
-    "secrets_from_environment_only": true,
+    "secrets_from_environment_only": false,
+    "provider_local_auth_file_permitted": true,
+    "provider_local_auth_file_content_is_not_recorded": true,
     "secrets_in_argv_prompts_logs_or_receipts": false
   },
   "authority_policy": {
