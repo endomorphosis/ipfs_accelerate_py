@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Literal, Mapping
 
 try:
     import fcntl
@@ -821,6 +821,14 @@ class CheckoutMutationLease:
         return str(self.metadata.get("lease_id") or "")
 
 
+CheckoutMutationLeaseState = Literal[
+    "current",
+    "absent",
+    "replaced",
+    "inconclusive",
+]
+
+
 def _read_checkout_lock(
     lock_path: Path,
 ) -> tuple[dict[str, Any] | None, tuple[int, int] | None]:
@@ -862,6 +870,49 @@ def read_checkout_mutation_lease(
         device=identity[0],
         inode=identity[1],
     )
+
+
+def _checkout_mutation_lease_state_unlocked(
+    lease: CheckoutMutationLease,
+) -> CheckoutMutationLeaseState:
+    """Classify a lease while the durable lock update guard is held."""
+
+    current, identity = _read_checkout_lock(lease.lock_path)
+    if current is None or identity is None:
+        # A failed read is not proof of absence: malformed JSON, an inode
+        # replacement during the read, and an I/O failure all collapse to an
+        # inconclusive result. Confirm absence with a separate stat while the
+        # serialized update guard is still held.
+        try:
+            lease.lock_path.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            return "absent"
+        except OSError:
+            return "inconclusive"
+        return "inconclusive"
+    if (
+        identity == (lease.device, lease.inode)
+        and str(current.get("lease_id") or "") == lease.lease_id
+    ):
+        return "current"
+    return "replaced"
+
+
+def checkout_mutation_lease_state(
+    lease: CheckoutMutationLease,
+    *,
+    timeout_seconds: float = 1.0,
+) -> CheckoutMutationLeaseState:
+    """Safely classify whether a durable lease is current, gone, or replaced."""
+
+    try:
+        with serialized_lock_update(
+            lease.lock_path,
+            timeout_seconds=timeout_seconds,
+        ):
+            return _checkout_mutation_lease_state_unlocked(lease)
+    except (FileNotFoundError, TimeoutError):
+        return "inconclusive"
 
 
 def _atomic_replace_checkout_mutation_lease(
