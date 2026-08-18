@@ -37,6 +37,7 @@ RESCUE_OWNED_MODULES: Final[tuple[str, ...]] = (
     "recovery_diagnostics",
     "rescue_orchestrator",
     "rescue_planner",
+    "security_fault_matrix",
     "supervisor_recovery",
     "supervisor_watchdog",
 )

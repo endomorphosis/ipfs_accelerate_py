@@ -41,6 +41,7 @@ Executable implementation and supervisor daemons, git/worktree helpers, and boar
 | `llm_defaults` | `todo_daemon/llm_defaults.py` |
 | `logic_port` | `todo_daemon/logic_port.py` |
 | `plans` | `todo_daemon/plans.py` |
+| `process_tree_fencing` | `todo_daemon/process_tree_fencing.py` |
 | `registry` | `todo_daemon/registry.py` |
 | `runner` | `todo_daemon/runner.py` |
 | `specs` | `todo_daemon/specs.py` |
