@@ -197,6 +197,18 @@ def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     assert command[command.index("--task-source-kind") + 1] == "duckdb"
     assert command.count("--authority-mode") == 1
     assert command[command.index("--authority-mode") + 1] == "embedded"
+    assert command.count("--state-store-id") == 1
+    assert command[command.index("--state-store-id") + 1] == store_id
+    assert command.count("--state-store-generation") == 1
+    assert (
+        command[command.index("--state-store-generation") + 1]
+        == "lgcvf-bootstrap-v1"
+    )
+    assert command.count("--state-schema-revision") == 1
+    assert (
+        command[command.index("--state-schema-revision") + 1]
+        == "datasets-authoritative-operational-v1"
+    )
 
     child_env = supervisor_module._managed_daemon_child_environment(
         database_program=program,
@@ -209,6 +221,13 @@ def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     assert daemon_module.database_program_from_daemon_namespace(
         daemon_args,
         environ=child_env,
+    ) == program
+    # The immutable non-secret store authority is also reconstructable from
+    # argv alone.  A missing environment binding must never reinterpret the
+    # Markdown projection as the DuckDB store.
+    assert daemon_module.database_program_from_daemon_namespace(
+        daemon_args,
+        environ={},
     ) == program
 
     provider_env = supervisor.provider_subprocess_environment(
