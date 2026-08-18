@@ -41,6 +41,7 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "event_log",
     "learning_checkpoint",
     "multi_supervisor_runner",
+    "operational_campaign",
     "provider_batch_scheduler",
     "resource_scheduler",
     "runtime_cas",
