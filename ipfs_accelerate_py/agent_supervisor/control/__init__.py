@@ -50,6 +50,7 @@ CONTROL_OWNED_MODULES: Final[tuple[str, ...]] = (
     "control_plane",
     "execution_permit",
     "lifecycle_orchestrator",
+    "promotion_admission",
 )
 
 # Packages that may import from control (DAG dependents above this layer).
