@@ -1294,7 +1294,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-110 Run R1-R6 controlled campaign
 
-- Status: todo
+- Status: completed
 - Completion: evaluation-evidence
 - Is schedulable: true
 - Priority: P0
