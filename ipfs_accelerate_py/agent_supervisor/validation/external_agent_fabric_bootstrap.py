@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -55,6 +56,10 @@ _GIT_OBJECT = re.compile(r"[0-9a-f]{40}")
 _ALLOWED_SBOM_FORMATS: Final = frozenset(
     {"spdx-json", "cyclonedx-json"}
 )
+_MAX_PIDS: Final = 4096
+_MAX_CPU: Final = 64.0
+_MAX_MEMORY_BYTES: Final = 256 * 1024**3
+_MAX_DISK_BYTES: Final = 2 * 1024**4
 _EXPECTED_CONTAINER_ENV: Final = {
     "BASH_ENV": "",
     "CODEX_HOME": "/opt/codex-home",
@@ -146,6 +151,7 @@ def _positive_number(value: object) -> bool:
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
+        and math.isfinite(float(value))
         and value > 0
     )
 
@@ -325,6 +331,20 @@ def _validate_mounts(value: object) -> bool:
             or "/var/run/docker" in lowered
         ):
             return False
+        if mount.get("kind") == "worktree" and (
+            target != "/workspace" or mount.get("read_only") is not False
+        ):
+            return False
+        if mount.get("kind") == "provider_auth" and (
+            target != "/opt/codex-home/auth.json"
+            or mount.get("read_only") is not True
+        ):
+            return False
+        if mount.get("kind") == "secret" and (
+            not target.startswith("/run/secrets/")
+            or mount.get("read_only") is not True
+        ):
+            return False
         targets.add(target)
         if mount.get("read_only") is False:
             writable_targets.append(target)
@@ -355,9 +375,13 @@ def _validate_container_profile(
         or value.get("cap_drop") != ["ALL"]
         or value.get("no_new_privileges") is not True
         or not _positive_integer(value.get("pids_limit"))
+        or int(value.get("pids_limit") or 0) > _MAX_PIDS
         or not _positive_number(value.get("cpu_limit"))
+        or float(value.get("cpu_limit") or 0) > _MAX_CPU
         or not _positive_integer(value.get("memory_limit_bytes"))
+        or int(value.get("memory_limit_bytes") or 0) > _MAX_MEMORY_BYTES
         or not _positive_integer(value.get("disk_limit_bytes"))
+        or int(value.get("disk_limit_bytes") or 0) > _MAX_DISK_BYTES
         or not isinstance(gpu, Mapping)
         or set(gpu) != {"mode", "device_ids", "memory_limit_bytes"}
         or gpu.get("mode") != "none"

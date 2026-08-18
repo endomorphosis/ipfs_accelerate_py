@@ -5,6 +5,7 @@ import hashlib
 import json
 from copy import deepcopy
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     ed25519_did_key,
@@ -213,6 +214,41 @@ def test_network_bridge_and_docker_socket_are_fail_closed():
         reviewer=reviewer,
         profile=profile,
     )
+
+    assert "container_profile_invalid" in decision.blockers
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("pids_limit", 4097),
+        ("cpu_limit", 65),
+        ("cpu_limit", float("inf")),
+        ("memory_limit_bytes", 257 * 1024**3),
+        ("disk_limit_bytes", 2 * 1024**4 + 1),
+    ),
+)
+def test_container_resources_are_finite_and_bounded(field, value):
+    image, reviewer = _image_qualification()
+    profile = _container_profile(image["image_digest"])
+    profile[field] = value
+    if value != float("inf"):
+        profile.pop("profile_cid")
+        profile["profile_cid"] = _cid(profile)
+
+    decision = _evaluate(image=image, reviewer=reviewer, profile=profile)
+
+    assert "container_profile_invalid" in decision.blockers
+
+
+def test_container_mount_targets_are_allowlisted():
+    image, reviewer = _image_qualification()
+    profile = _container_profile(image["image_digest"])
+    profile["mounts"][1]["target"] = "/etc/ld.so.preload"
+    profile.pop("profile_cid")
+    profile["profile_cid"] = _cid(profile)
+
+    decision = _evaluate(image=image, reviewer=reviewer, profile=profile)
 
     assert "container_profile_invalid" in decision.blockers
 

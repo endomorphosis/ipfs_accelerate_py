@@ -22,6 +22,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    # Direct ``python scripts/...py`` execution otherwise exposes only the
+    # scripts directory, making the reviewed local package unimportable after
+    # the immutable namespace claim has already been published.
+    sys.path.insert(0, str(ROOT))
 CONFIG_PATH = ROOT / "config/external_agent_autonomous_execution_fabric_scheduler.json"
 RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -357,6 +362,12 @@ def build_population(config: Mapping[str, Any]) -> dict[str, Any]:
         "config": _file_cid(CONFIG_PATH),
         "validator": _file_cid(_relative_path(config.get("validator_path"), field="validator_path")),
         "materializer": _file_cid(_relative_path(config.get("materializer_path"), field="materializer_path")),
+        "materialization_attempt_history": _file_cid(
+            _relative_path(
+                config.get("materialization_attempt_history_path"),
+                field="materialization_attempt_history_path",
+            )
+        ),
     }
     plan_root_cid = _cid(
         {
@@ -739,29 +750,35 @@ def _control_projection(path: Path) -> dict[str, Any]:
                 "task_alias": str(row[1]),
                 "goal_cid": str(row[2]),
                 "plan_cid": str(row[3]),
-                "ordinal": int(row[4]),
-                "status": str(row[5]),
-                "revision": int(row[6]),
-                "priority": str(row[7]),
-                "identity": json.loads(row[8]),
-                "body": json.loads(row[9]),
+                "objective_id": str(row[4]),
+                "ordinal": int(row[5]),
+                "status": str(row[6]),
+                "revision": int(row[7]),
+                "priority": str(row[8]),
+                "identity": json.loads(row[9]),
+                "body": json.loads(row[10]),
             }
             for row in connection.execute(
-                "SELECT task_cid, task_alias, goal_cid, plan_cid, ordinal, status, "
-                "revision, priority, identity_json, body_json FROM tasks ORDER BY ordinal"
+                "SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id, ordinal, "
+                "status, revision, priority, identity_json, body_json "
+                "FROM tasks ORDER BY ordinal"
             ).fetchall()
         ]
         goals = [
             {
                 "goal_cid": str(row[0]),
                 "goal_alias": str(row[1]),
-                "parent_goal_cid": str(row[2]),
-                "ordinal": int(row[3]),
-                "status": str(row[4]),
-                "body": json.loads(row[5]),
+                "objective_id": str(row[2]),
+                "parent_goal_cid": str(row[3]),
+                "ordinal": int(row[4]),
+                "title": str(row[5]),
+                "status": str(row[6]),
+                "revision": int(row[7]),
+                "body": json.loads(row[8]),
             }
             for row in connection.execute(
-                "SELECT goal_cid, goal_alias, parent_goal_cid, ordinal, status, body_json "
+                "SELECT goal_cid, goal_alias, objective_id, parent_goal_cid, ordinal, "
+                "title, status, revision, body_json "
                 "FROM goals ORDER BY ordinal"
             ).fetchall()
         ]
@@ -825,10 +842,47 @@ def _control_projection(path: Path) -> dict[str, Any]:
                 "goal_cid": str(row[1]),
                 "plan_alias": str(row[2]),
                 "status": str(row[3]),
-                "body": json.loads(row[4]),
+                "revision": int(row[4]),
+                "body": json.loads(row[5]),
             }
             for row in connection.execute(
-                "SELECT plan_cid, goal_cid, plan_alias, status, body_json FROM plans ORDER BY plan_cid"
+                "SELECT plan_cid, goal_cid, plan_alias, status, revision, body_json "
+                "FROM plans ORDER BY plan_cid"
+            ).fetchall()
+        ]
+        objective_revisions = [
+            {
+                "objective_id": str(row[0]),
+                "revision": int(row[1]),
+                "status": str(row[2]),
+                "body": json.loads(row[3]),
+            }
+            for row in connection.execute(
+                "SELECT objective_id, revision, status, body_json "
+                "FROM objective_revisions ORDER BY objective_id, revision"
+            ).fetchall()
+        ]
+        plan_revisions = [
+            {
+                "plan_cid": str(row[0]),
+                "revision": int(row[1]),
+                "body": json.loads(row[2]),
+            }
+            for row in connection.execute(
+                "SELECT plan_cid, revision, body_json "
+                "FROM plan_revisions ORDER BY plan_cid, revision"
+            ).fetchall()
+        ]
+        task_revisions = [
+            {
+                "task_cid": str(row[0]),
+                "revision": int(row[1]),
+                "status": str(row[2]),
+                "body": json.loads(row[3]),
+            }
+            for row in connection.execute(
+                "SELECT task_cid, revision, status, body_json "
+                "FROM task_revisions ORDER BY task_cid, revision"
             ).fetchall()
         ]
         # Bind every bootstrap-owned control relation, including revision and
@@ -889,6 +943,9 @@ def _control_projection(path: Path) -> dict[str, Any]:
         "task_outputs": task_outputs,
         "task_acceptance": task_acceptance,
         "task_validations": task_validations,
+        "objective_revisions": objective_revisions,
+        "plan_revisions": plan_revisions,
+        "task_revisions": task_revisions,
         "exact_relations": exact_relations,
     }
     projection["projection_root"] = _cid(projection)
@@ -942,9 +999,12 @@ def _expected_population_projection(population: Mapping[str, Any]) -> dict[str, 
             {
                 "goal_cid": goal_cid,
                 "goal_alias": str(item.get("goal_alias") or item.get("goal_id") or goal_cid),
+                "objective_id": objective_id,
                 "parent_goal_cid": str(item.get("parent_goal_cid") or ""),
                 "ordinal": int(item.get("ordinal") or index + 1),
+                "title": str(item.get("title") or item.get("goal_alias") or goal_cid),
                 "status": str(item.get("status") or "open").lower(),
+                "revision": 1,
                 "body": {
                     key: value
                     for key, value in item.items()
@@ -985,6 +1045,7 @@ def _expected_population_projection(population: Mapping[str, Any]) -> dict[str, 
                 "goal_cid": str(item.get("goal_cid") or ""),
                 "plan_alias": str(item.get("plan_alias") or item.get("alias") or item.get("plan_cid") or ""),
                 "status": str(item.get("status") or "active").lower(),
+                "revision": 1,
                 "body": dict(item),
             }
             for item in population.get("plans") or ()
@@ -1023,6 +1084,7 @@ def _expected_population_projection(population: Mapping[str, Any]) -> dict[str, 
                 "task_alias": task_alias,
                 "goal_cid": str(item.get("goal_cid") or item.get("goal_id") or ""),
                 "plan_cid": str(item.get("plan_cid") or population.get("plan_root_cid") or ""),
+                "objective_id": str(item.get("objective_id") or ""),
                 "ordinal": int(item.get("ordinal") or index + 1),
                 "status": str(item.get("status") or "ready").lower(),
                 "revision": 1,
@@ -1141,12 +1203,15 @@ def _expected_population_projection(population: Mapping[str, Any]) -> dict[str, 
                 }
             )
 
+    sorted_objectives = sorted(objectives, key=lambda item: item["objective_id"])
+    sorted_plans = plans
+    sorted_tasks = sorted(tasks, key=lambda item: item["ordinal"])
     return {
-        "objectives": sorted(objectives, key=lambda item: item["objective_id"]),
+        "objectives": sorted_objectives,
         "goals": sorted(goals, key=lambda item: item["ordinal"]),
         "goal_edges": goal_edges,
-        "plans": plans,
-        "tasks": sorted(tasks, key=lambda item: item["ordinal"]),
+        "plans": sorted_plans,
+        "tasks": sorted_tasks,
         "dependencies": sorted(
             dependencies,
             key=lambda item: (item["task_cid"], item["dependency_task_cid"], item["kind"]),
@@ -1154,6 +1219,35 @@ def _expected_population_projection(population: Mapping[str, Any]) -> dict[str, 
         "task_outputs": sorted(task_outputs, key=lambda item: (item["task_cid"], item["ordinal"])),
         "task_acceptance": sorted(task_acceptance, key=lambda item: (item["task_cid"], item["ordinal"])),
         "task_validations": sorted(task_validations, key=lambda item: (item["task_cid"], item["ordinal"])),
+        "objective_revisions": [
+            {
+                "objective_id": item["objective_id"],
+                "revision": item["revision"],
+                "status": item["status"],
+                "body": item["body"],
+            }
+            for item in sorted_objectives
+        ],
+        "plan_revisions": [
+            {
+                "plan_cid": item["plan_cid"],
+                "revision": item["revision"],
+                "body": item["body"],
+            }
+            for item in sorted_plans
+        ],
+        "task_revisions": sorted(
+            (
+                {
+                    "task_cid": item["task_cid"],
+                    "revision": item["revision"],
+                    "status": item["status"],
+                    "body": item["body"],
+                }
+                for item in sorted_tasks
+            ),
+            key=lambda item: (item["task_cid"], item["revision"]),
+        ),
     }
 
 
@@ -1274,15 +1368,15 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
     _write_json_immutable(claim_path, namespace_claim)
     for path in paths.values():
         path.parent.mkdir(parents=True, exist_ok=True)
-    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
-        install_datasets_authoritative_operational_schema,
-        verify_datasets_authoritative_operational_schema,
-    )
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        DatabaseImplementationDaemon,
-    )
-
     try:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+            install_datasets_authoritative_operational_schema,
+            verify_datasets_authoritative_operational_schema,
+        )
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+            DatabaseImplementationDaemon,
+        )
+
         schema_install = install_datasets_authoritative_operational_schema(
             paths["control"],
             application_version="0.0.45",

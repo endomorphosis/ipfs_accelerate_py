@@ -1,0 +1,27 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-agent-autonomous-execution-fabric-materialization-attempt-history@1",
+  "attempts": [
+    {
+      "attempt_id": "sha256:9f6b46292a881f42a5f657eebc294d7dd3246f33fb36d419bcf514407c5e1d8b",
+      "attempted_at_utc": "2026-08-18T05:30:12.837538940Z",
+      "store_generation": "eaaef-run-v1",
+      "source_head": "294da4b9d925eaa3a3cd305b1920e930b6c90d1f",
+      "source_tree": "b92cdcc70302ac74276c98a623b9c990e4561890",
+      "outcome": "failed_before_schema_install",
+      "failure_class": "ModuleNotFoundError",
+      "failure_summary": "Direct script execution did not place the reviewed repository root on sys.path before importing the local ipfs_accelerate_py package.",
+      "partial_effects": [
+        {
+          "path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v1/registry/bootstrap-materialization-claim.json",
+          "sha256": "3539a934f5401447a623d3c1b8e5a8369d44b96ce467c4e3d9797754388f27f6",
+          "byte_count": 1225,
+          "disposition": "preserved_immutable_do_not_reuse_or_delete"
+        }
+      ],
+      "database_created": false,
+      "authority_mutated": false,
+      "process_started": false,
+      "recovery": "Advance every configured runtime path and the store generation to run-v2 after committing the direct-script import repair; never retry run-v1."
+    }
+  ]
+}

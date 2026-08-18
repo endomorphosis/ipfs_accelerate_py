@@ -330,6 +330,28 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         materializer._assert_population_equivalent(
             population, forged_initial_projection
         )
+    forged_initial_projection = json.loads(
+        json.dumps(receipt["control_projection"], sort_keys=True)
+    )
+    forged_initial_projection["goals"][0]["title"] = "evil-before-seal"
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="differs from the admitted board projection",
+    ):
+        materializer._assert_population_equivalent(
+            population, forged_initial_projection
+        )
+    forged_initial_projection = json.loads(
+        json.dumps(receipt["control_projection"], sort_keys=True)
+    )
+    forged_initial_projection["task_revisions"][0]["revision"] = 9
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="differs from the admitted board projection",
+    ):
+        materializer._assert_population_equivalent(
+            population, forged_initial_projection
+        )
 
     def namespace_snapshot() -> dict[str, tuple[int, int, str]]:
         return {
