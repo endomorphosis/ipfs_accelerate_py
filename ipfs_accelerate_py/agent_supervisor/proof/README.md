@@ -17,6 +17,7 @@ Formal verification and attestation: prover contracts, caches, capabilities, and
 
 | Module | Path |
 | --- | --- |
+| `campaign_proof_replay` | `proof/campaign_proof_replay.py` |
 | `code_claim_contracts` | `proof/code_claim_contracts.py` |
 | `code_edit_materialize` | `proof/code_edit_materialize.py` |
 | `code_edit_packet` | `proof/code_edit_packet.py` |
