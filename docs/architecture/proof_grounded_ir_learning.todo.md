@@ -1222,7 +1222,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-090 Implement append-only IR release packaging
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P1
