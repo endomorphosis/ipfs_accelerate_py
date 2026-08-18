@@ -6,6 +6,7 @@ import json
 import subprocess
 
 import pytest
+
 from ipfs_accelerate_py import llm_router
 
 
@@ -274,6 +275,77 @@ def test_grok_cli_isolated_env_withholds_alternate_provider_authority() -> None:
     # fallback; sanitization applies only to Grok's child environment.
     assert source["OPENAI_API_KEY"] == "openai-authority"
     assert source["CODEX_HOME"] == "/private/codex"
+
+
+def test_grok_cli_router_accepts_runtime_runner_sealed_call_shape(
+    tmp_path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text("implement the task", encoding="utf-8")
+
+    cmd = llm_router.build_grok_cli_command(
+        mode="agent",
+        workspace=tmp_path,
+        model_name="grok-4.6",
+        max_turns=100_000,
+        grok_bin="/opt/ipfs-accelerate/grok",
+        prompt_file=prompt_path,
+        permission_mode="bypassPermissions",
+        tools=grok_cli_runner._SEALED_GROK_TOOLS,
+        sandbox_profile=grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE,
+        deny_rules=grok_cli_runner.GROK_ISOLATION_DENY_RULES,
+    )
+
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
+    assert cmd[cmd.index("--output-format") + 1] == "streaming-json"
+    assert cmd[cmd.index("--tools") + 1] == grok_cli_runner._SEALED_GROK_TOOLS
+    assert cmd.count("--sandbox") == 1
+    assert cmd[cmd.index("--sandbox") + 1] == (
+        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
+    )
+    assert [
+        cmd[index + 1]
+        for index, argument in enumerate(cmd)
+        if argument == "--deny"
+    ] == list(grok_cli_runner.GROK_ISOLATION_DENY_RULES)
+
+
+def test_grok_cli_runtime_runner_isolated_env_is_a_closed_allowlist() -> None:
+    source = {
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "TERM": "xterm-256color",
+        "IPFS_ACCELERATE_PY_XAI_API_KEY": "grok-authority",
+        "PYTHONPATH": "/workspace/attacker",
+        "HOME": "/workspace/provider-home",
+        "OPENAI_API_KEY": "peer-authority",
+        "GROK_AUTH_PROVIDER_COMMAND": "/workspace/steal-authority",
+        "GROK_CODEX_SKILLS_ENABLED": "1",
+        "UNRELATED_SETTING": "must-not-cross",
+    }
+    original = dict(source)
+
+    isolated = llm_router.build_grok_cli_env(
+        base_env=source,
+        isolate_alternate_providers=True,
+    )
+
+    assert isolated == {
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "TERM": "xterm-256color",
+        "PATH": "/usr/bin:/bin",
+        "XAI_API_KEY": "grok-authority",
+        "GROK_CODEX_AGENTS_ENABLED": "0",
+        "GROK_CODEX_HOOKS_ENABLED": "0",
+        "GROK_CODEX_MCPS_ENABLED": "0",
+        "GROK_CODEX_RULES_ENABLED": "0",
+        "GROK_CODEX_SESSIONS_ENABLED": "0",
+        "GROK_CODEX_SKILLS_ENABLED": "0",
+    }
+    assert source == original
 
 
 def test_grok_cli_provider_reports_missing_auth(monkeypatch) -> None:
