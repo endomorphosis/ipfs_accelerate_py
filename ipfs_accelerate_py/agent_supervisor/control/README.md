@@ -23,6 +23,7 @@ Transport-neutral control plane. Python, CLI, and MCP build the same OperationRe
 | `control_plane` | `control/control_plane.py` |
 | `execution_permit` | `control/execution_permit.py` |
 | `lifecycle_orchestrator` | `control/lifecycle_orchestrator.py` |
+| `promotion_admission` | `control/promotion_admission.py` |
 
 ## Preferred imports
 

@@ -47,6 +47,7 @@ MERGE_OWNED_MODULES: Final[tuple[str, ...]] = (
     "merge_queue",
     "merge_resolver",
     "merge_train",
+    "promotion_pointer",
 )
 
 # Dual-copied under this package in the current ASREF-011 batch.
