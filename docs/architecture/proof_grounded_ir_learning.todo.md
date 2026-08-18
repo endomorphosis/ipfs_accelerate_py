@@ -1258,7 +1258,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-100 Add integrated dataset, proof, training, and recovery security
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
