@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeerapyxjsqe34u3rcmw43n6xq5nezjhlp4pq5gevnbyjnbjsqrfpok4a",
-    "artifact_verification_receipt_cid": "baguqeeraax6cmphkmpxbvbx5zkah3zg5c7srssvj23yekaykb3rwpc5lmkiq",
+    "artifact_cid": "baguqeerar5y7qwii6r2rooyrryewuadtim7bxkiiqtnzfd2dep6yp7pfcu4a",
+    "artifact_verification_receipt_cid": "baguqeeras6k4a4gn3fj57kqc4ndoslh4ese2x6g2oxjoywsmym5fk2hfjeqq",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeerawh5tyhvdbw6tyomagyhymyj2ab4cjcnexwwhszoczz6o24ngnooa"
+    "vertical_result_cid": "baguqeeracqgqh5pyqb5aqsi6fgxzrqmfq2rptgjhpgcfw3ocgnbjh4kwaqkq"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -21,9 +21,9 @@
   "overall_disposition": "partial",
   "paired_result": {
     "baseline": {
-      "context_tokens": 387,
+      "context_tokens": 384,
       "model_calls": 0,
-      "raw_source_bytes": 1545,
+      "raw_source_bytes": 1534,
       "tests_selected": 3,
       "verification_strategy": "raw-source-full-fixture"
     },
@@ -59,15 +59,15 @@
     "model_invocation_count": 0,
     "note": "the raw-source baseline is a context/test-selection projection; separate baseline wall-time and resource execution is not measured",
     "policy_root": "policy:lgcvf-hermetic-deny-network@1",
-    "repository_base_commit": "ba85c7a2a70c79e7d7a71e261a700be38220fd49",
-    "repository_base_tree": "bdc04162de9ec638145bf3a0f68526ef9cffd5eb",
+    "repository_base_commit": "6423b6a361e44288b35c71a5e376b534df2b8d9b",
+    "repository_base_tree": "d2cf28f048cc1875058ddadd91b31a7a849f416d",
     "scope": "single_vertical_run_same_fixture_and_acceptance_oracle"
   },
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeeratboaocruuuizdgafrsomibzyq3epovcsv562znmadlqe6xbbgaya",
-  "reproducible_projection_cid": "baguqeeraywkzocujtr4xfzdycb7hipqfdhdeumqdpfgka73olptvhjxc2hna",
+  "report_cid": "baguqeera5eunnikkby5xg4kkkrwrwp7wmo4x26u6xvxerx4lp2lbzhkrdqma",
+  "reproducible_projection_cid": "baguqeeratddf3jpln5olhturxvhiqbk67foxoqiuq3rpnm23jxg2vocwcjqq",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
     "missing": [

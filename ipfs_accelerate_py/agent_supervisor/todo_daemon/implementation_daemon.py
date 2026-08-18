@@ -69821,10 +69821,13 @@ class DatabaseImplementationDaemon:
                 raise
             failed = None
             try:
-                current = (
-                    attempt
-                    if isinstance(attempt, DatabaseTaskAttempt)
-                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
+                # ``resume_attempt`` can durably advance one or more phases
+                # before the Portal callback raises.  The caller's attempt
+                # object is therefore only an identity handle here, not a CAS
+                # cursor: reload the current revision before terminalizing the
+                # failed attempt.
+                current = self.get_attempt(
+                    str(getattr(attempt, "attempt_id", "") or attempt)
                 )
                 if current is not None and current.status == "running":
                     failed = self.commit_phase(

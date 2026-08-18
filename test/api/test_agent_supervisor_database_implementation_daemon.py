@@ -30,6 +30,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
     ATTEMPT_PHASE_EFFECT,
@@ -605,6 +608,65 @@ def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
         assert duplicated is False
         assert updated.committed_phase == ATTEMPT_PHASE_PROVIDER
         assert observed_revisions[1] > observed_revisions[0]
+    finally:
+        daemon.close()
+
+
+def test_portal_failure_terminal_cas_refetches_advanced_attempt(
+    tmp_path: Path,
+) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    provider_revisions: list[int] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        daemon = holder["daemon"]
+        provider_revisions.append(attempt.revision)
+        daemon._record_event(
+            "portal_progress_before_failure",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body={"provider_revision": attempt.revision},
+        )
+        raise DatabasePortalBridgeError("portal validation failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-failure-cas",
+        provider_fn=provider,
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["status"] == "failed"
+        assert "fail_error" not in implementation
+        assert provider_revisions == [2]
+
+        stored = daemon.get_attempt(result["attempt_id"])
+        assert stored is not None
+        assert stored.status == "failed"
+        assert stored.committed_phase == "failed"
+        assert stored.revision == 3
+        assert [
+            (phase["phase"], phase["revision"])
+            for phase in daemon.phase_history(stored.attempt_id)
+        ] == [("claimed", 1), ("context", 2), ("failed", 3)]
+
+        event_count = daemon._require_connection().execute(
+            """
+            SELECT COUNT(*) FROM daemon_execution_events
+            WHERE attempt_id = ? AND event_type = ?
+            """,
+            [stored.attempt_id, "portal_progress_before_failure"],
+        ).fetchone()
+        assert event_count is not None
+        assert int(event_count[0]) == 1
+        task = daemon.task_source.get(stored.task_cid)
+        assert task is not None
+        assert task.status == "in_progress"
     finally:
         daemon.close()
 

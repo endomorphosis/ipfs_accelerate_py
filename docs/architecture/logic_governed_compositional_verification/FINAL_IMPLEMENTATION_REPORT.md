@@ -30,7 +30,8 @@ The audit and successor were constructed from:
 | --- | --- | --- | --- |
 | `ipfs_accelerate_py` superproject baseline | `12c4e8387de4986d38d69534f3d74864e7bb15c1` | `96504e7744d741784bc8076456f4b169dd665ab5` | Branch `agent/logic-governed-compositional-verification-fabric-v1`; final accelerator integration commit is to be recorded after the bounded overlay is committed. |
 | `ipfs_datasets_py` construction baseline | `480a1666f144ad606fcb3cacb66e59775f28d0d1` | `6fdc81fabb04a86683d0f26200636fa8f61fd25c` | Mode-160000 Git submodule/gitlink. |
-| `ipfs_datasets_py` implemented revision | `11fa6e8d37c4d90b8d4905572f96ee95b9443448` | `08976767b5e6d915aac0512b49bdda63cfe749e6` | Nested commit `feat(logic): add compositional verification vertical kernel`; nested worktree clean when committed. |
+| `ipfs_datasets_py` vertical-kernel revision | `11fa6e8d37c4d90b8d4905572f96ee95b9443448` | `08976767b5e6d915aac0512b49bdda63cfe749e6` | Nested commit `feat(logic): add compositional verification vertical kernel`. |
+| `ipfs_datasets_py` launch-validation revision | `cf15d517e9ad9ab67e4bd6be5c621a620bcde387` | `ead65305f261affbe8089bbd759bda32bde6668b` | Nested commit `chore(validation): bind LGCVF scoped dependencies`; adds only a local optional validation profile and exact task-bound contract entries, with no installation or network action. |
 
 Datasets is a Git submodule/gitlink, not a subtree, nested untracked history, or
 physically flattened package. Datasets-owned semantics were committed and
@@ -264,9 +265,9 @@ separates those execution CIDs from the reproducible semantic projection.
 Machine result:
 `data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json`.
 Current report CID:
-`baguqeeratboaocruuuizdgafrsomibzyq3epovcsv562znmadlqe6xbbgaya`.
+`baguqeera5eunnikkby5xg4kkkrwrwp7wmo4x26u6xvxerx4lp2lbzhkrdqma`.
 Stable reconstructed projection CID:
-`baguqeeraywkzocujtr4xfzdycb7hipqfdhdeumqdpfgka73olptvhjxc2hna`.
+`baguqeeratddf3jpln5olhturxvhiqbk67foxoqiuq3rpnm23jxg2vocwcjqq`.
 
 | Metric | Baseline | Challenger/result |
 | --- | ---: | ---: |

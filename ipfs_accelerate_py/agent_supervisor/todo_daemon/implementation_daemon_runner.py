@@ -1271,6 +1271,8 @@ def bind_database_portal_execution_from_args(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
+        repository_root=repo_root,
+        worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
     )
     binder(
