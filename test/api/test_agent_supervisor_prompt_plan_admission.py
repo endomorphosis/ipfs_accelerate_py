@@ -641,3 +641,64 @@ def test_receipt_rejects_tampered_determinism_claims() -> None:
 
     with pytest.raises(ValueError, match="candidate-order"):
         PromptPlanAdmissionReceipt.from_dict(payload)
+
+
+def test_campaign_prompt_handoff_does_not_expand_authority_or_authorize_execution() -> None:
+    from ipfs_accelerate_py.agent_supervisor.planning.campaign_prompt_handoff import (
+        CampaignPromptHandoffError,
+        admit_campaign_prompt_handoff,
+        campaign_prompt_handoff_policy,
+    )
+
+    workflow, scan, graph = _graph_fixture()
+    ir_request = _ir_request(graph, workflow, scan.dirty_worktree_root)
+    policy = campaign_prompt_handoff_policy()
+    assert policy["authorizes_execution"] is False
+    assert policy["authorizes_promotion"] is False
+    assert policy["expands_control_catalog"] is False
+    assert "start" in policy["forbidden_operations"]
+    assert "promote" in policy["forbidden_operations"]
+
+    admitted = admit_campaign_prompt_handoff(
+        graph,
+        repository_tree_id=scan.dirty_worktree_root,
+        ir_request=ir_request,
+        workflow_request=workflow,
+        scan_receipt=scan,
+        requested_operation="plan",
+    )
+    assert admitted["admitted"] is True
+    assert admitted["authorizes_execution"] is False
+    assert admitted["authorizes_promotion"] is False
+    assert admitted["expands_control_catalog"] is False
+    assert admitted["prompt_selected_authority"] is False
+    assert admitted["control_operation"] == "plan"
+    replayed = admit_campaign_prompt_handoff(
+        graph,
+        repository_tree_id=scan.dirty_worktree_root,
+        ir_request=ir_request,
+        workflow_request=workflow,
+        scan_receipt=scan,
+        requested_operation="plan",
+    )
+    assert replayed["handoff_id"] == admitted["handoff_id"]
+
+    for forbidden in ("start", "resume", "promote", "reject", "create"):
+        with pytest.raises(CampaignPromptHandoffError, match="cannot select"):
+            admit_campaign_prompt_handoff(
+                graph,
+                repository_tree_id=scan.dirty_worktree_root,
+                ir_request=ir_request,
+                workflow_request=workflow,
+                scan_receipt=scan,
+                requested_operation=forbidden,
+            )
+    with pytest.raises(CampaignPromptHandoffError, match="hidden"):
+        admit_campaign_prompt_handoff(
+            graph,
+            repository_tree_id=scan.dirty_worktree_root,
+            ir_request=ir_request,
+            workflow_request=workflow,
+            scan_receipt=scan,
+            parameters={"prompt_selected_authority": "mutation"},
+        )
