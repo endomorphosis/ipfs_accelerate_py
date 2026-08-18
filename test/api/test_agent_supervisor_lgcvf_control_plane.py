@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -79,6 +81,33 @@ def test_lgcvf_scheduler_is_single_writer_and_protects_control_evidence() -> Non
         "test/fixtures/agent_supervisor/compositional_verification/tests/test_selected.py",
         "test/fixtures/agent_supervisor/compositional_verification/tests/test_unselected.py",
     }.issubset(protected)
+
+
+def test_explicit_objective_heap_keeps_optional_objective_daemon_cold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    optional_module = (
+        "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon"
+    )
+    monkeypatch.setitem(sys.modules, optional_module, None)
+    holder = SimpleNamespace(
+        config=SimpleNamespace(
+            objective_path=(
+                ROOT
+                / "docs/architecture/"
+                "logic_governed_compositional_verification_fabric.objectives.md"
+            ),
+            repo_root=ROOT,
+        )
+    )
+
+    goals = PortalImplementationSupervisor._objective_goals_for_finding_mapping(holder)
+
+    assert {goal.goal_id for goal in goals} >= {"LGCVF-G000", "LGCVF-G130"}
 
 
 def test_population_preserves_formal_identities_dependencies_and_closed_gates() -> None:

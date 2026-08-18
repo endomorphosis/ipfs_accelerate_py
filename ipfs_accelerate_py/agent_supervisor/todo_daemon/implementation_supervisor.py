@@ -15855,12 +15855,17 @@ class PortalImplementationSupervisor:
     def _objective_goals_for_finding_mapping(self) -> list[Any]:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
 
-        objective_path = self.config.objective_path or default_objective_path(
-            self.config.repo_root
-        )
+        objective_path = self.config.objective_path
+        if objective_path is None:
+            # Keep the optional objective-daemon/prover/MCP dependency closure
+            # cold when the caller supplied the authoritative heap explicitly.
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+                default_objective_path,
+            )
+
+            objective_path = default_objective_path(self.config.repo_root)
         try:
             return parse_goal_heap(objective_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
