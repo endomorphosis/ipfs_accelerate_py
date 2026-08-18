@@ -1345,10 +1345,13 @@ def _managed_daemon_child_environment(
 
 def database_program_from_cli_namespace(
     args: Any,
+    *,
+    environ: Mapping[str, str] | None = None,
 ) -> DatabaseProgramConfig | None:
     """Build a database program selection from parsed supervisor CLI args/env."""
 
-    env_payload = os.environ.get(DATABASE_PROGRAM_JSON_ENV, "").strip()
+    environment = os.environ if environ is None else environ
+    env_payload = str(environment.get(DATABASE_PROGRAM_JSON_ENV, "") or "").strip()
     env_program: DatabaseProgramConfig | None = None
     if env_payload:
         try:
@@ -1447,19 +1450,6 @@ def database_program_from_cli_namespace(
         # the dedicated supervisor field.
         payload["worktree_root"] = ""
     return DatabaseProgramConfig.from_mapping(payload)
-
-
-def provider_environment_without_state_credentials(
-    environment: Mapping[str, str] | None = None,
-    *,
-    database_program: DatabaseProgramConfig | None = None,
-) -> dict[str, str]:
-    """Return an environment safe for implementation-provider subprocesses."""
-
-    return provider_subprocess_environment(
-        environment,
-        program=database_program,
-    )
 
 
 def provider_environment_without_state_credentials(
@@ -6296,6 +6286,7 @@ class PortalSupervisorConfig:
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
+    database_program: DatabaseProgramConfig | None = None
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -8351,7 +8342,9 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
-            launch_env=_managed_daemon_child_environment(),
+            launch_env=_managed_daemon_child_environment(
+                database_program=self.config.database_program,
+            ),
         )
         return SupervisorLoopConfig(
             spec=spec,
@@ -17322,7 +17315,11 @@ class PortalImplementationSupervisor:
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
         env = os.environ.copy()
-        env.update(_managed_daemon_child_environment())
+        env.update(
+            _managed_daemon_child_environment(
+                database_program=self.config.database_program,
+            )
+        )
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
@@ -18109,6 +18106,12 @@ class PortalImplementationSupervisor:
                     str(max(0, int(self.config.max_task_attempts))),
                 ]
             )
+            if self.config.database_program is not None:
+                program = self.config.database_program
+                program.assert_quack_not_demoted(
+                    candidate_mode=program.authority_mode,
+                )
+                command.extend(program.daemon_cli_args())
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -18251,6 +18254,17 @@ class PortalImplementationSupervisor:
                     argv=command,
                 )
             return command
+
+    def provider_subprocess_environment(
+        self,
+        environment: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Return a provider environment without state-authority credentials."""
+
+        return provider_environment_without_state_credentials(
+            environment,
+            database_program=self.config.database_program,
+        )
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
@@ -18586,18 +18600,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--task-source-kind",
         choices=("legacy-markdown", "markdown", "duckdb"),
-        default="legacy-markdown",
-        help="Storage contract forwarded from the multi-supervisor runner.",
+        default="",
+        help=(
+            "Explicit task-source storage contract forwarded to the managed "
+            "daemon. Required for database programs; the daemon's implicit "
+            "legacy-Markdown default is deprecated."
+        ),
     )
     parser.add_argument(
         "--authority-mode",
-        default="legacy_markdown",
-        help="State authority mode forwarded from the multi-supervisor runner.",
+        choices=("quack", "embedded", "embedded_exclusive", "legacy_markdown"),
+        default="",
+        help=(
+            "Explicit state authority mode. Quack never silently becomes "
+            "local DuckDB or file authority."
+        ),
     )
     parser.add_argument(
+        "--endpoint-secret-handle",
+        default="",
+        help="Opaque state endpoint secret handle; raw tokens are rejected.",
+    )
+    parser.add_argument(
+        "--quack-endpoint",
+        default="",
+        help="Loopback quack: URI for the exclusive state owner.",
+    )
+    parser.add_argument("--state-store-id", default="")
+    parser.add_argument("--state-store-generation", default="")
+    parser.add_argument("--state-schema-revision", default="")
+    parser.add_argument("--event-store-path", default="")
+    parser.add_argument("--runtime-registry-path", default="")
+    parser.add_argument("--export-profile", default="")
+    parser.add_argument(
         "--state-failover-policy",
-        default="fail_closed",
-        help="State failover policy forwarded from the multi-supervisor runner.",
+        choices=("fail_closed", "require_explicit_operator"),
+        default="",
+        help="Failover policy; Quack requires fail_closed.",
     )
     parser.add_argument(
         "--explicit-legacy-task-source",
@@ -19281,6 +19320,7 @@ def supervisor_config_from_args(
     llm_merge_resolver_command = args.llm_merge_resolver_command
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
+    database_program = database_program_from_cli_namespace(args)
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -19295,6 +19335,7 @@ def supervisor_config_from_args(
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
+        database_program=database_program,
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
