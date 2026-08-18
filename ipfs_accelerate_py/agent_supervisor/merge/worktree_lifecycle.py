@@ -21,13 +21,14 @@ import re
 import tempfile
 import time
 import uuid
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
-from .checkout_lock import git_common_dir, serialized_lock_update
 from ..proof.formal_verification_contracts import content_identity
+from .checkout_lock import git_common_dir, serialized_lock_update
 
 WORKTREE_LIFECYCLE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
@@ -1555,12 +1556,30 @@ class WorktreeLifecycleStore:
 
     # ---------------------------------------------------------------- cleanup
 
+    def _same_lane_state_dir(
+        self,
+        record: WorkspaceLifecycleRecord | None,
+        expected_state_dir: str | Path = "",
+    ) -> bool:
+        """Return whether ``record`` belongs to the caller's exact lane."""
+
+        if record is None:
+            return False
+        expected_raw = str(expected_state_dir or "").strip()
+        current_raw = str(record.state_dir or "").strip()
+        if not expected_raw or not current_raw:
+            return False
+        expected = normalize_workspace_path(expected_raw)
+        current = normalize_workspace_path(current_raw)
+        return bool(expected and current and expected == current)
+
     def evaluate_cleanup(
         self,
         *,
         workspace_path: str | Path | None = None,
         branch: str = "",
         caller_lease_id: str = "",
+        expected_state_dir: str | Path = "",
         now: float | None = None,
     ) -> CleanupDecision:
         """Decide whether cleanup may delete/prune/unregister a worktree.
@@ -1627,10 +1646,12 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
-        # Owner is dead.  Still require lease expiry (plus optional grace for
-        # brand-new preparing records that may be mid-publication).
+        # Owner is dead. Peer lanes still require lease expiry. The same lane
+        # may recover after the startup-publication grace so a crashed worker
+        # cannot pin the board for the full lease window.
         age = clock_now - float(record.created_at)
         expired = clock_now >= float(record.expires_at)
+        same_lane = self._same_lane_state_dir(record, expected_state_dir)
         if not expired:
             if (
                 record.state is WorkspaceLifecycleState.PREPARING
@@ -1639,6 +1660,15 @@ class WorktreeLifecycleStore:
                 return CleanupDecision(
                     disposition=CleanupDisposition.DENY,
                     reason="preparing_startup_grace",
+                    record=record,
+                    failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                    provider_call_allowed=False,
+                    attempt_consumed=False,
+                )
+            if same_lane:
+                return CleanupDecision(
+                    disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
+                    reason="owner_dead_same_lane_reclaim",
                     record=record,
                     failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                     provider_call_allowed=False,
@@ -1661,6 +1691,99 @@ class WorktreeLifecycleStore:
             provider_call_allowed=False,
             attempt_consumed=False,
         )
+
+    def reclaim_dead_owner_for_controlled_restart(
+        self,
+        workspace: str | Path,
+        *,
+        expected_state_dir: str | Path,
+        reclaimer_lease_id: str = "",
+        reclaimer: ProcessBirthIdentity | None = None,
+        reason: str = "controlled_restart_dead_owner",
+        now: float | None = None,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Fence a provably dead owner from the caller's exact lane.
+
+        This is deliberately narrower than stale reclamation: repository and
+        state-directory bindings must match, and unknown liveness is denied.
+        """
+
+        expected_state = normalize_workspace_path(expected_state_dir)
+        if not expected_state:
+            return None
+        expected_repo = normalize_workspace_path(self.repo_root)
+        clock_now = float(self.clock() if now is None else now)
+        record_path = self.workspace_path_for(workspace)
+        with serialized_lock_update(record_path):
+            current = self.load_workspace(workspace)
+            if current is None or current.is_terminal:
+                return None
+            if (
+                not current.repo_root
+                or normalize_workspace_path(current.repo_root) != expected_repo
+                or not current.state_dir
+                or normalize_workspace_path(current.state_dir) != expected_state
+                or owner_liveness(current.owner, proc_root=self.proc_root)
+                is not OwnerLiveness.DEAD
+            ):
+                return None
+            updated = replace(
+                current,
+                state=WorkspaceLifecycleState.TERMINAL,
+                owner=reclaimer or current_process_birth(proc_root=self.proc_root),
+                lease_id=(
+                    reclaimer_lease_id
+                    or new_lease_id(seed="controlled-restart-reclaim")
+                ),
+                fence=int(current.fence) + 1,
+                updated_at=clock_now,
+                expires_at=clock_now,
+                terminal_reason=str(reason or "controlled_restart_dead_owner"),
+            )
+            _atomic_write_json(record_path, updated.to_dict())
+            index_path = self.task_index_path_for(
+                canonical_task_cid=updated.canonical_task_cid,
+                task_id=updated.task_id,
+                attempt=updated.attempt,
+            )
+            _atomic_write_json(
+                index_path,
+                {
+                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                    "workspace_path": updated.workspace_path,
+                    "record_id": updated.record_id,
+                    "task_id": updated.task_id,
+                    "canonical_task_cid": updated.canonical_task_cid,
+                    "attempt": updated.attempt,
+                    "fence": updated.fence,
+                    "lease_id": updated.lease_id,
+                    "state": updated.state.value,
+                },
+            )
+            return updated
+
+    def reclaim_dead_owners_for_controlled_restart(
+        self,
+        *,
+        expected_state_dir: str | Path,
+        reclaimer_lease_id: str = "",
+        reason: str = "controlled_restart_dead_owner",
+    ) -> list[WorkspaceLifecycleRecord]:
+        """Fence all provably dead records owned by one restarted lane."""
+
+        recovered: list[WorkspaceLifecycleRecord] = []
+        for record in list(self.iter_records()):
+            if record.is_terminal:
+                continue
+            updated = self.reclaim_dead_owner_for_controlled_restart(
+                record.workspace_path,
+                expected_state_dir=expected_state_dir,
+                reclaimer_lease_id=reclaimer_lease_id,
+                reason=reason,
+            )
+            if updated is not None:
+                recovered.append(updated)
+        return recovered
 
     def reclaim_stale(
         self,
@@ -1739,6 +1862,7 @@ class WorktreeLifecycleStore:
         workspace_path: str | Path,
         branch: str = "",
         caller_lease_id: str = "",
+        expected_state_dir: str | Path = "",
     ) -> CleanupDecision:
         """Evaluate and, when stale, reclaim under the store lock path.
 
@@ -1750,6 +1874,7 @@ class WorktreeLifecycleStore:
             workspace_path=workspace_path,
             branch=branch,
             caller_lease_id=caller_lease_id,
+            expected_state_dir=expected_state_dir,
         )
         if decision.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW:
             # Branch fallback can find a preparing claim whose provisional
@@ -1760,17 +1885,34 @@ class WorktreeLifecycleStore:
                 if decision.record is not None
                 else workspace_path
             )
-            reclaimed = self.reclaim_stale(
-                reclaim_workspace,
-                reclaimer_lease_id=caller_lease_id or new_lease_id(seed="reclaim"),
-                reason=decision.reason,
-            )
+            reclaimer = caller_lease_id or new_lease_id(seed="reclaim")
+            reclaimed: WorkspaceLifecycleRecord | None = None
+            if decision.reason == "owner_dead_same_lane_reclaim":
+                lane_state = expected_state_dir or (
+                    decision.record.state_dir
+                    if decision.record is not None
+                    else ""
+                )
+                if lane_state:
+                    reclaimed = self.reclaim_dead_owner_for_controlled_restart(
+                        reclaim_workspace,
+                        expected_state_dir=lane_state,
+                        reclaimer_lease_id=reclaimer,
+                        reason=decision.reason,
+                    )
+            if reclaimed is None:
+                reclaimed = self.reclaim_stale(
+                    reclaim_workspace,
+                    reclaimer_lease_id=reclaimer,
+                    reason=decision.reason,
+                )
             if reclaimed is None:
                 # Lost the reclaim race; re-evaluate.
                 refreshed = self.evaluate_cleanup(
                     workspace_path=workspace_path,
                     branch=branch,
                     caller_lease_id=caller_lease_id,
+                    expected_state_dir=expected_state_dir,
                 )
                 if (
                     refreshed.disposition
@@ -1790,7 +1932,11 @@ class WorktreeLifecycleStore:
                 return refreshed
             return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
-                reason="reclaimed_stale_record",
+                reason=(
+                    "reclaimed_dead_same_lane_owner"
+                    if decision.reason == "owner_dead_same_lane_reclaim"
+                    else "reclaimed_stale_record"
+                ),
                 record=reclaimed,
                 failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                 provider_call_allowed=False,
