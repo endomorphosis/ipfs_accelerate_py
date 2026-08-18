@@ -43,6 +43,38 @@ from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationScheduler,
 )
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+    AuthorizationDecision,
+    AuthorizationVerdict,
+    Operation,
+    OperationAuthority,
+)
+from ipfs_accelerate_py.agent_supervisor.control.promotion_admission import (
+    M3_GATES,
+    PromotionAdmissionPolicy,
+    PromotionAdmissionReceipt,
+    PromotionAdmissionRequest,
+    admit_promotion,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
+    CampaignLeaseCoordinator,
+    DuplicateWriterError,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.promotion_pointer import (
+    PROMOTION_LEASE_RESOURCE,
+    PromotionPointerError,
+    PromotionPointerLeaseError,
+    PromotionPointerStore,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import L3ResourceKind
+from ipfs_accelerate_py.agent_supervisor.validation.promotion_comparison import (
+    M2_GATES,
+    PromotionComparisonPolicy,
+    PromotionComparisonRequest,
+    PromotionDecision,
+    compare_promotion,
+    passing_m2_evidence,
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -172,14 +204,14 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
     assert restored_acceptance.verify_integrity() is False
     repository_tree = accepted["target_commit"]
 
-    policy = ResourcePolicy(max_lanes=2, adaptive_enabled=True)
+    policy = ResourcePolicy(max_lanes=3, adaptive_enabled=True)
     fixture_ids = ("analysis", "validation")
     adaptive_receipt = evaluate_adaptive_throughput_benchmark(
         AdaptiveThroughputRun(
             fixture_ids=fixture_ids,
             executed_fixture_ids=fixture_ids,
             accepted_fixture_ids=fixture_ids,
-            duration_ms=200,
+            duration_ms=300,
             peak_concurrency=1,
         ),
         AdaptiveThroughputRun(
@@ -187,7 +219,7 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
             executed_fixture_ids=fixture_ids,
             accepted_fixture_ids=fixture_ids,
             duration_ms=90,
-            peak_concurrency=2,
+            peak_concurrency=3,
         ),
         policy=policy,
         repository_tree_id=repository_tree,
@@ -292,6 +324,7 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
         "analyzer_health": {
             "status": "healthy",
             "healthy": True,
+            "exhaustive": True,
             "safe_for_completion_reasoning": True,
             "binding": dict(binding),
         },
@@ -301,7 +334,36 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
             "satisfied": True,
             "quorum_met": True,
             "binding": dict(binding),
-            "members": members,
+            "members": [
+                {
+                    **member,
+                    "passed": True,
+                    "status": "passed",
+                    "exhaustive": True,
+                    "conclusive": True,
+                    "uncontradicted": True,
+                    "contradicted": False,
+                    "healthy": True,
+                    "safe_for_completion_reasoning": True,
+                    "receipt": {
+                        "passed": True,
+                        "status": "passed",
+                        "exhaustive": True,
+                        "conclusive": True,
+                        "uncontradicted": True,
+                        "contradicted": False,
+                        "healthy": True,
+                        "safe_for_completion_reasoning": True,
+                        "scan_mode": (
+                            "independent_audit"
+                            if member["evidence_channel"] == "independent-audit"
+                            else "exhaustive"
+                        ),
+                        "analyzer_version": binding["analyzer_version"],
+                    },
+                }
+                for member in members
+            ],
         },
         "now": now,
         "freshness_seconds": 3600,
@@ -889,3 +951,254 @@ def test_g060_completion_fails_closed_for_each_missing_gate(
                 key: value for key, value in packet.items() if key != "required_exhaustive_receipts"
             },
         )
+
+
+def _promotion_auth(root: Path, state: Path) -> AuthorizationDecision:
+    return AuthorizationDecision(
+        verdict=AuthorizationVerdict.PERMIT,
+        operation=Operation.OBJECTIVE_RECONCILE,
+        granted_authority=OperationAuthority.MUTATION,
+        repository_root=str(root),
+        state_root=str(state),
+        repository_id="repository:pgir",
+        tree_id="tree:current",
+        objective_id="PGIR-G090",
+        objective_revision="objective:1",
+        policy_id="policy:promotion",
+        policy_revision="policy:1",
+        caller="operator:alice",
+        lease_id="lease:promotion",
+        fencing_epoch=1,
+        authorized_effect_ids=("promotion:pointer",),
+        grant_ids=("policy-grant:promote",),
+        evaluated_at_ms=1_000,
+        expires_at_ms=2_000,
+    )
+
+
+def _admit_candidate(
+    tmp_path: Path,
+    *,
+    candidate_id: str,
+    lease_id: str = "lease:promotion",
+    fencing_epoch: int = 1,
+    expected_current: str = "",
+) -> PromotionAdmissionReceipt:
+    comparison = compare_promotion(
+        PromotionComparisonRequest(
+            candidate_checkpoint_id=candidate_id,
+            baseline_checkpoint_id="ir:checkpoint:baseline",
+            policy=PromotionComparisonPolicy(
+                policy_id="policy:promotion",
+                policy_revision="policy:promotion:1",
+            ),
+            evaluation_report_identity="eval:report:1",
+            proof_evidence_identity="proof:fresh:1",
+            actor_identity="operator:alice",
+            expected_current_pointer=expected_current,
+            gates=passing_m2_evidence(evidence_prefix=candidate_id),
+        )
+    )
+    return admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=PromotionAdmissionPolicy(
+                policy_id="policy:promotion",
+                policy_revision="policy:1",
+                authorized_actors=("operator:alice",),
+                active_lease_fences={lease_id: fencing_epoch},
+            ),
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id=lease_id,
+            fencing_epoch=fencing_epoch,
+            authorization=_promotion_auth(tmp_path / "repo", tmp_path / "state"),
+        )
+    )
+
+
+def test_parallel_promotion_comparison_is_deterministic_and_independent_of_evaluator() -> None:
+    request = PromotionComparisonRequest(
+        candidate_checkpoint_id="ir:checkpoint:candidate",
+        baseline_checkpoint_id="ir:checkpoint:baseline",
+        policy=PromotionComparisonPolicy(
+            policy_id="policy:promotion",
+            policy_revision="policy:promotion:1",
+        ),
+        evaluation_report_identity="eval:report:1",
+        proof_evidence_identity="proof:fresh:1",
+        actor_identity="operator:alice",
+        gates=passing_m2_evidence(),
+    )
+    results = []
+
+    def _run() -> None:
+        results.append(compare_promotion(request).receipt_id)
+
+    workers = [threading.Thread(target=_run) for _ in range(4)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    assert len(set(results)) == 1
+    model = compare_promotion(
+        PromotionComparisonRequest(
+            candidate_checkpoint_id=request.candidate_checkpoint_id,
+            baseline_checkpoint_id=request.baseline_checkpoint_id,
+            policy=request.policy,
+            evaluation_report_identity=request.evaluation_report_identity,
+            proof_evidence_identity=request.proof_evidence_identity,
+            actor_identity="model:self",
+            actor_role="model",
+            gates=passing_m2_evidence(),
+        )
+    )
+    assert model.decision is PromotionDecision.REJECT
+    assert set(request.policy.required_gates) == set(M2_GATES)
+
+
+def test_stale_promotion_cas_loses_and_exclusive_lease_serializes(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "state").mkdir()
+    store = PromotionPointerStore(tmp_path / "pointer")
+    first_admission = _admit_candidate(tmp_path, candidate_id="ir:checkpoint:one")
+    second_admission = _admit_candidate(tmp_path, candidate_id="ir:checkpoint:two")
+    lease = store.acquire_lease("operator:alice")
+    first = store.compare_and_swap(
+        admission=first_admission,
+        lease=lease,
+        expected_fence=lease.fence,
+    )
+    current = store.current()
+    stale = store.compare_and_swap(
+        admission=second_admission,
+        lease=lease,
+        expected_fence=lease.fence,
+    )
+
+    assert first.accepted is True
+    assert first.stale is False
+    assert current is not None
+    assert current.checkpoint_id == "ir:checkpoint:one"
+    assert stale.accepted is False
+    assert stale.stale is True
+    assert store.current() == current
+    with pytest.raises(DuplicateWriterError):
+        CampaignLeaseCoordinator(tmp_path / "pointer").acquire(
+            PROMOTION_LEASE_RESOURCE,
+            owner_id="operator:other",
+        )
+    checkpoint_lease = CampaignLeaseCoordinator(tmp_path / "pointer").acquire(
+        L3ResourceKind.CHECKPOINT,
+        owner_id="operator:other",
+    )
+    with pytest.raises(PromotionPointerLeaseError, match="promotion-pointer"):
+        store.compare_and_swap(
+            admission=second_admission,
+            lease=checkpoint_lease,
+            expected_fence=checkpoint_lease.fence,
+        )
+
+
+def test_concurrent_promotion_cas_admits_one_winner(tmp_path: Path) -> None:
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "state").mkdir()
+    store = PromotionPointerStore(tmp_path / "pointer")
+    first_admission = _admit_candidate(tmp_path, candidate_id="ir:checkpoint:alpha")
+    lease = store.acquire_lease("operator:alice")
+    barrier = threading.Barrier(2)
+    outcomes: list[object] = []
+
+    def _swap() -> None:
+        barrier.wait()
+        outcomes.append(
+            store.compare_and_swap(
+                admission=first_admission,
+                lease=lease,
+                expected_fence=lease.fence,
+            )
+        )
+
+    workers = [threading.Thread(target=_swap) for _ in range(2)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    accepted = [item for item in outcomes if getattr(item, "accepted", False)]
+    stale = [item for item in outcomes if getattr(item, "stale", False)]
+    assert len(accepted) == 1
+    assert len(stale) == 1
+    assert store.current() is not None
+    assert store.current().checkpoint_id == "ir:checkpoint:alpha"
+    assert set(first_admission.m3_results) == set(M3_GATES)
+
+
+def test_rollback_requires_a_new_decision_and_stale_restore_loses(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "state").mkdir()
+    store = PromotionPointerStore(tmp_path / "pointer")
+    first_admission = _admit_candidate(tmp_path, candidate_id="ir:checkpoint:one")
+    lease = store.acquire_lease("operator:alice")
+    store.compare_and_swap(
+        admission=first_admission,
+        lease=lease,
+        expected_fence=lease.fence,
+    )
+    second_admission = _admit_candidate(
+        tmp_path,
+        candidate_id="ir:checkpoint:two",
+        expected_current="ir:checkpoint:one",
+    )
+    store.compare_and_swap(
+        admission=second_admission,
+        lease=lease,
+        expected_fence=lease.fence,
+    )
+    with pytest.raises(PromotionPointerError, match="new non-promote decision"):
+        store.restore_prior(
+            admission=second_admission,
+            lease=lease,
+            expected_fence=lease.fence,
+            prior_checkpoint_id="ir:checkpoint:one",
+        )
+    rollback = PromotionAdmissionReceipt(
+        decision=PromotionDecision.REJECT,
+        admitted=False,
+        comparison_receipt_id=second_admission.comparison_receipt_id,
+        candidate_checkpoint_id="ir:checkpoint:one",
+        baseline_checkpoint_id="ir:checkpoint:baseline",
+        expected_current_pointer="ir:checkpoint:two",
+        policy_identity=second_admission.policy_identity,
+        actor_identity="operator:alice",
+        lease_id=lease.lease_id,
+        fencing_epoch=lease.fence,
+        control_operation="quarantine",
+        m3_results={gate: "pass" for gate in M3_GATES},
+        admitted_gates=(),
+        reasons=("rollback_with_new_decision",),
+        cas_authorized=False,
+    )
+    restored = store.restore_prior(
+        admission=rollback,
+        lease=lease,
+        expected_fence=lease.fence,
+        prior_checkpoint_id="ir:checkpoint:one",
+    )
+    stale = store.restore_prior(
+        admission=rollback,
+        lease=lease,
+        expected_fence=lease.fence,
+        prior_checkpoint_id="ir:checkpoint:one",
+    )
+
+    assert restored.accepted is True
+    assert store.current() is not None
+    assert store.current().checkpoint_id == "ir:checkpoint:one"
+    assert stale.accepted is False
+    assert stale.stale is True
