@@ -1506,7 +1506,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-121 Resolve 1 dirty backlogged worktrees blocked by submodule_gitlink_diverged
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
