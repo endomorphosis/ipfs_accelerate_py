@@ -244,6 +244,13 @@ authority. Named focused aggregates included 104/104 Portal/route tests,
 then collected 13 tests and passed 13/13 in 0.62 s. These are local focused
 results, not a whole-repository qualification.
 
+A restart smoke then exposed that `ManagedDaemonSpec.launch_env` was populated
+but `SupervisorLoopConfig.child_env` was not. The child ran under `python -P`
+and failed before claiming a task because it could not import the checkout.
+The environment is now wired into both projections; its focused authority
+suite passes 4/4, and a direct `python -P` import smoke resolves this exact
+checkout. The two failed child starts made no task claim or provider call.
+
 ## H. Vertical-slice trace and receipt identities
 
 The checked summary in `vertical_slice_result.json` records:
@@ -436,6 +443,12 @@ entry point. No second supervisor or scheduler authority was created.
 - A subsequent independent focused audit retained the 13/13 result, cleaned
   two test-import lint findings in datasets revision `253a9d890...`, and
   intentionally advanced the configured gitlink before restart.
+- The first restart attempt correctly failed before task selection when the
+  managed child lost its checkout `PYTHONPATH`. It was stopped after two child
+  exits. The existing supervisor loop now forwards its already-constructed
+  non-secret child environment into `SupervisorLoopConfig.child_env`; focused
+  tests and a `python -P` import smoke pass. No task/provider evidence is
+  claimed for the failed starts.
 - LGCVF-060 acquired a distinct claim, fence, worktree and provider process.
   When its trace stopped advancing, the operator did not trust the generic
   active-worker flag: the generation was stopped, its exact container was

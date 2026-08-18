@@ -8322,6 +8322,9 @@ class PortalImplementationSupervisor:
             self._implementation_watchdog_timeout_seconds()
             + max(30.0, float(self.config.check_interval) * 2.0),
         )
+        child_environment = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+        )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",
@@ -8342,14 +8345,13 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
-            launch_env=_managed_daemon_child_environment(
-                database_program=self.config.database_program,
-            ),
+            launch_env=child_environment,
         )
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
             log_prefix=f"{prefix}_implementation_daemon",
+            child_env=child_environment,
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),

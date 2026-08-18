@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_supervisor as supervisor_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+    SupervisorLoop,
 )
 
 _LEGACY_AUTHORITY_ARGS = (
@@ -213,6 +217,13 @@ def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     child_env = supervisor_module._managed_daemon_child_environment(
         database_program=program,
     )
+    loop_config = supervisor.build_supervisor_loop_config()
+    assert loop_config.child_env == child_env
+    assert loop_config.spec.launch_env == child_env
+    loop = SupervisorLoop(loop_config)
+    assert loop._child_spec("initial").env == child_env
+    assert loop._child_spec("restart").env == child_env
+    assert str(supervisor_module.REPO_ROOT) in child_env["PYTHONPATH"].split(os.pathsep)
     daemon_entrypoint = (
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
     )
