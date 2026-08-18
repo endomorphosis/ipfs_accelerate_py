@@ -15,7 +15,7 @@
     "accelerator_required_branch": "agent/logic-governed-compositional-verification-fabric-v1",
     "bootstrap_task_source": "duckdb",
     "ipfs_datasets_submodule_path": "ipfs_datasets_py",
-    "ipfs_datasets_planning_revision": "cf15d517e9ad9ab67e4bd6be5c621a620bcde387",
+    "ipfs_datasets_planning_revision": "253a9d89048250e1edf9461df7b82c0bacd4cfa1",
     "require_initialized_gitlinks": true,
     "require_superproject_gitlink_equals_nested_head": true,
     "require_clean_nested_worktree_at_task_start": true,

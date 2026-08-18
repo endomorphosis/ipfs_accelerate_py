@@ -28,17 +28,20 @@ The audit and successor were constructed from:
 
 | Repository authority | Identity | Tree | Topology/state |
 | --- | --- | --- | --- |
-| `ipfs_accelerate_py` superproject baseline | `12c4e8387de4986d38d69534f3d74864e7bb15c1` | `96504e7744d741784bc8076456f4b169dd665ab5` | Branch `agent/logic-governed-compositional-verification-fabric-v1`; final accelerator integration commit is to be recorded after the bounded overlay is committed. |
+| `ipfs_accelerate_py` superproject baseline | `12c4e8387de4986d38d69534f3d74864e7bb15c1` | `96504e7744d741784bc8076456f4b169dd665ab5` | Immutable LGSWF actual-v1 source checkpoint. |
 | `ipfs_datasets_py` construction baseline | `480a1666f144ad606fcb3cacb66e59775f28d0d1` | `6fdc81fabb04a86683d0f26200636fa8f61fd25c` | Mode-160000 Git submodule/gitlink. |
 | `ipfs_datasets_py` vertical-kernel revision | `11fa6e8d37c4d90b8d4905572f96ee95b9443448` | `08976767b5e6d915aac0512b49bdda63cfe749e6` | Nested commit `feat(logic): add compositional verification vertical kernel`. |
 | `ipfs_datasets_py` launch-validation revision | `cf15d517e9ad9ab67e4bd6be5c621a620bcde387` | `ead65305f261affbe8089bbd759bda32bde6668b` | Nested commit `chore(validation): bind LGCVF scoped dependencies`; adds only a local optional validation profile and exact task-bound contract entries, with no installation or network action. |
+| `ipfs_datasets_py` supervisor-produced revision | `c54c1db9a5653f0d76ddbacc23fa2251eb2240b8` | `c58d53ff857802bb4d8a3c612be799a096850801` | LGCVF-051 public-adapter and bounded differential hardening, independently validated before the gitlink advanced. |
+| `ipfs_datasets_py` post-merge audit revision | `253a9d89048250e1edf9461df7b82c0bacd4cfa1` | `c22cc0eac453e4c605855e607d5eb6dbc6dd9216` | Removes one unused test import and fixes one import group after a fresh 13/13 gate; no semantic code changed. |
+| `ipfs_accelerate_py` first accepted supervisor merge | `62faf5e6a6858147bf27fc0cc09cd97835edf7a0` | `5eea09cdf94ff04175d4b76752b9723b38b9524d` | Merge of accelerator candidate `828d922ae0b155c1dbebcde210b29e294a2b597b`; gitlink now names `c54c1db9...`. |
 
 Datasets is a Git submodule/gitlink, not a subtree, nested untracked history, or
 physically flattened package. Datasets-owned semantics were committed and
 tested in that repository before the accelerator gitlink was advanced in the
-working tree. The unrelated pre-existing dirty `ipfs_accelerate_py/mcplusplus`
-and `ipfs_kit_py` gitlinks are outside LGCVF and must not be staged, reset, or
-included in its integration commit.
+working tree. Earlier unrelated dirty `ipfs_accelerate_py/mcplusplus` and
+`ipfs_kit_py` gitlinks were excluded from every LGCVF commit. The authoritative
+LGCVF checkout and its datasets submodule were clean at each accepted launch.
 
 The predecessor LGSWF plan remains immutable at
 `sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e`.
@@ -138,7 +141,7 @@ Quack multi-writer operation, and production authorization.
 - `ipfs_datasets_py/logic/verification_api.py`
 - seven focused test modules under `tests/unit/logic/`.
 
-### Accelerator integration overlay
+### Accelerator integration
 
 - checked semantic bridge:
   `agent_supervisor/semantic_state/datasets_adapter.py`;
@@ -155,10 +158,13 @@ Quack multi-writer operation, and production authorization.
   report; and
 - `scripts/benchmark_lgcvf_symbolic_displacement.py` plus the admitted machine
   `benchmark_result.json` and its narrow `.gitignore` exception.
-
-The scheduler configuration/control-plane materializer and their runtime
-evidence are integration-owner work and are described only after the launch is
-actually observed; this draft does not pre-author their result.
+- the existing configured-board scheduler profile, checked one-writer
+  control-plane materializer, and their focused conformance tests;
+- fail-closed nested validation/output/CID projection, scoped dependency
+  contract v3, stale-CAS repair, durable retry deferral, and provider-route
+  compatibility fixes; and
+- LGCVF-051's accepted nested datasets commit `c54c1db9...` and intentional
+  accelerator gitlink merge `62faf5e6...`.
 
 ## F. Public interfaces added or extended
 
@@ -170,6 +176,11 @@ Datasets' existing `VerificationAPI` now exposes lazy additive operations:
 - `plan_incremental_verification(...)`;
 - `open_incremental_smt_session(...)`; and
 - `compute_and_validate_interpolant(...)`.
+
+Supervisor-completed LGCVF-051 additionally exposes the checked bounded
+`run_z3_cvc5_differential(...)` facade and strengthens result/interface/schema
+admission for the compositional operations without moving semantic ownership
+into accelerator.
 
 Accelerator's existing semantic-state provider forwards those six operations
 without reinterpreting returned semantic objects. It pins interface/schema
@@ -223,6 +234,15 @@ The standalone benchmark test alone reports 3/3 passed, and `ruff` reports no
 issues for its script/test. The real benchmark write completed and its fresh
 `--check` reconstruction completed. No required integration test silently
 skipped. These focused passes do not claim the entire repository is green.
+
+Additional operational hardening suites run before launch covered the
+successor/control projection, database Portal bridge, scoped dependency
+contract v3, retry deferral, Grok route/container shape, and exact nested
+authority. Named focused aggregates included 104/104 Portal/route tests,
+75/75 scoped-contract compatibility tests, 30/30 database-daemon tests, and
+15/15 container-helper tests. The independently executed LGCVF-051 board gate
+then collected 13 tests and passed 13/13 in 0.62 s. These are local focused
+results, not a whole-repository qualification.
 
 ## H. Vertical-slice trace and receipt identities
 
@@ -307,6 +327,13 @@ is claimed. The meaningful positive displacement evidence is 100% reuse of the
 seeded unaffected proof/test obligation and no model call for a deliberately
 symbolically closable repair.
 
+Supervisor execution is reported separately from that deterministic fixture.
+LGCVF-051 required one bounded Grok 4.6 invocation after the analytical kernel
+returned `no_analytical_close`; it therefore does not count toward the
+deterministic-only displacement result. The invocation was isolated, used a
+sealed read/edit/search tool set, and its output became admissible only after
+the independently configured validation and merge gates passed.
+
 ## K. Remaining risks and production blockers
 
 - The Python abstract semantics and SMT lowering cover a bounded subset;
@@ -330,6 +357,12 @@ symbolically closable repair.
   embedded DuckDB writer is the truthful operational mode.
 - LGCVF-123 is operator-only and remains `blocked_manual`. No LGSWF seal is
   copied or fabricated.
+- Run-v16's LGCVF-060 model trace stopped advancing for approximately three
+  minutes at a provider-response boundary. The operator stopped that attempt,
+  preserved its trace, terminalized the exact dead-owner worktree lifecycle,
+  expired its fenced coordination authority, and revised the task to
+  `retrying`; no partial result was admitted. This is operational evidence for
+  bounded stall handling, not task success.
 - No merge, push, publication, automatic promotion, release, or production
   action is authorized by this report.
 
@@ -338,27 +371,25 @@ symbolically closable repair.
 The canonical goal/subgoal/task graph is the validated LGCVF FormalWorkPlan,
 not this prose list. The smallest remaining tasks are:
 
-1. `LGCVF-051`: harden timeout, cancellation, crash/replay and differential
-   incremental-session behavior without changing proof authority.
-2. `LGCVF-060`/`LGCVF-061`: retain the qualified interpolation subset and add a
+1. `LGCVF-060`/`LGCVF-061`: retain the qualified interpolation subset and add a
    budgeted CEGAR loop with unsat-core/weakest-precondition fallbacks.
-3. `LGCVF-070`/`LGCVF-071`: stage-address translation-validation receipts and
+2. `LGCVF-070`/`LGCVF-071`: stage-address translation-validation receipts and
    obligation slicing.
-4. `LGCVF-080`/`LGCVF-081`: add only the missing typed e-class, congruence,
+3. `LGCVF-080`/`LGCVF-081`: add only the missing typed e-class, congruence,
    rebuild, side-condition and extraction checks to the existing synthesizer.
-5. `LGCVF-090`/`LGCVF-091`: generalize proof-carrying artifact verification
+4. `LGCVF-090`/`LGCVF-091`: generalize proof-carrying artifact verification
    and summary-sufficiency/consumer-strength discharge.
-6. `LGCVF-101`/`LGCVF-102`: expose typed operational references and shared
+5. `LGCVF-101`/`LGCVF-102`: expose typed operational references and shared
    transport projections without raw SQL or duplicate semantics.
-7. `LGCVF-111`/`LGCVF-112`: complete property/adversarial cases, including
+6. `LGCVF-111`/`LGCVF-112`: complete property/adversarial cases, including
    stale authority, protected judge mutation, oscillation, second-order
    findings, exact rollback and gitlink drift.
-8. `LGCVF-120`: expand the paired benchmark to all 12 task classes with
+7. `LGCVF-120`: expand the paired benchmark to all 12 task classes with
    separately executed baseline/challenger time, resources and costs. Preserve
    the current `partial` result as history.
-9. `LGCVF-121`: remain externally blocked until an independently authorized
+8. `LGCVF-121`: remain externally blocked until an independently authorized
    verifier exists; do not install, probe the network or self-author evidence.
-10. `LGCVF-122`: issue an evidence-based no-go/partial/go release disposition.
+9. `LGCVF-122`: issue an evidence-based no-go/partial/go release disposition.
     `LGCVF-123` remains manual regardless of that result.
 
 Validation entrypoint:
@@ -367,26 +398,56 @@ Validation entrypoint:
 python scripts/validate_logic_governed_compositional_verification_fabric_plan.py --check-all
 ```
 
-## Supervisor launch evidence — integration owner must fill
+## Supervisor launch and liveness evidence
 
-**Reserved; not yet claimed by this report draft.** After the existing
-`ipfs_accelerate_py.agent_supervisor` is started from a clean exact-root
-worktree, record all of the following without replacing this marker with a
-generic process-success statement:
+The existing `ipfs_accelerate_py.agent_supervisor` was launched directly from
+the clean LGCVF branch using the public configured-board loader, preflight,
+common-argument compiler, environment projector, and implementation-supervisor
+entry point. No second supervisor or scheduler authority was created.
 
-- final accelerator commit/tree and intentional datasets gitlink;
-- scheduler configuration identity and validated plan CID;
-- preflight disposition and exact one-writer/Quack capability disposition;
-- process identity, start command, bounded observation interval and clean
-  ownership evidence;
-- DuckDB store/generation/schema profile and typed task/objective identities;
-- at least one actual claim/attempt/state transition, or terminal quiescence
-  proven from the current dependency graph;
-- lease/fence/worktree evidence and absence of multi-writer simulation;
-- progress/blocker query proving the supervisor is neither stuck nor hiding a
-  mandatory blocker; and
-- stop/continuation state, noting that external/manual tasks remain explicit
-  non-success blockers rather than fabricated completions.
+- Scheduler profile:
+  `agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json`;
+  plan CID `baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q`.
+- Preflight: all ten configured checks passed before run-v16 materialization.
+  Quack remained unqualified, so the launch used embedded DuckDB, one writer,
+  one lane, strict sharding, and no installation or network capability probe.
+- Store/generation/schema: `run-v16/control.duckdb`, `lgcvf-run-v16`,
+  `datasets-authoritative-operational-v1`. Population root
+  `baguqeerakwtl3e44d6qcaccpfkmjgptqppvjhslxjcp5b5lvexvtmgb3iyeq`;
+  bootstrap materialization receipt
+  `baguqeerawchbjmccz53efetlk3iipecdzfu6etlfqbqoeuvyqkoh6nlrvnpa`.
+- Initial read-only verification root:
+  `baguqeeraysr3vukwjgpmcdn2km2sncehq2m5esfu5gcdbq54oyjnt7hq37ha`;
+  it observed 7 completed, 18 todo, 2 protected blocked tasks and zero
+  attempts, claims, leases, provider invocations, or effects.
+- Bounded live interval: 2026-08-18T21:23:29Z through
+  2026-08-18T21:38:47Z. Supervisor PID 2723374 and daemon PID 2731911 stayed
+  live with restart count zero and `control_plane_reload_deferred=false`.
+- LGCVF-051 acquired its own claim/attempt/fence and isolated nested worktree.
+  Its scoped dependency preflight admitted exactly the declared datasets root,
+  `lgcvf-validation` extra and validation command. The provider trace grew,
+  made real byte changes only in the two declared datasets files, and the
+  independent board test passed 13/13.
+- The supervisor committed datasets revision `c54c1db9...`, advanced the
+  accelerator gitlink through candidate `828d922ae...` and merge
+  `62faf5e6...`, released the worktree lease, emitted `merge_finished`,
+  `task_completed`, and selected LGCVF-060. This proves productive progress,
+  not merely process liveness.
+- A subsequent independent focused audit retained the 13/13 result, cleaned
+  two test-import lint findings in datasets revision `253a9d890...`, and
+  intentionally advanced the configured gitlink before restart.
+- LGCVF-060 acquired a distinct claim, fence, worktree and provider process.
+  When its trace stopped advancing, the operator did not trust the generic
+  active-worker flag: the generation was stopped, its exact container was
+  terminated, its partial result was rejected, and typed reconciliation moved
+  the task from `in_progress` to `retrying`.
+- Final quiesced read-only verification root:
+  `baguqeerapeqyrdbeyof6jnk4htau4sgsmohonx62bdvxuuqyagf27jdasoma`.
+  It reconstructed 27 tasks with 8 logical completions, LGCVF-060 retrying,
+  zero active claims/attempts/fenced leases, and unchanged stores. Historical
+  execution rows and the partial trace remain preserved.
 
-Until those observations are inserted, this section establishes no supervisor
-launch, liveness, progress, objective completion, or operational authority.
+This evidence establishes a productive bounded research/development launch and
+safe stall reconciliation. It does not complete the root objective, qualify
+multi-writer operation, authorize release/production, or clear LGCVF-121 and
+LGCVF-123.
