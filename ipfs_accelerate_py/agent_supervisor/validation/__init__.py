@@ -33,6 +33,7 @@ VALIDATION_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.valid
 
 # Stems owned by asref/validation in docs/architecture/asref/move_map.json.
 VALIDATION_OWNED_MODULES: Final[tuple[str, ...]] = (
+    "integrated_security",
     "promotion_comparison",
     "proposal_validation",
     "scope_adjudication",
