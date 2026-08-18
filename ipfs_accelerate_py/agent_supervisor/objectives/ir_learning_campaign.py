@@ -1,10 +1,11 @@
-"""Create/plan/status/steer/refill/proof-replay/compare/promote/reject/report APIs.
+"""Create/plan/start/resume/status/steer/refill/proof-replay/compare/promote/reject/report APIs.
 
 These operations are the campaign-layer façade over existing objective,
 planning, and control contracts.  They do not start daemons, open network
 connections, or mutate the closed control ``Operation`` catalog.  Mutating
 calls that would begin leased work fail closed while any required
-``RESULT(task)`` identity remains unresolved.
+``RESULT(task)`` identity remains unresolved.  ``start`` and ``resume`` reuse
+the existing lifecycle operations and never invent a second scheduler.
 """
 
 from __future__ import annotations
@@ -12,12 +13,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ..control.control_contracts import Operation, OperationAuthority
+from ..control.control_contracts import EffectKind, Operation, OperationAuthority
 from ..proof.formal_verification_contracts import ContractValidationError
 from .ir_learning_campaign_contracts import (
     CAMPAIGN_OPERATION_CONTROL_MAP,
     IRLearningCampaign,
     LEASE_REQUIRING_OPERATIONS,
+    STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS,
     CampaignDependencyProjection,
     CampaignOperationKind,
     CampaignOperationReceipt,
@@ -49,6 +51,7 @@ def _request(
     caller: str,
     task_id: str = "",
     dry_run: bool = False,
+    idempotency_key: str = "",
     parameters: Mapping[str, Any] | None = None,
 ) -> CampaignOperationRequest:
     return CampaignOperationRequest(
@@ -57,8 +60,23 @@ def _request(
         caller=caller,
         task_id=task_id,
         dry_run=dry_run,
+        idempotency_key=idempotency_key,
         parameters=parameters or {},
     )
+
+
+def _effect_kind(request: CampaignOperationRequest) -> EffectKind:
+    if request.authority is OperationAuthority.READ:
+        return EffectKind.OBSERVE
+    if request.authority is OperationAuthority.PROPOSAL:
+        return EffectKind.PROPOSE
+    if request.operation is CampaignOperationKind.START:
+        return EffectKind.START_PROCESS
+    if request.operation is CampaignOperationKind.RESUME:
+        return EffectKind.LIFECYCLE_TRANSITION
+    if request.operation is CampaignOperationKind.PROOF_REPLAY:
+        return EffectKind.EXECUTE_VALIDATION
+    return EffectKind.WRITE_STATE
 
 
 def _receipt(
@@ -108,6 +126,7 @@ def execute_campaign_operation(
     caller: str = "operator:campaign",
     task_id: str = "",
     dry_run: bool = False,
+    idempotency_key: str = "",
     parameters: Mapping[str, Any] | None = None,
 ) -> CampaignOperationReceipt:
     """Execute one closed campaign operation without expanding control authority."""
@@ -124,6 +143,7 @@ def execute_campaign_operation(
             caller=caller,
             task_id=task_id,
             dry_run=dry_run,
+            idempotency_key=idempotency_key,
             parameters=parameters,
         )
     block = _lease_block_message(request)
@@ -134,7 +154,11 @@ def execute_campaign_operation(
             message=block,
             details={
                 "lease_required": True,
-                "unresolved_result_ids": list(request.campaign.project_dependencies().unresolved_result_ids),
+                "idempotency_key": request.idempotency_key,
+                "effect_kind": _effect_kind(request).value,
+                "unresolved_result_ids": list(
+                    request.campaign.project_dependencies().unresolved_result_ids
+                ),
             },
         )
     if request.operation is CampaignOperationKind.PROMOTE and request.task_id:
@@ -155,8 +179,20 @@ def execute_campaign_operation(
             "control_operation": request.control_operation.value,
             "authority": request.authority.value,
             "dry_run": request.dry_run,
+            "idempotency_key": request.idempotency_key,
+            "effect_kind": _effect_kind(request).value,
+            "expands_control_catalog": False,
             "projection_id": projection.projection_id,
             "action_ids": list(projection.action_ids),
+            **{
+                key: request.parameters[key]
+                for key in (
+                    "resume_decision",
+                    "stored_binding_id",
+                    "requested_binding_id",
+                )
+                if key in request.parameters
+            },
         },
     )
 
@@ -184,6 +220,46 @@ def plan_campaign(
         CampaignOperationKind.PLAN,
         campaign,
         caller=caller,
+    )
+
+
+def start_campaign(
+    campaign: IRLearningCampaign | Mapping[str, Any],
+    *,
+    caller: str = "operator:campaign",
+    task_id: str = "",
+    dry_run: bool = False,
+    idempotency_key: str = "",
+    parameters: Mapping[str, Any] | None = None,
+) -> CampaignOperationReceipt:
+    return execute_campaign_operation(
+        CampaignOperationKind.START,
+        campaign,
+        caller=caller,
+        task_id=task_id,
+        dry_run=dry_run,
+        idempotency_key=idempotency_key,
+        parameters=parameters,
+    )
+
+
+def resume_campaign(
+    campaign: IRLearningCampaign | Mapping[str, Any],
+    *,
+    caller: str = "operator:campaign",
+    task_id: str = "",
+    dry_run: bool = False,
+    idempotency_key: str = "",
+    parameters: Mapping[str, Any] | None = None,
+) -> CampaignOperationReceipt:
+    return execute_campaign_operation(
+        CampaignOperationKind.RESUME,
+        campaign,
+        caller=caller,
+        task_id=task_id,
+        dry_run=dry_run,
+        idempotency_key=idempotency_key,
+        parameters=parameters,
     )
 
 
@@ -310,6 +386,8 @@ def report_campaign(
 CAMPAIGN_OPERATION_HANDLERS = {
     CampaignOperationKind.CREATE: create_campaign,
     CampaignOperationKind.PLAN: plan_campaign,
+    CampaignOperationKind.START: start_campaign,
+    CampaignOperationKind.RESUME: resume_campaign,
     CampaignOperationKind.STATUS: campaign_status,
     CampaignOperationKind.STEER: steer_campaign,
     CampaignOperationKind.REFILL: refill_campaign,
@@ -332,6 +410,7 @@ __all__ = (
     "CampaignTaskRevision",
     "IRLearningCampaign",
     "LEASE_REQUIRING_OPERATIONS",
+    "STABLE_OPERATIONAL_CAMPAIGN_OPERATIONS",
     "Operation",
     "OperationAuthority",
     "campaign_control_catalog",
@@ -345,6 +424,8 @@ __all__ = (
     "refill_campaign",
     "reject_campaign",
     "report_campaign",
+    "resume_campaign",
     "revise_campaign_task",
+    "start_campaign",
     "steer_campaign",
 )

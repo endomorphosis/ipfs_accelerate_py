@@ -45,6 +45,7 @@ CONTROL_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.control"
 # Stems owned by asref/control in docs/architecture/asref/move_map.json.
 CONTROL_OWNED_MODULES: Final[tuple[str, ...]] = (
     "authorization_logic",
+    "campaign_public_api",
     "control_cli",
     "control_contracts",
     "control_plane",
