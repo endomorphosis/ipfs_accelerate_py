@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +45,9 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
             "ipfs_kit_py",
             "ipfs_accelerate_py/mcplusplus",
         ],
+        "bootstrap_runtime_binding": json.loads(
+            materializer.CONFIG_PATH.read_text(encoding="utf-8")
+        )["bootstrap_runtime_binding"],
         "database_program": {
             "authority_mode": "embedded",
             "task_source_kind": "duckdb",
@@ -70,6 +75,160 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
             "blockers": ["test no-go"],
         },
     }
+
+
+def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> None:
+    config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+    launcher = binding["launcher"]
+    assert isinstance(launcher, dict)
+    argv_prefix = launcher["argv_prefix"]
+    assert isinstance(argv_prefix, list)
+    result = subprocess.run(
+        [*argv_prefix, "runtime-check"],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["valid"] is True
+    assert payload["runtime_binding"] == binding
+    assert payload["invocation"]["orig_argv"] == [*argv_prefix, "runtime-check"]
+
+    launch_plan = subprocess.run(
+        [*argv_prefix, "launch-plan"],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    launch_payload = json.loads(launch_plan.stdout)
+    assert "sys.orig_argv differs" not in str(launch_payload)
+    if launch_plan.returncode == 0:
+        assert launch_payload["execution_prohibited"] is True
+        assert launch_payload["process_started"] is False
+    else:
+        assert launch_payload["valid"] is False
+
+    interpreter = binding["interpreter"]
+    assert isinstance(interpreter, dict)
+    program = """
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+materializer_path = Path(sys.argv[1])
+config_path = Path(sys.argv[2])
+config = json.loads(config_path.read_text(encoding="utf-8"))
+sys.pycache_prefix = config["bootstrap_runtime_binding"]["interpreter"]["pycache_prefix"]
+sys.path.insert(0, sys.argv[3])
+if len(sys.argv) > 4:
+    sys.path.insert(1, sys.argv[4])
+spec = importlib.util.spec_from_file_location("eaaef_isolated_runtime_probe", materializer_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+runtime = module._validated_runtime_binding(config)
+print(json.dumps(module._validated_runtime_invocation(runtime, "runtime-check"), sort_keys=True))
+"""
+    bypass = subprocess.run(
+        [
+            str(interpreter["resolved_path"]),
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            program,
+            str(MATERIALIZER_PATH),
+            str(materializer.CONFIG_PATH),
+            str(binding["approved_import_root"]),
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert bypass.returncode != 0
+    assert "sys.orig_argv differs" in bypass.stderr
+
+    extra_site = tmp_path / "other-site-packages"
+    extra_site.mkdir()
+    rejected_extra_root = subprocess.run(
+        [
+            str(interpreter["resolved_path"]),
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            program,
+            str(MATERIALIZER_PATH),
+            str(materializer.CONFIG_PATH),
+            str(binding["approved_import_root"]),
+            str(extra_site),
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert rejected_extra_root.returncode != 0
+    assert "closed repository/stdlib/import-root projection" in rejected_extra_root.stderr
+
+
+def test_runtime_binding_rejects_tamper_and_noncanonical_paths() -> None:
+    config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+    duckdb_binding = binding["duckdb"]
+    assert isinstance(duckdb_binding, dict)
+    duckdb_binding["extension_sha256"] = "sha256:" + "0" * 64
+    with pytest.raises(materializer.MaterializationError, match="runtime file differs"):
+        materializer._runtime_binding_contract(config)
+
+    config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+    binding["approved_import_root"] = str(binding["approved_import_root"]) + "/."
+    with pytest.raises(materializer.MaterializationError, match="not a canonical resolved path"):
+        materializer._runtime_binding_contract(config)
+
+
+def test_duckdb_record_member_tamper_is_rejected(tmp_path: Path) -> None:
+    member = tmp_path / "duckdb/module.py"
+    member.parent.mkdir(parents=True)
+    member.write_bytes(b"trusted\n")
+    digest = base64.urlsafe_b64encode(hashlib.sha256(member.read_bytes()).digest()).decode(
+        "ascii"
+    ).rstrip("=")
+    record = tmp_path / "duckdb-1.5.2.dist-info/RECORD"
+    record.parent.mkdir()
+    record.write_text(
+        f"duckdb/module.py,sha256={digest},{member.stat().st_size}\n"
+        "duckdb-1.5.2.dist-info/RECORD,,\n",
+        encoding="utf-8",
+    )
+    projection = materializer._verify_duckdb_record(record, tmp_path)
+    assert projection["record_entry_count"] == 2
+    assert projection["record_verified_file_count"] == 1
+
+    member.write_bytes(b"tampered\n")
+    with pytest.raises(materializer.MaterializationError, match="size/digest"):
+        materializer._verify_duckdb_record(record, tmp_path)
+
+
+def test_nonisolated_runtime_fails_before_namespace_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config("state/nonisolated")
+    sentinel_claim = tmp_path / "claim-must-not-exist.json"
+    monkeypatch.setattr(materializer, "_claim_path", lambda _config: sentinel_claim)
+    with pytest.raises(materializer.MaterializationError, match="exact -I -S -B flags"):
+        materializer.materialize(config)
+    assert not sentinel_claim.exists()
 
 
 def test_paths_match_supported_database_daemon_sidecars() -> None:
@@ -126,12 +285,19 @@ def test_launch_plan_uses_database_program_cli_and_remains_no_go(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
+    invocation_commands: list[str] = []
+
+    def verified(_config, *, invocation_command="verify"):
+        invocation_commands.append(invocation_command)
+        return {"receipt_cid": "sha256:" + "1" * 64}
+
     monkeypatch.setattr(
         materializer,
         "verify",
-        lambda _config: {"receipt_cid": "sha256:" + "1" * 64},
+        verified,
     )
     result = materializer.launch_plan(config)
+    assert invocation_commands == ["launch-plan"]
     assert result["allowed"] is False
     assert result["argv"] == []
     assert result["candidate_argv"] == []
@@ -153,7 +319,7 @@ def test_launch_plan_cannot_be_enabled_while_container_is_unadmitted(
     monkeypatch.setattr(
         materializer,
         "verify",
-        lambda _config: {"receipt_cid": "sha256:" + "2" * 64},
+        lambda _config, **_kwargs: {"receipt_cid": "sha256:" + "2" * 64},
     )
     result = materializer.launch_plan(config)
     assert result["allowed"] is False
@@ -314,6 +480,29 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         lambda: {"valid": True, "schema": "test-validation@1"},
     )
     monkeypatch.setattr(materializer, "build_population", lambda _config: population)
+    runtime_binding = json.loads(
+        json.dumps(config["bootstrap_runtime_binding"], sort_keys=True)
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_validated_runtime_binding",
+        lambda _config: json.loads(json.dumps(runtime_binding, sort_keys=True)),
+    )
+
+    def test_invocation(_runtime_binding, command):
+        value = {
+            "schema": materializer.RUNTIME_INVOCATION_SCHEMA,
+            "command": command,
+            "orig_argv": ["test-launcher", command],
+            "materializer_argv": ["test-materializer", command],
+            "launcher_path": "test-launcher",
+            "launcher_sha256": "sha256:" + "d" * 64,
+        }
+        value["invocation_cid"] = materializer._cid(value)
+        return value
+
+    monkeypatch.setattr(materializer, "_validated_runtime_invocation", test_invocation)
+    monkeypatch.setattr(materializer, "_runtime_invocation_projection", test_invocation)
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         DatabaseImplementationDaemon,
@@ -352,6 +541,11 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
     assert receipt["process_started"] is False
     assert receipt["schema_install"]["changed"] is True
     assert receipt["control_schema_projection"]["connection_mode"] == "read_only"
+    assert receipt["runtime_binding"] == runtime_binding
+    assert receipt["runtime_binding_cid"] == materializer._cid(runtime_binding)
+    claim = materializer._load_object(materializer._claim_path(config))
+    assert claim["runtime_binding"] == runtime_binding
+    assert claim["runtime_binding_cid"] == materializer._cid(runtime_binding)
     forged_initial_projection = json.loads(
         json.dumps(receipt["control_projection"], sort_keys=True)
     )
@@ -400,6 +594,21 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
     before_verify = namespace_snapshot()
     assert materializer.verify(config)["verification_mode"] == "read_only"
     assert namespace_snapshot() == before_verify
+
+    receipt_path = materializer._receipt_path(config)
+    receipt_bytes = receipt_path.read_bytes()
+    forged_receipt = json.loads(receipt_bytes)
+    forged_receipt["runtime_binding"]["duckdb"]["module_version"] = "0.0.0"
+    forged_receipt.pop("receipt_cid")
+    forged_receipt["receipt_cid"] = materializer._cid(forged_receipt)
+    receipt_path.write_text(
+        json.dumps(forged_receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(materializer.MaterializationError, match="runtime_binding"):
+        materializer.verify(config)
+    receipt_path.write_bytes(receipt_bytes)
+
     with pytest.raises(materializer.MaterializationError, match="refusing to overwrite"):
         materializer.materialize(config)
 

@@ -58,6 +58,30 @@
       "authority_mutated": true,
       "process_started": false,
       "recovery": "Narrowly ignore only the EAAEF runtime root, commit that source policy, advance every configured runtime path and store generation to run-v3, and never launch or retry run-v2."
+    },
+    {
+      "attempt_id": "sha256:2b3fe29e641f882ebf66ae4d1d7959e742e2154f82ad8d63c1b3e3fcaa38e8a3",
+      "attempted_at_utc": "2026-08-18T05:51:42.794493550Z",
+      "store_generation": "eaaef-run-v3",
+      "source_head": "a547e861d2c7033f49e8d97fbc663e1739e88de1",
+      "source_tree": "ef73f593991b67c83f322e710c9fbc0cbe6a9195",
+      "population_cid": "sha256:668f1405d83b2754e9bbc912a97dbb90fcb86feac0716e248e7a2f03b8bbc368",
+      "plan_root_cid": "sha256:e7b3f32e6b3e55d1a30f7bfca618eb6f01f968e76126632d9a5eebc0c350e942",
+      "outcome": "claim_published_dependency_unavailable",
+      "failure_class": "IsolatedInterpreterDependencyUnavailable",
+      "failure_summary": "The isolated interpreter correctly suppressed user-site startup hooks but therefore could not import the user-site DuckDB distribution; materialization stopped before schema installation.",
+      "partial_effects": [
+        {
+          "path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/registry/bootstrap-materialization-claim.json",
+          "sha256": "585ec040b7b2199193a6326873c9ab320c58e36e7560926c1cae6c17d0794ed5",
+          "byte_count": 1225,
+          "disposition": "preserved_immutable_do_not_retry"
+        }
+      ],
+      "database_created": false,
+      "authority_mutated": false,
+      "process_started": false,
+      "recovery": "Commit the exact no-site launcher and cryptographic interpreter/DuckDB wheel binding, advance every runtime path and store generation to run-v4, invoke only the bound launcher, and never retry run-v3."
     }
   ]
 }

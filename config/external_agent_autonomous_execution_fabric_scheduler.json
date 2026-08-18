@@ -47,6 +47,54 @@
     "record_recursive_repository_forest_at_launch": true,
     "changed_revision_requires_fresh_reconciliation_and_plan_revision": true
   },
+  "bootstrap_runtime_binding": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1",
+    "launcher": {
+      "resolved_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/scripts/launch_external_agent_autonomous_execution_fabric_materializer.py",
+      "sha256": "sha256:be99f6947a5ea137a72b1fe85f41d42d9d2fdab263fe177de5be9a6fa2c95400",
+      "argv_prefix": [
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "-B",
+        "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+      ],
+      "allowed_commands": ["build", "runtime-check", "materialize", "verify", "launch-plan"]
+    },
+    "interpreter": {
+      "resolved_path": "/usr/bin/python3.12",
+      "sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+      "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+      "cache_tag": "cpython-312",
+      "platform": "linux-aarch64",
+      "pycache_prefix": "/nonexistent/eaaef-bootstrap-runtime-pycache",
+      "flags": {
+        "isolated": 1,
+        "no_site": 1,
+        "dont_write_bytecode": 1,
+        "no_user_site": 1,
+        "ignore_environment": 1,
+        "safe_path": true
+      }
+    },
+    "approved_import_root": "/home/barberb/.local/lib/python3.12/site-packages",
+    "duckdb": {
+      "distribution_name": "duckdb",
+      "distribution_version": "1.5.2",
+      "module_version": "1.5.2",
+      "engine_version": "v1.5.2",
+      "module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+      "module_sha256": "sha256:c5b4efa32761b6ff6eed37cda365fd371743c062ffabd9125aa24b5f13b662e7",
+      "extension_path": "/home/barberb/.local/lib/python3.12/site-packages/_duckdb.cpython-312-aarch64-linux-gnu.so",
+      "extension_sha256": "sha256:c378b8f61040764fdc904cf7c0643a005d547f491ab9303e6bd13c33aa353f2a",
+      "record_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb-1.5.2.dist-info/RECORD",
+      "record_sha256": "sha256:ca4b760eaa99c9c518ac654147fa43c784d83a471d88f68c74c4706ce1007ae9",
+      "record_entry_count": 97,
+      "record_verified_file_count": 55,
+      "record_unhashed_pyc_count": 41,
+      "record_payload_cid": "sha256:4a3c6c30f76097cdd433d021e8372ff165e2335268dd5ad921af0f9111c2bd51"
+    }
+  },
   "initial_projection": {
     "task_count": 10,
     "goal_count": 19,
@@ -61,19 +109,19 @@
     "authoritative_transactional_data_model": true,
     "authoritative_records_schema_cas_and_fencing": true,
     "task_source_kind": "duckdb",
-    "store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/control.duckdb",
-    "coordination_store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/control.coordination.duckdb",
-    "execution_store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/control.execution.duckdb",
-    "store_generation": "eaaef-run-v3",
+    "store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/control.duckdb",
+    "coordination_store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/control.coordination.duckdb",
+    "execution_store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/control.execution.duckdb",
+    "store_generation": "eaaef-run-v4",
     "schema_revision": "datasets-authoritative-operational-v1",
     "schema_profile": "datasets-authoritative-operational",
     "semantic_relations_permitted": false,
-    "event_store_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/events",
-    "runtime_registry_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/registry",
-    "worktree_root": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/worktrees",
-    "merge_queue_dir": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/merge-queue",
-    "state_dir": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v3/state",
-    "export_profile": "eaaef-run-v3",
+    "event_store_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/events",
+    "runtime_registry_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/registry",
+    "worktree_root": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/worktrees",
+    "merge_queue_dir": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/merge-queue",
+    "state_dir": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/state",
+    "export_profile": "eaaef-run-v4",
     "failover_policy": "fail_closed",
     "explicit_legacy": false,
     "maximum_writer_processes": 1

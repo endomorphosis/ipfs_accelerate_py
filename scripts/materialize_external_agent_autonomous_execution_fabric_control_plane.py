@@ -44,6 +44,12 @@ SCHEDULER_CONFIG_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "external_agent_autonomous_execution_fabric.scheduler_config@1"
 )
+RUNTIME_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1"
+)
+RUNTIME_INVOCATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-invocation@1"
+)
 
 
 class MaterializationError(RuntimeError):
@@ -114,6 +120,501 @@ def _file_cid(path: Path) -> str:
         return _cid(path.read_bytes())
     except OSError as exc:
         raise MaterializationError(f"unable to read {path.relative_to(ROOT)}: {exc}") from exc
+
+
+def _external_file_sha256(path: Path) -> str:
+    try:
+        return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise MaterializationError(f"unable to hash runtime file {path}: {exc}") from exc
+
+
+def _canonical_runtime_path(value: Any, *, field: str, directory: bool) -> Path:
+    if not isinstance(value, str) or not value or not Path(value).is_absolute():
+        raise MaterializationError(f"{field} must be a canonical absolute path")
+    path = Path(value)
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise MaterializationError(f"{field} does not exist: {path}") from exc
+    if str(resolved) != value:
+        raise MaterializationError(f"{field} is not a canonical resolved path")
+    if directory and not resolved.is_dir():
+        raise MaterializationError(f"{field} is not a directory")
+    if not directory and not resolved.is_file():
+        raise MaterializationError(f"{field} is not a file")
+    return resolved
+
+
+def _require_sha256(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or not value.startswith("sha256:") or len(value) != 71:
+        raise MaterializationError(f"{field} is not a full SHA-256 identity")
+    try:
+        int(value[7:], 16)
+    except ValueError as exc:
+        raise MaterializationError(f"{field} is not a full SHA-256 identity") from exc
+    return value
+
+
+def _canonical_absent_runtime_path(value: Any, *, field: str) -> Path:
+    if not isinstance(value, str) or not value or not Path(value).is_absolute():
+        raise MaterializationError(f"{field} must be a canonical absolute path")
+    path = Path(value)
+    if path.exists() or str(path.resolve(strict=False)) != value:
+        raise MaterializationError(f"{field} must be canonical and absent")
+    ancestor = path.parent
+    while not ancestor.exists() and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+    try:
+        mode = ancestor.stat()
+    except OSError as exc:
+        raise MaterializationError(f"{field} has no admitted existing ancestor") from exc
+    if mode.st_uid != 0 or mode.st_mode & 0o022:
+        raise MaterializationError(f"{field} is not beneath a root-owned non-writable ancestor")
+    return path
+
+
+def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the committed runtime contract without importing third-party code."""
+
+    value = config.get("bootstrap_runtime_binding")
+    if not isinstance(value, Mapping):
+        raise MaterializationError("bootstrap_runtime_binding is missing")
+    if set(value) != {
+        "schema",
+        "launcher",
+        "interpreter",
+        "approved_import_root",
+        "duckdb",
+    }:
+        raise MaterializationError("bootstrap_runtime_binding shape is not canonical")
+    if value.get("schema") != RUNTIME_BINDING_SCHEMA:
+        raise MaterializationError("bootstrap_runtime_binding schema is not canonical")
+    launcher = value.get("launcher")
+    interpreter = value.get("interpreter")
+    duckdb_binding = value.get("duckdb")
+    if not isinstance(launcher, Mapping) or set(launcher) != {
+        "resolved_path",
+        "sha256",
+        "argv_prefix",
+        "allowed_commands",
+    }:
+        raise MaterializationError("bootstrap launcher binding shape is not canonical")
+    if not isinstance(interpreter, Mapping) or set(interpreter) != {
+        "resolved_path",
+        "sha256",
+        "version",
+        "cache_tag",
+        "platform",
+        "pycache_prefix",
+        "flags",
+    }:
+        raise MaterializationError("bootstrap interpreter binding shape is not canonical")
+    flags = interpreter.get("flags")
+    required_flags = {
+        "isolated": 1,
+        "no_site": 1,
+        "dont_write_bytecode": 1,
+        "no_user_site": 1,
+        "ignore_environment": 1,
+        "safe_path": True,
+    }
+    if not isinstance(flags, Mapping) or _canonical_bytes(dict(flags)) != _canonical_bytes(
+        required_flags
+    ):
+        raise MaterializationError("bootstrap interpreter must require exact -I -S -B flags")
+    if not isinstance(duckdb_binding, Mapping) or set(duckdb_binding) != {
+        "distribution_name",
+        "distribution_version",
+        "module_version",
+        "engine_version",
+        "module_path",
+        "module_sha256",
+        "extension_path",
+        "extension_sha256",
+        "record_path",
+        "record_sha256",
+        "record_entry_count",
+        "record_verified_file_count",
+        "record_unhashed_pyc_count",
+        "record_payload_cid",
+    }:
+        raise MaterializationError("bootstrap DuckDB binding shape is not canonical")
+    for field in ("version", "cache_tag", "platform"):
+        if not isinstance(interpreter.get(field), str) or not interpreter.get(field):
+            raise MaterializationError(f"bootstrap interpreter {field} is required")
+    for field in (
+        "distribution_name",
+        "distribution_version",
+        "module_version",
+        "engine_version",
+    ):
+        if not isinstance(duckdb_binding.get(field), str) or not duckdb_binding.get(field):
+            raise MaterializationError(f"bootstrap DuckDB {field} is required")
+    for field in (
+        "record_entry_count",
+        "record_verified_file_count",
+        "record_unhashed_pyc_count",
+    ):
+        if type(duckdb_binding.get(field)) is not int or int(duckdb_binding[field]) < 0:
+            raise MaterializationError(f"bootstrap DuckDB {field} is not a bounded integer")
+    _require_sha256(
+        duckdb_binding.get("record_payload_cid"),
+        field="bootstrap_runtime_binding.duckdb.record_payload_cid",
+    )
+
+    interpreter_path = _canonical_runtime_path(
+        interpreter.get("resolved_path"),
+        field="bootstrap_runtime_binding.interpreter.resolved_path",
+        directory=False,
+    )
+    import_root = _canonical_runtime_path(
+        value.get("approved_import_root"),
+        field="bootstrap_runtime_binding.approved_import_root",
+        directory=True,
+    )
+    launcher_path = _canonical_runtime_path(
+        launcher.get("resolved_path"),
+        field="bootstrap_runtime_binding.launcher.resolved_path",
+        directory=False,
+    )
+    expected_launcher_path = (
+        ROOT / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+    ).resolve(strict=True)
+    if launcher_path != expected_launcher_path:
+        raise MaterializationError("bootstrap launcher path is not the reviewed repository launcher")
+    argv_prefix = launcher.get("argv_prefix")
+    expected_argv_prefix = [
+        str(interpreter_path),
+        "-I",
+        "-S",
+        "-B",
+        str(launcher_path),
+    ]
+    if not isinstance(argv_prefix, list) or argv_prefix != expected_argv_prefix:
+        raise MaterializationError("bootstrap launcher argv_prefix is not canonical")
+    if launcher.get("allowed_commands") != [
+        "build",
+        "runtime-check",
+        "materialize",
+        "verify",
+        "launch-plan",
+    ]:
+        raise MaterializationError("bootstrap launcher allowed_commands is not canonical")
+    _canonical_absent_runtime_path(
+        interpreter.get("pycache_prefix"),
+        field="bootstrap_runtime_binding.interpreter.pycache_prefix",
+    )
+    module_path = _canonical_runtime_path(
+        duckdb_binding.get("module_path"),
+        field="bootstrap_runtime_binding.duckdb.module_path",
+        directory=False,
+    )
+    extension_path = _canonical_runtime_path(
+        duckdb_binding.get("extension_path"),
+        field="bootstrap_runtime_binding.duckdb.extension_path",
+        directory=False,
+    )
+    record_path = _canonical_runtime_path(
+        duckdb_binding.get("record_path"),
+        field="bootstrap_runtime_binding.duckdb.record_path",
+        directory=False,
+    )
+    for path, field in (
+        (module_path, "module_path"),
+        (extension_path, "extension_path"),
+        (record_path, "record_path"),
+    ):
+        try:
+            path.relative_to(import_root)
+        except ValueError as exc:
+            raise MaterializationError(
+                f"bootstrap DuckDB {field} is outside the single approved import root"
+            ) from exc
+    for path, expected, field in (
+        (launcher_path, launcher.get("sha256"), "launcher.sha256"),
+        (interpreter_path, interpreter.get("sha256"), "interpreter.sha256"),
+        (module_path, duckdb_binding.get("module_sha256"), "duckdb.module_sha256"),
+        (
+            extension_path,
+            duckdb_binding.get("extension_sha256"),
+            "duckdb.extension_sha256",
+        ),
+        (record_path, duckdb_binding.get("record_sha256"), "duckdb.record_sha256"),
+    ):
+        digest = _require_sha256(expected, field=f"bootstrap_runtime_binding.{field}")
+        if _external_file_sha256(path) != digest:
+            raise MaterializationError(f"bootstrap runtime file differs from {field}")
+    return json.loads(json.dumps(value, sort_keys=True))
+
+
+def _verify_duckdb_record(
+    record_path: Path,
+    import_root: Path,
+) -> dict[str, Any]:
+    """Verify the bounded wheel RECORD payload before any DuckDB import."""
+
+    import base64
+    import binascii
+    import csv
+    from pathlib import PurePosixPath
+
+    try:
+        with record_path.open("r", encoding="utf-8", newline="") as stream:
+            rows = list(csv.reader(stream))
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        raise MaterializationError(f"unable to parse DuckDB RECORD: {exc}") from exc
+    if not rows or len(rows) > 4096:
+        raise MaterializationError("DuckDB RECORD entry population is not bounded")
+    seen: set[str] = set()
+    verified: list[dict[str, Any]] = []
+    unhashed_pyc_count = 0
+    record_rows = 0
+    total_verified_bytes = 0
+    for row in rows:
+        if len(row) != 3:
+            raise MaterializationError("DuckDB RECORD row shape is not canonical")
+        raw_path, encoded_digest, raw_size = row
+        relative = PurePosixPath(raw_path)
+        if (
+            not raw_path
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or "\\" in raw_path
+            or raw_path in seen
+        ):
+            raise MaterializationError("DuckDB RECORD contains an unsafe or duplicate path")
+        seen.add(raw_path)
+        target = (import_root / Path(*relative.parts)).resolve(strict=False)
+        try:
+            target.relative_to(import_root)
+        except ValueError as exc:
+            raise MaterializationError("DuckDB RECORD member escapes the import root") from exc
+        if not encoded_digest:
+            if raw_size:
+                raise MaterializationError("unhashed DuckDB RECORD member declares a size")
+            if target == record_path:
+                record_rows += 1
+                continue
+            if "__pycache__" not in relative.parts or relative.suffix != ".pyc":
+                raise MaterializationError("DuckDB RECORD contains an unverified executable member")
+            unhashed_pyc_count += 1
+            continue
+        if not encoded_digest.startswith("sha256=") or not raw_size.isdecimal():
+            raise MaterializationError("DuckDB RECORD member does not use SHA-256 and size")
+        try:
+            target = target.resolve(strict=True)
+            expected_digest = base64.urlsafe_b64decode(
+                encoded_digest[7:] + "=" * ((4 - len(encoded_digest[7:]) % 4) % 4)
+            )
+            size = target.stat().st_size
+        except (OSError, ValueError, binascii.Error) as exc:
+            raise MaterializationError(f"DuckDB RECORD member is invalid: {raw_path}") from exc
+        if len(expected_digest) != 32 or size != int(raw_size):
+            raise MaterializationError(f"DuckDB RECORD member size/digest is invalid: {raw_path}")
+        total_verified_bytes += size
+        if total_verified_bytes > 512 * 1024 * 1024:
+            raise MaterializationError("DuckDB RECORD verified byte population exceeds policy")
+        try:
+            actual_digest = hashlib.sha256(target.read_bytes()).digest()
+        except OSError as exc:
+            raise MaterializationError(f"unable to read DuckDB RECORD member: {raw_path}") from exc
+        if actual_digest != expected_digest:
+            raise MaterializationError(f"DuckDB RECORD member digest differs: {raw_path}")
+        verified.append(
+            {
+                "path": raw_path,
+                "sha256": "sha256:" + actual_digest.hex(),
+                "size": size,
+            }
+        )
+    if record_rows != 1:
+        raise MaterializationError("DuckDB RECORD does not contain exactly one self row")
+    return {
+        "record_entry_count": len(rows),
+        "record_verified_file_count": len(verified),
+        "record_unhashed_pyc_count": unhashed_pyc_count,
+        "record_payload_cid": _cid(verified),
+    }
+
+
+def _observe_runtime_binding(expected: Mapping[str, Any]) -> dict[str, Any]:
+    """Observe the already-isolated interpreter and the exact DuckDB import."""
+
+    import importlib.util
+    import sysconfig
+    from importlib.metadata import distribution
+
+    expected_interpreter = expected["interpreter"]
+    expected_launcher = expected["launcher"]
+    expected_duckdb = expected["duckdb"]
+    approved_import_root = str(expected["approved_import_root"])
+    observed_flags = {
+        "isolated": int(sys.flags.isolated),
+        "no_site": int(sys.flags.no_site),
+        "dont_write_bytecode": int(sys.flags.dont_write_bytecode),
+        "no_user_site": int(sys.flags.no_user_site),
+        "ignore_environment": int(sys.flags.ignore_environment),
+        "safe_path": bool(sys.flags.safe_path),
+    }
+    if _canonical_bytes(observed_flags) != _canonical_bytes(expected_interpreter["flags"]):
+        raise MaterializationError("runtime interpreter is not running with exact -I -S -B flags")
+    if sys.pycache_prefix != expected_interpreter["pycache_prefix"]:
+        raise MaterializationError("runtime pycache prefix is not the admitted absent path")
+    if Path(str(sys.pycache_prefix)).exists():
+        raise MaterializationError("runtime pycache prefix unexpectedly exists")
+
+    stdlib = Path(sysconfig.get_path("stdlib")).resolve(strict=True)
+    expected_sys_path = [
+        str(ROOT.resolve(strict=True)),
+        approved_import_root,
+        str(stdlib.parent / f"python{sys.version_info.major}{sys.version_info.minor}.zip"),
+        str(stdlib),
+        str((stdlib / "lib-dynload").resolve(strict=True)),
+    ]
+    if sys.path != expected_sys_path:
+        raise MaterializationError(
+            "runtime sys.path differs from the closed repository/stdlib/import-root projection"
+        )
+    site_roots: list[str] = []
+    for entry in sys.path:
+        if not isinstance(entry, str) or not entry:
+            continue
+        path = Path(entry)
+        if not ({"site-packages", "dist-packages"} & set(path.parts)):
+            continue
+        try:
+            site_roots.append(str(path.resolve(strict=True)))
+        except OSError as exc:
+            raise MaterializationError(f"runtime import root is missing: {path}") from exc
+    if site_roots != [approved_import_root]:
+        raise MaterializationError(
+            "runtime must expose exactly one canonical approved site-packages import root"
+        )
+
+    if "duckdb" in sys.modules or "_duckdb" in sys.modules:
+        raise MaterializationError("DuckDB must not be preloaded before runtime admission")
+    record_projection = _verify_duckdb_record(
+        Path(str(expected_duckdb["record_path"])),
+        Path(approved_import_root),
+    )
+    expected_record_projection = {
+        key: expected_duckdb[key]
+        for key in (
+            "record_entry_count",
+            "record_verified_file_count",
+            "record_unhashed_pyc_count",
+            "record_payload_cid",
+        )
+    }
+    if _canonical_bytes(record_projection) != _canonical_bytes(expected_record_projection):
+        raise MaterializationError("DuckDB RECORD payload projection differs from binding")
+    for module_name, expected_path in (
+        ("duckdb", str(expected_duckdb["module_path"])),
+        ("_duckdb", str(expected_duckdb["extension_path"])),
+    ):
+        spec = importlib.util.find_spec(module_name)
+        origin = "" if spec is None or spec.origin is None else str(Path(spec.origin).resolve())
+        if origin != expected_path:
+            raise MaterializationError(
+                f"runtime {module_name} import does not resolve to the admitted path"
+            )
+
+    import _duckdb
+    import duckdb
+
+    duckdb_distribution = distribution("duckdb")
+    record_entries = [
+        item
+        for item in duckdb_distribution.files or ()
+        if item.name == "RECORD" and item.parent.name.endswith(".dist-info")
+    ]
+    if len(record_entries) != 1:
+        raise MaterializationError("DuckDB distribution has no unique dist-info RECORD")
+    record_path = Path(duckdb_distribution.locate_file(record_entries[0])).resolve(strict=True)
+    interpreter_path = Path(sys.executable).resolve(strict=True)
+    module_path = Path(duckdb.__file__ or "").resolve(strict=True)
+    extension_path = Path(_duckdb.__file__ or "").resolve(strict=True)
+    engine_version = str(duckdb.sql("SELECT version()").fetchone()[0])
+    return {
+        "schema": RUNTIME_BINDING_SCHEMA,
+        "launcher": dict(expected_launcher),
+        "interpreter": {
+            "resolved_path": str(interpreter_path),
+            "sha256": _external_file_sha256(interpreter_path),
+            "version": sys.version,
+            "cache_tag": str(sys.implementation.cache_tag or ""),
+            "platform": sysconfig.get_platform(),
+            "pycache_prefix": str(sys.pycache_prefix or ""),
+            "flags": observed_flags,
+        },
+        "approved_import_root": approved_import_root,
+        "duckdb": {
+            "distribution_name": str(duckdb_distribution.metadata.get("Name") or ""),
+            "distribution_version": str(duckdb_distribution.version),
+            "module_version": str(duckdb.__version__),
+            "engine_version": engine_version,
+            "module_path": str(module_path),
+            "module_sha256": _external_file_sha256(module_path),
+            "extension_path": str(extension_path),
+            "extension_sha256": _external_file_sha256(extension_path),
+            "record_path": str(record_path),
+            "record_sha256": _external_file_sha256(record_path),
+            **record_projection,
+        },
+    }
+
+
+def _validated_runtime_binding(config: Mapping[str, Any]) -> dict[str, Any]:
+    expected = _runtime_binding_contract(config)
+    observed = _observe_runtime_binding(expected)
+    if _canonical_bytes(observed) != _canonical_bytes(expected):
+        raise MaterializationError(
+            "observed bootstrap runtime differs from the committed runtime binding"
+        )
+    return observed
+
+
+def _runtime_invocation_projection(
+    runtime_binding: Mapping[str, Any], command: str
+) -> dict[str, Any]:
+    launcher = runtime_binding.get("launcher")
+    if not isinstance(launcher, Mapping) or command not in (
+        launcher.get("allowed_commands") or ()
+    ):
+        raise MaterializationError("bootstrap runtime command is not admitted")
+    argv_prefix = launcher.get("argv_prefix")
+    if not isinstance(argv_prefix, list):
+        raise MaterializationError("bootstrap launcher argv_prefix is missing")
+    projection = {
+        "schema": RUNTIME_INVOCATION_SCHEMA,
+        "command": command,
+        "orig_argv": [*argv_prefix, command],
+        "materializer_argv": [
+            str(
+                (
+                    ROOT
+                    / "scripts/materialize_external_agent_autonomous_execution_fabric_control_plane.py"
+                ).resolve(strict=True)
+            ),
+            command,
+        ],
+        "launcher_path": str(launcher.get("resolved_path") or ""),
+        "launcher_sha256": str(launcher.get("sha256") or ""),
+    }
+    projection["invocation_cid"] = _cid(projection)
+    return projection
+
+
+def _validated_runtime_invocation(
+    runtime_binding: Mapping[str, Any], command: str
+) -> dict[str, Any]:
+    expected = _runtime_invocation_projection(runtime_binding, command)
+    if list(sys.orig_argv) != expected["orig_argv"]:
+        raise MaterializationError("runtime sys.orig_argv differs from admitted launcher command")
+    if list(sys.argv) != expected["materializer_argv"]:
+        raise MaterializationError("runtime sys.argv differs from admitted materializer command")
+    return expected
 
 
 def _paths(config: Mapping[str, Any]) -> dict[str, Path]:
@@ -319,7 +820,7 @@ def _source_generation(config: Mapping[str, Any]) -> dict[str, Any]:
 def _validate_board() -> dict[str, Any]:
     validator = ROOT / "scripts/validate_external_agent_autonomous_execution_fabric_board.py"
     result = subprocess.run(
-        [sys.executable, str(validator), "--check-all"],
+        [sys.executable, "-I", "-S", "-B", str(validator), "--check-all"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -1465,6 +1966,11 @@ def _write_json_immutable(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
+    runtime_binding = _validated_runtime_binding(config)
+    runtime_binding_cid = _cid(runtime_binding)
+    materialization_invocation = _validated_runtime_invocation(
+        runtime_binding, "materialize"
+    )
     _assert_clean()
     validation = _validate_board()
     population = build_population(config)
@@ -1484,6 +1990,9 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         "source_head": population["source_head"],
         "source_tree": population["repository_tree_id"],
         "source_generation_cid": population["source_generation"]["source_generation_cid"],
+        "runtime_binding": runtime_binding,
+        "runtime_binding_cid": runtime_binding_cid,
+        "materialization_invocation": materialization_invocation,
         "store_generation": str(
             (config.get("database_program") or {}).get("store_generation") or ""
         ),
@@ -1576,6 +2085,9 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
             "source_head": population["source_head"],
             "source_tree": population["repository_tree_id"],
             "source_generation": population["source_generation"],
+            "runtime_binding": runtime_binding,
+            "runtime_binding_cid": runtime_binding_cid,
+            "materialization_invocation": materialization_invocation,
             "controls": population["controls"],
             "database_paths": dict(namespace_claim["database_paths"]),
             "schema_install": schema_install.to_dict(),
@@ -1603,7 +2115,17 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         ) from exc
 
 
-def verify(config: Mapping[str, Any]) -> dict[str, Any]:
+def verify(
+    config: Mapping[str, Any], *, invocation_command: str = "verify"
+) -> dict[str, Any]:
+    runtime_binding = _validated_runtime_binding(config)
+    runtime_binding_cid = _cid(runtime_binding)
+    verification_invocation = _validated_runtime_invocation(
+        runtime_binding, invocation_command
+    )
+    materialization_invocation = _runtime_invocation_projection(
+        runtime_binding, "materialize"
+    )
     validation = _validate_board()
     population = build_population(config)
     paths = _paths(config)
@@ -1635,6 +2157,9 @@ def verify(config: Mapping[str, Any]) -> dict[str, Any]:
         "source_head": population["source_head"],
         "source_tree": population["repository_tree_id"],
         "source_generation_cid": population["source_generation"]["source_generation_cid"],
+        "runtime_binding": runtime_binding,
+        "runtime_binding_cid": runtime_binding_cid,
+        "materialization_invocation": materialization_invocation,
         "store_generation": str(
             (config.get("database_program") or {}).get("store_generation") or ""
         ),
@@ -1657,6 +2182,9 @@ def verify(config: Mapping[str, Any]) -> dict[str, Any]:
         "maximum_writer_processes": 1,
         "continuous_quack_authority": False,
         "ducklake_authority": False,
+        "runtime_binding": runtime_binding,
+        "runtime_binding_cid": runtime_binding_cid,
+        "materialization_invocation": materialization_invocation,
         "ready_task_aliases": list(population["ready_task_aliases"]),
         "process_started": False,
     }
@@ -1689,6 +2217,8 @@ def verify(config: Mapping[str, Any]) -> dict[str, Any]:
         "verification_mode": "read_only",
         "namespace_claim_cid": claim_cid,
         "receipt_cid": receipt_cid,
+        "runtime_binding_cid": runtime_binding_cid,
+        "verification_invocation_cid": verification_invocation["invocation_cid"],
         "population_cid": population["population_cid"],
         "plan_root_cid": population["plan_root_cid"],
         "board_validation": validation,
@@ -1700,7 +2230,7 @@ def verify(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def launch_plan(config: Mapping[str, Any]) -> dict[str, Any]:
-    report = verify(config)
+    report = verify(config, invocation_command="launch-plan")
     policy = config.get("launch_policy") or {}
     program = config.get("database_program") or {}
     _paths(config)
@@ -1799,12 +2329,28 @@ def launch_plan(config: Mapping[str, Any]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("build", "materialize", "verify", "launch-plan"))
+    parser.add_argument(
+        "command",
+        choices=("build", "runtime-check", "materialize", "verify", "launch-plan"),
+    )
     args = parser.parse_args(argv)
     try:
         config = _load_object(CONFIG_PATH)
         if args.command == "build":
             result = build_population(config)
+        elif args.command == "runtime-check":
+            runtime_binding = _validated_runtime_binding(config)
+            invocation = _validated_runtime_invocation(
+                runtime_binding, "runtime-check"
+            )
+            result = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-runtime-check@1",
+                "valid": True,
+                "runtime_binding": runtime_binding,
+                "runtime_binding_cid": _cid(runtime_binding),
+                "invocation": invocation,
+                "process_started": False,
+            }
         elif args.command == "materialize":
             result = materialize(config)
         elif args.command == "verify":
