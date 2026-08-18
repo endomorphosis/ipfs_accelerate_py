@@ -1186,7 +1186,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-081 Publish stable operational campaign APIs and prompt handoff
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P1
