@@ -1,0 +1,165 @@
+{
+  "schema": "StackCompatibilityManifest@1",
+  "campaign": "ExternalAgentAutonomousExecutionFabric",
+  "manifest_revision": 1,
+  "integration_roots": {
+    "ipfs_accelerate_py": {
+      "package_version": "0.0.45",
+      "commit": "0085dc719686bf4cd077c8099170bdd55fa2cf99",
+      "tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1"
+    },
+    "ipfs_datasets_py": {
+      "package_version": "0.2.0",
+      "commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+      "tree": "d88b10b706d91c37e4be346366ff06bb58d1e8a3",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1"
+    },
+    "ipfs_kit_py": {
+      "package_version": "0.3.0",
+      "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "tree": "98ab8d00f79ec542032dbbb21a1ea416b983a845",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1"
+    },
+    "Mcp-Plus-Plus": {
+      "package_version": "1.0.0",
+      "commit": "5bf87beba3acf18d705c5c8ee3174e5e16ab5e04",
+      "tree": "9459e5a6695771e284142577da00aac07370fde8",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "use_limit": "existing shared protocol contracts only"
+    }
+  },
+  "package_compatibility": {
+    "python": {"minimum": "3.12", "maximum_exclusive": "3.14"},
+    "ipfs_accelerate_py": {"minimum": "0.0.45", "maximum_exclusive": "0.1.0"},
+    "ipfs_datasets_py": {"minimum": "0.2.0", "maximum_exclusive": "0.3.0"},
+    "ipfs_kit_py": {"minimum": "0.3.0", "maximum_exclusive": "0.4.0"},
+    "Mcp-Plus-Plus": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"}
+  },
+  "frozen_contracts": {
+    "logic_platform": {
+      "policy": "reuse the accepted FormalWorkPlan, compiler, validator, prover, proof-cache and plan-revision surfaces; no new logic family",
+      "manifest_interface": "LogicPlatformManifest@1",
+      "manifest_schema": "logic-platform-manifest/v1",
+      "manifest_content_sha256": "5e02c8c7039f3381225742d6daeb6d98c813f47a46c0b74bc9943c8eb474f45a",
+      "source_commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+      "compatibility": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"}
+    },
+    "semantic_state": {
+      "schema": "ipfs-datasets.software-contracts.semantic-state@1",
+      "api": "ipfs-datasets.software-contracts.semantic-state-api@1",
+      "accelerator_root_manifest": "ipfs-accelerate.semantic-state-root-manifest@1",
+      "context_pack": "ContextPack@1"
+    },
+    "handoff": {
+      "request": "ExternalAgentHandoffRequest@1",
+      "session": "ExternalAgentSession@1",
+      "conversation_event": "ConversationEvent@1",
+      "tool_invocation_event": "ToolInvocationEvent@1",
+      "tool_result_event": "ToolResultEvent@1",
+      "patch_event": "PatchEvent@1",
+      "approval_event": "ApprovalEvent@1",
+      "checkpoint": "AgentCheckpoint@1",
+      "context_artifact": "AgentContextArtifact@1",
+      "normalization_report": "HandoffNormalizationReport@1",
+      "admission_receipt": "HandoffAdmissionReceipt@1",
+      "status": "planned; no origin/main implementation symbol was found"
+    },
+    "repository_transfer": {
+      "bundle": "RepositoryHandoffBundle@1",
+      "snapshot": "RepositorySnapshotManifest@1",
+      "overlay": "DirtyOverlayManifest@1",
+      "receipt": "RepositoryTransferReceipt@1",
+      "status": "planned after DCR authority-git reconciliation"
+    },
+    "run_registry": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry@1",
+      "transaction_schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry-tx@1",
+      "policy": "extend the existing registry; no parallel registry"
+    },
+    "control_plane": {
+      "bootstrap_schema_revision": "datasets-authoritative-operational-v1",
+      "database_program": "DatabaseProgramConfig@1",
+      "task_source": "DatabaseTaskSource@1",
+      "coordination": "DatabaseCoordinator plus QuackStateClient@1/QuackStateServer@1",
+      "state_server_identity": "StateServerIdentity@1",
+      "mutable_authority": "DuckDB transactional database plus exactly one fenced authenticated Quack file-opening owner per shard",
+      "client_rule": "all other readers and writers use bounded typed authenticated Quack methods with epoch, lease, fence, idempotency, deadline and CAS",
+      "direct_remote_file_open": "prohibited"
+    },
+    "ducklake": {
+      "role": "immutable versioned post-commit history, snapshots, audit, lineage, analytics and recovery manifests",
+      "prohibited_authority": ["current claims", "current leases", "fencing epochs", "write ownership", "resume rights", "merge authority", "finalization authority", "recovery authority"],
+      "catalog_version": "not_admitted_until_EAAEF-094",
+      "replication_rule": "lag or outage never grants, revokes or corrupts current authority"
+    },
+    "mcplusplus": {
+      "profiles": ["Profile A", "Profile B", "Profile C", "Profile D", "Profile F", "Profile G"],
+      "contracts": ["ExecutionEnvelope@1", "ExecutionResult@1", "ExecutionReceipt@1", "EncryptedArtifactRef@1", "ObligationEvent@1", "DurableExecutor@1", "StateRef@1"],
+      "forbidden": ["new profile", "Profile H", "new A2A profile", "backend-role inference from transport identity"]
+    },
+    "receipts": {
+      "admitted": ["TestReceipt@1", "ProofReceipt@1", "CounterexampleReceipt@1", "SettlementReceipt@1", "SemanticVerificationReceipt@1", "ExecutionReceipt@1"],
+      "minimum_major": 1,
+      "maximum_major_inclusive": 1,
+      "unknown_version_policy": "reject"
+    },
+    "proofs": {
+      "admitted": ["IncrementalProofSealer@1", "ExistingProofAssistantAdapter@1", "GoalDirectedProofTactician@1", "CounterexampleGuidedProofDevelopment@1", "CodeProofContext@1"],
+      "minimum_major": 1,
+      "maximum_major_inclusive": 1,
+      "unknown_version_policy": "reject"
+    }
+  },
+  "database_extension_profile": {
+    "required_for_continuous_quack": {
+      "duckdb": "1.5.5",
+      "quack": "1.5.5+core",
+      "lock_sha256": "c13d55fda5236686a02fdcfe782639c09395300d51ac5acf9effa0a4297d7a48"
+    },
+    "required_for_live_ducklake": {
+      "duckdb": "1.5.5",
+      "ducklake": "1.5.5+core",
+      "httpfs": "1.5.5+core",
+      "lock_sha256": "e511a7141d69df8490ab70eccfdc09b3f1c58140cb0711c97f3ab6b0050bf03e"
+    },
+    "observed_planning_environment": {
+      "duckdb_python": "1.5.2",
+      "duckdb_library": "v1.5.2",
+      "quack": {"installed": true, "loaded": false},
+      "ducklake": {"installed": true, "loaded": false},
+      "httpfs": {"installed": true, "loaded": false},
+      "authority": "diagnostic only; does not satisfy the exact 1.5.5 promotion gates"
+    }
+  },
+  "oci_images": {
+    "bootstrap_reconciliation_worker": {
+      "status": "not_yet_admitted",
+      "digest": "",
+      "sbom_digest": "",
+      "blocking_task": "EAAEF-000",
+      "rule": "No supervisor may dispatch an implementation task until EAAEF-000 independently binds signed image and SBOM identities, a rootless/no-socket/default-deny policy, signed provider authorization, the materialization receipt and a Quack authority decision."
+    },
+    "qualified_python_worker": {"status": "planned", "digest": "", "blocking_task": "EAAEF-052"},
+    "prover": {"status": "planned", "digest": "", "blocking_task": "EAAEF-052"}
+  },
+  "qualification_state": {
+    "source_reconciliation": "closed_planning_manifest_pending_EAAEF-001_independent_reverification",
+    "bootstrap_admission": "manual_fail_closed_EAAEF-000_only_initial_ready_task",
+    "semantic_state_transition": "pending_EAAEF-007_exact_multi_repository_root",
+    "quack_capsule_promotion": "pending_EAAEF-008",
+    "plan_population_transition": "pending_EAAEF-009_immutable_Plan_R2_CAS",
+    "embedded_one_writer_duckdb": "candidate_after_board_materialization_and_seal",
+    "direct_single_supervisor_duckdb": "authority_propagation_repaired_but_live_provider_no_go_pending_exact_route_and_container_policy",
+    "configured_multi_supervisor": "no_go_pending_immutable_accepted_control_plane_capsule",
+    "continuous_duckdb_quack": "no_go_pending_exact_1.5.5_profile_and_full_gateway_qualification",
+    "live_ducklake": "no_go_pending_catalog_profile_security_parity_and_recovery_receipts",
+    "supervised_external_pilot": "not_yet_qualified"
+  },
+  "change_policy": {
+    "silent_contract_change": false,
+    "required_action": "superseding StackCompatibilityManifest and immutable PlanRevision with affected tests and migration evidence",
+    "worker_can_weaken": false,
+    "model_can_select_trust_keys": false
+  }
+}

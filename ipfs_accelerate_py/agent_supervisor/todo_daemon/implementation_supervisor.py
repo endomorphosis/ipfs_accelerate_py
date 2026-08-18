@@ -27,6 +27,10 @@ from ...llm_router import (
     AgentImplementationSealedControlPlane,
     verify_agent_implementation_sealed_control_plane,
 )
+from ..control.manual_completion_seal import (
+    ManualCompletionSealError,
+    verify_manual_completion_seal,
+)
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -247,7 +251,7 @@ IMPORTED_CONTROL_PLANE_SOURCE = _read_control_plane_source_snapshot()
 
 SCHEDULER_CONFIG_SCHEMA_PATTERN = re.compile(
     r"^ipfs_accelerate_py\.agent_supervisor\."
-    r"[a-z0-9_.-]+\.scheduler_config@1$"
+    r"[a-z0-9_.-]+\.(?:scheduler_config|scheduler-config)@1$"
 )
 
 
@@ -741,7 +745,8 @@ def load_supervisor_scheduler_config(
         schema
     ):
         raise SupervisorSchedulerConfigError(
-            "scheduler config schema must be a supported scheduler_config@1"
+            "scheduler config schema must be a supported scheduler-config@1 "
+            "or legacy scheduler_config@1"
         )
 
     normalized = dict(payload)
@@ -758,14 +763,26 @@ def load_supervisor_scheduler_config(
         must_exist=True,
     )
     task_prefix = payload.get("task_prefix")
-    if (
-        not isinstance(task_prefix, str)
-        or not re.fullmatch(r"## [A-Z][A-Z0-9]*-", task_prefix.strip())
-    ):
+    if not isinstance(task_prefix, str):
         raise SupervisorSchedulerConfigError(
-            "task_prefix must be a canonical heading prefix such as '## PDR-'"
+            "task_prefix must be a canonical ID prefix such as 'PDR-' or "
+            "its legacy heading form '## PDR-'"
         )
-    normalized["task_prefix"] = task_prefix.strip()
+    configured_task_prefix = task_prefix.strip()
+    canonical_task_prefix = configured_task_prefix
+    if canonical_task_prefix.startswith("## "):
+        canonical_task_prefix = canonical_task_prefix[3:].strip()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]*-", canonical_task_prefix):
+        raise SupervisorSchedulerConfigError(
+            "task_prefix must be a canonical ID prefix such as 'PDR-' or "
+            "its legacy heading form '## PDR-'"
+        )
+    # Parsers still consume the Markdown rendering boundary.  Preserve that
+    # internal contract while admitting the display-ID prefix used by task
+    # stores, claim keys and current scheduler configurations.
+    normalized["task_prefix"] = f"## {canonical_task_prefix}"
+    normalized["task_id_prefix"] = canonical_task_prefix
+    normalized["configured_task_prefix"] = configured_task_prefix
     namespace = payload.get("board_namespace")
     if (
         not isinstance(namespace, str)
@@ -18552,6 +18569,16 @@ class PortalImplementationSupervisor:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
+    parser.add_argument(
+        "--scheduler-config",
+        type=Path,
+        default=None,
+        help=(
+            "Load conservative supervisor defaults from one validated "
+            "repository-local scheduler profile. Explicit later CLI options "
+            "retain precedence."
+        ),
+    )
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
     parser.add_argument(
         "--todo-path",
@@ -18703,6 +18730,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
+    parser.add_argument(
+        "--validation-max-workers",
+        type=int,
+        default=None,
+        help=(
+            "Maximum validation workers forwarded to the managed daemon. "
+            "Scheduler profiles require a positive bounded value."
+        ),
+    )
     parser.add_argument(
         "--implementation-max-timeout",
         type=float,
@@ -19289,7 +19325,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    try:
+        expanded_argv, scheduler_config_path = (
+            expand_supervisor_scheduler_config_args(
+                raw_argv,
+                repo_root=REPO_ROOT,
+            )
+        )
+    except SupervisorSchedulerConfigError as exc:
+        parser.error(str(exc))
+    parsed = parser.parse_args(expanded_argv)
+    parsed.scheduler_config = scheduler_config_path
+    return parsed
 
 
 def supervisor_config_from_args(
@@ -19342,6 +19390,7 @@ def supervisor_config_from_args(
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
+        validation_max_workers=args.validation_max_workers,
         implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
@@ -19470,6 +19519,7 @@ def supervisor_config_from_args(
         objective_todo_vector_index_path=args.objective_todo_vector_index_path,
         objective_surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=args.objective_surplus_min_terms_per_todo,
+        scheduler_config_path=getattr(args, "scheduler_config", None),
         repo_root=effective_repo_root,
         daemon_script_path=daemon_script_path if daemon_script_path is not None else args.daemon_script_path,
         supervisor_script_path=supervisor_script_path

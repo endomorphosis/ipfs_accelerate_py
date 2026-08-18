@@ -580,7 +580,7 @@ def test_scheduler_config_rejects_implicit_authority_elevation(
     [
         ("taskboard_path", "../outside.md"),
         ("objectives_path", "/tmp/objectives.md"),
-        ("task_prefix", "PDR-"),
+        ("task_prefix", "pdr-"),
         ("max_lanes", True),
         ("poll_interval_seconds", float("inf")),
         ("merge_target_branch", "../main"),
@@ -599,6 +599,31 @@ def test_scheduler_config_rejects_unsafe_or_malformed_values(
 
     with pytest.raises(SupervisorSchedulerConfigError):
         load_supervisor_scheduler_config(profile_path, repo_root=tmp_path)
+
+
+@pytest.mark.parametrize("configured_prefix", ("EAAEF-", "## EAAEF-"))
+def test_scheduler_config_accepts_canonical_and_legacy_heading_prefixes(
+    tmp_path: Path,
+    configured_prefix: str,
+) -> None:
+    profile_path = _write_profile(
+        tmp_path,
+        overrides={
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "external-agent-autonomous-execution-fabric."
+                "scheduler-config@1"
+            ),
+            "task_prefix": configured_prefix,
+            "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        },
+    )
+
+    profile = load_supervisor_scheduler_config(profile_path, repo_root=tmp_path)
+
+    assert profile["task_prefix"] == "## EAAEF-"
+    assert profile["task_id_prefix"] == "EAAEF-"
+    assert profile["configured_task_prefix"] == configured_prefix
 
 
 def test_scheduler_config_rejects_duplicate_selector_and_outside_profile(

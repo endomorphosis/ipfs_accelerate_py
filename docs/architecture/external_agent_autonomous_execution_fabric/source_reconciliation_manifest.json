@@ -1,0 +1,462 @@
+{
+  "schema": "SourceReconciliationManifest@1",
+  "campaign": "ExternalAgentAutonomousExecutionFabric",
+  "created_at": "2026-08-18T00:00:00Z",
+  "policy": {
+    "force_push": false,
+    "history_rewrite": false,
+    "discard_unmerged_work": false,
+    "squash_provenance": false,
+    "overwrite_dirty_worktrees": false,
+    "branch_names_are_qualification": false,
+    "historical_test_claims_are_current": false
+  },
+  "reported_origin_main_baselines": {
+    "ipfs_accelerate_py": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+  },
+  "verified_origin_main_baselines": {
+    "ipfs_accelerate_py": {
+      "commit": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+      "tree": "96504e7744d741784bc8076456f4b169dd665ab5"
+    },
+    "ipfs_datasets_py": {
+      "commit": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "tree": "6fdc81fabb04a86683d0f26200636fa8f61fd25c"
+    },
+    "ipfs_kit_py": {
+      "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "tree": "98ab8d00f79ec542032dbbb21a1ea416b983a845"
+    },
+    "Mcp-Plus-Plus": {
+      "commit": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "tree": "19d41c4838e9ed3616bb4883d71b7f788f66a1c9"
+    }
+  },
+  "selected_integration_roots": {
+    "ipfs_accelerate_py": {
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "commit": "0085dc719686bf4cd077c8099170bdd55fa2cf99",
+      "tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c",
+      "provenance": [
+        "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+        "a8a4a71d85cfa8ce2280f4d5895e2b6ba0acd43a",
+        "ea9b2af0c1e772ba445ab1589b123050484c217a",
+        "d73b66e80497b78c6b209af9b4cf9bdb33ced8aa"
+      ],
+      "decision": "origin/main plus narrow forward repairs for checkout lease-state classification and direct single-supervisor DatabaseProgramConfig propagation while preserving later maintenance and authority guards"
+    },
+    "ipfs_datasets_py": {
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+      "tree": "d88b10b706d91c37e4be346366ff06bb58d1e8a3",
+      "parents": [
+        "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+        "9d558ad706e83a944bbf3b66508f969041cc9518"
+      ],
+      "decision": "provenance-preserving UI/UX-IR merge; current LPC API and registry semantics retained in the two conflicts"
+    },
+    "ipfs_kit_py": {
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "tree": "98ab8d00f79ec542032dbbb21a1ea416b983a845",
+      "decision": "exact origin/main; all relevant semantic-root, proof-sealer, artifact and MCP++ adapter lineages are already contained"
+    },
+    "Mcp-Plus-Plus": {
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "commit": "5bf87beba3acf18d705c5c8ee3174e5e16ab5e04",
+      "tree": "9459e5a6695771e284142577da00aac07370fde8",
+      "parent": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "decision": "documentation-only backend-role clarification; no profile, schema, wire identity, API or CID changed"
+    }
+  },
+  "source_forest_payload": {
+    "schema": "ExternalAgentSourceForest@1",
+    "repositories": {
+      "Mcp-Plus-Plus": {
+        "commit": "5bf87beba3acf18d705c5c8ee3174e5e16ab5e04",
+        "tree": "9459e5a6695771e284142577da00aac07370fde8"
+      },
+      "ipfs_accelerate_py": {
+        "commit": "0085dc719686bf4cd077c8099170bdd55fa2cf99",
+        "tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c"
+      },
+      "ipfs_datasets_py": {
+        "commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+        "tree": "d88b10b706d91c37e4be346366ff06bb58d1e8a3"
+      },
+      "ipfs_kit_py": {
+        "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+        "tree": "98ab8d00f79ec542032dbbb21a1ea416b983a845"
+      }
+    }
+  },
+  "source_forest_root": "sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa",
+  "repositories": {
+    "ipfs_accelerate_py": {
+      "inventory": {
+        "local_branches": 4773,
+        "local_unmerged_refs": 4330,
+        "unmerged_unique_heads": 735,
+        "unmerged_unique_commits": 992,
+        "remote_refs": 155,
+        "remote_unmerged_refs": 39,
+        "remote_unmerged_unique_heads": 37,
+        "worktrees": 266,
+        "detached_worktrees": 153,
+        "locked_worktrees": 16,
+        "prunable_worktrees": 1,
+        "uncontained_worktree_heads": 88,
+        "dirty_worktrees": 25
+      },
+      "already_integrated": [
+        {"topic": "DuckDB and Quack control plane", "commit": "9e39c6c9edb0b756f99f9857a89e70642ef1321c"},
+        {"topic": "logic-family parser", "commit": "a7f16baee9814e7b54fbb046f920d276b9193125"},
+        {"topic": "incremental verification", "commit": "0b9c4e1a279412a007edfde248966bbb1bbd32a7"},
+        {"topic": "incremental proof sealer", "commit": "d1980931f86c70214e15e7b2b39efdc7277e573e"},
+        {"topic": "semantic-state harness", "commit": "63b03229d75310387e797b5db1839134c8dfc5f9"},
+        {"topic": "logic canonicalization", "commit": "f57abc30f1248a59f92c6fa5e4e7ee85e762fd78"},
+        {"topic": "adversarial assurance", "commit": "64a9c1921a425da82247b587970e05242e564d6d"}
+      ],
+      "relevant_unmerged": [
+        {
+          "repository": "ipfs_accelerate_py",
+          "branch": "agent/dcr-linked-git-authority-20260808",
+          "head": "d7aac67ee8ca9d06994333323ecd81fbae87e1c7",
+          "merge_base": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only 34420f615d3eebfefa3cc1a3e4ebf8f51b16afac..d7aac67ee8ca9d06994333323ecd81fbae87e1c7 | LC_ALL=C sort -u", "count": 48, "sha256": "1e1fa3bc0f407e410205a299a794a9cf17d74aee768ad82f707d0da4e357c461"},
+          "schemas_changed": ["Git authority and replay contracts require semantic comparison"],
+          "public_apis_changed": ["todo-daemon Git authority and configured bootstrap surfaces"],
+          "tests": ["focused pack/replay and image tests present on source branch; current qualification pending"],
+          "dependencies": ["current todo-daemon authority API", "configured board bootstrap seal", "validation image policy"],
+          "superseded": false,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "high",
+          "recommended_destination": "narrow reviewed ports into integration/external-agent-autonomous-execution-fabric-v1",
+          "qualification_status": "unqualified_candidate",
+          "ahead": 25,
+          "behind": 2363,
+          "classification": "partially_merged_high_conflict",
+          "missing_surfaces": ["todo_daemon/authority_git_pack.py", "runtime/configured_board_bootstrap_seal.py", "validation/typescript_validation_image.py", "focused pack/replay and image tests"],
+          "disposition": "semantic review and narrow port against current APIs; never merge the branch wholesale"
+        },
+        {
+          "repository": "ipfs_accelerate_py",
+          "branch": "agent/self-hosting-qualification-v1",
+          "head": "ef2ed37d87d07e7f7b845d67cc948bdbdaa09e14",
+          "merge_base": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only 7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda..ef2ed37d87d07e7f7b845d67cc948bdbdaa09e14 | LC_ALL=C sort -u", "count": 140, "sha256": "91d2b16bd85dd114b149770b50c0bb205fafd02bc7f778a459cd05b20e81cedf"},
+          "schemas_changed": ["self-hosting recovery and clearance contracts"],
+          "public_apis_changed": ["supervisor recovery/clearance surface"],
+          "tests": ["historical branch tests are evidence only; current focused qualification pending"],
+          "dependencies": ["current supervisor recovery model", "current authority guards"],
+          "superseded": false,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "high",
+          "recommended_destination": "reviewed recovery-contract ports only",
+          "qualification_status": "partial_unqualified",
+          "ahead": 37,
+          "behind": 1224,
+          "classification": "partial_unqualified",
+          "disposition": "review protected recovery-clearance contracts/tests only"
+        },
+        {
+          "repository": "ipfs_accelerate_py",
+          "branch": "feat/semantic-runtime-authority",
+          "head": "e10694ce3fbb4129c69553168239c89961f9efb7",
+          "merge_base": "c1e33e8f443253e106c464d7c5b5c341c3095876",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only c1e33e8f443253e106c464d7c5b5c341c3095876..e10694ce3fbb4129c69553168239c89961f9efb7 | LC_ALL=C sort -u", "count": 12, "sha256": "6744b13d715a70d9add27e56a1b015536495bc83fe7aec04eca2341700505b2e"},
+          "schemas_changed": ["semantic runtime authority records"],
+          "public_apis_changed": ["semantic runtime validation surface"],
+          "tests": ["residual vector and validation tests require current rerun"],
+          "dependencies": ["current semantic-state harness", "current vector registry"],
+          "superseded": true,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "medium",
+          "recommended_destination": "port only verified residual test/validation delta",
+          "qualification_status": "partially_merged_superseded",
+          "ahead": 10,
+          "behind": 1433,
+          "classification": "partially_merged_superseded",
+          "disposition": "review residual vector test and validation delta only"
+        },
+        {
+          "repository": "ipfs_accelerate_py",
+          "branch": "origin/fix/pcce-r6-governed-contract-phases",
+          "head": "e7fe9afc6eb9963b8fab715418c1bb0abae2a936",
+          "merge_base": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only 485edc0871c55b0e2ef21d83bece9fa12c2c8d84..e7fe9afc6eb9963b8fab715418c1bb0abae2a936 | LC_ALL=C sort -u", "count": 27, "sha256": "bcdf8e3b3b86c86f39747eb6d10fd518fbfc43cf870dd0444297206f570d008a"},
+          "schemas_changed": ["governed completion-contract phases"],
+          "public_apis_changed": ["FormalWorkPlan/work-packet completion contracts"],
+          "tests": ["historical contract-phase tests require comparison to current APIs"],
+          "dependencies": ["current FormalWorkPlan", "current work-packet contract"],
+          "superseded": false,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "high",
+          "recommended_destination": "semantic comparison followed by the smallest nonduplicate port",
+          "qualification_status": "potential_duplicate",
+          "classification": "potential_duplicate_contract_family",
+          "disposition": "compare with FormalWorkPlan/work-packet/completion contracts before any port"
+        }
+      ],
+      "patch_equivalent_families": [
+        {
+          "branch_family": "ASE3 repair and salvage",
+          "count": 10,
+          "classification": "patch_equivalent_to_main",
+          "disposition": "preserve refs; do not merge"
+        }
+      ],
+      "partial_merge_regression": {
+        "introduced": "a8a4a71d85cfa8ce2280f4d5895e2b6ba0acd43a",
+        "retained_through": "ea9b2af0c1e772ba445ab1589b123050484c217a",
+        "accidental_deletion": "d73b66e80497b78c6b209af9b4cf9bdb33ced8aa",
+        "detected_at": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+        "forward_fix": "f4a6bd39896248a9d227230d048b49b65783ffab",
+        "qualification": {"checkout_lock_tests": {"collected": 24, "passed": 24, "skipped": 0, "failed": 0}, "supervisor_cli_import": "passed"}
+      },
+      "database_program_propagation_regression": {
+        "introduced_lineage": ["b6dc155c3", "299b8633c"],
+        "accidental_drop": "ea9b2af0c1e772ba445ab1589b123050484c217a",
+        "forward_fix": "0085dc719686bf4cd077c8099170bdd55fa2cf99",
+        "forward_fix_tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c",
+        "qualification": {"authority_forwarding_tests": {"collected": 16, "passed": 16, "skipped": 0, "failed": 0}, "py_compile": "passed", "import": "passed"}
+      },
+      "committed_source_hygiene_risks": [
+        "dashboard.pid",
+        "data/model_manager.duckdb.wal",
+        "state/p2p_gpt2_2peer/peer1_queue.duckdb.wal",
+        "state/p2p_gpt2_2peer/peer2_queue.duckdb.wal",
+        "state/smoketest_logs/driver.out",
+        "test/kitchen_sink_models.db.wal",
+        "state/tls/mcpplusplus.key",
+        "state/tls/mcpplusplus.crt"
+      ],
+      "security_disposition": "Do not expose the key-shaped artifact. Treat it as potentially compromised until classified; forward-remove or fixture-relocate and rotate if ever trusted. No history rewrite without approval."
+    },
+    "ipfs_datasets_py": {
+      "inventory": {
+        "local_refs": 4275,
+        "local_diverged_refs": 321,
+        "local_unique_unmerged_tips": 34,
+        "remote_refs": 901,
+        "remote_diverged_refs": 694,
+        "remote_unique_unmerged_tips": 693,
+        "commits_reachable_outside_main": 2388,
+        "worktrees": 75,
+        "clean_worktrees": 58,
+        "dirty_worktrees": 15,
+        "invalid_worktrees": 2
+      },
+      "already_integrated": [
+        {"topic": "DuckDB, Quack and DuckLake", "commit": "6cd037c7738f44904add46391537588e67f6f238"},
+        {"topic": "incremental semantic index", "commit": "b572255d5f8f4f4f8136df43f58dae44f8e1b941"},
+        {"topic": "semantic-state contracts", "commit": "1330038f626ef92993f03d46f21e1a57719e9c25"},
+        {"topic": "logic platform canonicalization", "commit": "7f0fe2bbad3c70928234c6e2312ee3182fd7681f"},
+        {"topic": "patent/legal intelligence", "commit": "06af38328401607798f7ec70ed48af781480d089"}
+      ],
+      "relevant_unmerged": [
+        {
+          "repository": "ipfs_datasets_py",
+          "branch": "origin/agent/ui-ux-ir",
+          "head": "9d558ad706e83a944bbf3b66508f969041cc9518",
+          "merge_base": "d144be65ffe4c6423e4e1c30cd692812607343eb",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only d144be65ffe4c6423e4e1c30cd692812607343eb..9d558ad706e83a944bbf3b66508f969041cc9518 | LC_ALL=C sort -u", "count": 111, "sha256": "5beab77a574d948d603828fa3dd2a1da9b7eede9b0f53e978a5cc15521032835"},
+          "schemas_changed": ["UI/UX intermediate-representation contracts"],
+          "public_apis_changed": ["UI/UX IR APIs; current LPC conflict resolutions retained"],
+          "tests": ["359 passed and 7 pre-existing first-parent expectation failures; not a green release gate"],
+          "dependencies": ["current LPC API", "current registry semantics"],
+          "superseded": true,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": true,
+          "conflict_risk": "resolved_by_reviewed_merge",
+          "recommended_destination": "already integrated by two-parent merge 41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+          "qualification_status": "integrated_with_known_test_debt",
+          "ahead": 27,
+          "behind": 1723,
+          "classification": "content_integrated_without_ancestry",
+          "comparison": {"changed_paths": 111, "identical_on_main": 106, "conflicting_code_paths": 2, "missing_docs": 3},
+          "disposition": "real two-parent merge completed at 41533721c5559ad68cecfe226fa6ba5f76f8a15d"
+        },
+        {
+          "repository": "ipfs_datasets_py",
+          "branch": "origin/agent/ptr-161-163-171-g140-restore",
+          "head": "382e0d7e0ba4a774e15573cea27607e8ae617ab5",
+          "merge_base": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only bd2ff6245ebe476fc744d45c7c66235c92b0e19c..382e0d7e0ba4a774e15573cea27607e8ae617ab5 | LC_ALL=C sort -u", "count": 24, "sha256": "58b37fec03c0cdc70ec2fece0c33962c0978700c6c6a3f7e6c755e5290d46ba9"},
+          "schemas_changed": ["proof-reuse restoration records"],
+          "public_apis_changed": ["historical proof-sealer API"],
+          "tests": ["historical branch claims are not current qualification"],
+          "dependencies": ["current proof sealer", "current semantic contracts"],
+          "superseded": false,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "high",
+          "recommended_destination": "manual comparison and narrow port or typed no-go",
+          "qualification_status": "stale_unqualified",
+          "classification": "stale_proof_reuse_restoration",
+          "disposition": "compare against current proof sealer; manual port or typed no-go, never blind cherry-pick"
+        },
+        {
+          "repository": "ipfs_datasets_py",
+          "branch": "detached/d087dd9c781f9e953c148ee9fd29395c5b4f0e1c",
+          "head": "d087dd9c781f9e953c148ee9fd29395c5b4f0e1c",
+          "merge_base": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only ac82107e246b30e35a2bbdcf75e01370d22350c6..d087dd9c781f9e953c148ee9fd29395c5b4f0e1c | LC_ALL=C sort -u", "count": 32, "sha256": "d4b6e67331a599cbb0ef920c327807e1df2c3cdb08cf41c641b10088f0998e04"},
+          "schemas_changed": ["semantic-contract candidate"],
+          "public_apis_changed": ["two-file child delta requires semantic review"],
+          "tests": ["not independently qualified on the reviewed baseline"],
+          "dependencies": ["parent 0691203550c0f316852c74d293d8fc3c4ce130a6", "current semantic contract API"],
+          "superseded": false,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "medium",
+          "recommended_destination": "review the child delta independently of its conflict-heavy parent",
+          "qualification_status": "isolated_candidate",
+          "classification": "isolated_two_file_semantic_contract_candidate",
+          "disposition": "review child delta without importing conflict-heavy parent 0691203"
+        },
+        {
+          "repository": "ipfs_datasets_py",
+          "branch": "detached/0691203550c0f316852c74d293d8fc3c4ce130a6",
+          "head": "0691203550c0f316852c74d293d8fc3c4ce130a6",
+          "merge_base": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only ac82107e246b30e35a2bbdcf75e01370d22350c6..0691203550c0f316852c74d293d8fc3c4ce130a6 | LC_ALL=C sort -u", "count": 30, "sha256": "a4a2a639e604b816a2973e73a9ec46336b168090bbe7c84999018f9290f4abc7"},
+          "schemas_changed": ["alternate semantic/proof snapshot"],
+          "public_apis_changed": ["conflict-heavy alternate API snapshot"],
+          "tests": ["not independently qualified; add/add conflicts prevent wholesale admission"],
+          "dependencies": ["stale parent lineage", "current semantic and proof APIs"],
+          "superseded": true,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "critical",
+          "recommended_destination": "preserve for evidence; do not merge wholesale",
+          "qualification_status": "rejected_wholesale",
+          "classification": "alternate_conflict_heavy_snapshot",
+          "add_add_conflicts": 23,
+          "disposition": "preserve; do not merge wholesale"
+        }
+      ],
+      "provenance_merge_qualification": {
+        "focused": {"passed": 359, "failed": 7},
+        "mcp_idl_identity": {"passed": 32, "failed": 0},
+        "seven_failures_classification": "pre_existing_origin_main_test_expectation_debt; all failing code/test paths byte-identical to first parent",
+        "release_gate": "not_green_until_debt_is_repaired_or_a_current_typed_no_go_is accepted"
+      },
+      "lock_identities": {
+        "requirements/duckdb-quack.lock": "sha256:c13d55fda5236686a02fdcfe782639c09395300d51ac5acf9effa0a4297d7a48",
+        "requirements/ducklake-services.lock": "sha256:e511a7141d69df8490ab70eccfdc09b3f1c58140cb0711c97f3ab6b0050bf03e"
+      }
+    },
+    "ipfs_kit_py": {
+      "inventory": {
+        "local_branches": 3853,
+        "local_unique_tips": 17,
+        "remote_refs": 2882,
+        "commits_reachable_outside_main": 2957,
+        "worktrees": 228,
+        "existing_worktrees": 26,
+        "prunable_or_missing_worktrees": 202,
+        "dirty_existing_worktrees": 1
+      },
+      "already_integrated": ["semantic-root KSR", "incremental proof sealer", "AAE artifact store", "MCP++ G/E/confidential adapters", "GraphRAG and semantic roots"],
+      "relevant_unmerged": [
+        {
+          "repository": "ipfs_kit_py",
+          "branch": "origin/agent/ptr-162-g140-restore",
+          "head": "cc66cda6982860796d505f7602ad5410bf6d213a",
+          "merge_base": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only 5a7a2df8181cfdc33bc19be09989df7ff83f2d4e..cc66cda6982860796d505f7602ad5410bf6d213a | LC_ALL=C sort -u", "count": 14, "sha256": "1e79c9f20131d2c4570a06bc900cfe75408a79767ef6dc0976bc5af89182b084"},
+          "schemas_changed": ["historical proof receipt API"],
+          "public_apis_changed": ["stale proof-sealer calls"],
+          "tests": ["historical restoration tests are incompatible with the current proof API"],
+          "dependencies": ["current proof sealer", "current artifact identity contracts"],
+          "superseded": true,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "high",
+          "recommended_destination": "quarantine and compare manually; preserve ref",
+          "qualification_status": "incompatible_stale_api",
+          "classification": "incompatible_stale_proof_api",
+          "disposition": "quarantine and compare manually"
+        },
+        {
+          "repository": "ipfs_kit_py",
+          "branch": "origin/copilot/improve-copilot-sdk-handling",
+          "head": "7d6791eb6cd0e7a14aac2127fcb719d1677f759e",
+          "merge_base": "a1f4b23332a4e22d97d6c4e441fb5795e3eba2c8",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only a1f4b23332a4e22d97d6c4e441fb5795e3eba2c8..7d6791eb6cd0e7a14aac2127fcb719d1677f759e | LC_ALL=C sort -u", "count": 21, "sha256": "ad021e3d850b387397f6922be6724ee228c60697e6208db772ec92f30cc2bca8"},
+          "schemas_changed": [],
+          "public_apis_changed": ["simplistic subprocess wrappers"],
+          "tests": ["not a qualified external-session handoff adapter"],
+          "dependencies": ["undocumented client subprocess behavior"],
+          "superseded": true,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "medium",
+          "recommended_destination": "do not use for the handoff protocol",
+          "qualification_status": "rejected_wrong_abstraction",
+          "classification": "simplistic_subprocess_wrappers_not_handoff_adapters",
+          "disposition": "do not use"
+        },
+        {
+          "repository": "ipfs_kit_py",
+          "branch": "implementation/ksr-002-ce41dfca5e3d-attempt-1-1786430953",
+          "head": "31ee464908553b43b918500e9ad33c5768850075",
+          "merge_base": "31ee464908553b43b918500e9ad33c5768850075",
+          "files_changed": {"complete": true, "derivation": "git diff --name-only 31ee464908553b43b918500e9ad33c5768850075..31ee464908553b43b918500e9ad33c5768850075 | LC_ALL=C sort -u; dirty overlay recorded separately", "count": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+          "schemas_changed": ["dirty overlay contains partial coordination CAS work"],
+          "public_apis_changed": ["uncommitted coordination storage delta"],
+          "tests": ["dirty overlay is unqualified and must not be overwritten"],
+          "dependencies": ["preserved dirty worktree", "current coordination storage API"],
+          "superseded": true,
+          "safe_to_cherry_pick": false,
+          "real_merge_required": false,
+          "conflict_risk": "critical_dirty_overlay",
+          "recommended_destination": "preserve dirty worktree; do not merge or overwrite",
+          "qualification_status": "superseded_unqualified_dirty_overlay",
+          "dirty_path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+          "classification": "superseded_partial_CAS",
+          "disposition": "preserve dirty worktree; do not merge"
+        }
+      ]
+    },
+    "Mcp-Plus-Plus": {
+      "inventory": {"all_observed_branches_merged_at_baseline": true},
+      "contract_reuse": ["Profile A", "Profile B", "Profile C", "Profile D", "Profile F", "Profile G", "ExecutionEnvelope@1", "ExecutionResult@1", "ExecutionReceipt@1", "EncryptedArtifactRef@1", "ObligationEvent@1", "DurableExecutor@1", "StateRef@1"],
+      "prohibited_new_contracts": ["new MCP++ profile", "Profile H", "new A2A profile"],
+      "clarification_commit": {
+        "commit": "5bf87beba3acf18d705c5c8ee3174e5e16ab5e04",
+        "tree": "9459e5a6695771e284142577da00aac07370fde8",
+        "schema_tree_unchanged": "4689e279327ea10b1e6d735bb0acfa6756143ee7",
+        "conformance_tree_unchanged": "64bc97d85351d91787450ba50d20b4e79e7d204c",
+        "schema_fingerprint": "0527c70bfa800b8e54195ef5f1e3206ff625447f3e33a88159b167a6390989e0",
+        "focused_tests": {"collected": 123, "passed": 123, "skipped": 0, "failed": 0}
+      },
+      "qualification_limit": "MCP++ implementation-report partial gates are not production qualification; Profile-G in-process coordination remains a demo/validator, not the DuckDB/Quack authority"
+    }
+  },
+  "cross_repository_decisions": {
+    "reuse_not_reimplement": ["FormalWorkPlan and existing logic platform", "semantic index family", "capsules", "proof cache/sealer", "scheduler and semantic work fabric", "DuckDB authority", "task/run registries", "MCP++ profiles"],
+    "mutable_coordination": "DuckDB transactional records plus one fenced authenticated Quack file owner; all other readers/writers use typed Quack requests",
+    "immutable_history": "DuckLake, Parquet, IPLD, CAR and optional IPFS projections; never current claim, lease, fence or merge authority",
+    "qualification_at_reconciliation": {
+      "embedded_one_writer": "candidate_after_new_board_seal",
+      "continuous_quack": "no_go_until_exact_profile_and_repository_gateway_tests",
+      "live_ducklake": "no_go_until_catalog/profile/security/recovery qualification"
+    }
+  },
+  "preservation_receipt": {
+    "refs_deleted": 0,
+    "worktrees_deleted": 0,
+    "force_pushes": 0,
+    "history_rewrites": 0,
+    "dirty_overlays_overwritten": 0,
+    "remote_pushes": 0
+  }
+}

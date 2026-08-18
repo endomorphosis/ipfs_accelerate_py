@@ -1,0 +1,5836 @@
+# ExternalAgentAutonomousExecutionFabric task board
+
+Board namespace: `external-agent-autonomous-execution-fabric-v1`. Plan revision: `EAAEF-PLAN-R1`.
+Canonical board identity: `sha256:f458941c033239bcfd7cfc29c95f0d1deca009ac7f0c68bd02ad83a3859890f3`.
+
+DuckDB is the transactional mutable database. Quack is the mandatory fenced state-owner service and typed multi-reader/multi-writer access path for continuous execution. DuckLake is downstream immutable history and analytics only.
+
+Only the A tasks are in the bootstrap population. EAAEF-009 must bind a current datasets-built semantic root and admit Plan R2 before later tasks are materialized.
+
+## Parallel waves
+
+Within each epic, tasks whose dependencies and read/write/effect conflicts permit may run in parallel. Epic integration gates serialize A through R; exact conflicts and resource leases further constrain each frontier.
+
+## EAAEF-000 Admit the fail-closed bootstrap runtime
+
+- Stable task ID: EAAEF-000
+- Status: todo
+- Blocked reason:
+- Completion: manual
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py","test/api/test_external_agent_fabric_bootstrap_preflight.py","config/external_agent_autonomous_execution_fabric_bootstrap.json","containers/external-agent/bootstrap-reconciliation.Containerfile","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_admission.json"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py","test/api/test_external_agent_fabric_bootstrap_preflight.py","config/external_agent_autonomous_execution_fabric_bootstrap.json","containers/external-agent/bootstrap-reconciliation.Containerfile","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_admission.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Independently bind signed EAAEF provider authorization, independently signed bootstrap image and SBOM identities, rootless/network/resource policy, the immutable materialization receipt and the explicit Quack authority decision; absent or invalid evidence emits a typed no-go and starts no supervisor.
+- Depends on:
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py","test/api/test_external_agent_fabric_bootstrap_preflight.py","config/external_agent_autonomous_execution_fabric_bootstrap.json","containers/external-agent/bootstrap-reconciliation.Containerfile","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_admission.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","reviewed task-owned policy/test writes and create-once receipt publication","no supervisor, worker, model, network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":0,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_fabric_bootstrap_preflight.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Independently bind signed EAAEF provider authorization, independently signed bootstrap image and SBOM identities, rootless/network/resource policy, the immutable materialization receipt and the explicit Quack authority decision; absent or invalid evidence emits a typed no-go and starts no supervisor. The deterministic preflight tests must pass, and an authenticated independent operator plus security reviewer must bind every required digest, signature, policy and Quack decision in an immutable admission or typed no-go receipt. No supervisor, worker or model may accept this task or start before that receipt verifies.
+- Lease and fencing requirements: {"coordination":"no Quack or DuckDB authority is assumed; the receipt records the independently verified Quack admission/no-go decision","logical_claim_key":"EAAEF-000 + plan_revision + source_forest_root + task_spec_cid + one-use operator nonce","task_claim":"manual host admission request authenticated independently of the supervisor","worktree_lease":"exclusive reviewed bootstrap worktree","write_effect_leases":"no mutable control-plane effect; immutable receipt publication is create-once"}
+- Idempotency key: sha256:10c9e511084e6364a2c901d13f73651bad4acc0ae5cc345a836729da05ec4748
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["authenticated one-use operator admission request","signed EAAEF-scoped provider authorization","independently signed OCI image and SBOM digests","rootless, no-socket, default-deny network and bounded-resource policy","immutable materialization identity and receipt","explicit Quack authority admission or typed no-go decision","independent operator and security-review signatures"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read and verify the declared immutable bootstrap evidence","write only task-owned bootstrap policy/test artifacts in the reviewed worktree","publish one create-once admission or typed no-go receipt"]
+- Prohibited effects: ["starting a supervisor, worker or model before admission","self-approval by the task, worker, model or prospective supervisor","mutable DuckDB/Quack writes or direct coordination-file access","unapproved network, secret, dependency, merge, push or publication effects"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py, test/api/test_external_agent_fabric_bootstrap_preflight.py, config/external_agent_autonomous_execution_fabric_bootstrap.json, containers/external-agent/bootstrap-reconciliation.Containerfile, docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_admission.json
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py","test/api/test_external_agent_fabric_bootstrap_preflight.py","config/external_agent_autonomous_execution_fabric_bootstrap.json","containers/external-agent/bootstrap-reconciliation.Containerfile","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_admission.json"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_fabric_bootstrap_preflight.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_fabric_bootstrap_preflight.py"],"working_directory":"."}]
+- Acceptance: Only an authenticated independent operator and security reviewer may sign the immutable bootstrap admission or typed no-go receipt; the task cannot self-admit and no supervisor starts before acceptance.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:73695789c38028bb6c36b469bb060b38fe04c06107ee2b0eeeb7ce94975db777
+
+## EAAEF-001 Verify the complete source-reconciliation manifest
+
+- Stable task ID: EAAEF-001
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md","docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json","test/api/test_external_agent_source_reconciliation.py"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md","docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json","test/api/test_external_agent_source_reconciliation.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Reproduce the frozen manifest's branch, worktree, changed-path, schema/API, test, dependency, supersession, dirty-overlay and conflict classifications for all four repositories without mutating that board input or any preserved ref.
+- Depends on: EAAEF-000
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md","docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json","test/api/test_external_agent_source_reconciliation.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_source_reconciliation.py; python3 scripts/validate_external_agent_autonomous_execution_fabric_board.py --source-only"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Reproduce the frozen manifest's branch, worktree, changed-path, schema/API, test, dependency, supersession, dirty-overlay and conflict classifications for all four repositories without mutating that board input or any preserved ref. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:07bff4b940f6369841c3514fcad904a184695bb8e1ba7cfb8841f6f5fd4ee517
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md, docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json, test/api/test_external_agent_source_reconciliation.py
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md","docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json","test/api/test_external_agent_source_reconciliation.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_source_reconciliation.py; python3 scripts/validate_external_agent_autonomous_execution_fabric_board.py --source-only
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_source_reconciliation.py"],"working_directory":"."},{"argv":["python3","scripts/validate_external_agent_autonomous_execution_fabric_board.py","--source-only"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:f4c026c87ba7b4dcd1434d2b22baba8f38bf4fcb6207533a1d8fe0c9d9292b4a
+
+## EAAEF-002 Reconcile accelerator residual lineages and source hygiene
+
+- Stable task ID: EAAEF-002
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json","test/api/test_external_agent_source_hygiene.py"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json","test/api/test_external_agent_source_hygiene.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Forward-audit DCR Git authority/replay, self-hosting recovery, task-contract residuals and committed runtime/private-key-shaped artifacts; port only behavior missing from the reviewed baseline.
+- Depends on: EAAEF-000
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json","test/api/test_external_agent_source_hygiene.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_source_hygiene.py test/api/test_agent_supervisor_checkout_lock.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Forward-audit DCR Git authority/replay, self-hosting recovery, task-contract residuals and committed runtime/private-key-shaped artifacts; port only behavior missing from the reviewed baseline. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:569ee1cab084bdee7714b57253d3e4def2c8898b2e6b932968d5d65faf537047
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json, test/api/test_external_agent_source_hygiene.py
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json","test/api/test_external_agent_source_hygiene.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_source_hygiene.py test/api/test_agent_supervisor_checkout_lock.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_source_hygiene.py","test/api/test_agent_supervisor_checkout_lock.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:1b641ce3c4b63e19a8f8df93ab6c60d8b12a6c2277e817a3ac248b00bd78c562
+
+## EAAEF-003 Reconcile datasets UI IR and proof-reuse residuals
+
+- Stable task ID: EAAEF-003
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_datasets_py
+- Owned files: ["docs/architecture/external_agent_fabric_reconciliation.json","tests/integration/test_external_agent_reconciliation.py"]
+- Execution owned files: ["ipfs_datasets_py/docs/architecture/external_agent_fabric_reconciliation.json","ipfs_datasets_py/tests/integration/test_external_agent_reconciliation.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Verify the provenance-preserving UI/UX-IR merge, retain current LPC API semantics, classify proof-reuse and semantic-contract residuals, and reject wholesale stale snapshots.
+- Depends on: EAAEF-000
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_fabric_reconciliation.json","tests/integration/test_external_agent_reconciliation.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/integration/test_external_agent_reconciliation.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Verify the provenance-preserving UI/UX-IR merge, retain current LPC API semantics, classify proof-reuse and semantic-contract residuals, and reject wholesale stale snapshots. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:e6097ba61abfa213acf5c865000720225575de9ce202efc4b5d832063446f403
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_fabric_reconciliation.json, tests/integration/test_external_agent_reconciliation.py
+- Execution outputs: ["ipfs_datasets_py/docs/architecture/external_agent_fabric_reconciliation.json","ipfs_datasets_py/tests/integration/test_external_agent_reconciliation.py"]
+- Validation: python -m pytest -q tests/integration/test_external_agent_reconciliation.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/integration/test_external_agent_reconciliation.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:8fe530e26cdfda11155f238a44c2f22c4189562008928e1ce44670867792a5a7
+
+## EAAEF-004 Freeze the ipfs_kit_py reusable authority surface
+
+- Stable task ID: EAAEF-004
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_kit_py
+- Owned files: ["docs/external_agent_fabric_kit_contracts.md","tests/test_external_agent_fabric_kit_contracts.py"]
+- Execution owned files: ["ipfs_kit_py/docs/external_agent_fabric_kit_contracts.md","ipfs_kit_py/tests/test_external_agent_fabric_kit_contracts.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind existing artifact, semantic-root, proof-sealer and MCP++ adapter surfaces while excluding the in-process Profile-G coordinator from production authority.
+- Depends on: EAAEF-000
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/external_agent_fabric_kit_contracts.md","tests/test_external_agent_fabric_kit_contracts.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_external_agent_fabric_kit_contracts.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind existing artifact, semantic-root, proof-sealer and MCP++ adapter surfaces while excluding the in-process Profile-G coordinator from production authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:24c05e8e5eed25cf45ac8b493dfef10d0ca65e37f775b5360a8bc3022174ad13
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/external_agent_fabric_kit_contracts.md, tests/test_external_agent_fabric_kit_contracts.py
+- Execution outputs: ["ipfs_kit_py/docs/external_agent_fabric_kit_contracts.md","ipfs_kit_py/tests/test_external_agent_fabric_kit_contracts.py"]
+- Validation: python -m pytest -q tests/test_external_agent_fabric_kit_contracts.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_external_agent_fabric_kit_contracts.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:fab50ec23ebeb9234f88ae452f4b1caf36974e77a405053189956c7f928cf1fc
+
+## EAAEF-005 Clarify existing MCP++ state-backend roles
+
+- Stable task ID: EAAEF-005
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: Mcp-Plus-Plus
+- Owned files: ["docs/architecture/decisions/0004-state-modes.md","docs/architecture/decisions/0005-durable-executor.md","docs/architecture/durable-execution.md","docs/architecture/state-model.md","docs/spec/state-ref.md"]
+- Execution owned files: ["ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0004-state-modes.md","ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0005-durable-executor.md","ipfs_accelerate_py/mcplusplus/docs/architecture/durable-execution.md","ipfs_accelerate_py/mcplusplus/docs/architecture/state-model.md","ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_accelerate_py/mcplusplus"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Preserve existing wire schemas while stating that DuckDB is transactional storage, Quack is the sole fenced multi-reader/multi-writer owner boundary, and DuckLake is non-authoritative history.
+- Depends on: EAAEF-000
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/decisions/0004-state-modes.md","docs/architecture/decisions/0005-durable-executor.md","docs/architecture/durable-execution.md","docs/architecture/state-model.md","docs/spec/state-ref.md"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_state_ref.py tests/test_durable_executor.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Preserve existing wire schemas while stating that DuckDB is transactional storage, Quack is the sole fenced multi-reader/multi-writer owner boundary, and DuckLake is non-authoritative history. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:1d643694e713085914f3f1ec9ea2cd6931d3783a327e3d0e815db1595ac12b69
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/decisions/0004-state-modes.md, docs/architecture/decisions/0005-durable-executor.md, docs/architecture/durable-execution.md, docs/architecture/state-model.md, docs/spec/state-ref.md
+- Execution outputs: ["ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0004-state-modes.md","ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0005-durable-executor.md","ipfs_accelerate_py/mcplusplus/docs/architecture/durable-execution.md","ipfs_accelerate_py/mcplusplus/docs/architecture/state-model.md","ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md"]
+- Validation: python -m pytest -q tests/test_state_ref.py tests/test_durable_executor.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_state_ref.py","tests/test_durable_executor.py"],"working_directory":"ipfs_accelerate_py/mcplusplus"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_accelerate_py/mcplusplus is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:fddfac46ca8222811c3b7e32b2f0274f3361c596822cf060c223a44826143a6e
+
+## EAAEF-006 Propose reviewed integration roots and stack compatibility
+
+- Stable task ID: EAAEF-006
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json","docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json","test/api/test_external_agent_stack_compatibility.py"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json","docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json","test/api/test_external_agent_stack_compatibility.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind post-reconciliation commits, trees, schemas, package/protocol versions, the admitted bootstrap OCI identity and compatible ranges in a proposal plus verification receipt; never overwrite the R1 compatibility input in place.
+- Depends on: EAAEF-001, EAAEF-002, EAAEF-003, EAAEF-004, EAAEF-005
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json","docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json","test/api/test_external_agent_stack_compatibility.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_stack_compatibility.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind post-reconciliation commits, trees, schemas, package/protocol versions, the admitted bootstrap OCI identity and compatible ranges in a proposal plus verification receipt; never overwrite the R1 compatibility input in place. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:bdc096947261dddf56c66162fb127bb3b41552e6cda717ecc7b9455528c1606b
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json, docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json, test/api/test_external_agent_stack_compatibility.py
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json","docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json","test/api/test_external_agent_stack_compatibility.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_stack_compatibility.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_stack_compatibility.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:82156cb0c32a62db1525a89b7ea3b5883b9df6b8fe0cb4d46f9be0d0b7d9e3a1
+
+## EAAEF-007 Build the canonical multi-repository semantic root
+
+- Stable task ID: EAAEF-007
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/analysis/external_agent_source_state.py","tests/unit/analysis/test_external_agent_source_state.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/analysis/external_agent_source_state.py","ipfs_datasets_py/tests/unit/analysis/test_external_agent_source_state.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Build and independently verify the post-reconciliation AST, semantic-state and provenance root for the exact four-repository forest, preserving a content-addressed delta and invalidation receipt.
+- Depends on: EAAEF-006
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/analysis/external_agent_source_state.py","tests/unit/analysis/test_external_agent_source_state.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/analysis/test_external_agent_source_state.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Build and independently verify the post-reconciliation AST, semantic-state and provenance root for the exact four-repository forest, preserving a content-addressed delta and invalidation receipt. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:cd8eb8ab3c7774574798dab61c0e7fbf2529550b089e403c69cc4a77ac7dfb54
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/analysis/external_agent_source_state.py, tests/unit/analysis/test_external_agent_source_state.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/analysis/external_agent_source_state.py","ipfs_datasets_py/tests/unit/analysis/test_external_agent_source_state.py"]
+- Validation: python -m pytest -q tests/unit/analysis/test_external_agent_source_state.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/analysis/test_external_agent_source_state.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:b7a36b3211b9a78f2a674cf7a47fb9f694c66e7d7d801a02eb9137513be1e783
+
+## EAAEF-008 Qualify Quack ownership and the accepted bootstrap capsule
+
+- Stable task ID: EAAEF-008
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","test/api/test_external_agent_control_plane_promotion.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_control_plane_promotion.json"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","test/api/test_external_agent_control_plane_promotion.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_control_plane_promotion.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Admit or reject the exact immutable control-plane capsule and existing DuckDB/Quack owner profile; live multi-reader/multi-writer execution requires one authenticated fenced owner, typed clients, a current epoch and no direct-file fallback.
+- Depends on: EAAEF-007
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","test/api/test_external_agent_control_plane_promotion.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_control_plane_promotion.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_control_plane_promotion.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Admit or reject the exact immutable control-plane capsule and existing DuckDB/Quack owner profile; live multi-reader/multi-writer execution requires one authenticated fenced owner, typed clients, a current epoch and no direct-file fallback. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:8d052f0d29000aff865b676139c76db980788b2915120835e575b8df5d026f71
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py, test/api/test_external_agent_control_plane_promotion.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_control_plane_promotion.json
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","test/api/test_external_agent_control_plane_promotion.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_control_plane_promotion.json"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_control_plane_promotion.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_control_plane_promotion.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:fb67023b65030b1071957ab20bba142605d9dc1917de4967a018d1c658358838
+
+## EAAEF-009 Admit Plan R2 and transition the next population
+
+- Stable task ID: EAAEF-009
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: unmerged-work-reconciliation-and-release-baselin
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py","test/api/test_external_agent_plan_r2.py","docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py","test/api/test_external_agent_plan_r2.py","docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Consume the verified semantic root and promotion receipt, create an immutable Plan R2 with bounded add/supersede repairs, replace every future-task sentinel, CAS the active plan revision, materialize only the B frontier, and emit an admission or typed no-go receipt without editing completed R1 tasks.
+- Depends on: EAAEF-007, EAAEF-008
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py","test/api/test_external_agent_plan_r2.py","docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":2000,"disk_mib":8192,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":4096,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:rootless-git-reconciliation
+- Model route: exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_plan_r2.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Consume the verified semantic root and promotion receipt, create an immutable Plan R2 with bounded add/supersede repairs, replace every future-task sentinel, CAS the active plan revision, materialize only the B frontier, and emit an admission or typed no-go receipt without editing completed R1 tasks. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:0efe12a170bfa374bf713897a8540b68f4c7ccd1590f7df427136a14765f01ca
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py, test/api/test_external_agent_plan_r2.py, docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py","test/api/test_external_agent_plan_r2.py","docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_plan_r2.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_plan_r2.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:a448baa87b42733b6d72ed1a50bf050a5070e99a2e96c245dd21ecfeb4e5e944
+
+## EAAEF-010 Define the transport-neutral handoff contract family
+
+- Stable task ID: EAAEF-010
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: external-agent-session-handoff-protocol
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/contracts.py","test/api/test_external_agent_handoff_contracts.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/contracts.py","test/api/test_external_agent_handoff_contracts.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Implement content-addressed ExternalAgentHandoffRequest, Session, event, checkpoint, context, normalization and admission schemas with strict versioning and bounds.
+- Depends on: EAAEF-009
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/handoff/contracts.py","test/api/test_external_agent_handoff_contracts.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_handoff_contracts.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Implement content-addressed ExternalAgentHandoffRequest, Session, event, checkpoint, context, normalization and admission schemas with strict versioning and bounds. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c8dc40afd235fd6e3261c1f7747f61079842140fb535cc1c26d66993f5db49aa
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/handoff/contracts.py, test/api/test_external_agent_handoff_contracts.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/handoff/contracts.py","test/api/test_external_agent_handoff_contracts.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_handoff_contracts.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_handoff_contracts.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:2595ef5b75ebb2aad1570f3ab85bca634ba0f50eaf512dd80c881d69c8d4c1f6
+
+## EAAEF-011 Preserve encrypted raw exports and normalized projections
+
+- Stable task ID: EAAEF-011
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: external-agent-session-handoff-protocol
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G020
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/external_agent_handoff/storage.py","tests/test_external_agent_handoff_storage.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/external_agent_handoff/storage.py","ipfs_kit_py/tests/test_external_agent_handoff_storage.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Store exact exported bytes through managed encrypted references and emit a separate ordered normalized projection without transcript bodies in public receipts.
+- Depends on: EAAEF-009, EAAEF-010
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/external_agent_handoff/storage.py","tests/test_external_agent_handoff_storage.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_external_agent_handoff_storage.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Store exact exported bytes through managed encrypted references and emit a separate ordered normalized projection without transcript bodies in public receipts. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:814a433777f1304c587455c5afc473a4925c54a8c57d9554702212c93c17f078
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/external_agent_handoff/storage.py, tests/test_external_agent_handoff_storage.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/external_agent_handoff/storage.py","ipfs_kit_py/tests/test_external_agent_handoff_storage.py"]
+- Validation: python -m pytest -q tests/test_external_agent_handoff_storage.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_external_agent_handoff_storage.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:bc31172c693c0c429bcacc14cb5b040a37328b3a4fab7809fc9dc51bfca6ff34
+
+## EAAEF-012 Implement the Codex export adapter
+
+- Stable task ID: EAAEF-012
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: external-agent-session-handoff-protocol
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/codex.py","test/api/test_external_agent_codex_adapter.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/codex.py","test/api/test_external_agent_codex_adapter.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Normalize legitimately exportable Codex messages, tool calls/results, patches and explicit reasoning summaries without requesting hidden chain-of-thought or trusting success claims.
+- Depends on: EAAEF-009, EAAEF-010
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/codex.py","test/api/test_external_agent_codex_adapter.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_codex_adapter.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Normalize legitimately exportable Codex messages, tool calls/results, patches and explicit reasoning summaries without requesting hidden chain-of-thought or trusting success claims. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c43976e23bf0b0742009a8025267422662a1c902d8fe167625679bb402b5012e
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/handoff/adapters/codex.py, test/api/test_external_agent_codex_adapter.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/codex.py","test/api/test_external_agent_codex_adapter.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_codex_adapter.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_codex_adapter.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:06b6867bdc6a20298a77b3c00a367140319cc716193cb48d07d3b3cef7e57013
+
+## EAAEF-013 Implement the Claude Code export adapter
+
+- Stable task ID: EAAEF-013
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: external-agent-session-handoff-protocol
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/claude_code.py","test/api/test_external_agent_claude_adapter.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/claude_code.py","test/api/test_external_agent_claude_adapter.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Detect supported Claude Code export versions, preserve branches and residual fields, and reject ambiguous/truncated authority claims.
+- Depends on: EAAEF-009, EAAEF-010
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/claude_code.py","test/api/test_external_agent_claude_adapter.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_claude_adapter.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Detect supported Claude Code export versions, preserve branches and residual fields, and reject ambiguous/truncated authority claims. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:092fceadeb81c81a8f2ea6590e6c94f73c52e042022b9f24bd6c61e3db5cbb58
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/handoff/adapters/claude_code.py, test/api/test_external_agent_claude_adapter.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/claude_code.py","test/api/test_external_agent_claude_adapter.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_claude_adapter.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_claude_adapter.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:484610771588fb4ae696ba03a068d5e62cef6dfb48044645da3acef86ca5174e
+
+## EAAEF-014 Implement Gemini CLI and generic JSON/MCP adapters
+
+- Stable task ID: EAAEF-014
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: external-agent-session-handoff-protocol
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/gemini_cli.py","ipfs_accelerate_py/agent_supervisor/handoff/adapters/generic.py","test/api/test_external_agent_generic_adapters.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/gemini_cli.py","ipfs_accelerate_py/agent_supervisor/handoff/adapters/generic.py","test/api/test_external_agent_generic_adapters.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Normalize supported Gemini CLI, generic MCP and documented JSON/JSONL exports while never executing imported calls and retaining bounded unknown fields.
+- Depends on: EAAEF-009, EAAEF-010
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/gemini_cli.py","ipfs_accelerate_py/agent_supervisor/handoff/adapters/generic.py","test/api/test_external_agent_generic_adapters.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_generic_adapters.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Normalize supported Gemini CLI, generic MCP and documented JSON/JSONL exports while never executing imported calls and retaining bounded unknown fields. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:06bdf60050becc8187b9563612831d2fe6d10172e76fdaeb079c15b4c3cf0cab
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/handoff/adapters/gemini_cli.py, ipfs_accelerate_py/agent_supervisor/handoff/adapters/generic.py, test/api/test_external_agent_generic_adapters.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/handoff/adapters/gemini_cli.py","ipfs_accelerate_py/agent_supervisor/handoff/adapters/generic.py","test/api/test_external_agent_generic_adapters.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_generic_adapters.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_generic_adapters.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3d7cde01371aff7dd1c2badaf1ba35b0a2797bdc4cf325ff56d2e07e9b6fb110
+
+## EAAEF-015 Qualify handoff trust, identity, privacy and retention
+
+- Stable task ID: EAAEF-015
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: external-agent-session-handoff-protocol
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/admission.py","test/api/test_external_agent_handoff_admission.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/handoff/admission.py","test/api/test_external_agent_handoff_admission.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Keep raw session, normalized stream, objective, context, repository and patch identities distinct; only reverified or admitted receipts may satisfy gates.
+- Depends on: EAAEF-009, EAAEF-011, EAAEF-012, EAAEF-013, EAAEF-014
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/handoff/admission.py","test/api/test_external_agent_handoff_admission.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_handoff_admission.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Keep raw session, normalized stream, objective, context, repository and patch identities distinct; only reverified or admitted receipts may satisfy gates. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:2f4b38ea78e50337fb049d2555988af5e97e9c3c832748f93919d044d0483e0e
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/handoff/admission.py, test/api/test_external_agent_handoff_admission.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/handoff/admission.py","test/api/test_external_agent_handoff_admission.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_handoff_admission.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_handoff_admission.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:2c59b1946564954dc68f9ba7398555a450f4478f3c245d2976922bd9bd8414f1
+
+## EAAEF-020 Define complete repository handoff and overlay schemas
+
+- Stable task ID: EAAEF-020
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: complete-git-repository-transfer
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/contracts.py","test/api/test_repository_handoff_contracts.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/contracts.py","test/api/test_repository_handoff_contracts.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Account for exact HEAD/refs/index/worktree/untracked/submodules/nested repos/LFS/sparse checkout/hooks/attributes/modes/origin and shallow boundaries.
+- Depends on: EAAEF-015
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/contracts.py","test/api/test_repository_handoff_contracts.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_repository_handoff_contracts.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Account for exact HEAD/refs/index/worktree/untracked/submodules/nested repos/LFS/sparse checkout/hooks/attributes/modes/origin and shallow boundaries. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:854701e326c7cd2b31d871f7e255dae82615c2424116d2fb4e8d12ee795f0f4d
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/repository_handoff/contracts.py, test/api/test_repository_handoff_contracts.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/contracts.py","test/api/test_repository_handoff_contracts.py"]
+- Validation: python3 -m pytest -q test/api/test_repository_handoff_contracts.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_repository_handoff_contracts.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:308f711c0abf4a2cb6748d9159d3bc3e1a9790aed6cda1191b8154e531485ed4
+
+## EAAEF-021 Implement bounded repository transfer modes
+
+- Stable task ID: EAAEF-021
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: complete-git-repository-transfer
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G030
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/repository_transfer/bundle.py","tests/test_repository_transfer_bundle.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/repository_transfer/bundle.py","ipfs_kit_py/tests/test_repository_transfer_bundle.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Support managed aliases, Git bundles, manifested source bundles, approved remote aliases and uploaded object sets without accepting arbitrary remote host paths.
+- Depends on: EAAEF-015, EAAEF-020
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/repository_transfer/bundle.py","tests/test_repository_transfer_bundle.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_repository_transfer_bundle.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Support managed aliases, Git bundles, manifested source bundles, approved remote aliases and uploaded object sets without accepting arbitrary remote host paths. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9f0ad26b767e792d241b6cb2339e67d2d71e8c96d21f6ae9b0c451567a6c23f2
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/repository_transfer/bundle.py, tests/test_repository_transfer_bundle.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/repository_transfer/bundle.py","ipfs_kit_py/tests/test_repository_transfer_bundle.py"]
+- Validation: python -m pytest -q tests/test_repository_transfer_bundle.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_repository_transfer_bundle.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:3a6a36eaf098649abac738e7cf8531c78ebbab883d1536c6fc2ebf2bc3c74e89
+
+## EAAEF-022 Quarantine and verify reconstructed repositories
+
+- Stable task ID: EAAEF-022
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: complete-git-repository-transfer
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/quarantine.py","test/api/test_repository_handoff_quarantine.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/quarantine.py","test/api/test_repository_handoff_quarantine.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Verify object integrity, reconstructed tree/overlay identity, URL policy, symlink safety, disabled hooks and size/object bounds before onboarding.
+- Depends on: EAAEF-015, EAAEF-020, EAAEF-021
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/quarantine.py","test/api/test_repository_handoff_quarantine.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_repository_handoff_quarantine.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Verify object integrity, reconstructed tree/overlay identity, URL policy, symlink safety, disabled hooks and size/object bounds before onboarding. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:f801fe4a164e008515e9d53b466d355b936ed5017503d29155e9264ea452c7ca
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/repository_handoff/quarantine.py, test/api/test_repository_handoff_quarantine.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/repository_handoff/quarantine.py","test/api/test_repository_handoff_quarantine.py"]
+- Validation: python3 -m pytest -q test/api/test_repository_handoff_quarantine.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_repository_handoff_quarantine.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:1c10c59b522aecd08c7924784ae638bc8665f3566ab6046aec4f493b3fe6405c
+
+## EAAEF-023 Reconcile imported history with repository truth
+
+- Stable task ID: EAAEF-023
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: complete-git-repository-transfer
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G030
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/analysis/agent_history_reconciliation.py","tests/unit/analysis/test_agent_history_reconciliation.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/analysis/agent_history_reconciliation.py","ipfs_datasets_py/tests/unit/analysis/test_agent_history_reconciliation.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Compare referenced commits/files/patches/tests to reconstructed truth and classify stale, present, missing and history-only work with provenance.
+- Depends on: EAAEF-015, EAAEF-020, EAAEF-022
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/analysis/agent_history_reconciliation.py","tests/unit/analysis/test_agent_history_reconciliation.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/analysis/test_agent_history_reconciliation.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Compare referenced commits/files/patches/tests to reconstructed truth and classify stale, present, missing and history-only work with provenance. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:3f3ad6b9dc5e16e0f6e3864d525d0eea79aaa393523fc9180bfd3ce289357a7a
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/analysis/agent_history_reconciliation.py, tests/unit/analysis/test_agent_history_reconciliation.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/analysis/agent_history_reconciliation.py","ipfs_datasets_py/tests/unit/analysis/test_agent_history_reconciliation.py"]
+- Validation: python -m pytest -q tests/unit/analysis/test_agent_history_reconciliation.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/analysis/test_agent_history_reconciliation.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:2db874bb855b20a0dbba32175d8e0a8d08c938625dde9b58829ccf78caa0374e
+
+## EAAEF-024 Qualify end-to-end repository transfer receipts
+
+- Stable task ID: EAAEF-024
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: complete-git-repository-transfer
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_repository_transfer.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/repository_transfer.json"]
+- Execution owned files: ["test/integration/test_external_agent_repository_transfer.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/repository_transfer.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Prove every transfer mode reconstructs the declared state or returns a typed refusal without mutating a user checkout.
+- Depends on: EAAEF-015, EAAEF-021, EAAEF-022, EAAEF-023
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_repository_transfer.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/repository_transfer.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_repository_transfer.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Prove every transfer mode reconstructs the declared state or returns a typed refusal without mutating a user checkout. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:fa459b7314f8a98f17b64b2625aba088e5a19dcc0cd4e3607ace177713ce39e1
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_repository_transfer.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/repository_transfer.json
+- Execution outputs: ["test/integration/test_external_agent_repository_transfer.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/repository_transfer.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_repository_transfer.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_repository_transfer.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:862f59b4bbee48af8abc0abb96a168dcffc64dcdf90db925a2a7b8cd2009c9c6
+
+## EAAEF-030 Implement principals and effect-bound capability decisions
+
+- Stable task ID: EAAEF-030
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: caller-identity,-capability-and-disclosure-polic
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/authority/external_principal.py","test/api/test_external_agent_principal.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/authority/external_principal.py","test/api/test_external_agent_principal.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind principal, repository, run, exact effects, expiry, autonomy/resource ceilings, disclosure/provider policy and bounded nonce; never infer authority from history or a CID.
+- Depends on: EAAEF-024
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/authority/external_principal.py","test/api/test_external_agent_principal.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_principal.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind principal, repository, run, exact effects, expiry, autonomy/resource ceilings, disclosure/provider policy and bounded nonce; never infer authority from history or a CID. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c0b915a0dba274f3417630881540c61bbf979f45f99f5ed2b0b5c870b9bf2f40
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/authority/external_principal.py, test/api/test_external_agent_principal.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/authority/external_principal.py","test/api/test_external_agent_principal.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_principal.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_principal.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:6a8316ac0baa08265e82a238681a42bd647b9d08697cc681d1bb9b4d8fdd6066
+
+## EAAEF-031 Enforce source-disclosure policy before model calls
+
+- Stable task ID: EAAEF-031
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: caller-identity,-capability-and-disclosure-polic
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/authority/source_disclosure.py","test/api/test_source_disclosure_policy.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/authority/source_disclosure.py","test/api/test_source_disclosure_policy.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Apply confidentiality, exclusions, secret scanning, provider allowlists, local-only rules, byte limits and exact ContextPack identity before disclosure.
+- Depends on: EAAEF-024, EAAEF-030
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/authority/source_disclosure.py","test/api/test_source_disclosure_policy.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_source_disclosure_policy.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Apply confidentiality, exclusions, secret scanning, provider allowlists, local-only rules, byte limits and exact ContextPack identity before disclosure. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:ac4220469797467cfa98e8e2bf30b4b4128a824adc799705404987e952020dd4
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/authority/source_disclosure.py, test/api/test_source_disclosure_policy.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/authority/source_disclosure.py","test/api/test_source_disclosure_policy.py"]
+- Validation: python3 -m pytest -q test/api/test_source_disclosure_policy.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_source_disclosure_policy.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:12f1006b1749c5ed97bd36a7d13d67e0d35b7333403e128a67a466fbab199e90
+
+## EAAEF-032 Implement exact-action approval and denial boundaries
+
+- Stable task ID: EAAEF-032
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: caller-identity,-capability-and-disclosure-polic
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/authority/approvals.py","test/api/test_external_agent_approvals.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/authority/approvals.py","test/api/test_external_agent_approvals.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Require authenticated input-bound approval for install/network/secret/disclosure/merge/push/destructive/publication effects and preserve denials.
+- Depends on: EAAEF-024, EAAEF-030
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/authority/approvals.py","test/api/test_external_agent_approvals.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_approvals.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Require authenticated input-bound approval for install/network/secret/disclosure/merge/push/destructive/publication effects and preserve denials. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:40bfd2dfeb62b6ed73cf50a0ef9482498b0ebc3a77bd0106ce8f28b2905b7336
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/authority/approvals.py, test/api/test_external_agent_approvals.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/authority/approvals.py","test/api/test_external_agent_approvals.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_approvals.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_approvals.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:ba5647406b837656c8b37e9b8b0c67ddfb2465c26c0f35960d843459e13bf5ad
+
+## EAAEF-033 Bind delegated authority to existing MCP++ profiles
+
+- Stable task ID: EAAEF-033
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: caller-identity,-capability-and-disclosure-polic
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G040
+- Owning repository: Mcp-Plus-Plus
+- Owned files: ["docs/spec/external-agent-delegation.md","tests/test_external_agent_delegation.py"]
+- Execution owned files: ["ipfs_accelerate_py/mcplusplus/docs/spec/external-agent-delegation.md","ipfs_accelerate_py/mcplusplus/tests/test_external_agent_delegation.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_accelerate_py/mcplusplus"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Map the external principal to existing interface/artifact/delegation/runtime/event/fencing profiles without inventing a new profile or granting backend authority.
+- Depends on: EAAEF-024, EAAEF-030
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/spec/external-agent-delegation.md","tests/test_external_agent_delegation.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_external_agent_delegation.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Map the external principal to existing interface/artifact/delegation/runtime/event/fencing profiles without inventing a new profile or granting backend authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c356f516d7d08dc19179a4b7f32b5e6c18178bbfbce67704df598ab4323777f8
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/spec/external-agent-delegation.md, tests/test_external_agent_delegation.py
+- Execution outputs: ["ipfs_accelerate_py/mcplusplus/docs/spec/external-agent-delegation.md","ipfs_accelerate_py/mcplusplus/tests/test_external_agent_delegation.py"]
+- Validation: python -m pytest -q tests/test_external_agent_delegation.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_external_agent_delegation.py"],"working_directory":"ipfs_accelerate_py/mcplusplus"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_accelerate_py/mcplusplus is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:a060b707175977dbd3c22a3d714f9da2872cb43e5361efa4bb055b781b1776e7
+
+## EAAEF-034 Qualify authority, disclosure and approval invariants
+
+- Stable task ID: EAAEF-034
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: caller-identity,-capability-and-disclosure-polic
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/security/test_external_agent_authority_boundaries.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/authority.json"]
+- Execution owned files: ["test/security/test_external_agent_authority_boundaries.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/authority.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Demonstrate that prompts, payments, commits, run IDs and transport authentication cannot widen mutation, disclosure, secret, proof-key or merge authority.
+- Depends on: EAAEF-024, EAAEF-031, EAAEF-032, EAAEF-033
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/security/test_external_agent_authority_boundaries.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/authority.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_external_agent_authority_boundaries.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Demonstrate that prompts, payments, commits, run IDs and transport authentication cannot widen mutation, disclosure, secret, proof-key or merge authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:4165817696fcc3c28c7b1abfc9292a621e6e85f4430e69e18fed0c056fbd9efa
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/security/test_external_agent_authority_boundaries.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/authority.json
+- Execution outputs: ["test/security/test_external_agent_authority_boundaries.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/authority.json"]
+- Validation: python3 -m pytest -q test/security/test_external_agent_authority_boundaries.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_external_agent_authority_boundaries.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:6ab37bebb4a3913388a8124e19d07fa8fffe2c11de64f14c4662eef2ca872d7e
+
+## EAAEF-040 Implement the safe generic ProjectAdapter
+
+- Stable task ID: EAAEF-040
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: project-onboarding-and-codebase-classification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/project_adapters/base.py","test/api/test_project_adapter_generic.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/project_adapters/base.py","test/api/test_project_adapter_generic.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Perform bounded read-only language/build/test/static inventory and return typed support outcomes without fabricating mutation commands.
+- Depends on: EAAEF-034
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/project_adapters/base.py","test/api/test_project_adapter_generic.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_project_adapter_generic.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Perform bounded read-only language/build/test/static inventory and return typed support outcomes without fabricating mutation commands. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:75c3291fd7fa401ab6c926607972fc04079901a793494aae89ebb39a7acae13c
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/project_adapters/base.py, test/api/test_project_adapter_generic.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/project_adapters/base.py","test/api/test_project_adapter_generic.py"]
+- Validation: python3 -m pytest -q test/api/test_project_adapter_generic.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_project_adapter_generic.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:9f6ecc701655b35273c04b1fd25e9051d699135987ba7e79f5bb60d04db6670e
+
+## EAAEF-041 Qualify the Python ProjectAdapter
+
+- Stable task ID: EAAEF-041
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: project-onboarding-and-codebase-classification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/project_adapters/python.py","test/api/test_project_adapter_python.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/project_adapters/python.py","test/api/test_project_adapter_python.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Compile locked Python toolchain, test and static-analysis profiles into structured argv and qualify the strongest currently supported mutation path.
+- Depends on: EAAEF-034, EAAEF-040
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/project_adapters/python.py","test/api/test_project_adapter_python.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_project_adapter_python.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Compile locked Python toolchain, test and static-analysis profiles into structured argv and qualify the strongest currently supported mutation path. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:b29b67b5aa175a08934c3d43520d1e3455336bc7c6d302043f39a7b9295cf270
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/project_adapters/python.py, test/api/test_project_adapter_python.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/project_adapters/python.py","test/api/test_project_adapter_python.py"]
+- Validation: python3 -m pytest -q test/api/test_project_adapter_python.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_project_adapter_python.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:83ba95d3c5c8c141470a3023588478132f23f127dec7fd6548d0f6f9d746813a
+
+## EAAEF-042 Discover and admit bounded validation commands
+
+- Stable task ID: EAAEF-042
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: project-onboarding-and-codebase-classification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G050
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/analysis/project_validation_candidates.py","tests/unit/analysis/test_project_validation_candidates.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/analysis/project_validation_candidates.py","ipfs_datasets_py/tests/unit/analysis/test_project_validation_candidates.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Extract README/comment/package/CI/history commands only as untrusted candidates, then require adapter allowlists and execution policy.
+- Depends on: EAAEF-034, EAAEF-040
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/analysis/project_validation_candidates.py","tests/unit/analysis/test_project_validation_candidates.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/analysis/test_project_validation_candidates.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Extract README/comment/package/CI/history commands only as untrusted candidates, then require adapter allowlists and execution policy. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:bfe2bf8eff6bde5256c56e70300fa971f71b100618ca8d84496a54dd23c1134d
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/analysis/project_validation_candidates.py, tests/unit/analysis/test_project_validation_candidates.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/analysis/project_validation_candidates.py","ipfs_datasets_py/tests/unit/analysis/test_project_validation_candidates.py"]
+- Validation: python -m pytest -q tests/unit/analysis/test_project_validation_candidates.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/analysis/test_project_validation_candidates.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:c0b0de7b6991d8f1914a3c8dd87e31fde3bac42e58760ece0214974cfe2042cf
+
+## EAAEF-043 Produce the typed project support matrix
+
+- Stable task ID: EAAEF-043
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: project-onboarding-and-codebase-classification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/project_adapters/assessment.py","docs/architecture/external_agent_autonomous_execution_fabric/project_adapter_support.md","test/api/test_repository_capability_assessment.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/project_adapters/assessment.py","docs/architecture/external_agent_autonomous_execution_fabric/project_adapter_support.md","test/api/test_repository_capability_assessment.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Distinguish preview-only, unsupported language/build, unsafe repository, insufficient validation, human configuration and mutation-not-admitted outcomes.
+- Depends on: EAAEF-034, EAAEF-040, EAAEF-041, EAAEF-042
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/project_adapters/assessment.py","docs/architecture/external_agent_autonomous_execution_fabric/project_adapter_support.md","test/api/test_repository_capability_assessment.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_repository_capability_assessment.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Distinguish preview-only, unsupported language/build, unsafe repository, insufficient validation, human configuration and mutation-not-admitted outcomes. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a2116e7d9fd117ef77626bf452184fdb43c7df724de48113cc0b4456648c665e
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/project_adapters/assessment.py, docs/architecture/external_agent_autonomous_execution_fabric/project_adapter_support.md, test/api/test_repository_capability_assessment.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/project_adapters/assessment.py","docs/architecture/external_agent_autonomous_execution_fabric/project_adapter_support.md","test/api/test_repository_capability_assessment.py"]
+- Validation: python3 -m pytest -q test/api/test_repository_capability_assessment.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_repository_capability_assessment.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:ff7ce4a4127e304b8f7712ea6fcf7f83aaf6f86bd3ed88db83c1fd3fb838f5d4
+
+## EAAEF-044 Qualify onboarding against representative repositories
+
+- Stable task ID: EAAEF-044
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: project-onboarding-and-codebase-classification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_project_onboarding.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/project_onboarding.json"]
+- Execution owned files: ["test/integration/test_external_agent_project_onboarding.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/project_onboarding.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Show safe classification for supported, unsupported and malicious fixtures and admit mutation only for the qualified Python profile.
+- Depends on: EAAEF-034, EAAEF-043
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_project_onboarding.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/project_onboarding.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_project_onboarding.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Show safe classification for supported, unsupported and malicious fixtures and admit mutation only for the qualified Python profile. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:d0ec73b5cbcfdb520634e52a1adaf9e20cb3385fb95b1ff75643975d937134b7
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_project_onboarding.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/project_onboarding.json
+- Execution outputs: ["test/integration/test_external_agent_project_onboarding.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/project_onboarding.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_project_onboarding.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_project_onboarding.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:5fb1c8b04f6f29d0d06d228c3659b458efa61e0d4ab0a4fb25be0af3831822cf
+
+## EAAEF-050 Define container execution and worker-lease contracts
+
+- Stable task ID: EAAEF-050
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: oci-container-execution-fabric
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/containers/contracts.py","test/api/test_container_execution_contracts.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/containers/contracts.py","test/api/test_container_execution_contracts.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind image, worktree, task, authority, resources, policy, artifact manifest, checkpoint and receipt while keeping host acceptance authority out of workers.
+- Depends on: EAAEF-044
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/containers/contracts.py","test/api/test_container_execution_contracts.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_container_execution_contracts.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind image, worktree, task, authority, resources, policy, artifact manifest, checkpoint and receipt while keeping host acceptance authority out of workers. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a927ae86a20b7c01a6187f99dd33af7e61cbdc49e20c4d4e11dad9076d69b2d5
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/containers/contracts.py, test/api/test_container_execution_contracts.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/containers/contracts.py","test/api/test_container_execution_contracts.py"]
+- Validation: python3 -m pytest -q test/api/test_container_execution_contracts.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_container_execution_contracts.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:34d37d845d766e93d3960d4c75fe916f913f91eb469e6acebd46d3e1a3dfa662
+
+## EAAEF-051 Implement rootless default-deny container launching
+
+- Stable task ID: EAAEF-051
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: oci-container-execution-fabric
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py","test/security/test_container_default_deny.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py","test/security/test_container_default_deny.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Launch nonroot, read-only-base, capability-dropped, no-new-privileges workers with PID/CPU/RAM/GPU/disk/time bounds, no Docker socket and network deny by default.
+- Depends on: EAAEF-044, EAAEF-050
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py","test/security/test_container_default_deny.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_container_default_deny.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Launch nonroot, read-only-base, capability-dropped, no-new-privileges workers with PID/CPU/RAM/GPU/disk/time bounds, no Docker socket and network deny by default. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c50d2d4821861bfb34499c94f51ff2b18bde70a8c352bd195dbf8b2d14101d3d
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py, test/security/test_container_default_deny.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py","test/security/test_container_default_deny.py"]
+- Validation: python3 -m pytest -q test/security/test_container_default_deny.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_container_default_deny.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3774b23b6f72eb51b8abe3a73c9e26721e19f605c6213583d9240222f782c723
+
+## EAAEF-052 Build digest-pinned toolchain and prover images
+
+- Stable task ID: EAAEF-052
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: oci-container-execution-fabric
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["containers/external-agent/supervisor.Containerfile","containers/external-agent/python-worker.Containerfile","containers/external-agent/prover.Containerfile","test/containers/test_external_agent_images.py"]
+- Execution owned files: ["containers/external-agent/supervisor.Containerfile","containers/external-agent/python-worker.Containerfile","containers/external-agent/prover.Containerfile","test/containers/test_external_agent_images.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Produce image digests, SBOMs, architectures, toolchain/verifier versions and supported adapter versions without mutable tags as authority.
+- Depends on: EAAEF-044, EAAEF-050
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["containers/external-agent/supervisor.Containerfile","containers/external-agent/python-worker.Containerfile","containers/external-agent/prover.Containerfile","test/containers/test_external_agent_images.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","OCI build and SBOM generation from admitted cached inputs; base-image network pull requires an exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":3,"cpu_millicores":8000,"disk_mib":65536,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":16384,"supervisor_processes":1,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/containers/test_external_agent_images.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Produce image digests, SBOMs, architectures, toolchain/verifier versions and supported adapter versions without mutable tags as authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:30a9f0c3202fbb6bbb4f1ae091a9d9630d4a465d3bb788c0681f47707914a8d6
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: containers/external-agent/supervisor.Containerfile, containers/external-agent/python-worker.Containerfile, containers/external-agent/prover.Containerfile, test/containers/test_external_agent_images.py
+- Execution outputs: ["containers/external-agent/supervisor.Containerfile","containers/external-agent/python-worker.Containerfile","containers/external-agent/prover.Containerfile","test/containers/test_external_agent_images.py"]
+- Validation: python3 -m pytest -q test/containers/test_external_agent_images.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/containers/test_external_agent_images.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:022d89fe9a8e88b8688270f5d754592dda7b0a260c00fd728fb48c2427dc8542
+
+## EAAEF-053 Implement tenant-safe dependency and analysis caches
+
+- Stable task ID: EAAEF-053
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: oci-container-execution-fabric
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G060
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/execution_cache/profile.py","tests/test_execution_cache_profile.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/execution_cache/profile.py","ipfs_kit_py/tests/test_execution_cache_profile.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Key caches by lock, toolchain, architecture, environment and network policy; never share untrusted writable cache authority across tenants.
+- Depends on: EAAEF-044, EAAEF-050
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/execution_cache/profile.py","tests/test_execution_cache_profile.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_execution_cache_profile.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Key caches by lock, toolchain, architecture, environment and network policy; never share untrusted writable cache authority across tenants. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:fc4110b724ac9146c442f0648b4575290652fe3d8fcc226ead0641908fd10931
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/execution_cache/profile.py, tests/test_execution_cache_profile.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/execution_cache/profile.py","ipfs_kit_py/tests/test_execution_cache_profile.py"]
+- Validation: python -m pytest -q tests/test_execution_cache_profile.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_execution_cache_profile.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:e587b42f90ff4aa3296113498bda6e80cdb1aece5c2cb329acb6f913f260b52e
+
+## EAAEF-054 Implement fenced container checkpoints and restart
+
+- Stable task ID: EAAEF-054
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: oci-container-execution-fabric
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py","test/api/test_container_checkpoint_restart.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py","test/api/test_container_checkpoint_restart.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Preserve attempt/worktree/semantic delta/stages/tests/proofs/model calls/artifacts/resources/obligations/effects and require a later fence on restart.
+- Depends on: EAAEF-044, EAAEF-050, EAAEF-051
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py","test/api/test_container_checkpoint_restart.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_container_checkpoint_restart.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Preserve attempt/worktree/semantic delta/stages/tests/proofs/model calls/artifacts/resources/obligations/effects and require a later fence on restart. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:e8802ad419c3c8bb5c7cfac8a2c79a1720f24ed08f41c81cc8bdfd562b482200
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py, test/api/test_container_checkpoint_restart.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py","test/api/test_container_checkpoint_restart.py"]
+- Validation: python3 -m pytest -q test/api/test_container_checkpoint_restart.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_container_checkpoint_restart.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:b768ac1e3ba56fb5e37d4620d87f7b841f9d8024d93c76729820cf17eb0b71c5
+
+## EAAEF-055 Qualify container isolation and cleanup
+
+- Stable task ID: EAAEF-055
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: oci-container-execution-fabric
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/security/test_external_agent_container_isolation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container.json"]
+- Execution owned files: ["test/security/test_external_agent_container_isolation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Verify no host source/credential/socket/device/cross-volume access, bounded resources, default-deny network, checkpoint recovery and terminal cleanup on a real admitted runtime.
+- Depends on: EAAEF-044, EAAEF-051, EAAEF-052, EAAEF-053, EAAEF-054
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/security/test_external_agent_container_isolation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":4,"cpu_millicores":8000,"disk_mib":32768,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":16384,"supervisor_processes":1,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_external_agent_container_isolation.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Verify no host source/credential/socket/device/cross-volume access, bounded resources, default-deny network, checkpoint recovery and terminal cleanup on a real admitted runtime. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:b0c68e5cf497077cdadc25bc4dc033ec0612bc218b529c81dfee571d9b5ea269
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/security/test_external_agent_container_isolation.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/container.json
+- Execution outputs: ["test/security/test_external_agent_container_isolation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container.json"]
+- Validation: python3 -m pytest -q test/security/test_external_agent_container_isolation.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_external_agent_container_isolation.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:dd4d9a71da9949f8892f10ec5b6d19699afaf9470d80c9bb8ccaaf567b0fcb4c
+
+## EAAEF-060 Define federated retrieval request, plan and result
+
+- Stable task ID: EAAEF-060
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: handoff-context-and-federated-retrieval
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G070
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/retrieval/agent_work_contracts.py","tests/unit/retrieval/test_agent_work_contracts.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/retrieval/agent_work_contracts.py","ipfs_datasets_py/tests/unit/retrieval/test_agent_work_contracts.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Specify objectives, symbols, evidence classes, source domains, per-engine budgets, graph/AST depth, proof policy, bytes, trust, recency and effective dates.
+- Depends on: EAAEF-055
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/retrieval/agent_work_contracts.py","tests/unit/retrieval/test_agent_work_contracts.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/retrieval/test_agent_work_contracts.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Specify objectives, symbols, evidence classes, source domains, per-engine budgets, graph/AST depth, proof policy, bytes, trust, recency and effective dates. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:5af6c025e9bc635e4a7f0d10b0de4366049591628db0a097f5aff72f44a430c1
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/retrieval/agent_work_contracts.py, tests/unit/retrieval/test_agent_work_contracts.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/retrieval/agent_work_contracts.py","ipfs_datasets_py/tests/unit/retrieval/test_agent_work_contracts.py"]
+- Validation: python -m pytest -q tests/unit/retrieval/test_agent_work_contracts.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/retrieval/test_agent_work_contracts.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:d0ee814dd7112c6fe6557f954396972d732e9c247b66142b72474b6dc80d5ea2
+
+## EAAEF-061 Enforce separate retrieval corpora and provenance
+
+- Stable task ID: EAAEF-061
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: handoff-context-and-federated-retrieval
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G070
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/retrieval/agent_work_corpora.py","tests/unit/retrieval/test_agent_work_corpora.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/retrieval/agent_work_corpora.py","ipfs_datasets_py/tests/unit/retrieval/test_agent_work_corpora.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Keep repository truth, imported claims, verified receipts, requirements, external docs, legal/policy data and model hypotheses separate and trust-filtered.
+- Depends on: EAAEF-055, EAAEF-060
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/retrieval/agent_work_corpora.py","tests/unit/retrieval/test_agent_work_corpora.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/retrieval/test_agent_work_corpora.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Keep repository truth, imported claims, verified receipts, requirements, external docs, legal/policy data and model hypotheses separate and trust-filtered. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9c0ca6e3df571366a20a4c336c168f40a688847ae9d2cad99df6a18f996c3f3f
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/retrieval/agent_work_corpora.py, tests/unit/retrieval/test_agent_work_corpora.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/retrieval/agent_work_corpora.py","ipfs_datasets_py/tests/unit/retrieval/test_agent_work_corpora.py"]
+- Validation: python -m pytest -q tests/unit/retrieval/test_agent_work_corpora.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/retrieval/test_agent_work_corpora.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:62efb4fc8682f6063fe749e58d601179b2084abacb093214a73e3c60dbd4ce8b
+
+## EAAEF-062 Compose existing AST, capsules and hybrid graph retrieval
+
+- Stable task ID: EAAEF-062
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: handoff-context-and-federated-retrieval
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G070
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/retrieval/agent_work_federation.py","tests/integration/test_agent_work_federation.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/retrieval/agent_work_federation.py","ipfs_datasets_py/tests/integration/test_agent_work_federation.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Federate existing AST/symbol/semantic/capsule/BM25/vector/sparse-GraphRAG/KG/legal/proof/counterexample indexes without creating a duplicate index system.
+- Depends on: EAAEF-055, EAAEF-060, EAAEF-061
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/retrieval/agent_work_federation.py","tests/integration/test_agent_work_federation.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/integration/test_agent_work_federation.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Federate existing AST/symbol/semantic/capsule/BM25/vector/sparse-GraphRAG/KG/legal/proof/counterexample indexes without creating a duplicate index system. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:28b479e5c5be4d8b57468abae00c3cc1f1dd697fa064f26e7e6b4a9f622472ac
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/retrieval/agent_work_federation.py, tests/integration/test_agent_work_federation.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/retrieval/agent_work_federation.py","ipfs_datasets_py/tests/integration/test_agent_work_federation.py"]
+- Validation: python -m pytest -q tests/integration/test_agent_work_federation.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/integration/test_agent_work_federation.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:c9bec773194e30cbc3f136d7f3e3182377ee96bf2d38553a51f18a703eef7d9f
+
+## EAAEF-063 Construct bounded trust-aware ContextPacks
+
+- Stable task ID: EAAEF-063
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: handoff-context-and-federated-retrieval
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G070
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/context_pack/external_agent.py","tests/test_external_agent_context_pack.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/context_pack/external_agent.py","ipfs_kit_py/tests/test_external_agent_context_pack.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Distinguish edit-critical raw source, verified/conservative/heuristic capsules, conversation/legal context, proofs, counterexamples and assumptions; never replace opaque critical code with heuristics.
+- Depends on: EAAEF-055, EAAEF-060, EAAEF-062
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/context_pack/external_agent.py","tests/test_external_agent_context_pack.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_external_agent_context_pack.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Distinguish edit-critical raw source, verified/conservative/heuristic capsules, conversation/legal context, proofs, counterexamples and assumptions; never replace opaque critical code with heuristics. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:78f16de16ae98bdddd27bec53c462fadf1093fd898e722682b6df88e4fa649c1
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/context_pack/external_agent.py, tests/test_external_agent_context_pack.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/context_pack/external_agent.py","ipfs_kit_py/tests/test_external_agent_context_pack.py"]
+- Validation: python -m pytest -q tests/test_external_agent_context_pack.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_external_agent_context_pack.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:724f09d844b4091699ffad145acc6b8807621fe30883499139988110d517f6aa
+
+## EAAEF-064 Qualify federated retrieval relevance and trust
+
+- Stable task ID: EAAEF-064
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: handoff-context-and-federated-retrieval
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G070
+- Owning repository: ipfs_datasets_py
+- Owned files: ["tests/integration/test_external_agent_retrieval.py","docs/architecture/external_agent_retrieval_report.md"]
+- Execution owned files: ["ipfs_datasets_py/tests/integration/test_external_agent_retrieval.py","ipfs_datasets_py/docs/architecture/external_agent_retrieval_report.md"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Prove every item carries source CID/revision/trust/mode/score/path/span/capsule/freshness/reason and untrusted similarity cannot override source truth.
+- Depends on: EAAEF-055, EAAEF-062, EAAEF-063
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["tests/integration/test_external_agent_retrieval.py","docs/architecture/external_agent_retrieval_report.md"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/integration/test_external_agent_retrieval.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Prove every item carries source CID/revision/trust/mode/score/path/span/capsule/freshness/reason and untrusted similarity cannot override source truth. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:78af11b60a55d0002a7d597e751ef3fe7995709bdab6cd893ea446fd09c580c6
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: tests/integration/test_external_agent_retrieval.py, docs/architecture/external_agent_retrieval_report.md
+- Execution outputs: ["ipfs_datasets_py/tests/integration/test_external_agent_retrieval.py","ipfs_datasets_py/docs/architecture/external_agent_retrieval_report.md"]
+- Validation: python -m pytest -q tests/integration/test_external_agent_retrieval.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/integration/test_external_agent_retrieval.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:a6e925fdf7b724cb00f93c99c26475b804031b31da2de3e84b70c5a9b3f4ac09
+
+## EAAEF-070 Compile handoff objectives into typed goal contracts
+
+- Stable task ID: EAAEF-070
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: logic-governed-goal-and-task-compilation
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_goal_contract.py","test/api/test_external_goal_contract.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_goal_contract.py","test/api/test_external_goal_contract.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Declare desired and prohibited outcomes, scope, budgets, authority ceiling, verification/proof/review requirements and completion evidence.
+- Depends on: EAAEF-064
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_goal_contract.py","test/api/test_external_goal_contract.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_goal_contract.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Declare desired and prohibited outcomes, scope, budgets, authority ceiling, verification/proof/review requirements and completion evidence. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:02d1483559ed7c23ce5e7ccce0ce0c5f792fa7b21254c47dda3ce2b2c8f6dfb9
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_goal_contract.py, test/api/test_external_goal_contract.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_goal_contract.py","test/api/test_external_goal_contract.py"]
+- Validation: python3 -m pytest -q test/api/test_external_goal_contract.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_goal_contract.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:c7c3ad8e8056ee98a3e196682b2e76ad3da215b71db2ebfd43c20677b1c006ad
+
+## EAAEF-071 Generate and validate bounded task decompositions
+
+- Stable task ID: EAAEF-071
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: logic-governed-goal-and-task-compilation
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_work_plan.py","test/api/test_external_work_plan.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_work_plan.py","test/api/test_external_work_plan.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Use existing FormalWorkPlan machinery to validate coverage, acyclicity, contradictions, scope, resources, merge/proof feasibility and duplicate semantics.
+- Depends on: EAAEF-064, EAAEF-070
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_work_plan.py","test/api/test_external_work_plan.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_work_plan.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Use existing FormalWorkPlan machinery to validate coverage, acyclicity, contradictions, scope, resources, merge/proof feasibility and duplicate semantics. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:912a4915064ab025caed89439f1cf325a32653206d23cebad75a29705ce8b322
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_work_plan.py, test/api/test_external_work_plan.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_work_plan.py","test/api/test_external_work_plan.py"]
+- Validation: python3 -m pytest -q test/api/test_external_work_plan.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_work_plan.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:a8d55496e141a54154c4549aa1d30dc809061e92e01e7b22c200d8cf7682359e
+
+## EAAEF-072 Compile planning proof obligations with existing logic
+
+- Stable task ID: EAAEF-072
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: logic-governed-goal-and-task-compilation
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G080
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/logic/external_work_plan_obligations.py","tests/unit/logic/test_external_work_plan_obligations.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/logic/external_work_plan_obligations.py","ipfs_datasets_py/tests/unit/logic/test_external_work_plan_obligations.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Prove child-to-parent coverage, safe parallel effects, validation-before-acceptance, immutable criteria and no self-granted authority using admitted provers only.
+- Depends on: EAAEF-064, EAAEF-070, EAAEF-071
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/logic/external_work_plan_obligations.py","tests/unit/logic/test_external_work_plan_obligations.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/logic/test_external_work_plan_obligations.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Prove child-to-parent coverage, safe parallel effects, validation-before-acceptance, immutable criteria and no self-granted authority using admitted provers only. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:3b199e66c1b0913a14219bc55a40dd03be88a67d1b19a0b0ae71b8d74bdac9c3
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/logic/external_work_plan_obligations.py, tests/unit/logic/test_external_work_plan_obligations.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/logic/external_work_plan_obligations.py","ipfs_datasets_py/tests/unit/logic/test_external_work_plan_obligations.py"]
+- Validation: python -m pytest -q tests/unit/logic/test_external_work_plan_obligations.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/logic/test_external_work_plan_obligations.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:ba145b1d898978f856217bd787a3b73db7b1287d1959af0147260a1967767f4f
+
+## EAAEF-073 Score alternatives and deterministically admit a plan
+
+- Stable task ID: EAAEF-073
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: logic-governed-goal-and-task-compilation
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/plan_admission.py","test/api/test_external_plan_admission.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/plan_admission.py","test/api/test_external_plan_admission.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Score critical path, safe width, model/proof cost, resources, merge risk, uncertainty, prior success and cache locality; a deterministic logic gate chooses.
+- Depends on: EAAEF-064, EAAEF-071, EAAEF-072
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/plan_admission.py","test/api/test_external_plan_admission.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_plan_admission.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Score critical path, safe width, model/proof cost, resources, merge risk, uncertainty, prior success and cache locality; a deterministic logic gate chooses. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:f8eb93c0ddc78b95a4373845f187e9189c4aa8780162dc6e3b966d5a4216a16d
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/plan_admission.py, test/api/test_external_plan_admission.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/plan_admission.py","test/api/test_external_plan_admission.py"]
+- Validation: python3 -m pytest -q test/api/test_external_plan_admission.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_plan_admission.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:a13017ef6ff39280cd532fdc48bb81d789d64ae69d60bd5540b20af4c23a0174
+
+## EAAEF-074 Qualify goal coverage and plan admission
+
+- Stable task ID: EAAEF-074
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: logic-governed-goal-and-task-compilation
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_plan_compilation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/planning.json"]
+- Execution owned files: ["test/integration/test_external_agent_plan_compilation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/planning.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Reject omitted postconditions, cycles, conflicts, impossible resources and weakened criteria; accept only a content-addressed FormalWorkPlan with current proofs.
+- Depends on: EAAEF-064, EAAEF-073
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_plan_compilation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/planning.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_plan_compilation.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Reject omitted postconditions, cycles, conflicts, impossible resources and weakened criteria; accept only a content-addressed FormalWorkPlan with current proofs. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:08764708f227e0caf011f7d39d22da710cd4b4acae000524ccbe1b587bfb6190
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_plan_compilation.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/planning.json
+- Execution outputs: ["test/integration/test_external_agent_plan_compilation.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/planning.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_plan_compilation.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_plan_compilation.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:fde69ed0125f19334ee4d7f73cd4802df2f728da7a48b4ac6ca14c7c98bc7a00
+
+## EAAEF-080 Compose the multi-authority dependency graph
+
+- Stable task ID: EAAEF-080
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: conflict-free-multi-agent-parallel-execution
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_composite_graph.py","test/api/test_external_composite_graph.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_composite_graph.py","test/api/test_external_composite_graph.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Compose goal/task/AST/data/schema/contract/proof/validation/scope/effect/merge/resource edges without conflating meanings or authority.
+- Depends on: EAAEF-074
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_composite_graph.py","test/api/test_external_composite_graph.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_composite_graph.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Compose goal/task/AST/data/schema/contract/proof/validation/scope/effect/merge/resource edges without conflating meanings or authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:3d1da85b14e35c16c4a6bfdb2e65bca7ec1cc6f30d10279743dfe8ee198ce384
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_composite_graph.py, test/api/test_external_composite_graph.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_composite_graph.py","test/api/test_external_composite_graph.py"]
+- Validation: python3 -m pytest -q test/api/test_external_composite_graph.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_composite_graph.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3ea3d71be8b477cc9c760a5996ad82029f14816156580153512f9f6205ea80c8
+
+## EAAEF-081 Derive conservative semantic conflict sets
+
+- Stable task ID: EAAEF-081
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: conflict-free-multi-agent-parallel-execution
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_conflict_graph.py","test/api/test_external_conflict_graph.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_conflict_graph.py","test/api/test_external_conflict_graph.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Serialize overlapping symbols/files/interfaces/schemas/authorities/resources/effects unless an explicit merge contract proves compatibility; unknown scope conflicts.
+- Depends on: EAAEF-074, EAAEF-080
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_conflict_graph.py","test/api/test_external_conflict_graph.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_conflict_graph.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Serialize overlapping symbols/files/interfaces/schemas/authorities/resources/effects unless an explicit merge contract proves compatibility; unknown scope conflicts. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a2e41471f3cc5fda85e7981046d917f8ae9e065a86e5c7257006433505140581
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_conflict_graph.py, test/api/test_external_conflict_graph.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_conflict_graph.py","test/api/test_external_conflict_graph.py"]
+- Validation: python3 -m pytest -q test/api/test_external_conflict_graph.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_conflict_graph.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:fb1872fc16ba5ff7ef99225b0bc3918e7bdbd01364e2dda198a09be454bc889e
+
+## EAAEF-082 Select resource-aware conflict-free frontiers
+
+- Stable task ID: EAAEF-082
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: conflict-free-multi-agent-parallel-execution
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_frontier.py","test/api/test_external_frontier.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_frontier.py","test/api/test_external_frontier.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Maximize useful ready antichains under dependencies, leases, quotas, containers, worktrees, merge capacity, confidence and proofs with deterministic receipts.
+- Depends on: EAAEF-074, EAAEF-080, EAAEF-081
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_frontier.py","test/api/test_external_frontier.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_frontier.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Maximize useful ready antichains under dependencies, leases, quotas, containers, worktrees, merge capacity, confidence and proofs with deterministic receipts. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:0c86feced605a2caeb374fd2801b322ff8b1c2f352f030faf5e2f3a5235e28d8
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_frontier.py, test/api/test_external_frontier.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_frontier.py","test/api/test_external_frontier.py"]
+- Validation: python3 -m pytest -q test/api/test_external_frontier.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_frontier.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:55cfdc8fa9e3a4cb54f9778d44373e9a5fd499aa154de38083c01f23e377dd04
+
+## EAAEF-083 Prevent duplicate logical acceptance
+
+- Stable task ID: EAAEF-083
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: conflict-free-multi-agent-parallel-execution
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_logical_claim.py","test/api/test_external_logical_claim.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_logical_claim.py","test/api/test_external_logical_claim.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind task, plan revision, base tree, semantic root, task-spec CID and idempotency key so many attempts can run but one result alone is accepted.
+- Depends on: EAAEF-074, EAAEF-080
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_logical_claim.py","test/api/test_external_logical_claim.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_logical_claim.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind task, plan revision, base tree, semantic root, task-spec CID and idempotency key so many attempts can run but one result alone is accepted. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:eaabfb1922628eedac657b2ad1784a8c078aeb1ac609532c67b07386ac22411c
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/external_logical_claim.py, test/api/test_external_logical_claim.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/runtime/external_logical_claim.py","test/api/test_external_logical_claim.py"]
+- Validation: python3 -m pytest -q test/api/test_external_logical_claim.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_logical_claim.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:8f9042b7e0d3452380ae2d991004a2f123b603e5e5043bb40e96237f122538c3
+
+## EAAEF-084 Emit bounded subagent work packets
+
+- Stable task ID: EAAEF-084
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: conflict-free-multi-agent-parallel-execution
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py","test/api/test_external_work_packet.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py","test/api/test_external_work_packet.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind exact goal/task/repo/semantic/context/scope/effects/container/resources/model/contracts/tests/proofs/completion/lease/fence/checkpoint; workers cannot self-approve.
+- Depends on: EAAEF-074, EAAEF-082, EAAEF-083
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py","test/api/test_external_work_packet.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_work_packet.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind exact goal/task/repo/semantic/context/scope/effects/container/resources/model/contracts/tests/proofs/completion/lease/fence/checkpoint; workers cannot self-approve. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a19db449b1a8996a686069851e039f79c63cb45a3bfad06bf5a57915e06c4ae4
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py, test/api/test_external_work_packet.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py","test/api/test_external_work_packet.py"]
+- Validation: python3 -m pytest -q test/api/test_external_work_packet.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_work_packet.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:5dc6cf72caef56d10166a0cdb275b55dc69f7593cf53eabeb419ca09ebd23bba
+
+## EAAEF-085 Qualify parallel frontier safety
+
+- Stable task ID: EAAEF-085
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: conflict-free-multi-agent-parallel-execution
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_parallel_frontier.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/parallel_frontier.json"]
+- Execution owned files: ["test/integration/test_external_agent_parallel_frontier.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/parallel_frontier.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Run conflicting and compatible tasks and prove safe concurrency, one accepted logical result, stale-fence rejection and resource enforcement.
+- Depends on: EAAEF-074, EAAEF-082, EAAEF-083, EAAEF-084
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_parallel_frontier.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/parallel_frontier.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_parallel_frontier.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Run conflicting and compatible tasks and prove safe concurrency, one accepted logical result, stale-fence rejection and resource enforcement. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:843d267184efc2ea3e2afc5e98a160ef8cab8d97af83764b95be96c566b7e3c9
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_parallel_frontier.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/parallel_frontier.json
+- Execution outputs: ["test/integration/test_external_agent_parallel_frontier.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/parallel_frontier.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_parallel_frontier.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_parallel_frontier.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:dfb05a741852eb9caa34e70378d5760c042554d6432d6ca2ae1ab5394d75644e
+
+## EAAEF-090 Version the complete mutable control-plane schema
+
+- Stable task ID: EAAEF-090
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_control_schema.py","test/api/test_external_agent_control_schema.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_control_schema.py","test/api/test_external_agent_control_schema.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Normalize repositories, handoffs, sessions, runs, goal/plan/task revisions, conflicts, processes, containers, claims, leases, reservations, approvals, events, checkpoints, validation/proofs, merge, artifacts, migrations and cursors.
+- Depends on: EAAEF-085
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_control_schema.py","test/api/test_external_agent_control_schema.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_control_schema.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Normalize repositories, handoffs, sessions, runs, goal/plan/task revisions, conflicts, processes, containers, claims, leases, reservations, approvals, events, checkpoints, validation/proofs, merge, artifacts, migrations and cursors. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:6b17397b71d8507a157906e53dbc19e04a88120387dfadf16c4145288c0da432
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_control_schema.py, test/api/test_external_agent_control_schema.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_control_schema.py","test/api/test_external_agent_control_schema.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_control_schema.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_control_schema.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:ac4311c9f0f82fe5ef518d8e13dbe0101268d81582b73bf405d826f4883b19a6
+
+## EAAEF-091 Define authenticated typed Quack commands
+
+- Stable task ID: EAAEF-091
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/duckdb/quack/external_agent_commands.py","tests/unit/duckdb/test_external_agent_quack_commands.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/duckdb/quack/external_agent_commands.py","ipfs_datasets_py/tests/unit/duckdb/test_external_agent_quack_commands.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Require request/principal/authority/shard/epoch/lease/fence/idempotency/deadline/CAS/typed operation, bounded messages, correlation, cancellation, retry classes and no untrusted SQL.
+- Depends on: EAAEF-085, EAAEF-090
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/duckdb/quack/external_agent_commands.py","tests/unit/duckdb/test_external_agent_quack_commands.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/unit/duckdb/test_external_agent_quack_commands.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Require request/principal/authority/shard/epoch/lease/fence/idempotency/deadline/CAS/typed operation, bounded messages, correlation, cancellation, retry classes and no untrusted SQL. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:19cf6fe511de8fdd2667cc0019fab474326718f4a0f2923113eebc591d8c02df
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/duckdb/quack/external_agent_commands.py, tests/unit/duckdb/test_external_agent_quack_commands.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/duckdb/quack/external_agent_commands.py","ipfs_datasets_py/tests/unit/duckdb/test_external_agent_quack_commands.py"]
+- Validation: python -m pytest -q tests/unit/duckdb/test_external_agent_quack_commands.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/unit/duckdb/test_external_agent_quack_commands.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:114b17180133f57d8216516697332e096d3233985f5fb9ad25623f5814ae797d
+
+## EAAEF-092 Route all mutable repositories through the Quack owner
+
+- Stable task ID: EAAEF-092
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","test/api/test_external_agent_state_repository.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","test/api/test_external_agent_state_repository.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Consolidate handoff/run/goal/plan/task/attempt/provider/effect/validation/proof/merge operations behind one authenticated gateway; remote workers never open DuckDB files.
+- Depends on: EAAEF-085, EAAEF-090, EAAEF-091
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","test/api/test_external_agent_state_repository.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_state_repository.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Consolidate handoff/run/goal/plan/task/attempt/provider/effect/validation/proof/merge operations behind one authenticated gateway; remote workers never open DuckDB files. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:0a8516cb2bf088061644332d07503dc49494d37981e3e77a0de80e992e5beb9a
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py, test/api/test_external_agent_state_repository.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","test/api/test_external_agent_state_repository.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_state_repository.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_state_repository.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:892d52d3ce45fdb0d210850218011621a451edc135e71722d8c29a666ed8662e
+
+## EAAEF-093 Qualify one fenced Quack owner and failover
+
+- Stable task ID: EAAEF-093
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py","test/api/test_external_quack_owner_failover.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py","test/api/test_external_quack_owner_failover.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Make DuckDB plus Quack the joint orchestrator: one file-opening owner serializes authenticated multi-reader/multi-writer clients, advances epoch on failover and rejects stale owners.
+- Depends on: EAAEF-085, EAAEF-090, EAAEF-091, EAAEF-092
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py","test/api/test_external_quack_owner_failover.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","Quack owner crash/restart, later-epoch takeover and stale-owner rejection are confined to a disposable test shard"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":4,"cpu_millicores":12000,"disk_mib":65536,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":24576,"supervisor_processes":2,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_quack_owner_failover.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Make DuckDB plus Quack the joint orchestrator: one file-opening owner serializes authenticated multi-reader/multi-writer clients, advances epoch on failover and rejects stale owners. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:63b1e4d6cca0f7a12816166c18f7aa6f68c32db1a28c0d0cc100a6860265170d
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py, test/api/test_external_quack_owner_failover.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py","test/api/test_external_quack_owner_failover.py"]
+- Validation: python3 -m pytest -q test/api/test_external_quack_owner_failover.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_quack_owner_failover.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:4ca4ce12740c82ee24a7edc2870484b6577158b9d38bd04fb2669f43fabc7ca5
+
+## EAAEF-094 Project immutable history into DuckLake
+
+- Stable task ID: EAAEF-094
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/ducklake/external_agent_history.py","tests/integration/test_external_agent_ducklake_history.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/ducklake/external_agent_history.py","ipfs_datasets_py/tests/integration/test_external_agent_ducklake_history.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Publish immutable epochs, task/event/audit history, snapshots, lineage, benchmarks and recovery manifests from an authoritative DuckDB outbox cursor; DuckLake never grants current authority.
+- Depends on: EAAEF-085, EAAEF-090, EAAEF-092
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/ducklake/external_agent_history.py","tests/integration/test_external_agent_ducklake_history.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/integration/test_external_agent_ducklake_history.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Publish immutable epochs, task/event/audit history, snapshots, lineage, benchmarks and recovery manifests from an authoritative DuckDB outbox cursor; DuckLake never grants current authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c302ab1a544964532fed0d44aacc39c0614db2bfc967cfc604397ef9a66e9a21
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/ducklake/external_agent_history.py, tests/integration/test_external_agent_ducklake_history.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/ducklake/external_agent_history.py","ipfs_datasets_py/tests/integration/test_external_agent_ducklake_history.py"]
+- Validation: python -m pytest -q tests/integration/test_external_agent_ducklake_history.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/integration/test_external_agent_ducklake_history.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:7ba7f23298247666cde7e96f7bf03635db7929b21c92de8f991034b5e0616e33
+
+## EAAEF-095 Publish immutable Parquet, IPLD, CAR and IPFS artifacts
+
+- Stable task ID: EAAEF-095
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/external_agent_history/publication.py","tests/test_external_agent_history_publication.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/external_agent_history/publication.py","ipfs_kit_py/tests/test_external_agent_history_publication.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Content-address committed events/snapshots with privacy-safe manifests and optional CAR/IPFS publication; replication lag cannot grant or revoke authority.
+- Depends on: EAAEF-085, EAAEF-094
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/external_agent_history/publication.py","tests/test_external_agent_history_publication.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","optional CAR/IPFS publication only through an exact authenticated publication approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_external_agent_history_publication.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Content-address committed events/snapshots with privacy-safe manifests and optional CAR/IPFS publication; replication lag cannot grant or revoke authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:2dfea9a8e514f8c7078041acf9bfe7e7a045e94ae65b5743b15fbbaa1e943060
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/external_agent_history/publication.py, tests/test_external_agent_history_publication.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/external_agent_history/publication.py","ipfs_kit_py/tests/test_external_agent_history_publication.py"]
+- Validation: python -m pytest -q tests/test_external_agent_history_publication.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_external_agent_history_publication.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:6a410ae9c688a58b034871ffe83e7ebd8b9e10ee2aa91121507e1c83e1d9fc6f
+
+## EAAEF-096 Implement backup, restore and ambiguity recovery
+
+- Stable task ID: EAAEF-096
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_control_recovery.py","test/api/test_external_control_recovery.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_control_recovery.py","test/api/test_external_control_recovery.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Recover owner crash/restart, duplicate/ambiguous transactions, network partitions, DuckLake outage/delay, corrupted snapshots and backups without accepting stale writes.
+- Depends on: EAAEF-085, EAAEF-093, EAAEF-094
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_control_recovery.py","test/api/test_external_control_recovery.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_control_recovery.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Recover owner crash/restart, duplicate/ambiguous transactions, network partitions, DuckLake outage/delay, corrupted snapshots and backups without accepting stale writes. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:05a29d1e03296fda17204394ffbdac65820c1305cb6b59aa2b528c1363a06528
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/external_control_recovery.py, test/api/test_external_control_recovery.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/runtime/external_control_recovery.py","test/api/test_external_control_recovery.py"]
+- Validation: python3 -m pytest -q test/api/test_external_control_recovery.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_control_recovery.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:c333e6e630ad1f2549a032dccba3e3f10bd7728647b6793eceed481da945cb2f
+
+## EAAEF-097 Qualify DuckDB, Quack and DuckLake authority separation
+
+- Stable task ID: EAAEF-097
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P0
+- Track: production-duckdb,-quack-and-ducklake-plane
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_control_plane.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/control_plane.json"]
+- Execution owned files: ["test/integration/test_external_agent_control_plane.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/control_plane.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Prove concurrent clients use the sole Quack owner, stale fences fail, retries are idempotent, and DuckLake loss/lag never changes claims, leases, fences or merge authority.
+- Depends on: EAAEF-085, EAAEF-093, EAAEF-094, EAAEF-095, EAAEF-096
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_control_plane.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/control_plane.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","DuckLake outage/lag/corruption and DuckDB/Quack partition exercises use disposable replicas and never the live authority shard"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":4,"cpu_millicores":12000,"disk_mib":65536,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":24576,"supervisor_processes":2,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_control_plane.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Prove concurrent clients use the sole Quack owner, stale fences fail, retries are idempotent, and DuckLake loss/lag never changes claims, leases, fences or merge authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:13eda280deec189b33b096f81e618b848d3f67f6ae745a36efc7dfef06baa3ff
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_control_plane.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/control_plane.json
+- Execution outputs: ["test/integration/test_external_agent_control_plane.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/control_plane.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_control_plane.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_control_plane.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:1b038d7053cf3ee6adae79baeb21880be967d610c60e589be297909d81335e18
+
+## EAAEF-100 Merge accepted results through the admitted path
+
+- Stable task ID: EAAEF-100
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: closed-loop-execution-and-adaptive-replanning
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G110
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_merge_loop.py","test/api/test_external_merge_loop.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_merge_loop.py","test/api/test_external_merge_loop.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Verify patch/receipts, merge with exact authority, recompute the canonical repository state and settle the merge queue before downstream acceptance.
+- Depends on: EAAEF-097
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_merge_loop.py","test/api/test_external_merge_loop.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_merge_loop.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Verify patch/receipts, merge with exact authority, recompute the canonical repository state and settle the merge queue before downstream acceptance. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:b789aa940bb6afd51f1e90e321a89f3c69a0c3222bde5eddb76fae72f2d378c1
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/external_merge_loop.py, test/api/test_external_merge_loop.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/runtime/external_merge_loop.py","test/api/test_external_merge_loop.py"]
+- Validation: python3 -m pytest -q test/api/test_external_merge_loop.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_merge_loop.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3898823c1bec897a659cc31c19488a70c588279fb0e296840538d298a7cd5013
+
+## EAAEF-101 Refresh semantic indexes incrementally
+
+- Stable task ID: EAAEF-101
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: closed-loop-execution-and-adaptive-replanning
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G110
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/analysis/external_agent_incremental_refresh.py","tests/integration/test_external_agent_incremental_refresh.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/analysis/external_agent_incremental_refresh.py","ipfs_datasets_py/tests/integration/test_external_agent_incremental_refresh.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Incrementally refresh AST, semantic state, capsules, BM25, vectors, GraphRAG, KG, tests and proofs and emit precise invalidations/reuse receipts.
+- Depends on: EAAEF-097, EAAEF-100
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/analysis/external_agent_incremental_refresh.py","tests/integration/test_external_agent_incremental_refresh.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/integration/test_external_agent_incremental_refresh.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Incrementally refresh AST, semantic state, capsules, BM25, vectors, GraphRAG, KG, tests and proofs and emit precise invalidations/reuse receipts. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:dd0c465297f05ac8d47ee7349f010ebfaa2416067aab7b2e1146ca92de723ec4
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/analysis/external_agent_incremental_refresh.py, tests/integration/test_external_agent_incremental_refresh.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/analysis/external_agent_incremental_refresh.py","ipfs_datasets_py/tests/integration/test_external_agent_incremental_refresh.py"]
+- Validation: python -m pytest -q tests/integration/test_external_agent_incremental_refresh.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/integration/test_external_agent_incremental_refresh.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:96a2f2ba72cbdafcada691fa36b0834bc8d568a5ff9ef5c1a168cb43c876d79e
+
+## EAAEF-102 Compile typed bounded replanning triggers
+
+- Stable task ID: EAAEF-102
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: closed-loop-execution-and-adaptive-replanning
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G110
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_replanning.py","test/api/test_external_replanning.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_replanning.py","test/api/test_external_replanning.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: React to changed assumptions, invalidation, failed tests/proofs, counterexamples, stale history, conflicts, outages, resources, task sizing, evidence gaps and no-progress.
+- Depends on: EAAEF-097, EAAEF-100, EAAEF-101
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_replanning.py","test/api/test_external_replanning.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_replanning.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: React to changed assumptions, invalidation, failed tests/proofs, counterexamples, stale history, conflicts, outages, resources, task sizing, evidence gaps and no-progress. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:2e53682b801a69ba1fa152b7c326000b7815b09de7c9ddedfe0a5bfe4f2a005f
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_replanning.py, test/api/test_external_replanning.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_replanning.py","test/api/test_external_replanning.py"]
+- Validation: python3 -m pytest -q test/api/test_external_replanning.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_replanning.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:2e52ddacdc054a9a69156b51918a6f1a9166722dc3e05ae7ca176b4500bb62f5
+
+## EAAEF-103 Apply immutable plan-revision operations
+
+- Stable task ID: EAAEF-103
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: closed-loop-execution-and-adaptive-replanning
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G110
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_plan_revision.py","test/api/test_external_plan_revision.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/planning/external_plan_revision.py","test/api/test_external_plan_revision.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Add, supersede, split, coalesce, rewire, reprioritize, block, unblock, cancel future work and add proof/repair/review tasks without editing claimed or accepted history.
+- Depends on: EAAEF-097, EAAEF-102
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_plan_revision.py","test/api/test_external_plan_revision.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_plan_revision.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Add, supersede, split, coalesce, rewire, reprioritize, block, unblock, cancel future work and add proof/repair/review tasks without editing claimed or accepted history. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a12495c2db71ccef6ff8a9a8618a2c641a762365cf3b5c316a38376a4a2a9985
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/external_plan_revision.py, test/api/test_external_plan_revision.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/planning/external_plan_revision.py","test/api/test_external_plan_revision.py"]
+- Validation: python3 -m pytest -q test/api/test_external_plan_revision.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_plan_revision.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:88c2380f1ade7a052d85a92b7556add6c0925edccad7686bb7573750c5166ca1
+
+## EAAEF-104 Prove fixed-point completion and typed termination
+
+- Stable task ID: EAAEF-104
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: closed-loop-execution-and-adaptive-replanning
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G110
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_fixed_point.py","test/integration/test_external_agent_fixed_point.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/runtime/external_fixed_point.py","test/integration/test_external_agent_fixed_point.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Terminate only when goal/subgoals, current tests/proofs, invalidations, assurance, merge queue, source/semantic roots, claims and terminal seal agree—or emit a typed non-success state.
+- Depends on: EAAEF-097, EAAEF-101, EAAEF-103
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_fixed_point.py","test/integration/test_external_agent_fixed_point.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_fixed_point.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Terminate only when goal/subgoals, current tests/proofs, invalidations, assurance, merge queue, source/semantic roots, claims and terminal seal agree—or emit a typed non-success state. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:e28b5989cf1ca852ef09f0b4d074e33beb817f18b9c894e46ac497f3e9ade356
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/external_fixed_point.py, test/integration/test_external_agent_fixed_point.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/runtime/external_fixed_point.py","test/integration/test_external_agent_fixed_point.py"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_fixed_point.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_fixed_point.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:14b824b17e1d083b8fd825900f8b916d19184a916206cd47c91684de7f3b325c
+
+## EAAEF-110 Expose the canonical Python handoff API
+
+- Stable task ID: EAAEF-110
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: python,-cli,-mcp-and-mcp++-surfaces
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G120
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/api/__init__.py","ipfs_accelerate_py/agent_supervisor/api/external_handoff.py","test/api/test_external_handoff_python_api.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/api/__init__.py","ipfs_accelerate_py/agent_supervisor/api/external_handoff.py","test/api/test_external_handoff_python_api.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Provide handoff, preview, attach, status, follow, steer, pause/resume, approve/reject, cancel, explain, doctor, report and export operations with canonical identities.
+- Depends on: EAAEF-104
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/api/__init__.py","ipfs_accelerate_py/agent_supervisor/api/external_handoff.py","test/api/test_external_handoff_python_api.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_handoff_python_api.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Provide handoff, preview, attach, status, follow, steer, pause/resume, approve/reject, cancel, explain, doctor, report and export operations with canonical identities. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:84a8bb57f13d8571955d3fbe846e07e1991ecc9653de540e808cd41a6e1a90b3
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/api/__init__.py, ipfs_accelerate_py/agent_supervisor/api/external_handoff.py, test/api/test_external_handoff_python_api.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/api/__init__.py","ipfs_accelerate_py/agent_supervisor/api/external_handoff.py","test/api/test_external_handoff_python_api.py"]
+- Validation: python3 -m pytest -q test/api/test_external_handoff_python_api.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_handoff_python_api.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:79db4746f9eddfb3dc183d87ae7d44b7494265180d1498bf37b8e55ca5d08c83
+
+## EAAEF-111 Expose the canonical supervisor CLI
+
+- Stable task ID: EAAEF-111
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: python,-cli,-mcp-and-mcp++-surfaces
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G120
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/cli/supervisor_handoff.py","ipfs_accelerate_py/cli_entry.py","test/cli/test_supervisor_handoff_cli.py"]
+- Execution owned files: ["ipfs_accelerate_py/cli/supervisor_handoff.py","ipfs_accelerate_py/cli_entry.py","test/cli/test_supervisor_handoff_cli.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Implement and register structured argv for handoff, status, follow, attach, steer, pause, resume, approve, reject, cancel, explain, doctor, report and export-result; use large-input references, detach and typed exit states without shell execution.
+- Depends on: EAAEF-104, EAAEF-110
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/cli/supervisor_handoff.py","ipfs_accelerate_py/cli_entry.py","test/cli/test_supervisor_handoff_cli.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/cli/test_supervisor_handoff_cli.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Implement and register structured argv for handoff, status, follow, attach, steer, pause, resume, approve, reject, cancel, explain, doctor, report and export-result; use large-input references, detach and typed exit states without shell execution. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:5d025c7723252a0209b36761d59fba8405f5c73ec2014570bcef839371a9ffa6
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/cli/supervisor_handoff.py, ipfs_accelerate_py/cli_entry.py, test/cli/test_supervisor_handoff_cli.py
+- Execution outputs: ["ipfs_accelerate_py/cli/supervisor_handoff.py","ipfs_accelerate_py/cli_entry.py","test/cli/test_supervisor_handoff_cli.py"]
+- Validation: python3 -m pytest -q test/cli/test_supervisor_handoff_cli.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/cli/test_supervisor_handoff_cli.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3e7b513a374d582d7dd6e2d7def40d88aba409bbbf07dda216c019b0c7b13a26
+
+## EAAEF-112 Expose canonical MCP tools
+
+- Stable task ID: EAAEF-112
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: python,-cli,-mcp-and-mcp++-surfaces
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G120
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/external_handoff.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/__init__.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py","test/mcp/test_agent_supervisor_handoff_tools.py"]
+- Execution owned files: ["ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/external_handoff.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/__init__.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py","test/mcp/test_agent_supervisor_handoff_tools.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Register agent_supervisor_handoff, preview_handoff, attach, status, follow, steer, pause, resume, approve, reject, cancel, explain, doctor and report using connector/file references and the same canonical requests, receipts and authority checks.
+- Depends on: EAAEF-104, EAAEF-110
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/external_handoff.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/__init__.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py","test/mcp/test_agent_supervisor_handoff_tools.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/mcp/test_agent_supervisor_handoff_tools.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Register agent_supervisor_handoff, preview_handoff, attach, status, follow, steer, pause, resume, approve, reject, cancel, explain, doctor and report using connector/file references and the same canonical requests, receipts and authority checks. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a94e2ab952e1701117c94bce078023926fba0c804c8b6f5195af33bcd59b16be
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/external_handoff.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/__init__.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/mcp/test_agent_supervisor_handoff_tools.py
+- Execution outputs: ["ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/external_handoff.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/__init__.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py","test/mcp/test_agent_supervisor_handoff_tools.py"]
+- Validation: python3 -m pytest -q test/mcp/test_agent_supervisor_handoff_tools.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/mcp/test_agent_supervisor_handoff_tools.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:7506110bc1d5d85c4687f5a0cfba0281d7e1cd99cdfcc37cc5e88308348e66e9
+
+## EAAEF-113 Bind MCP++ transport to existing profiles
+
+- Stable task ID: EAAEF-113
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: python,-cli,-mcp-and-mcp++-surfaces
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G120
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/mcp_server/mcplusplus/external_agent_handoff.py","tests/test_mcplusplus_external_agent_handoff.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/external_agent_handoff.py","ipfs_kit_py/tests/test_mcplusplus_external_agent_handoff.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Use admitted interface/artifact/delegation/runtime/event/fencing profiles and DurableExecutor only where configured; create no new profile and grant no storage authority.
+- Depends on: EAAEF-104, EAAEF-110
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/mcp_server/mcplusplus/external_agent_handoff.py","tests/test_mcplusplus_external_agent_handoff.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_mcplusplus_external_agent_handoff.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Use admitted interface/artifact/delegation/runtime/event/fencing profiles and DurableExecutor only where configured; create no new profile and grant no storage authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:c86273388b57015cb7d7567064aac1caecd060f48e3b91ef75f3efd6fcc24e22
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/mcp_server/mcplusplus/external_agent_handoff.py, tests/test_mcplusplus_external_agent_handoff.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/external_agent_handoff.py","ipfs_kit_py/tests/test_mcplusplus_external_agent_handoff.py"]
+- Validation: python -m pytest -q tests/test_mcplusplus_external_agent_handoff.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_mcplusplus_external_agent_handoff.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:58c359e35fecebf5a1327daec7c1e907eddb6b96ec283487e38f4a125b2e530d
+
+## EAAEF-114 Implement detach, reconnect and continuation cursors
+
+- Stable task ID: EAAEF-114
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: python,-cli,-mcp-and-mcp++-surfaces
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G120
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/api/external_run_handle.py","test/api/test_external_run_reconnect.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/api/external_run_handle.py","test/api/test_external_run_reconnect.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Return durable run identity, survive client and host-supervisor restart, resume events from an exact cursor and enforce authority on steering/cancellation.
+- Depends on: EAAEF-104, EAAEF-110
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/api/external_run_handle.py","test/api/test_external_run_reconnect.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_run_reconnect.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Return durable run identity, survive client and host-supervisor restart, resume events from an exact cursor and enforce authority on steering/cancellation. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9ddfc0200a6e954b531c7f52841abfbd19e1ef653412e633c3a8bba2862ee834
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/api/external_run_handle.py, test/api/test_external_run_reconnect.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/api/external_run_handle.py","test/api/test_external_run_reconnect.py"]
+- Validation: python3 -m pytest -q test/api/test_external_run_reconnect.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_run_reconnect.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:882fe1e02daf874443253db6868b254105480bafc5d2a034ba97bef26f2da559
+
+## EAAEF-115 Qualify Python, CLI, MCP and MCP++ parity
+
+- Stable task ID: EAAEF-115
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: python,-cli,-mcp-and-mcp++-surfaces
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G120
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_handoff_transport_parity.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/transport_parity.json"]
+- Execution owned files: ["test/integration/test_external_handoff_transport_parity.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/transport_parity.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Prove equivalent semantic inputs produce the same canonical identities and lifecycle behavior across transports, with transport-specific envelopes only.
+- Depends on: EAAEF-104, EAAEF-111, EAAEF-112, EAAEF-113, EAAEF-114
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_handoff_transport_parity.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/transport_parity.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_handoff_transport_parity.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Prove equivalent semantic inputs produce the same canonical identities and lifecycle behavior across transports, with transport-specific envelopes only. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:eecbc2b8d677416266a217b87bde86605e1f421f5e1674423b997eb9c6a534ed
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_handoff_transport_parity.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/transport_parity.json
+- Execution outputs: ["test/integration/test_external_handoff_transport_parity.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/transport_parity.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_handoff_transport_parity.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_handoff_transport_parity.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:691a3c2d3e5f287ebab41ecc9d23b6e611e121351030d351acb667c3959794b5
+
+## EAAEF-120 Enforce instruction and trust-domain separation
+
+- Stable task ID: EAAEF-120
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: security-hardening
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/security/untrusted_context.py","test/security/test_external_prompt_injection.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/security/untrusted_context.py","test/security/test_external_prompt_injection.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Prevent source comments, outputs, history and attachments from changing policy, authority, secrets, proof keys, tests, Quack ownership or promotion criteria.
+- Depends on: EAAEF-115
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/security/untrusted_context.py","test/security/test_external_prompt_injection.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_external_prompt_injection.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Prevent source comments, outputs, history and attachments from changing policy, authority, secrets, proof keys, tests, Quack ownership or promotion criteria. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9df2d0feb89980a0636fe838d0bde36b783db9e1044296f5b002da9e7a8e71b2
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/security/untrusted_context.py, test/security/test_external_prompt_injection.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/security/untrusted_context.py","test/security/test_external_prompt_injection.py"]
+- Validation: python3 -m pytest -q test/security/test_external_prompt_injection.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_external_prompt_injection.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:ec2883360200073f66f4f320041b1c318f4a1d03bf97eb1f9b2e5ae615a8ef10
+
+## EAAEF-121 Harden malicious repository admission and execution
+
+- Stable task ID: EAAEF-121
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: security-hardening
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/security/repository_policy.py","test/security/test_malicious_repository.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/security/repository_policy.py","test/security/test_malicious_repository.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Defend against hooks, symlinks, submodules, bombs, huge files, hostile tests, installs, network, sockets and cross-run data access.
+- Depends on: EAAEF-115, EAAEF-120
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/security/repository_policy.py","test/security/test_malicious_repository.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_malicious_repository.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Defend against hooks, symlinks, submodules, bombs, huge files, hostile tests, installs, network, sockets and cross-run data access. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a488900d3ec4a4acf58e1c1bc2533d52cdbbdc45b8a96dc61d39ed7889cda910
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/security/repository_policy.py, test/security/test_malicious_repository.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/security/repository_policy.py","test/security/test_malicious_repository.py"]
+- Validation: python3 -m pytest -q test/security/test_malicious_repository.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_malicious_repository.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:5ba9bbd1a75bfd880fb9a191b935351d8db11060369f0a87872848dc0f4e65f0
+
+## EAAEF-122 Detect imported session poisoning and forged receipts
+
+- Stable task ID: EAAEF-122
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: security-hardening
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G130
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/security/external_session_poisoning.py","tests/security/test_external_session_poisoning.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/security/external_session_poisoning.py","ipfs_datasets_py/tests/security/test_external_session_poisoning.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Detect fabricated tests/tools, stale files, cross-repo patches, replayed receipts, false approvals, secrets and policy-manipulation attempts.
+- Depends on: EAAEF-115, EAAEF-120
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/security/external_session_poisoning.py","tests/security/test_external_session_poisoning.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/security/test_external_session_poisoning.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Detect fabricated tests/tools, stale files, cross-repo patches, replayed receipts, false approvals, secrets and policy-manipulation attempts. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:e7110bc4786ab942c9bb5f9d32ff6bb8a3d7cfd02e011224ccdf64d9518711a9
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/security/external_session_poisoning.py, tests/security/test_external_session_poisoning.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/security/external_session_poisoning.py","ipfs_datasets_py/tests/security/test_external_session_poisoning.py"]
+- Validation: python -m pytest -q tests/security/test_external_session_poisoning.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/security/test_external_session_poisoning.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:1ad89547541bd69da8a80156cb79c67d7914b54dd8814da8ac6bd9e0d72c2493
+
+## EAAEF-123 Qualify container escape resistance
+
+- Stable task ID: EAAEF-123
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: security-hardening
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/security/test_external_container_escape.py","containers/external-agent/seccomp.json"]
+- Execution owned files: ["test/security/test_external_container_escape.py","containers/external-agent/seccomp.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Test Docker socket, host PID, privileged syscall/device/mount/symlink/cgroup escape and cross-container volume access against the real profile.
+- Depends on: EAAEF-115, EAAEF-121
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/security/test_external_container_escape.py","containers/external-agent/seccomp.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_external_container_escape.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Test Docker socket, host PID, privileged syscall/device/mount/symlink/cgroup escape and cross-container volume access against the real profile. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:2619d882423c148300859d6b4d7a7f84841cf9248722bd34e692cb7bfee072e8
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/security/test_external_container_escape.py, containers/external-agent/seccomp.json
+- Execution outputs: ["test/security/test_external_container_escape.py","containers/external-agent/seccomp.json"]
+- Validation: python3 -m pytest -q test/security/test_external_container_escape.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_external_container_escape.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:be74c1bd15b89b09384fac0dc50382f444d6f02d29b8a46f654f435cb7739f4f
+
+## EAAEF-124 Broker short-lived opaque secrets
+
+- Stable task ID: EAAEF-124
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: security-hardening
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G130
+- Owning repository: ipfs_kit_py
+- Owned files: ["ipfs_kit_py/secret_broker/external_worker.py","tests/test_external_worker_secret_broker.py"]
+- Execution owned files: ["ipfs_kit_py/ipfs_kit_py/secret_broker/external_worker.py","ipfs_kit_py/tests/test_external_worker_secret_broker.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_kit_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Resolve opaque handles only for the current leased task/policy, mount ephemeral files, redact events and revoke at checkpoint/terminal boundaries.
+- Depends on: EAAEF-115, EAAEF-120
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_kit_py/secret_broker/external_worker.py","tests/test_external_worker_secret_broker.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","container-escape probes target only leased adversarial fixtures and isolated namespaces; no host exploit or unrelated device access"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":4,"cpu_millicores":12000,"disk_mib":65536,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":24576,"supervisor_processes":1,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/test_external_worker_secret_broker.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Resolve opaque handles only for the current leased task/policy, mount ephemeral files, redact events and revoke at checkpoint/terminal boundaries. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:7a7a731c04d50117ee4380b79f9b16c03f11f6022fc2cde4786e94f6cc047eaf
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_kit_py/secret_broker/external_worker.py, tests/test_external_worker_secret_broker.py
+- Execution outputs: ["ipfs_kit_py/ipfs_kit_py/secret_broker/external_worker.py","ipfs_kit_py/tests/test_external_worker_secret_broker.py"]
+- Validation: python -m pytest -q tests/test_external_worker_secret_broker.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/test_external_worker_secret_broker.py"],"working_directory":"ipfs_kit_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:cf717343e991fb8a375c8efc7364797d77a550411567528e0f19417bc1f48d61
+
+## EAAEF-125 Run the integrated adversarial security gate
+
+- Stable task ID: EAAEF-125
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: security-hardening
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/security/test_external_agent_adversarial_gate.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/security.json"]
+- Execution owned files: ["test/security/test_external_agent_adversarial_gate.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/security.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Require all hostile history/repository/container/secret/effect cases to fail closed with no accepted mutation or leaked authority.
+- Depends on: EAAEF-115, EAAEF-121, EAAEF-122, EAAEF-123, EAAEF-124
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/security/test_external_agent_adversarial_gate.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/security.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/security/test_external_agent_adversarial_gate.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Require all hostile history/repository/container/secret/effect cases to fail closed with no accepted mutation or leaked authority. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a45e283097fded949ca5ed9b879cc72bc4fedfcdbb565b875bde00c7710aace0
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/security/test_external_agent_adversarial_gate.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/security.json
+- Execution outputs: ["test/security/test_external_agent_adversarial_gate.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/security.json"]
+- Validation: python3 -m pytest -q test/security/test_external_agent_adversarial_gate.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/security/test_external_agent_adversarial_gate.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:afaeac91efa3f00decae7d717bc2cfa285222f43a5d2cbbe2439b0188996d6af
+
+## EAAEF-130 Emit typed lifecycle and assurance events
+
+- Stable task ID: EAAEF-130
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: observability-and-accounting
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G140
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/observability/external_events.py","test/api/test_external_agent_events.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/observability/external_events.py","test/api/test_external_agent_events.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Emit typed events from handoff through terminal state with exact run/task/attempt/fence/artifact identities and continuation ordering.
+- Depends on: EAAEF-125
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/observability/external_events.py","test/api/test_external_agent_events.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_events.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Emit typed events from handoff through terminal state with exact run/task/attempt/fence/artifact identities and continuation ordering. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:b80ba3f1d48c24881148645e12719372fa1917a40b8dad4fbe8d1b010b496be2
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/observability/external_events.py, test/api/test_external_agent_events.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/observability/external_events.py","test/api/test_external_agent_events.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_events.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_events.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:1230aece0cc76d1ca4bc845d60b769a6eedbbe252a3767a589529008c2b8d7a1
+
+## EAAEF-131 Account for resources, latency, reuse and cost
+
+- Stable task ID: EAAEF-131
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: observability-and-accounting
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G140
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["ipfs_accelerate_py/agent_supervisor/observability/external_metrics.py","test/api/test_external_agent_metrics.py"]
+- Execution owned files: ["ipfs_accelerate_py/agent_supervisor/observability/external_metrics.py","test/api/test_external_agent_metrics.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Track bytes, index/retrieval/context/model/proof/test/supervisor/worker/resources/conflicts/duplicates/Quack/DuckDB/DuckLake/merge and per-result costs without treating estimates as observations.
+- Depends on: EAAEF-125, EAAEF-130
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_accelerate_py/agent_supervisor/observability/external_metrics.py","test/api/test_external_agent_metrics.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_metrics.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Track bytes, index/retrieval/context/model/proof/test/supervisor/worker/resources/conflicts/duplicates/Quack/DuckDB/DuckLake/merge and per-result costs without treating estimates as observations. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:856eefb051358731a0c8d9716786e787bd4b6edc99e38de5dc5999361f7d4352
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_accelerate_py/agent_supervisor/observability/external_metrics.py, test/api/test_external_agent_metrics.py
+- Execution outputs: ["ipfs_accelerate_py/agent_supervisor/observability/external_metrics.py","test/api/test_external_agent_metrics.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_metrics.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_metrics.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:63eb0928917afb22f32f62bf4dfc6cba7f63d37647570eddd94784c26307e05e
+
+## EAAEF-132 Publish privacy-safe analytical telemetry
+
+- Stable task ID: EAAEF-132
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: observability-and-accounting
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G140
+- Owning repository: ipfs_datasets_py
+- Owned files: ["ipfs_datasets_py/ducklake/external_agent_telemetry.py","tests/integration/test_external_agent_telemetry.py"]
+- Execution owned files: ["ipfs_datasets_py/ipfs_datasets_py/ducklake/external_agent_telemetry.py","ipfs_datasets_py/tests/integration/test_external_agent_telemetry.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Project digest/reference/count-only telemetry into DuckLake while raw prompts, source bodies, secrets and credentials remain excluded.
+- Depends on: EAAEF-125, EAAEF-130, EAAEF-131
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["ipfs_datasets_py/ducklake/external_agent_telemetry.py","tests/integration/test_external_agent_telemetry.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/integration/test_external_agent_telemetry.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Project digest/reference/count-only telemetry into DuckLake while raw prompts, source bodies, secrets and credentials remain excluded. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:609fa33c233eafbfa8c15f09a4c89c949bf87fb4b3a9886bc3b650528c9c8a40
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: ipfs_datasets_py/ducklake/external_agent_telemetry.py, tests/integration/test_external_agent_telemetry.py
+- Execution outputs: ["ipfs_datasets_py/ipfs_datasets_py/ducklake/external_agent_telemetry.py","ipfs_datasets_py/tests/integration/test_external_agent_telemetry.py"]
+- Validation: python -m pytest -q tests/integration/test_external_agent_telemetry.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/integration/test_external_agent_telemetry.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:cdd400dc10f8df422823ad57bee462d73dc8f64314e4bf2663aa46ce5bd2a5ee
+
+## EAAEF-133 Qualify observability, steering and accounting
+
+- Stable task ID: EAAEF-133
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: observability-and-accounting
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G140
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_observability.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/observability.json"]
+- Execution owned files: ["test/integration/test_external_agent_observability.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/observability.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Demonstrate cursor continuity, explainability, pause/resume/cancel, bounded metrics cardinality, privacy and terminal accounting under restart.
+- Depends on: EAAEF-125, EAAEF-130, EAAEF-131, EAAEF-132
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_observability.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/observability.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_observability.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Demonstrate cursor continuity, explainability, pause/resume/cancel, bounded metrics cardinality, privacy and terminal accounting under restart. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:12790fee877709e1d8b2183b29f6fa005c4d2d8b6f2e188222522bd0d947457b
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_observability.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/observability.json
+- Execution outputs: ["test/integration/test_external_agent_observability.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/observability.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_observability.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_observability.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:a7a5891b0c49146d846cc16ab1003eb00874626ec47f9306a52670d2bb84fed7
+
+## EAAEF-140 Build external-client and hostile-input fixtures
+
+- Stable task ID: EAAEF-140
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: end-to-end-and-fault-qualification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/fixtures/external_agent_handoff/manifest.json","test/api/test_external_agent_fixture_manifest.py"]
+- Execution owned files: ["test/fixtures/external_agent_handoff/manifest.json","test/api/test_external_agent_fixture_manifest.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Cover Codex, Claude, Gemini, generic MCP, visible/truncated/branched history, failures/forgeries, dirty/submodule/LFS/unsupported/malicious/large repositories and budgets.
+- Depends on: EAAEF-133
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/fixtures/external_agent_handoff/manifest.json","test/api/test_external_agent_fixture_manifest.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_external_agent_fixture_manifest.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Cover Codex, Claude, Gemini, generic MCP, visible/truncated/branched history, failures/forgeries, dirty/submodule/LFS/unsupported/malicious/large repositories and budgets. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:aa1c33e0bd499a2470015656da0c12a4e3602b5fbf85480004b784a6e3aabad6
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/fixtures/external_agent_handoff/manifest.json, test/api/test_external_agent_fixture_manifest.py
+- Execution outputs: ["test/fixtures/external_agent_handoff/manifest.json","test/api/test_external_agent_fixture_manifest.py"]
+- Validation: python3 -m pytest -q test/api/test_external_agent_fixture_manifest.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_external_agent_fixture_manifest.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:e455ebd2a3d0752bf386d384586ce92f3ef46bb69af98faf2952e37449bb724f
+
+## EAAEF-141 Run three-supervisor eight-worker qualification
+
+- Stable task ID: EAAEF-141
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: end-to-end-and-fault-qualification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_multi_supervisor.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/multi_supervisor.json"]
+- Execution owned files: ["test/integration/test_external_agent_multi_supervisor.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/multi_supervisor.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Use independent analysis/implementation/verification roles, eight real worker containers, competing resources and conflicting/nonconflicting tasks; verify concurrency, serialization, fencing and one acceptance.
+- Depends on: EAAEF-133, EAAEF-140
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_multi_supervisor.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/multi_supervisor.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","three supervisor processes and at least eight isolated worker containers within the declared reservation"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":8,"cpu_millicores":24000,"disk_mib":131072,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":49152,"supervisor_processes":3,"timeout_seconds":28800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_multi_supervisor.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Use independent analysis/implementation/verification roles, eight real worker containers, competing resources and conflicting/nonconflicting tasks; verify concurrency, serialization, fencing and one acceptance. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:8788bd183f2d0e6fa24bd4f02c1448700a9d54cdc130bb5d766a1c2ff6050bb8
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_multi_supervisor.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/multi_supervisor.json
+- Execution outputs: ["test/integration/test_external_agent_multi_supervisor.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/multi_supervisor.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_multi_supervisor.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_multi_supervisor.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3a3cba4b321e942cea94c96ed5ac44e488062e6941c1631fbc5715eac846c85c
+
+## EAAEF-142 Qualify client disconnect and reconnect
+
+- Stable task ID: EAAEF-142
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: end-to-end-and-fault-qualification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_client_disconnect.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/disconnect.json"]
+- Execution owned files: ["test/integration/test_external_client_disconnect.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/disconnect.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: For every supported client submit, receive run ID, terminate, continue, restart host supervisor, reattach, resume cursor, steer and reach a typed terminal state.
+- Depends on: EAAEF-133, EAAEF-140
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_client_disconnect.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/disconnect.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","client and supervisor process termination/restart is limited to the leased disconnect fixture"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":2,"cpu_millicores":8000,"disk_mib":32768,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":16384,"supervisor_processes":2,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_client_disconnect.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: For every supported client submit, receive run ID, terminate, continue, restart host supervisor, reattach, resume cursor, steer and reach a typed terminal state. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:55149c6a7e4d941ff1dd55093339e3f317bf12386879783f591947cf092493e6
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_client_disconnect.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/disconnect.json
+- Execution outputs: ["test/integration/test_external_client_disconnect.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/disconnect.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_client_disconnect.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_client_disconnect.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:48bd4f4c2ced9d5eefe47ec36bdae914e529e502faf4a71edfadd860f90855e0
+
+## EAAEF-143 Qualify real container lifecycle
+
+- Stable task ID: EAAEF-143
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: end-to-end-and-fault-qualification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_container_lifecycle.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container_lifecycle.json"]
+- Execution owned files: ["test/integration/test_external_container_lifecycle.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container_lifecycle.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Verify clean image startup, no host mutation/credential/socket exposure, resource/network bounds, checkpoint recovery and terminal cleanup.
+- Depends on: EAAEF-133, EAAEF-140
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_container_lifecycle.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container_lifecycle.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","container lifecycle, checkpoint and cleanup effects are limited to isolated qualification worktrees and volumes"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":4,"cpu_millicores":12000,"disk_mib":65536,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":24576,"supervisor_processes":1,"timeout_seconds":14400,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_container_lifecycle.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Verify clean image startup, no host mutation/credential/socket exposure, resource/network bounds, checkpoint recovery and terminal cleanup. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9aeddfa33952a69d566921bbdc153faff2445f8e5808579163f096f15418ed80
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_container_lifecycle.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/container_lifecycle.json
+- Execution outputs: ["test/integration/test_external_container_lifecycle.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/container_lifecycle.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_container_lifecycle.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_container_lifecycle.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:b254f2ac4c6d2ed07964fdd8d640fc2d6e5155015573552e914044993f7d5bed
+
+## EAAEF-144 Qualify crashes, partitions and stale authority
+
+- Stable task ID: EAAEF-144
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: end-to-end-and-fault-qualification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_fault_matrix.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/fault_matrix.json"]
+- Execution owned files: ["test/integration/test_external_agent_fault_matrix.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/fault_matrix.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Exercise provider/prover outage, Quack owner/supervisor/worker crash, partition, DuckLake outage, duplicates, conflict, stale roots/plans, exhaustion and no-progress.
+- Depends on: EAAEF-133, EAAEF-140
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_fault_matrix.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/fault_matrix.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","fault injection limited to leased campaign containers, Quack test shard and synthetic network namespace"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":8,"cpu_millicores":24000,"disk_mib":131072,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":49152,"supervisor_processes":3,"timeout_seconds":28800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_fault_matrix.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Exercise provider/prover outage, Quack owner/supervisor/worker crash, partition, DuckLake outage, duplicates, conflict, stale roots/plans, exhaustion and no-progress. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:f88da5edd872728e1bc15653135ec819110ca236e6b9d09aa3ebd2c8f849c572
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_fault_matrix.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/fault_matrix.json
+- Execution outputs: ["test/integration/test_external_agent_fault_matrix.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/fault_matrix.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_fault_matrix.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_fault_matrix.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:74525ebcef532c33647b9107d52e2ff161971ab136a778e59961834261b08834
+
+## EAAEF-145 Seal the end-to-end fault qualification
+
+- Stable task ID: EAAEF-145
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: end-to-end-and-fault-qualification
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/integration/test_external_agent_end_to_end.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json"]
+- Execution owned files: ["test/integration/test_external_agent_end_to_end.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Require evidence rather than worker assertions for goal completion and produce exact current receipts for all client, container, control and recovery paths.
+- Depends on: EAAEF-133, EAAEF-141, EAAEF-142, EAAEF-143, EAAEF-144
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/integration/test_external_agent_end_to_end.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/integration/test_external_agent_end_to_end.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Require evidence rather than worker assertions for goal completion and produce exact current receipts for all client, container, control and recovery paths. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:d65833ace0ccbacde227ac85c36d7179281362a2de10e7785c8c0d4e694b06a7
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/integration/test_external_agent_end_to_end.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json
+- Execution outputs: ["test/integration/test_external_agent_end_to_end.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json"]
+- Validation: python3 -m pytest -q test/integration/test_external_agent_end_to_end.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/integration/test_external_agent_end_to_end.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:7c7fe8d7f3a3327dc806bc50a96c1866fccccb62b07aa9e985bd6319628f1af1
+
+## EAAEF-150 Build the reproducible benchmark harness
+
+- Stable task ID: EAAEF-150
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: performance-and-parallelism-benchmark
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G160
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["benchmarks/external_agent_fabric/harness.py","test/benchmarks/test_external_agent_harness.py"]
+- Execution owned files: ["benchmarks/external_agent_fabric/harness.py","test/benchmarks/test_external_agent_harness.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Run the same task/repository/authority budget across configurations A-D and preserve exact input/image/model/provider/prover identities.
+- Depends on: EAAEF-145
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["benchmarks/external_agent_fabric/harness.py","test/benchmarks/test_external_agent_harness.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/benchmarks/test_external_agent_harness.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Run the same task/repository/authority budget across configurations A-D and preserve exact input/image/model/provider/prover identities. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:b81ed970acd888f3753c1e7bb16615b975661f0403386b43c1392d36946b5469
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: benchmarks/external_agent_fabric/harness.py, test/benchmarks/test_external_agent_harness.py
+- Execution outputs: ["benchmarks/external_agent_fabric/harness.py","test/benchmarks/test_external_agent_harness.py"]
+- Validation: python3 -m pytest -q test/benchmarks/test_external_agent_harness.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/benchmarks/test_external_agent_harness.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:b8b64ee8236c9d834fdf4c29c3514d0d64e42477fb4b9f58bb4c0777490b2378
+
+## EAAEF-151 Measure all four execution configurations
+
+- Stable task ID: EAAEF-151
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: performance-and-parallelism-benchmark
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G160
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["benchmarks/external_agent_fabric/run_matrix.py","test/benchmarks/test_external_agent_matrix.py"]
+- Execution owned files: ["benchmarks/external_agent_fabric/run_matrix.py","test/benchmarks/test_external_agent_matrix.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Measure completion, accepted patches, wall/first-useful time, parallel/worker/resource efficiency, tokens/proofs/index reuse/duplicates/conflicts/retries/refill/cost.
+- Depends on: EAAEF-145, EAAEF-150
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["benchmarks/external_agent_fabric/run_matrix.py","test/benchmarks/test_external_agent_matrix.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","four benchmark configurations with identical admitted provider, prover and resource-budget identities"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":8,"cpu_millicores":24000,"disk_mib":131072,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":49152,"supervisor_processes":3,"timeout_seconds":43200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/benchmarks/test_external_agent_matrix.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Measure completion, accepted patches, wall/first-useful time, parallel/worker/resource efficiency, tokens/proofs/index reuse/duplicates/conflicts/retries/refill/cost. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:a59cf8b614626f75ce4921e04d815bd794f627d93d9652cde048fde48292268d
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: benchmarks/external_agent_fabric/run_matrix.py, test/benchmarks/test_external_agent_matrix.py
+- Execution outputs: ["benchmarks/external_agent_fabric/run_matrix.py","test/benchmarks/test_external_agent_matrix.py"]
+- Validation: python3 -m pytest -q test/benchmarks/test_external_agent_matrix.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/benchmarks/test_external_agent_matrix.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:2f999c9b7bef944324e877aa7acfe69d7252b259533ec6c96c1ddc0277deb197
+
+## EAAEF-152 Publish honest performance and parallelism results
+
+- Stable task ID: EAAEF-152
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: performance-and-parallelism-benchmark
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G160
+- Owning repository: ipfs_datasets_py
+- Owned files: ["docs/benchmarks/external_agent_fabric_results.md","tests/benchmarks/test_external_agent_results_schema.py"]
+- Execution owned files: ["ipfs_datasets_py/docs/benchmarks/external_agent_fabric_results.md","ipfs_datasets_py/tests/benchmarks/test_external_agent_results_schema.py"]
+- Integration conflict keys: ["serialized-superproject-gitlink:ipfs_datasets_py"]
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Report actual targets and misses; never represent simulated/historical providers or unavailable checks as live evidence.
+- Depends on: EAAEF-145, EAAEF-151
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/benchmarks/external_agent_fabric_results.md","tests/benchmarks/test_external_agent_results_schema.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":1,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python -m pytest -q tests/benchmarks/test_external_agent_results_schema.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Report actual targets and misses; never represent simulated/historical providers or unavailable checks as live evidence. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:15e80df3642fbec3764be58af511eceb8dbb96209eda3ae0a7cc690217698f9a
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/benchmarks/external_agent_fabric_results.md, tests/benchmarks/test_external_agent_results_schema.py
+- Execution outputs: ["ipfs_datasets_py/docs/benchmarks/external_agent_fabric_results.md","ipfs_datasets_py/tests/benchmarks/test_external_agent_results_schema.py"]
+- Validation: python -m pytest -q tests/benchmarks/test_external_agent_results_schema.py
+- Execution validation: [{"argv":["python","-m","pytest","-q","tests/benchmarks/test_external_agent_results_schema.py"],"working_directory":"ipfs_datasets_py"}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
+- Task specification CID: sha256:4d9fa67b678b0fd8254f98fd7e0f5c045af2e5e9aa0d58ce28031d7fc998b5cd
+
+## EAAEF-153 Qualify benchmark evidence and target claims
+
+- Stable task ID: EAAEF-153
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: performance-and-parallelism-benchmark
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G160
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/benchmarks/test_external_agent_release_benchmark.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/benchmark.json"]
+- Execution owned files: ["test/benchmarks/test_external_agent_release_benchmark.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/benchmark.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Validate zero duplicate/stale/overlap acceptance and report measured efficiency, utilization, reuse and coordination overhead without converting goals into claims.
+- Depends on: EAAEF-145, EAAEF-152
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/benchmarks/test_external_agent_release_benchmark.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/benchmark.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/benchmarks/test_external_agent_release_benchmark.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Validate zero duplicate/stale/overlap acceptance and report measured efficiency, utilization, reuse and coordination overhead without converting goals into claims. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:f16533392444a7c6d0ae7614903b0346d73d9a3867be7dc2981aec7323583789
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/benchmarks/test_external_agent_release_benchmark.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/benchmark.json
+- Execution outputs: ["test/benchmarks/test_external_agent_release_benchmark.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/benchmark.json"]
+- Validation: python3 -m pytest -q test/benchmarks/test_external_agent_release_benchmark.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/benchmarks/test_external_agent_release_benchmark.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3fee759d0da798a7c06a11448aaa3ddfc020f0007ac2fc1db53c4679b4e7bc92
+
+## EAAEF-160 Build clean cross-package wheels and schema bundles
+
+- Stable task ID: EAAEF-160
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: packaging-and-external-deployment
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G170
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["scripts/release/build_external_agent_stack.py","test/packaging/test_external_agent_wheels.py"]
+- Execution owned files: ["scripts/release/build_external_agent_stack.py","test/packaging/test_external_agent_wheels.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Build pinned wheels for the three primary packages plus MCP++ only when required, with schemas/migrations and no sibling checkout/editable-install dependence.
+- Depends on: EAAEF-153
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["scripts/release/build_external_agent_stack.py","test/packaging/test_external_agent_wheels.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/packaging/test_external_agent_wheels.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Build pinned wheels for the three primary packages plus MCP++ only when required, with schemas/migrations and no sibling checkout/editable-install dependence. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:fb507bc2e528b9173e4bce31f507c2270733a0ab69fb709a7d671ae5d575ed23
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: scripts/release/build_external_agent_stack.py, test/packaging/test_external_agent_wheels.py
+- Execution outputs: ["scripts/release/build_external_agent_stack.py","test/packaging/test_external_agent_wheels.py"]
+- Validation: python3 -m pytest -q test/packaging/test_external_agent_wheels.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/packaging/test_external_agent_wheels.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:42ad35708334fabb6f27b6934ebbfe88ab21524d5bba3bf494716c1cc19289b8
+
+## EAAEF-161 Build signed digest-pinned OCI images and SBOMs
+
+- Stable task ID: EAAEF-161
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: packaging-and-external-deployment
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G170
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["scripts/release/build_external_agent_images.py","test/packaging/test_external_agent_images.py"]
+- Execution owned files: ["scripts/release/build_external_agent_images.py","test/packaging/test_external_agent_images.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Produce versioned supervisor/worker/prover images, SBOMs, locks, architectures and signatures from immutable sources.
+- Depends on: EAAEF-153, EAAEF-160
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["scripts/release/build_external_agent_images.py","test/packaging/test_external_agent_images.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","release-image build, signing and SBOM effects; registry publication is separately approved"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":3,"cpu_millicores":12000,"disk_mib":131072,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":24576,"supervisor_processes":1,"timeout_seconds":21600,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/packaging/test_external_agent_images.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Produce versioned supervisor/worker/prover images, SBOMs, locks, architectures and signatures from immutable sources. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:574545127b21669acaeee1002afe21209d5f239cd98a1754575727b5d2837489
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: scripts/release/build_external_agent_images.py, test/packaging/test_external_agent_images.py
+- Execution outputs: ["scripts/release/build_external_agent_images.py","test/packaging/test_external_agent_images.py"]
+- Validation: python3 -m pytest -q test/packaging/test_external_agent_images.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/packaging/test_external_agent_images.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:0e6bc9292348c4dfe922359595686a247c9a399e574fae681c91363592a3403f
+
+## EAAEF-162 Package supported deployment profiles
+
+- Stable task ID: EAAEF-162
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: packaging-and-external-deployment
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G170
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["deploy/external-agent/local-supervised.yaml","deploy/external-agent/detached-single-host.yaml","deploy/external-agent/multi-container-single-host.yaml","test/packaging/test_external_agent_deployments.py"]
+- Execution owned files: ["deploy/external-agent/local-supervised.yaml","deploy/external-agent/detached-single-host.yaml","deploy/external-agent/multi-container-single-host.yaml","test/packaging/test_external_agent_deployments.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Qualify local supervised, detached single-host and multi-container single-host; keep remote multi-host disabled until authenticated Quack failover/partition/security gates pass.
+- Depends on: EAAEF-153, EAAEF-160, EAAEF-161
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["deploy/external-agent/local-supervised.yaml","deploy/external-agent/detached-single-host.yaml","deploy/external-agent/multi-container-single-host.yaml","test/packaging/test_external_agent_deployments.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/packaging/test_external_agent_deployments.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Qualify local supervised, detached single-host and multi-container single-host; keep remote multi-host disabled until authenticated Quack failover/partition/security gates pass. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:76b508407c4b89b1afeb67bb8379fae6b3327925663d2e4b2893dee7a310c3c4
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: deploy/external-agent/local-supervised.yaml, deploy/external-agent/detached-single-host.yaml, deploy/external-agent/multi-container-single-host.yaml, test/packaging/test_external_agent_deployments.py
+- Execution outputs: ["deploy/external-agent/local-supervised.yaml","deploy/external-agent/detached-single-host.yaml","deploy/external-agent/multi-container-single-host.yaml","test/packaging/test_external_agent_deployments.py"]
+- Validation: python3 -m pytest -q test/packaging/test_external_agent_deployments.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/packaging/test_external_agent_deployments.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:41b1819f0f5cf7f339daccbe5a1d1d4766d7cb277dd0dfff752020bf4742efe0
+
+## EAAEF-163 Document and test migration, backup, restore and rollback
+
+- Stable task ID: EAAEF-163
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: packaging-and-external-deployment
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G170
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/deployment/EXTERNAL_AGENT_FABRIC.md","test/packaging/test_external_agent_upgrade_rollback.py"]
+- Execution owned files: ["docs/deployment/EXTERNAL_AGENT_FABRIC.md","test/packaging/test_external_agent_upgrade_rollback.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Ship example configuration, schema migration, Quack owner backup/restore, DuckLake recovery, upgrades and rollback with exact compatibility checks.
+- Depends on: EAAEF-153, EAAEF-160, EAAEF-162
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/deployment/EXTERNAL_AGENT_FABRIC.md","test/packaging/test_external_agent_upgrade_rollback.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/packaging/test_external_agent_upgrade_rollback.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Ship example configuration, schema migration, Quack owner backup/restore, DuckLake recovery, upgrades and rollback with exact compatibility checks. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:1a44785f0eb44568c1e62dcacf07121ef2548b68ea1fe51bb36ea1f078dd6488
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/deployment/EXTERNAL_AGENT_FABRIC.md, test/packaging/test_external_agent_upgrade_rollback.py
+- Execution outputs: ["docs/deployment/EXTERNAL_AGENT_FABRIC.md","test/packaging/test_external_agent_upgrade_rollback.py"]
+- Validation: python3 -m pytest -q test/packaging/test_external_agent_upgrade_rollback.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/packaging/test_external_agent_upgrade_rollback.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:4f29d75471eb820d014b6735c85b75b47e122715e7b4813f608efcf4f1bcf182
+
+## EAAEF-164 Qualify clean external installation
+
+- Stable task ID: EAAEF-164
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: packaging-and-external-deployment
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G170
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/packaging/test_external_agent_clean_install.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/packaging.json"]
+- Execution owned files: ["test/packaging/test_external_agent_clean_install.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/packaging.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Install only released artifacts into a clean environment and run the supported deployment smoke without mutable branches, sibling repos or editable paths.
+- Depends on: EAAEF-153, EAAEF-161, EAAEF-162, EAAEF-163
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/packaging/test_external_agent_clean_install.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/packaging.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval","clean wheel and OCI installation exercises run only in disposable deployment profiles; no production deployment"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":4,"cpu_millicores":12000,"disk_mib":65536,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":24576,"supervisor_processes":1,"timeout_seconds":21600,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/packaging/test_external_agent_clean_install.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Install only released artifacts into a clean environment and run the supported deployment smoke without mutable branches, sibling repos or editable paths. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9e688e7ee38ccefa359442521f66661c27815bc96f1dfc76c5bd3bbf95405d53
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/packaging/test_external_agent_clean_install.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/packaging.json
+- Execution outputs: ["test/packaging/test_external_agent_clean_install.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/packaging.json"]
+- Validation: python3 -m pytest -q test/packaging/test_external_agent_clean_install.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/packaging/test_external_agent_clean_install.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:52c3acfdb044dc42644f9f71596d6bf84cf71174e34b5abe9c7e20984014145e
+
+## EAAEF-170 Install the blocking release CI matrix
+
+- Stable task ID: EAAEF-170
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: [".github/workflows/external-agent-fabric.yml","test/ci/test_external_agent_ci_matrix.py"]
+- Execution owned files: [".github/workflows/external-agent-fabric.yml","test/ci/test_external_agent_ci_matrix.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Cover reconciliation, clean install, schemas/adapters/bundles/containers/projects/retrieval/logic/conflicts/Quack/DuckDB/DuckLake/multi-supervisor/reconnect/crash/security/parity/e2e/benchmark.
+- Depends on: EAAEF-164
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: [".github/workflows/external-agent-fabric.yml","test/ci/test_external_agent_ci_matrix.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/ci/test_external_agent_ci_matrix.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Cover reconciliation, clean install, schemas/adapters/bundles/containers/projects/retrieval/logic/conflicts/Quack/DuckDB/DuckLake/multi-supervisor/reconnect/crash/security/parity/e2e/benchmark. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9bbdd7adbeac1880c351978f53ab73cae1e09e2cea9c270c873042f9a9e120d1
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: .github/workflows/external-agent-fabric.yml, test/ci/test_external_agent_ci_matrix.py
+- Execution outputs: [".github/workflows/external-agent-fabric.yml","test/ci/test_external_agent_ci_matrix.py"]
+- Validation: python3 -m pytest -q test/ci/test_external_agent_ci_matrix.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/ci/test_external_agent_ci_matrix.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:d86eef550bce4940e0b9bf03f97fb23757818ad43ff5597b3e28b1a510b78ef2
+
+## EAAEF-171 Enforce zero-skip fail-closed qualification receipts
+
+- Stable task ID: EAAEF-171
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["scripts/validate_external_agent_release.py","test/ci/test_external_agent_release_validator.py"]
+- Execution owned files: ["scripts/validate_external_agent_release.py","test/ci/test_external_agent_release_validator.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Reject continue-on-error, shell success masking, skipped/xfailed required tests, unavailable-as-passed, simulations-as-live and stale historical counts; bind collected/passed populations.
+- Depends on: EAAEF-164, EAAEF-170
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["scripts/validate_external_agent_release.py","test/ci/test_external_agent_release_validator.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/ci/test_external_agent_release_validator.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Reject continue-on-error, shell success masking, skipped/xfailed required tests, unavailable-as-passed, simulations-as-live and stale historical counts; bind collected/passed populations. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:5031701cbd0463a53d14324d49520bee514146093ad1a5888e9a4327fe5c7c56
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: scripts/validate_external_agent_release.py, test/ci/test_external_agent_release_validator.py
+- Execution outputs: ["scripts/validate_external_agent_release.py","test/ci/test_external_agent_release_validator.py"]
+- Validation: python3 -m pytest -q test/ci/test_external_agent_release_validator.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/ci/test_external_agent_release_validator.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:81b30dbc0d445a2b84718cfc82d2efbc08d1c0d9df3ee97c6e8c23e925d818dd
+
+## EAAEF-172 Run the clean external handoff smoke
+
+- Stable task ID: EAAEF-172
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["test/release/test_external_agent_handoff_smoke.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/release_smoke.json"]
+- Execution owned files: ["test/release/test_external_agent_handoff_smoke.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/release_smoke.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: From clean packages, submit a supported exported session and exact repository, disconnect, execute in containers, reattach, verify, and reach a typed terminal outcome.
+- Depends on: EAAEF-164, EAAEF-170, EAAEF-171
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["test/release/test_external_agent_handoff_smoke.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/release_smoke.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/release/test_external_agent_handoff_smoke.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: From clean packages, submit a supported exported session and exact repository, disconnect, execute in containers, reattach, verify, and reach a typed terminal outcome. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:ae9ffb21bdc5709325bf685d38babebd293641490fc103cbfaf366729bd0c0c3
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: test/release/test_external_agent_handoff_smoke.py, docs/architecture/external_agent_autonomous_execution_fabric/receipts/release_smoke.json
+- Execution outputs: ["test/release/test_external_agent_handoff_smoke.py","docs/architecture/external_agent_autonomous_execution_fabric/receipts/release_smoke.json"]
+- Validation: python3 -m pytest -q test/release/test_external_agent_handoff_smoke.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/release/test_external_agent_handoff_smoke.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:aafaaf76dda86229dbf7f494353f467804efe6525da2bd21888cb6af94a48cdd
+
+## EAAEF-173 Perform independent security and authority review
+
+- Stable task ID: EAAEF-173
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/security/EXTERNAL_AGENT_FABRIC_REVIEW.md","test/release/test_external_agent_security_release.py"]
+- Execution owned files: ["docs/security/EXTERNAL_AGENT_FABRIC_REVIEW.md","test/release/test_external_agent_security_release.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Audit trust, file/path, import/startup, environment, credential, Quack-owner, DuckDB, DuckLake, container and receipt boundaries; unresolved critical findings force no-go.
+- Depends on: EAAEF-164, EAAEF-171
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/security/EXTERNAL_AGENT_FABRIC_REVIEW.md","test/release/test_external_agent_security_release.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/release/test_external_agent_security_release.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Audit trust, file/path, import/startup, environment, credential, Quack-owner, DuckDB, DuckLake, container and receipt boundaries; unresolved critical findings force no-go. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:1be3ce9ba5d0d105b6964ede9b53fa02294312e8bbbf189fe613eb03d9d30cff
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/security/EXTERNAL_AGENT_FABRIC_REVIEW.md, test/release/test_external_agent_security_release.py
+- Execution outputs: ["docs/security/EXTERNAL_AGENT_FABRIC_REVIEW.md","test/release/test_external_agent_security_release.py"]
+- Validation: python3 -m pytest -q test/release/test_external_agent_security_release.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/release/test_external_agent_security_release.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:8ef043d08502b091e24aed327716df74aed13cd3eebf53d1387e99715337cf0e
+
+## EAAEF-174 Emit the complete qualification report
+
+- Stable task ID: EAAEF-174
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/QUALIFICATION_REPORT.md","docs/architecture/external_agent_autonomous_execution_fabric/qualification_report.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/QUALIFICATION_REPORT.md","docs/architecture/external_agent_autonomous_execution_fabric/qualification_report.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Report exact revisions/manifests/schemas/adapters/transfer/authority/containers/support/retrieval/logic/parallel/control/DuckLake/fault/security/performance/packaging/CI results and level.
+- Depends on: EAAEF-164, EAAEF-172, EAAEF-173
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/QUALIFICATION_REPORT.md","docs/architecture/external_agent_autonomous_execution_fabric/qualification_report.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 scripts/validate_external_agent_release.py --report-only"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Report exact revisions/manifests/schemas/adapters/transfer/authority/containers/support/retrieval/logic/parallel/control/DuckLake/fault/security/performance/packaging/CI results and level. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:879c0b8c9d9eecb7569a661f5dfa75f0305804e27bfdcd748c8f87a6128fb853
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/QUALIFICATION_REPORT.md, docs/architecture/external_agent_autonomous_execution_fabric/qualification_report.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/QUALIFICATION_REPORT.md","docs/architecture/external_agent_autonomous_execution_fabric/qualification_report.json"]
+- Validation: python3 scripts/validate_external_agent_release.py --report-only
+- Execution validation: [{"argv":["python3","scripts/validate_external_agent_release.py","--report-only"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:402e17b2d5d0dec2e986938525e5f58e49b8ea5f1ee590cc57a6141fad95c96f
+
+## EAAEF-175 Seal the terminal source, semantic and authority state
+
+- Stable task ID: EAAEF-175
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["scripts/seal_external_agent_release.py","test/release/test_external_agent_terminal_seal.py"]
+- Execution owned files: ["scripts/seal_external_agent_release.py","test/release/test_external_agent_terminal_seal.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Require current source/semantic roots, tests/proofs, empty claims and merge queue, immutable DuckLake cursor evidence and a content-addressed terminal report; a worker cannot self-seal.
+- Depends on: EAAEF-164, EAAEF-174
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["scripts/seal_external_agent_release.py","test/release/test_external_agent_terminal_seal.py"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/release/test_external_agent_terminal_seal.py"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Require current source/semantic roots, tests/proofs, empty claims and merge queue, immutable DuckLake cursor evidence and a content-addressed terminal report; a worker cannot self-seal. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:4f29b7d8fb1da2bf7c7ba204e2a106bb52cf9a1816eda4911cd34ae52329c18c
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: scripts/seal_external_agent_release.py, test/release/test_external_agent_terminal_seal.py
+- Execution outputs: ["scripts/seal_external_agent_release.py","test/release/test_external_agent_terminal_seal.py"]
+- Validation: python3 -m pytest -q test/release/test_external_agent_terminal_seal.py
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/release/test_external_agent_terminal_seal.py"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:4abab3e431266bc3143b49a3f7383a517aa624963cc35a15481767d2f348a5ab
+
+## EAAEF-176 Issue the narrow go or no-go recommendation
+
+- Stable task ID: EAAEF-176
+- Status: blocked
+- Blocked reason: awaiting_EAAEF-009_plan_revision
+- Completion: auto
+- Is schedulable: false
+- Initial population: false
+- Population state: template_only_awaiting_plan_r2
+- Priority: P1
+- Track: blocking-ci-and-qualification-release
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G180
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/FINAL_RECOMMENDATION.md","docs/architecture/external_agent_autonomous_execution_fabric/final_recommendation.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/FINAL_RECOMMENDATION.md","docs/architecture/external_agent_autonomous_execution_fabric/final_recommendation.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: REBIND_REQUIRED_BY_EAAEF-009
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Assign at most supervised_external_pilot only when real external clients, isolated containers, resumability and evidence gates pass; unsupported codebases remain preview-only or human-configured.
+- Depends on: EAAEF-164, EAAEF-175
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/FINAL_RECOMMENDATION.md","docs/architecture/external_agent_autonomous_execution_fabric/final_recommendation.json"]
+- External-effect scope: ["isolated task worktree writes","bounded container subprocesses","merge-queue proposal only","no push, publication, secret, dependency-install or network effect without exact approval"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":4000,"disk_mib":16384,"gpu_count":0,"merge_slots":1,"model_input_token_ceiling":48000,"model_output_token_ceiling":12000,"network":"deny","prover_concurrency":0,"provider_concurrency":1,"ram_mib":8192,"supervisor_processes":1,"timeout_seconds":7200,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:qualified-project-worker
+- Model route: claim-time exact provider, model revision and container invocation bound by the admitted policy; no model is acceptance authority
+- Provider policy: configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 scripts/validate_external_agent_release.py --terminal"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Assign at most supervised_external_pilot only when real external clients, isolated containers, resumability and evidence gates pass; unsupported codebases remain preview-only or human-configured. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:851fd0d4d480beb7b5ca1870040086671f6257ea171737658fa5ba00231c062f
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/FINAL_RECOMMENDATION.md, docs/architecture/external_agent_autonomous_execution_fabric/final_recommendation.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/FINAL_RECOMMENDATION.md","docs/architecture/external_agent_autonomous_execution_fabric/final_recommendation.json"]
+- Validation: python3 scripts/validate_external_agent_release.py --terminal
+- Execution validation: [{"argv":["python3","scripts/validate_external_agent_release.py","--terminal"],"working_directory":"."}]
+- Acceptance: Only the configured independent supervisor completion policy may accept current evidence for this exact task identity.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:2858bcc6000df2d91f0404f21db0c1748e9f2f841449bd69cbd44d6d3705f021
