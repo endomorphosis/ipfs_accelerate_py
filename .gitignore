@@ -283,3 +283,5 @@ state/**/*.out
 !data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json
 !docs/architecture/logic_governed_compositional_verification/vertical_slice_result.json
 !docs/architecture/logic_governed_compositional_verification/paired_benchmark_result.json
+!docs/architecture/logic_governed_compositional_verification/current_tree_capability_gap_matrix.json
+!test/fixtures/agent_supervisor/compositional_verification/config/schema.json
