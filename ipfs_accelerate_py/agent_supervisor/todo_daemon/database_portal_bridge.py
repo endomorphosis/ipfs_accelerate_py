@@ -44,6 +44,7 @@ _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
 _ROOT_REPOSITORY_AUTHORITY: Final[str] = "ipfs_accelerate_py"
 _MAX_REPOSITORY_PATH_BYTES: Final[int] = 1024
 _MAX_TASK_IDENTITY_BYTES: Final[int] = 4096
+_MAX_DATABASE_PORTAL_BACKOFF_SECONDS: Final[int] = 86_400
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -52,6 +53,27 @@ class DatabasePortalBridgeError(RuntimeError):
 
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
     """Portal execution made bounded progress but is not yet acceptable."""
+
+    def __init__(self, reason: str, *, backoff_seconds: int = 300) -> None:
+        if (
+            isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, int)
+            or backoff_seconds < 0
+            or backoff_seconds > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+        ):
+            raise ValueError(
+                "backoff_seconds must be an integer in "
+                f"[0, {_MAX_DATABASE_PORTAL_BACKOFF_SECONDS}]"
+            )
+        reason_text = str(reason or "portal_execution_deferred").strip()
+        super().__init__(reason_text or "portal_execution_deferred")
+        self.reason = reason_text or "portal_execution_deferred"
+        self.backoff_seconds = int(backoff_seconds)
+        # A typed deferral occurs before the provider is admitted.  These
+        # fields deliberately mirror the Portal result contract so the outer
+        # database authority need not infer retry semantics from prose.
+        self.attempt_consumed = False
+        self.provider_dispatched = False
 
 
 @dataclass(frozen=True)
@@ -399,6 +421,9 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
                 "returncode",
                 "reason",
                 "deferred",
+                "attempt_consumed",
+                "provider_dispatched",
+                "backoff_seconds",
                 "skipped",
                 "implementation_commit",
                 "branch",
@@ -786,6 +811,38 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_execution_skipped")
         return ""
 
+    @staticmethod
+    def _typed_deferral(
+        result: Mapping[str, Any],
+    ) -> tuple[str, int] | None:
+        """Return exact Portal deferral data without parsing reason text."""
+
+        implementation = result.get("implementation_result")
+        if not isinstance(implementation, Mapping):
+            return None
+        # ``attempt_consumed=false``/``provider_dispatched=false`` also
+        # describe a successful deterministic zero-provider closure.  Only
+        # the explicit closed deferral signal grants retry semantics.
+        if implementation.get("deferred") is not True:
+            return None
+        # Older typed deferrals predate the duration field.  They retain a
+        # conservative bounded default instead of silently becoming a
+        # zero-delay reconstruction loop.
+        raw_backoff = implementation.get("backoff_seconds", 300)
+        if (
+            isinstance(raw_backoff, bool)
+            or not isinstance(raw_backoff, int)
+            or raw_backoff < 0
+            or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal deferral returned an invalid backoff_seconds value"
+            )
+        return (
+            str(implementation.get("reason") or "portal_execution_deferred"),
+            int(raw_backoff),
+        )
+
     def _acceptance_receipt(
         self,
         *,
@@ -866,15 +923,15 @@ class DatabasePortalExecutionBridge:
                 summary = _bounded_portal_result(raw_result)
                 summaries.append(summary)
                 self._verify_projection(paths, binding)
+                deferral = self._typed_deferral(raw_result)
+                if deferral is not None:
+                    reason, backoff_seconds = deferral
+                    raise DatabasePortalBridgeDeferred(
+                        reason,
+                        backoff_seconds=backoff_seconds,
+                    )
                 failure = self._terminal_failure(raw_result)
                 if failure:
-                    if (
-                        "deferred" in failure
-                        or "backoff" in failure
-                        or "capacity" in failure
-                        or "resource_claim" in failure
-                    ):
-                        raise DatabasePortalBridgeDeferred(failure)
                     raise DatabasePortalBridgeError(failure)
             return self._acceptance_receipt(
                 attempt=attempt,

@@ -47,6 +47,10 @@ if not _CHILD_PROBE_MODE:
 PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-preflight@1"
 )
+PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-project-dependency-preflight-event-projection@1"
+)
 PROJECT_DEPENDENCY_PROBE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-probe@1"
 )
@@ -80,6 +84,9 @@ MAX_REQUIREMENT_BYTES = 2048
 MAX_INSTALLED_VERSION_BYTES = 512
 MAX_PROBE_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_PROBE_SOURCE_BYTES = 512 * 1024
+MAX_PREFLIGHT_EVENT_FINDING_PREVIEW = 16
+MAX_PREFLIGHT_EVENT_FIELD_BYTES = 512
+MAX_PREFLIGHT_INLINE_RECEIPT_BYTES = 64 * 1024
 BOUNDED_FILE_READ_CHUNK_BYTES = 64 * 1024
 MAX_DEPENDENCY_CLOSURE_NODES = 256
 MAX_DEPENDENCY_CLOSURE_EDGES = 2048
@@ -3531,6 +3538,207 @@ def project_dependency_preflight_error_receipt(
     receipt["receipt_id"] = _content_sha256(receipt)
     receipt["retry_fingerprint"] = _retry_fingerprint(receipt)
     return receipt
+
+
+def canonical_project_dependency_preflight_receipt_bytes(
+    receipt: Mapping[str, Any],
+) -> bytes:
+    """Verify and canonically encode one existing dependency receipt.
+
+    The receipt remains the authoritative ``@1`` record.  This helper adds no
+    receipt tier: it only prevents an event projection or artifact reference
+    from being built around a forged self-identity.
+    """
+
+    if not isinstance(receipt, Mapping):
+        raise TypeError("dependency preflight receipt must be a mapping")
+    value = dict(receipt)
+    if value.get("schema") != PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA:
+        raise ValueError("unsupported dependency preflight receipt schema")
+    claimed_receipt_id = value.get("receipt_id")
+    claimed_retry_fingerprint = value.get("retry_fingerprint")
+    unsigned = dict(value)
+    unsigned.pop("receipt_id", None)
+    unsigned.pop("retry_fingerprint", None)
+    if not (
+        type(claimed_receipt_id) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(claimed_receipt_id)
+        and _content_sha256(unsigned) == claimed_receipt_id
+    ):
+        raise ValueError("dependency preflight receipt identity mismatch")
+    if not (
+        type(claimed_retry_fingerprint) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(claimed_retry_fingerprint)
+        and _retry_fingerprint(value) == claimed_retry_fingerprint
+    ):
+        raise ValueError("dependency preflight retry fingerprint mismatch")
+    return _canonical_json(value).encode("utf-8")
+
+
+def _dependency_preflight_event_finding_preview(
+    receipt: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Return a bounded diagnostic prefix; the artifact binds the full list."""
+
+    selected: list[dict[str, Any]] = []
+    fields = (
+        "name",
+        "requirement",
+        "installed_version",
+        "specifier",
+        "source",
+        "reason",
+        "requirement_sha256",
+        "installed_version_sha256",
+    )
+    for collection_name in (
+        "missing_requirements",
+        "incompatible_requirements",
+        "invalid_requirements",
+    ):
+        collection = receipt.get(collection_name)
+        if not isinstance(collection, Sequence) or isinstance(
+            collection, (str, bytes, bytearray)
+        ):
+            continue
+        for raw_item in collection:
+            if len(selected) >= MAX_PREFLIGHT_EVENT_FINDING_PREVIEW:
+                return selected
+            if not isinstance(raw_item, Mapping):
+                continue
+            item: dict[str, Any] = {"kind": collection_name}
+            for field in fields:
+                raw_value = raw_item.get(field)
+                if raw_value in (None, ""):
+                    continue
+                if isinstance(raw_value, bool):
+                    item[field] = raw_value
+                elif isinstance(raw_value, int):
+                    item[field] = raw_value
+                else:
+                    encoded = str(raw_value).encode(
+                        "utf-8", errors="replace"
+                    )[:MAX_PREFLIGHT_EVENT_FIELD_BYTES]
+                    item[field] = encoded.decode("utf-8", errors="ignore")
+            selected.append(item)
+    return selected
+
+
+def project_dependency_preflight_for_event(
+    receipt: Mapping[str, Any],
+    *,
+    full_receipt_reference: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Build a bounded, proof-carrying event view of an existing receipt.
+
+    Large receipt bodies must be persisted through the existing bounded
+    artifact store before this projection is emitted.  A small inline receipt
+    is accepted only as an explicit fallback for reporting artifact-store
+    failure before provider dispatch.
+    """
+
+    canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+    reference: dict[str, Any] | None = None
+    inline_receipt: dict[str, Any] | None = None
+    if full_receipt_reference is None:
+        if len(canonical) > MAX_PREFLIGHT_INLINE_RECEIPT_BYTES:
+            raise ValueError(
+                "oversized dependency preflight receipt requires an artifact reference"
+            )
+        inline_receipt = dict(receipt)
+    else:
+        from ..runtime.artifact_store import BlobReference
+
+        typed_reference = BlobReference.from_dict(full_receipt_reference)
+        expected_digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
+        if (
+            typed_reference.digest != expected_digest
+            or typed_reference.artifact_id != f"blob:{expected_digest}"
+            or typed_reference.size_bytes != len(canonical)
+            or typed_reference.kind
+            != "validation_project_dependency_preflight_receipt"
+        ):
+            raise ValueError(
+                "dependency preflight artifact reference does not bind the receipt"
+            )
+        reference = typed_reference.to_dict()
+
+    def count_sequence(name: str) -> int:
+        value = receipt.get(name)
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            return len(value)
+        return 0
+
+    probe = receipt.get("probe")
+    probe_projects = (
+        probe.get("projects") if isinstance(probe, Mapping) else ()
+    )
+    marker_skipped_count = 0
+    observed_count = 0
+    if isinstance(probe_projects, Sequence) and not isinstance(
+        probe_projects, (str, bytes, bytearray)
+    ):
+        for project in probe_projects:
+            if not isinstance(project, Mapping):
+                continue
+            for field, accumulator in (
+                ("marker_skipped", "marker"),
+                ("observed", "observed"),
+            ):
+                values = project.get(field)
+                count = (
+                    len(values)
+                    if isinstance(values, Sequence)
+                    and not isinstance(values, (str, bytes, bytearray))
+                    else 0
+                )
+                if accumulator == "marker":
+                    marker_skipped_count += count
+                else:
+                    observed_count += count
+
+    projection: dict[str, Any] = {
+        "schema": PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
+        "receipt_schema": PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
+        "receipt_id": str(receipt["receipt_id"]),
+        "retry_fingerprint": str(receipt["retry_fingerprint"]),
+        "passed": receipt.get("passed") is True,
+        "applicable": receipt.get("applicable") is True,
+        "reason": str(receipt.get("reason") or "")[:1000],
+        "automatic_install_attempted": (
+            receipt.get("automatic_install_attempted") is True
+        ),
+        "probe_scope": str(receipt.get("probe_scope") or "")[:512],
+        "validation_command_count": int(
+            receipt.get("validation_command_count") or 0
+        ),
+        "project_count": count_sequence("projects"),
+        "project_root_count": count_sequence("project_roots"),
+        "missing_count": count_sequence("missing_requirements"),
+        "incompatible_count": count_sequence("incompatible_requirements"),
+        "invalid_requirement_count": count_sequence("invalid_requirements"),
+        "invalid_command_count": count_sequence("invalid_commands"),
+        "probe_project_count": (
+            len(probe_projects)
+            if isinstance(probe_projects, Sequence)
+            and not isinstance(probe_projects, (str, bytes, bytearray))
+            else 0
+        ),
+        "marker_skipped_count": marker_skipped_count,
+        "observed_distribution_count": observed_count,
+        "finding_preview": _dependency_preflight_event_finding_preview(
+            receipt
+        ),
+        "event_projection_compacted": True,
+        "completion_authority": False,
+    }
+    if reference is not None:
+        projection["full_receipt_artifact"] = reference
+    else:
+        projection["inline_receipt"] = inline_receipt
+    return projection
 
 
 def project_dependency_preflight_backoff_seconds(

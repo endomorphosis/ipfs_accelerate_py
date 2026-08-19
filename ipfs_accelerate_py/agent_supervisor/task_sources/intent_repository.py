@@ -4237,6 +4237,7 @@ def open_intent_repository(
     session_id: str = DEFAULT_SESSION_ID,
     install_schema: bool = True,
     evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_ms: Any | None = None,
 ) -> IntentRepository:
     """Open an intent repository against ``control.duckdb`` (or test path)."""
 
@@ -4246,6 +4247,7 @@ def open_intent_repository(
         session_id=session_id,
         install_schema=install_schema,
         evidence_freshness_seconds=evidence_freshness_seconds,
+        clock_ms=clock_ms,
     )
 
 

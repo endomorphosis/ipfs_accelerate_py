@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -211,6 +212,122 @@ class _CompletingPortal:
 
     def close_event_runtime(self) -> None:
         self.closed = True
+
+
+def test_bridge_propagates_typed_pre_dispatch_cooldown(tmp_path: Path) -> None:
+    class DeferredPortal:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "task_id": "LGSWF-004",
+                    "returncode": 1,
+                    "reason": "validation_project_dependency_preflight_failed",
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                    "backoff_seconds": 300,
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = DeferredPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "validation_project_dependency_preflight_failed"
+    assert caught.value.backoff_seconds == 300
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+    assert portal.closed is True
+
+
+def test_bridge_uses_safe_default_for_legacy_typed_deferral(
+    tmp_path: Path,
+) -> None:
+    class LegacyDeferredPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "legacy_typed_deferral",
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: LegacyDeferredPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.backoff_seconds == 300
+
+
+def test_bridge_does_not_infer_retryability_from_generic_failure_text(
+    tmp_path: Path,
+) -> None:
+    class GenericFailurePortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "resource_capacity_backoff_requested",
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: GenericFailurePortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+
+
+def test_bridge_does_not_defer_successful_zero_provider_closure(
+    tmp_path: Path,
+) -> None:
+    class DeterministicPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            result = super().run_once()
+            implementation = result["implementation_result"]
+            assert isinstance(implementation, dict)
+            implementation["attempt_consumed"] = False
+            implementation["provider_dispatched"] = False
+            implementation["backoff_seconds"] = 0
+            return result
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: DeterministicPortal(paths, alias),
+    )
+
+    provider = bridge.run_provider(_attempt())
+
+    assert provider["accepted"] is True
 
 
 def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(

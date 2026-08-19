@@ -41,6 +41,7 @@ from .intent_repository import (
     IntentRepositoryError,
     IntentRepositoryIntegrityError,
     PlanRevisionRepository,
+    QueueEntry,
     open_intent_repository,
 )
 
@@ -338,6 +339,7 @@ class DatabaseTaskSource:
         plan_root_cid: str = "",
         install_schema: bool = True,
         evidence_freshness_seconds: int = 3600,
+        clock_ms: Any | None = None,
     ) -> None:
         if intent is not None:
             self._intent = intent
@@ -358,6 +360,7 @@ class DatabaseTaskSource:
                 owner_id=owner_id,
                 install_schema=install_schema,
                 evidence_freshness_seconds=evidence_freshness_seconds,
+                clock_ms=clock_ms,
             )
         self.path = self.database_path
         self.repository_tree_id = str(repository_tree_id or "")
@@ -895,6 +898,40 @@ class DatabaseTaskSource:
         )
 
     cas_status = compare_and_set_status
+
+    def record_queue_backoff(
+        self,
+        *,
+        task_cid: str,
+        delay_ms: int,
+        reason: str = "backoff",
+        selection_penalty: int = 0,
+    ) -> IntentReceipt:
+        """Persist a task-selection cooldown through the intent authority.
+
+        Database-authoritative executors must not rely on an attempt-local
+        JSON queue: those projections are disposable and a replacement
+        attempt receives a different state directory.  This checked adapter
+        keeps the existing :class:`IntentRepository` as the sole queue
+        authority while avoiding private repository access by callers.
+        """
+
+        return self._intent.record_queue_backoff(
+            task_cid=task_cid,
+            delay_ms=delay_ms,
+            reason=reason,
+            selection_penalty=selection_penalty,
+        )
+
+    def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
+        """Clear one canonical task cooldown through the intent authority."""
+
+        return self._intent.record_queue_retry(task_cid=task_cid)
+
+    def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
+        """Return the canonical queue state without exposing raw SQL."""
+
+        return self._intent.get_queue_entry(task_cid)
 
     def record_evidence(
         self,
