@@ -144,6 +144,61 @@
       "authority_mutated": true,
       "process_started": false,
       "recovery": "Preserve run-v4 exactly as read-only historical @1 evidence, advance every configured runtime path and store generation to run-v5 after committing the @2 database-role and authority contracts, and never retry, launch, or mutate run-v4."
+    },
+    {
+      "attempt_id": "sha256:4db85dc43f74973be02eb903180114fa7117b877045466f91fce337fa9f24d13",
+      "attempted_at_utc": "2026-08-19T02:08:12.000000000Z",
+      "store_generation": "eaaef-run-v5",
+      "source_head": "6764046a61145c3a3bdce727f3b4a254c3271282",
+      "source_tree": "d858de8c900cd4efea4f7cb9e663841fe85fc2c8",
+      "population_cid": "sha256:0b423fc4b9d4a09cd99280973214206c649a9f4d8b5a81780e603493cefb534a",
+      "plan_root_cid": "sha256:30da8d94b1f4961922bf645d756da4103c5da46fd3c1b2e1116bca5a31135d4e",
+      "outcome": "claim_published_population_ingest_failed",
+      "failure_class": "ControlPlaneIdentityError",
+      "failure_summary": "The immutable namespace claim was published, then population ingest failed because IntentRepository treated the repo-relative output path .gitignore as an identifier. Partial DuckDB files and lockfiles remain in the run-v5 namespace.",
+      "partial_effects": [
+        {
+          "path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v5/registry/bootstrap-materialization-claim.json",
+          "sha256": "29f783ca62396f6fc5ad3ef6f98061498985b6f73a9b6604c682d24751c52c8d",
+          "byte_count": 9247,
+          "claim_cid": "sha256:ffb9b2e5b5068dbc01229d6eab86f932210fd651ed95d8c678ee61e5f3c6fdfa",
+          "disposition": "preserved_immutable_do_not_retry"
+        },
+        {
+          "paths": [
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v5/control.duckdb",
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v5/control.coordination.duckdb",
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v5/control.execution.duckdb"
+          ],
+          "byte_counts": [
+            26226688,
+            1060864,
+            798720
+          ],
+          "sha256": [
+            "4d15b4c75afe1ecee2f6f3e870b7cc67cf9f812283e8ee913f004741ed9d0f5b",
+            "11d9593eedc1c6fd6ed758fedfde4aea3d44d608ca0019f467af3727fbbfe379",
+            "f25144d9e979c02679d9219dd48a0cf76c40d6d875ed53f30ac8633dd987d7ad"
+          ],
+          "disposition": "preserved_read_only_failed_namespace_do_not_reuse"
+        },
+        {
+          "paths": [
+            ".control.coordination.duckdb.lock",
+            ".control.duckdb.intent.lock",
+            ".control.duckdb.lock",
+            ".control.duckdb.migration.lock",
+            ".control.execution.duckdb.lock",
+            ".control.execution.duckdb.writer.lock"
+          ],
+          "byte_count_each": 0,
+          "disposition": "preserved_with_run-v5_namespace"
+        }
+      ],
+      "database_created": true,
+      "authority_mutated": true,
+      "process_started": false,
+      "recovery": "Preserve run-v5 exactly; allow IntentRepository to store repo-relative output paths including dotfiles; advance every configured runtime path and store generation to run-v6; never retry, launch, or mutate run-v5."
     }
   ]
 }
