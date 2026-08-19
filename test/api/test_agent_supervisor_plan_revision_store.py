@@ -519,6 +519,77 @@ def test_crash_after_prepare_restores_prior_active_projection(
     assert active.plan_root_cid == base.plan_root_cid
 
 
+def test_composite_duckdb_apply_restores_every_backend_after_failure(
+    tmp_path: Path,
+) -> None:
+    store = PlanRevisionStore(tmp_path / "store")
+    base = _revision()
+    store.apply(
+        PlanRevisionApplyRequest(
+            revision=base,
+            observed_roots=base.roots,
+            idempotency_key="idem:composite-base",
+            expected_effects=("create",),
+        )
+    )
+
+    class _CompositeDuckDB:
+        database_path = tmp_path / "control.duckdb"
+        coordination_path = tmp_path / "coordination.duckdb"
+
+        def plan_revision_projection_paths(self):
+            return {
+                "control": self.database_path,
+                "coordination": self.coordination_path,
+            }
+
+        def apply_plan_revision(self, **_kwargs):
+            self.database_path.write_bytes(b"mutated-control")
+            self.coordination_path.write_bytes(b"mutated-coordination")
+            return {"projection_cid": _cid("composite-projection")}
+
+        def plan_revision_projection_cid(self):
+            return _cid("composite-projection")
+
+    source = _CompositeDuckDB()
+    source.database_path.write_bytes(b"original-control")
+    source.coordination_path.write_bytes(b"original-coordination")
+    delta = _delta(base_plan_root=base.plan_root_cid)
+    child = _revision(
+        plan_root_cid=_cid("plan-root-composite"),
+        semantic_revision=2,
+        parent_plan_root=base.plan_root_cid,
+        origin=PlanOrigin.STEER,
+        delta_cid=delta.delta_cid,
+        roots=base.roots,
+        task_population=base.task_population,
+        added_population=_population(PopulationKind.ADDED, _cid("new-task")),
+    )
+
+    def _fault(point: str) -> None:
+        if point == "after_duckdb":
+            raise RuntimeError("injected-after-composite-apply")
+
+    with pytest.raises(
+        PlanRevisionStoreConflictError, match="injected-after-composite-apply"
+    ):
+        store.apply(
+            PlanRevisionApplyRequest(
+                revision=child,
+                observed_roots=child.roots,
+                idempotency_key="idem:composite-failure",
+                expected_effects=delta.expected_effects,
+                delta=delta,
+                duckdb_source=source,
+                expected_active_plan_root=base.plan_root_cid,
+                fault_injector=_fault,
+            )
+        )
+
+    assert source.database_path.read_bytes() == b"original-control"
+    assert source.coordination_path.read_bytes() == b"original-coordination"
+
+
 def test_recover_reloads_continuation_from_store_not_process_memory(
     tmp_path: Path,
 ) -> None:

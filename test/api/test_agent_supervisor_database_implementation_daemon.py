@@ -12,6 +12,7 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import importlib
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,8 +33,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
@@ -142,6 +145,57 @@ def _open_daemon(
         effect_fn=effect,
         clock_ms=clock_ms,
     )
+
+
+def _validation_retry_receipt(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+        "disposition": "retry",
+        "reason": "declared_validation_failed",
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "portal_attempt": 1,
+        "typed_retry_generation": 1,
+        "retry_budget_basis": "portal_attempt",
+        "legacy_database_attempts_excluded": True,
+        "max_task_attempts": daemon.max_task_attempts,
+        "remaining_task_attempts": (
+            daemon.max_task_attempts - 1
+        ),
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "backoff_seconds": 0,
+        "implementation_commit": "a" * 40,
+        "rescue_branch": "rescue/dqp-t001-attempt-1-failed-validation",
+        "binding_id": "sha256:" + "2" * 64,
+        "events_digest": "sha256:" + "3" * 64,
+        "event_stream_id": "event-log:validation-retry",
+        "expected_output_event_id": "sha256:" + "1" * 64,
+        "proposal_event_id": "sha256:" + "4" * 64,
+        "preservation_event_id": "sha256:" + "5" * 64,
+        "implementation_event_id": "sha256:" + "6" * 64,
+        "proposal_id": "proposal:validation-retry",
+        "proposal_receipt_id": "proposal-receipt:validation-retry",
+        "proposal_policy_id": "proposal-policy:validation-retry",
+        "validation_receipt_id": "validation-dag:validation-retry",
+        "failure_review_receipt_id": "failure-review:validation-retry",
+        "changed_paths": ["implementation.py", "test_implementation.py"],
+        "authoritative_validation_executed": True,
+        "proposal_policy_accepted": True,
+        "output_policy_passed": True,
+        "denial_findings": [],
+    }
+    receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
+    return receipt
 
 
 def test_interface_identities() -> None:
@@ -255,6 +309,43 @@ def test_materialization_projects_completed_prerequisites_into_coordination(
         attempt = daemon.claim_next()
         assert attempt is not None
         assert attempt.task_cid == "task:cid:002"
+    finally:
+        daemon.close()
+
+
+def test_claim_next_preserves_canonical_ready_order_for_late_task(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:ordered")
+    try:
+        population = _population(1)
+        first = population["tasks"]
+        assert isinstance(first, list)
+        first[0]["ordinal"] = 20
+        daemon.materialize_population(population)
+
+        # The successor task enters the coordination registry later, but its
+        # canonical plan ordinal places it first.  Registration time must not
+        # override the intent repository's ready-order authority.
+        daemon.task_source._intent.upsert_task(
+            task_cid="task:cid:late-preferred",
+            task_alias="DQP-LATE-PREFERRED",
+            goal_cid="goal:cid:root",
+            ordinal=1,
+            status="ready",
+            priority="P0",
+            body={"title": "Late but plan-preferred"},
+            identity={"task_cid": "task:cid:late-preferred"},
+            dependencies=(),
+            outputs=(),
+            acceptance=(),
+            validations=(),
+            expected_revision=0,
+        )
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:late-preferred"
     finally:
         daemon.close()
 
@@ -718,6 +809,131 @@ def test_portal_failure_terminal_cas_refetches_advanced_attempt(
         daemon.close()
 
 
+def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
+    tmp_path: Path,
+) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        receipt = _validation_retry_receipt(holder["daemon"], attempt)
+        raise DatabasePortalValidationRetry(receipt)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-validation-retry",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["deferred"] is False
+        assert implementation["attempt_consumed"] is True
+        assert implementation["provider_dispatched"] is True
+        assert implementation["typed_deferral_slot_consumed"] is False
+        assert implementation["retry_budget_exhausted"] is False
+        assert implementation["retry_state"]["status"] == "retrying"
+
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+        failed = daemon.phase_history(attempt.attempt_id)[-1]["body"]
+        assert failed["typed_validation_retry"]["remaining_task_attempts"] == 2
+        evidence = daemon._terminal_retry_evidence(attempt)
+        assert evidence is not None
+        assert evidence["typed_deferral_budget"] is None
+        assert evidence["typed_validation_retry"]["attempt_consumed"] is True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        retry_seed = task.body["completion_receipt"]["validation_retry_seed"]
+        assert retry_seed["receipt_id"] == failed["typed_validation_retry"][
+            "receipt_id"
+        ]
+
+        # The retrying->in_progress claim CAS carries the verified seed into
+        # the exact successor record consumed by the fresh Portal bridge.
+        now["ms"] = 7_000
+        successor = daemon.claim_next()
+        assert successor is not None
+        assert successor.attempt_number == 2
+        claimed = daemon.task_source.get(attempt.task_cid)
+        assert claimed is not None
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["operation"] == "database_claim"
+        assert claim_receipt["validation_retry_seed"] == retry_seed
+        assert claim_receipt["validation_retry_source_attempt_id"] == (
+            attempt.attempt_id
+        )
+        assert claim_receipt["attempt_number"] == successor.attempt_number
+        assert claim_receipt["fencing_token"] == successor.fencing_token
+        assert claim_receipt["fence_epoch"] == successor.fence_epoch
+        assert claim_receipt["lease_id"] == successor.lease_id
+    finally:
+        daemon.close()
+
+
+def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        receipt = _validation_retry_receipt(daemon, attempt)
+        tampered = dict(receipt)
+        tampered["denial_findings"] = ["denied_effect"]
+        tampered.pop("receipt_id")
+        tampered["receipt_id"] = daemon._database_portal_evidence_digest(
+            tampered
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            daemon.recover_blocked_portal_validation_retry(
+                attempt,
+                retry_evidence=tampered,
+            )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        recovered = daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=receipt,
+        )
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        assert recovered["validation_retry_evidence"] == receipt
+        assert recovered["coordination"]["attempt_id"] == attempt.attempt_id
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+
+        repeated = daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=receipt,
+        )
+        assert repeated["changed"] is False
+        assert repeated["status"] == "retrying"
+        assert repeated["validation_retry_evidence"] == receipt
+    finally:
+        daemon.close()
+
+
 def test_restart_finishes_terminal_portal_failure_control_cas(
     tmp_path: Path,
 ) -> None:
@@ -1048,9 +1264,12 @@ def test_exhaustion_blocks_already_retrying_task_and_bounds_evidence_preview(
             "_typed_deferral_budget_observation",
             original_observation,
         )
+        implementation_daemon_module = importlib.import_module(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+        )
         monkeypatch.setattr(
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_daemon._MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW",
+            implementation_daemon_module,
+            "_MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW",
             1,
         )
         reconciled = daemon.reconcile_terminal_retry_states()

@@ -377,6 +377,49 @@ def test_delta_rejects_mutation_of_completed_and_claimed_history() -> None:
         )
 
 
+def test_amend_unstarted_task_requires_exact_spec_cas_and_preserves_identity() -> None:
+    item = _delta_item(
+        item_key="delta:amend-ready",
+        operation=PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+        target_cid=_cid("task-ready"),
+        expected_target_lifecycle=LifecycleState.UNSTARTED,
+        expected_target_spec_revision=_cid("task-ready-spec-v1"),
+        after_record_cid=_cid("task-ready-spec-v2"),
+        before_digest=_cid("task-ready-spec-v1"),
+    )
+    assert PlanDeltaItem.from_dict(item.to_record()) == item
+    assert item.target_cid == _cid("task-ready")
+
+    with pytest.raises(PlanRevisionContractError, match="expected spec revision"):
+        _delta_item(
+            item_key="delta:amend-without-cas",
+            operation=PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+            target_cid=_cid("task-ready"),
+            expected_target_lifecycle=LifecycleState.UNSTARTED,
+            expected_target_spec_revision="",
+            after_record_cid=_cid("task-ready-spec-v2"),
+        )
+    with pytest.raises(PlanRevisionLifecycleError, match="unstarted|blocked"):
+        _delta_item(
+            item_key="delta:amend-running",
+            operation=PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+            target_cid=_cid("task-running"),
+            expected_target_lifecycle=LifecycleState.RUNNING,
+            expected_target_spec_revision=_cid("task-running-spec"),
+            after_record_cid=_cid("task-running-spec-v2"),
+        )
+
+    reprioritize = _delta_item(
+        item_key="delta:reprioritize-blocked",
+        operation=PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
+        target_cid=_cid("task-blocked"),
+        expected_target_lifecycle=LifecycleState.BLOCKED,
+        expected_target_spec_revision=_cid("task-blocked-spec-v1"),
+        after_record_cid=_cid("task-blocked-spec-v2"),
+    )
+    assert reprioritize.target_cid == _cid("task-blocked")
+
+
 def test_delta_allows_safe_attach_on_completed_and_successor_on_claimed() -> None:
     attach = _delta_item(
         item_key="delta:attach",

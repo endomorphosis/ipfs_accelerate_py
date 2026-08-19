@@ -24,9 +24,12 @@ from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts impo
     FormalWorkPlan,
 )
 from scripts.emit_logic_governed_compositional_verification_fabric_plan import (
+    IMMEDIATE_PREDECESSOR_PLAN_CID,
     PHASES,
-    PREDECESSOR_PLAN_CID,
+    PLAN_REVISION,
+    PREDECESSOR_ARCHIVE,
     PROGRAM,
+    PROGRAM_ANCESTOR_PLAN_CID,
     ROOT_GOAL,
     TASKS,
     build_plan,
@@ -40,6 +43,10 @@ TODO_PATH = REPO_ROOT / "docs/architecture/logic_governed_compositional_verifica
 FORMAL_PATH = (
     REPO_ROOT
     / "data/agent_supervisor/logic_governed_compositional_verification_fabric/formal_work_plan.json"
+)
+SCHEDULER_PATH = (
+    REPO_ROOT
+    / "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json"
 )
 TASK_HEADING = re.compile(r"^## (LGCVF-\d{3}) (.+)$", re.MULTILINE)
 GOAL_HEADING = re.compile(r"^## (LGCVF-G\d{3}) (.+)$", re.MULTILINE)
@@ -95,7 +102,14 @@ def _cycle(edges: dict[str, tuple[str, ...]]) -> tuple[str, ...]:
 
 def validate() -> dict[str, Any]:
     errors: list[str] = []
-    for path in (PLAN_PATH, OBJECTIVES_PATH, TODO_PATH, FORMAL_PATH):
+    for path in (
+        PLAN_PATH,
+        OBJECTIVES_PATH,
+        TODO_PATH,
+        FORMAL_PATH,
+        PREDECESSOR_ARCHIVE,
+        SCHEDULER_PATH,
+    ):
         if not path.is_file():
             errors.append(f"missing required projection: {path.relative_to(REPO_ROOT)}")
     if errors:
@@ -180,8 +194,10 @@ def validate() -> dict[str, Any]:
         ("objective heap", objective_text),
         ("task board", todo_text),
     ):
-        if PREDECESSOR_PLAN_CID not in text:
-            errors.append(f"{noun}: predecessor plan CID missing")
+        if IMMEDIATE_PREDECESSOR_PLAN_CID not in text:
+            errors.append(f"{noun}: immediate predecessor plan CID missing")
+        if PROGRAM_ANCESTOR_PLAN_CID not in text:
+            errors.append(f"{noun}: original program ancestor CID missing")
         if PROGRAM not in text:
             errors.append(f"{noun}: board namespace missing")
     if "not production-authorized" not in plan_text:
@@ -193,24 +209,57 @@ def validate() -> dict[str, Any]:
         payload = json.loads(FORMAL_PATH.read_text(encoding="utf-8"))
         persisted = FormalWorkPlan.from_dict(payload)
         generated = build_plan()
+        scheduler = json.loads(SCHEDULER_PATH.read_text(encoding="utf-8"))
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         errors.append(f"formal plan cannot be reconstructed: {exc}")
     else:
         if persisted.content_id != generated.content_id:
             errors.append("formal plan differs from canonical generator output")
-        if persisted.metadata.get("predecessor_plan_cid") != PREDECESSOR_PLAN_CID:
+        if (
+            persisted.metadata.get("predecessor_plan_cid")
+            != IMMEDIATE_PREDECESSOR_PLAN_CID
+        ):
             errors.append("formal plan predecessor binding differs")
+        if persisted.metadata.get("plan_revision") != PLAN_REVISION:
+            errors.append("formal plan revision differs")
+        if (
+            persisted.metadata.get("program_ancestor_plan_cid")
+            != PROGRAM_ANCESTOR_PLAN_CID
+        ):
+            errors.append("formal plan original ancestor binding differs")
         if tuple(item.task_id for item in persisted.tasks) != tuple(expected_tasks):
             errors.append("formal plan task order/identity differs")
         if tuple(item.subgoal_id for item in persisted.subgoals) != expected_goal_ids[1:]:
             errors.append("formal plan subgoal order/identity differs")
+        logical_task_prefix = persisted.metadata.get("task_prefix")
+        if not isinstance(logical_task_prefix, str) or not re.fullmatch(
+            r"[A-Z][A-Z0-9]*-", logical_task_prefix
+        ):
+            errors.append("formal plan logical task prefix is not canonical")
+        elif not isinstance(scheduler, dict) or scheduler.get("task_prefix") != (
+            "## " + logical_task_prefix
+        ):
+            errors.append(
+                "scheduler Markdown task selector differs from the formal logical prefix"
+            )
+
+    try:
+        archived_payload = json.loads(PREDECESSOR_ARCHIVE.read_text(encoding="utf-8"))
+        archived = FormalWorkPlan.from_dict(archived_payload)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"archived predecessor cannot be reconstructed: {exc}")
+    else:
+        if archived.content_id != IMMEDIATE_PREDECESSOR_PLAN_CID:
+            errors.append("archived predecessor identity differs from its filename")
 
     return {
         "board_namespace": PROGRAM,
         "errors": errors,
         "formal_plan_content_id": (persisted.content_id if "persisted" in locals() else ""),
         "goals": len(expected_goal_ids),
-        "predecessor_plan_cid": PREDECESSOR_PLAN_CID,
+        "immediate_predecessor_plan_cid": IMMEDIATE_PREDECESSOR_PLAN_CID,
+        "plan_revision": PLAN_REVISION,
+        "program_ancestor_plan_cid": PROGRAM_ANCESTOR_PLAN_CID,
         "subgoals": len(PHASES),
         "tasks": len(TASKS),
         "valid": not errors,

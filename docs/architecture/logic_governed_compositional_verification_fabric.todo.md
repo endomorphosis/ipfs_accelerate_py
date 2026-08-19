@@ -3,11 +3,13 @@
 Executable projection of the LGCVF objective heap. Task prefix: `## LGCVF-`.
 Board namespace: `logic-governed-compositional-verification-fabric-v1`.
 
-This successor binds immutable predecessor LGSWF plan
+This is plan revision 2. Its immediate immutable predecessor is LGCVF revision
+1, `baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q`;
+the original LGSWF ancestor remains
 `sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e`.
-It does not rewrite the LGSWF board or fabricate a manual seal. Automatic work
-must not edit this board, its plan/objectives, its validator, scheduler policy,
-benchmark oracle, or predecessor evidence.
+It does not rewrite either predecessor, the LGSWF board, or any manual seal.
+Automatic work must not edit this board, its plan/objectives, its validator,
+scheduler policy, benchmark/qualification judges, or predecessor evidence.
 
 Construction statuses record the evidence available when this revision was
 created. `completed` means task implementation evidence exists; it does not
@@ -313,8 +315,8 @@ DuckDB repository owns all later task transitions.
 - Subgoal ID: LGCVF-G090
 - Depends on: LGCVF-060, LGCVF-080
 - Owning repository: ipfs_accelerate_py
-- Outputs: ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py, test/api/test_agent_supervisor_program_repair_cegis.py
-- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py, test/api/test_agent_supervisor_program_repair_cegis.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py, ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py, test/api/test_agent_supervisor_program_repair_cegis.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py, ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py, test/api/test_agent_supervisor_program_repair_cegis.py
 - Validation: python -m pytest -q test/api/test_agent_supervisor_program_repair_cegis.py
 - Acceptance: Reviewed grammars/operators use counterexamples, cores, failed assumptions, and validated interpolants to refine search; no candidate adds undeclared imports, dependencies, files, authority, effects, or behavior.
 - Board namespace: logic-governed-compositional-verification-fabric-v1
@@ -473,7 +475,7 @@ DuckDB repository owns all later task transitions.
 - Acceptance: Every minimum abstract/discharge/SMT/interpolation/compilation/synthesis/capsule/context/supervisor requirement has a non-skipped executable test or a typed unavailable outcome that does not count as pass.
 - Board namespace: logic-governed-compositional-verification-fabric-v1
 - Parallel lane: qualification-focused
-- Conflict policy: Tests add evidence and never weaken current policies, thresholds or fixtures.
+- Conflict policy: The candidate test is a deliverable, not its own completion authority; LGCVF-113 re-executes it with protected independent suites and never weakens current policies, thresholds or fixtures.
 - Required evidence: test manifest and exact pass/fail/typed-unavailable counts
 
 ## LGCVF-112 Complete adversarial authority and rollback qualification
@@ -495,8 +497,30 @@ DuckDB repository owns all later task transitions.
 - Acceptance: Forgery, staleness, prompt injection, judge mutation, gitlink drift, lease/fence mismatch, duplicate completion, unchanged residual, oscillation, second-order findings, real-byte mutation, and exact rollback fail closed.
 - Board namespace: logic-governed-compositional-verification-fabric-v1
 - Parallel lane: qualification-adversarial
-- Conflict policy: Candidate work cannot write this oracle or protected control inputs.
+- Conflict policy: The candidate may implement this declared test deliverable, but cannot author the protected LGCVF-113 qualification judge or any protected control input; this test cannot certify itself.
 - Required evidence: adversarial detection and rollback receipts
+
+## LGCVF-113 Independently qualify the focused and adversarial test deliverables
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: independent-qualification
+- Goal id: LGCVF-G000
+- Parent goal ID: LGCVF-G000
+- Subgoal ID: LGCVF-G120
+- Depends on: LGCVF-111, LGCVF-112
+- Owning repository: ipfs_accelerate_py
+- Outputs: data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json
+- Predicted files: data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json
+- Validation: python scripts/qualify_logic_governed_compositional_verification_fabric.py --check
+- Acceptance: A pre-existing protected verifier re-executes both candidate suites plus a fixed content-bound manifest of semantic, proof, supervisor, authority, rollback, and fixed-point suites; it rejects skips, typed unavailable counted as pass, missing judges, drifted manifests, and any production claim, then emits a hermetic-only receipt.
+- Board namespace: logic-governed-compositional-verification-fabric-v1
+- Parallel lane: qualification-independent
+- Conflict policy: Candidate work may emit only the result artifact; it cannot edit the protected verifier, manifest, test authorities, scheduler, plan, benchmark oracle, or acceptance policy.
+- Required evidence: exact command/source identities, pass/fail/skip/unavailable counts, artifact CID, cohort label, and completion_authority=false outside hermetic qualification
 
 ## LGCVF-120 Run the preregistered paired hermetic benchmark
 
@@ -509,12 +533,12 @@ DuckDB repository owns all later task transitions.
 - Goal id: LGCVF-G000
 - Parent goal ID: LGCVF-G000
 - Subgoal ID: LGCVF-G130
-- Depends on: LGCVF-111, LGCVF-112
+- Depends on: LGCVF-111, LGCVF-112, LGCVF-113
 - Owning repository: ipfs_accelerate_py
 - Outputs: scripts/benchmark_lgcvf_symbolic_displacement.py, data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json
 - Predicted files: scripts/benchmark_lgcvf_symbolic_displacement.py, data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json
 - Validation: python scripts/benchmark_lgcvf_symbolic_displacement.py --check
-- Acceptance: Baseline/challenger use identical roots, policies, seeds, budgets and independent oracles across required task classes; quality, omissions, reuse, context/models, resources, time/cost and rollback metrics are measured without hard-coded success.
+- Acceptance: Baseline/challenger use identical roots, policies, seeds, budgets and independent oracles across required task classes; quality, omissions, reuse, context/models, resources, time/cost and rollback metrics are measured without hard-coded success, and the protected check rejects completion unless the current LGCVF-113 qualification receipt reconstructs.
 - Board namespace: logic-governed-compositional-verification-fabric-v1
 - Parallel lane: benchmark-hermetic
 - Conflict policy: Benchmark manifest/oracles are protected; cohorts remain separate.
@@ -558,7 +582,7 @@ DuckDB repository owns all later task transitions.
 - Owning repository: ipfs_accelerate_py
 - Outputs: docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md
 - Predicted files: docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md
-- Validation: test -f docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md
+- Validation: python scripts/validate_logic_governed_compositional_verification_fabric_closeout.py release --check
 - Acceptance: Report says go/partial/no-go from exact cohort evidence, identifies external/manual blockers, and distinguishes implementation, tests, objective state, release qualification and production authorization.
 - Board namespace: logic-governed-compositional-verification-fabric-v1
 - Parallel lane: release-report
@@ -603,7 +627,7 @@ DuckDB repository owns all later task transitions.
 - Owning repository: ipfs_accelerate_py
 - Outputs: docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md, data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json
 - Predicted files: docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md, data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json
-- Validation: python -m json.tool data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json
+- Validation: python scripts/validate_logic_governed_compositional_verification_fabric_closeout.py implementation --check
 - Acceptance: Report includes exact revisions/topology, reused capabilities, verified gaps, authority decisions, changed files by repository, APIs, exact tests, vertical receipt identities, benchmarks, model/context displacement, risks/blockers, and machine-executable successors, with five completion/qualification states separated.
 - Board namespace: logic-governed-compositional-verification-fabric-v1
 - Parallel lane: final-report

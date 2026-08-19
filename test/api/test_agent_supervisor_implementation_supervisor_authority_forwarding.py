@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -19,6 +20,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    SUPERVISED_CHILD_IDENTITY_PATH_ENV,
+    SUPERVISED_CHILD_OWNER_SCOPE_ENV,
 )
 
 _LEGACY_AUTHORITY_ARGS = (
@@ -213,12 +218,51 @@ def test_direct_supervisor_round_trips_embedded_one_writer_authority(
         command[command.index("--state-schema-revision") + 1]
         == "datasets-authoritative-operational-v1"
     )
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
 
-    child_env = supervisor_module._managed_daemon_child_environment(
+    for option, stale_value in (
+        ("--task-source-kind", "markdown"),
+        ("--authority-mode", "embedded_exclusive"),
+        ("--state-store-id", "different-control.duckdb"),
+        ("--state-store-generation", "stale-generation"),
+        ("--state-schema-revision", "stale-schema"),
+        ("--state-failover-policy", "require_explicit_operator"),
+    ):
+        stale_command = list(command)
+        stale_command[stale_command.index(option) + 1] = stale_value
+        assert not supervisor._managed_daemon_matches_command_line(
+            " ".join(stale_command)
+        )
+
+    injected_command = [
+        *command,
+        "--runtime-registry-path",
+        "different/registry",
+    ]
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(injected_command)
+    )
+
+    authority_env = supervisor_module._managed_daemon_child_environment(
         database_program=program,
     )
     loop_config = supervisor.build_supervisor_loop_config()
-    assert loop_config.child_env == child_env
+    child_env = dict(loop_config.child_env)
+    assert {
+        key: value
+        for key, value in child_env.items()
+        if key
+        not in {
+            SUPERVISED_CHILD_IDENTITY_PATH_ENV,
+            SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+        }
+    } == authority_env
+    assert child_env[SUPERVISED_CHILD_IDENTITY_PATH_ENV] == str(
+        supervisor._managed_daemon_identity_path()
+    )
+    assert json.loads(child_env[SUPERVISED_CHILD_OWNER_SCOPE_ENV]) == (
+        supervisor._managed_daemon_owner_scope()
+    )
     assert loop_config.spec.launch_env == child_env
     loop = SupervisorLoop(loop_config)
     assert loop._child_spec("initial").env == child_env
@@ -231,7 +275,7 @@ def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     daemon_args = daemon_module.parse_args(daemon_argv)
     assert daemon_module.database_program_from_daemon_namespace(
         daemon_args,
-        environ=child_env,
+        environ=authority_env,
     ) == program
     # The immutable non-secret store authority is also reconstructable from
     # argv alone.  A missing environment binding must never reinterpret the

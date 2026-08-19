@@ -8,9 +8,18 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     FormalWorkPlan,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    PortalImplementationSupervisor,
+    load_supervisor_scheduler_config,
+    parse_args,
+    supervisor_config_from_args,
+)
 from scripts.emit_logic_governed_compositional_verification_fabric_plan import (
-    PREDECESSOR_PLAN_CID,
+    IMMEDIATE_PREDECESSOR_PLAN_CID,
+    PLAN_REVISION,
+    PREDECESSOR_ARCHIVE,
     PROGRAM,
+    PROGRAM_ANCESTOR_PLAN_CID,
     TASKS,
     build_plan,
 )
@@ -25,9 +34,11 @@ def test_lgcvf_projections_are_consistent_and_ancestry_bound() -> None:
     report = validate()
 
     assert report["valid"] is True, report["errors"]
-    assert report["predecessor_plan_cid"] == PREDECESSOR_PLAN_CID
+    assert report["immediate_predecessor_plan_cid"] == IMMEDIATE_PREDECESSOR_PLAN_CID
+    assert report["program_ancestor_plan_cid"] == PROGRAM_ANCESTOR_PLAN_CID
+    assert report["plan_revision"] == PLAN_REVISION == 2
     assert report["board_namespace"] == PROGRAM
-    assert report["tasks"] == len(TASKS) == 27
+    assert report["tasks"] == len(TASKS) == 28
 
 
 def test_lgcvf_formal_plan_round_trips_with_canonical_identity() -> None:
@@ -37,9 +48,19 @@ def test_lgcvf_formal_plan_round_trips_with_canonical_identity() -> None:
 
     assert persisted == FormalWorkPlan.from_json(persisted.to_json())
     assert persisted.content_id == generated.content_id
-    assert persisted.metadata["predecessor_plan_cid"] == PREDECESSOR_PLAN_CID
+    assert persisted.metadata["predecessor_plan_cid"] == IMMEDIATE_PREDECESSOR_PLAN_CID
+    assert persisted.metadata["program_ancestor_plan_cid"] == PROGRAM_ANCESTOR_PLAN_CID
+    assert persisted.metadata["plan_revision"] == PLAN_REVISION
     assert persisted.metadata["release_qualified"] is False
     assert persisted.metadata["production_authorized"] is False
+
+    tasks = {task.task_id: task for task in persisted.tasks}
+    assert tasks["LGCVF-113"].depends_on == ("LGCVF-111", "LGCVF-112")
+    assert tasks["LGCVF-120"].depends_on == (
+        "LGCVF-111",
+        "LGCVF-112",
+        "LGCVF-113",
+    )
 
 
 def test_lgcvf_operator_and_external_gates_remain_unschedulable() -> None:
@@ -86,3 +107,45 @@ def test_lgcvf_plan_files_are_inside_checkout() -> None:
     checkout = Path(__file__).resolve().parents[2]
     assert FORMAL_PATH.is_relative_to(checkout)
     assert TODO_PATH.is_relative_to(checkout)
+    assert PREDECESSOR_ARCHIVE.is_relative_to(checkout)
+    archived = FormalWorkPlan.from_dict(json.loads(PREDECESSOR_ARCHIVE.read_text()))
+    assert archived.content_id == IMMEDIATE_PREDECESSOR_PLAN_CID
+
+
+def test_lgcvf_scheduler_profile_is_directly_launchable_with_exact_policy() -> None:
+    checkout = Path(__file__).resolve().parents[2]
+    scheduler_path = (
+        checkout
+        / "config"
+        / "agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json"
+    )
+    profile = load_supervisor_scheduler_config(
+        scheduler_path,
+        repo_root=checkout,
+    )
+    parsed = parse_args(
+        ["--scheduler-config", str(scheduler_path), "--once"]
+    )
+    config = supervisor_config_from_args(parsed, repo_root=checkout)
+
+    assert profile["task_prefix"] == config.task_prefix == "## LGCVF-"
+    formal = FormalWorkPlan.from_dict(json.loads(FORMAL_PATH.read_text(encoding="utf-8")))
+    assert profile["task_prefix"] == "## " + formal.metadata["task_prefix"]
+    assert profile["max_task_attempts"] == config.max_task_attempts == 3
+    assert profile["validation_max_workers"] == config.validation_max_workers == 4
+    assert set(profile["protected_paths"]) == set(
+        config.implementation_protected_paths
+    )
+    assert len(profile["protected_paths"]) == len(
+        config.implementation_protected_paths
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+    assert command.count("--max-task-attempts") == 1
+    assert command[command.index("--max-task-attempts") + 1] == "3"
+    assert command.count("--validation-max-workers") == 1
+    assert command[command.index("--validation-max-workers") + 1] == "4"
+    assert command.count("--implementation-protected-path") == len(
+        profile["protected_paths"]
+    )
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))

@@ -1,11 +1,13 @@
 # Logic-Governed Compositional Verification Fabric Objective Heap
 
 Program prefix: `LGCVF`. Root goal: `LGCVF-G000`. Board namespace:
-`logic-governed-compositional-verification-fabric-v1`. This is an additive
-successor to LGSWF plan
-`sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e`;
-the predecessor's plan, task history, quarantined attempts, and manual
-acceptances are immutable inputs.
+`logic-governed-compositional-verification-fabric-v1`. This is semantic plan
+revision 2, immediately descended from LGCVF revision 1
+`baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q`,
+and transitively from LGSWF plan
+`sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e`.
+Both predecessor plans, accepted task history, quarantined attempts, and
+manual acceptances are immutable inputs.
 
 Normative plan:
 [`LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md`](./LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md).
@@ -210,9 +212,9 @@ Typed projection:
 - Depends on: LGCVF-G060, LGCVF-G070, LGCVF-G080, LGCVF-G090, LGCVF-G100, LGCVF-G110
 - Priority: P0
 - Track: vertical-slice
-- Producing tasks: LGCVF-110, LGCVF-111, LGCVF-112
+- Producing tasks: LGCVF-110, LGCVF-111, LGCVF-112, LGCVF-113
 - Goal: Execute and independently verify all 22 required fixture stages through public APIs with zero model use and exact unaffected-evidence reuse.
-- Evidence: machine-readable trace/receipt identities, selected/full test receipts, fixed-point receipt, rollback/adversarial results, token/reuse metrics
+- Evidence: machine-readable trace/receipt identities, selected/full test receipts, fixed-point receipt, rollback/adversarial results, token/reuse metrics, and the protected independently reconstructed LGCVF-113 qualification receipt
 - Validation: reproducible demo plus focused and adversarial integration commands in the task board
 - Acceptance: Real bytes mutate and repair in isolation; only affected semantics/checks replay; unaffected evidence is fresh/reused; the final artifact verifier reproduces acceptance; required tests do not silently skip.
 - Conflict policy: Fixture and test artifacts cannot certify production; candidate work cannot edit its judge.
@@ -227,6 +229,6 @@ Typed projection:
 - Producing tasks: LGCVF-120, LGCVF-121, LGCVF-122, LGCVF-123, LGCVF-124
 - Goal: Measure baseline/challenger quality, safety, reuse, context/model displacement, resources, time, and cost; issue a truthful go/partial/no-go; preserve human production authority.
 - Evidence: preregistered benchmark manifest, paired machine results, cohort separation, external qualification receipt or typed unavailable, final report and minimal successors
-- Validation: benchmark and final-report validators named in the board
+- Validation: protected qualification, benchmark, release-disposition, and final-report validators named in the board
 - Acceptance: Targets are measured rather than hard-coded; production claims use production-authoritative evidence; LGCVF-123 remains blocked until independently authorized.
 - Conflict policy: Benchmark policies, holdouts, expectations, and external qualification are protected and cannot be authored by candidate work.

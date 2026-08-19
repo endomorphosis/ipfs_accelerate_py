@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import json
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,6 +44,7 @@ from .intent_repository import (
     PlanRevisionRepository,
     QueueEntry,
     open_intent_repository,
+    task_projection_spec_cid,
 )
 
 # ---------------------------------------------------------------------------
@@ -748,6 +750,448 @@ class DatabaseTaskSource:
             terminal=terminal and snap.task_count > 0,
             objective_count=snap.objective_count,
             plan_count=snap.plan_count,
+        )
+
+    def plan_projection(
+        self, *, task_cids: Sequence[str] = ()
+    ) -> Mapping[str, Any]:
+        """Forward the full-fidelity intent plan projection."""
+
+        return self._intent.plan_projection(task_cids=task_cids)
+
+    def completion_evidence_projection(
+        self, *, task_cids: Sequence[str] = ()
+    ) -> Mapping[str, Any]:
+        """Forward exact completion receipts without creating new authority."""
+
+        return self._intent.completion_evidence_projection(task_cids=task_cids)
+
+    def plan_revision_projection_cid(self) -> str:
+        """Return the full plan projection CID used for revision verification."""
+
+        return str(self.plan_projection().get("projection_cid") or "")
+
+    def plan_revision_projection_paths(self) -> tuple[Path, ...]:
+        """Declare local files mutated by a plan-revision apply."""
+
+        if isinstance(self.database_path, Path):
+            return (self.database_path.resolve(),)
+        raise TaskSourceIntegrityError(
+            "remote state-owner targets do not expose rollback file paths"
+        )
+
+    @staticmethod
+    def _plan_population_mapping(source: Any) -> Mapping[str, Any]:
+        if isinstance(source, Mapping):
+            return source
+        for method_name in ("to_dict", "to_record"):
+            method = getattr(source, method_name, None)
+            if callable(method):
+                projected = method()
+                if isinstance(projected, Mapping):
+                    return projected
+        raise TaskSourceIntegrityError(
+            "plan revision input must expose a canonical mapping projection"
+        )
+
+    @staticmethod
+    def _projection_tasks(
+        projection: Mapping[str, Any], *, noun: str
+    ) -> dict[str, Mapping[str, Any]]:
+        raw_tasks = projection.get("tasks")
+        if not isinstance(raw_tasks, list):
+            raise TaskSourceIntegrityError(f"{noun} has no typed task population")
+        tasks: dict[str, Mapping[str, Any]] = {}
+        for item in raw_tasks:
+            if not isinstance(item, Mapping):
+                raise TaskSourceIntegrityError(f"{noun} task record is malformed")
+            task_cid = str(item.get("task_cid") or "")
+            if not task_cid or task_cid in tasks:
+                raise TaskSourceIntegrityError(
+                    f"{noun} task identities are missing or duplicated"
+                )
+            tasks[task_cid] = item
+        return tasks
+
+    @staticmethod
+    def _lifecycle_for_status(status: str) -> Any:
+        from ..planning.plan_revision_contracts import LifecycleState
+
+        normalized = str(status or "").strip().lower()
+        if normalized in {"proposed"}:
+            return LifecycleState.PROPOSED
+        if normalized in {"admitted"}:
+            return LifecycleState.ADMITTED
+        if normalized in {"ready", "todo", "pending", "queued", "retrying"}:
+            return LifecycleState.UNSTARTED
+        if normalized == "blocked":
+            return LifecycleState.BLOCKED
+        if normalized == "claimed":
+            return LifecycleState.CLAIMED
+        if normalized in {"in_progress", "running"}:
+            return LifecycleState.RUNNING
+        if normalized in {"completed", "complete", "done", "skipped"}:
+            return LifecycleState.COMPLETED
+        if normalized in {"failed", "cancelled", "quarantined", "rejected"}:
+            return LifecycleState.FAILED
+        raise TaskSourceIntegrityError(
+            f"task status {status!r} has no plan-revision lifecycle mapping"
+        )
+
+    @staticmethod
+    def _task_upsert_relations(
+        task: Mapping[str, Any],
+    ) -> tuple[list[str], list[Mapping[str, Any]], list[Any], list[Any]]:
+        dependencies = [
+            str(item.get("dependency_task_cid") or "")
+            for item in task.get("dependencies", [])
+            if isinstance(item, Mapping)
+        ]
+        if any(not dependency for dependency in dependencies):
+            raise TaskSourceIntegrityError(
+                "candidate task contains an empty dependency identity"
+            )
+        outputs: list[Mapping[str, Any]] = []
+        for item in task.get("outputs", []):
+            if not isinstance(item, Mapping) or not isinstance(
+                item.get("effect"), Mapping
+            ):
+                raise TaskSourceIntegrityError(
+                    "candidate task output effect must be a mapping"
+                )
+            outputs.append(dict(item["effect"]))
+        acceptance: list[Any] = []
+        for item in task.get("acceptance", []):
+            if not isinstance(item, Mapping) or not isinstance(
+                item.get("evidence_policy"), Mapping
+            ):
+                raise TaskSourceIntegrityError(
+                    "candidate task acceptance policy must be a mapping"
+                )
+            acceptance.append(dict(item["evidence_policy"]))
+        validations: list[Any] = []
+        for item in task.get("validations", []):
+            if not isinstance(item, Mapping) or not isinstance(
+                item.get("policy"), Mapping
+            ):
+                raise TaskSourceIntegrityError(
+                    "candidate task validation policy must be a mapping"
+                )
+            validations.append(
+                {"argv": list(item.get("argv") or ()), **dict(item["policy"])}
+            )
+        return dependencies, outputs, acceptance, validations
+
+    def apply_plan_revision(
+        self,
+        *,
+        revision: Any = None,
+        admission: Any = None,
+        goal_graph: Any = None,
+        aliases: Mapping[str, str] | None = None,
+        repository_tree_id: str = "",
+        retained_task_cids: Sequence[str] = (),
+        claimed_task_cids: Sequence[str] = (),
+        deferred_item_keys: Sequence[str] = (),
+        origin: str = "create",
+        delta: Any = None,
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+        fencing_token: int | None = None,
+    ) -> Mapping[str, Any]:
+        """Apply a checked create/steer revision without rewriting task history.
+
+        Steer applies are intentionally narrow: additive tasks and exact-CAS
+        amendments of unstarted/blocked task specifications.  Existing logical
+        task CIDs, lifecycle states, completion receipts, attempts, and accepted
+        history remain in the live IntentRepository.  PlanRevisionStore owns the
+        enclosing byte backup/rollback transaction.
+        """
+
+        del aliases
+        source = goal_graph if goal_graph is not None else admission
+        population = self._plan_population_mapping(source)
+        normalized_origin = str(origin or "").strip().lower()
+        if normalized_origin.endswith("create"):
+            if self.plan_projection().get("tasks"):
+                raise TaskSourceConflictError(
+                    "create cannot rewrite an existing task population; replay "
+                    "must be resolved by PlanRevisionStore"
+                )
+            result = self.materialize(
+                population,
+                repository_tree_id=repository_tree_id,
+                plan_root_cid=str(getattr(revision, "plan_root_cid", "") or ""),
+            )
+            return MappingProxyType(
+                {
+                    **dict(result),
+                    "projection_cid": self.plan_revision_projection_cid(),
+                    "deferred_item_keys": list(deferred_item_keys),
+                }
+            )
+
+        if not normalized_origin.endswith("steer"):
+            raise TaskSourceIntegrityError(f"unsupported plan origin: {origin!r}")
+        if store_continuation is None or not idempotency_key:
+            raise TaskSourceConflictError(
+                "steer requires PlanRevisionStore rollback authority"
+            )
+        if isinstance(fencing_token, bool) or not isinstance(fencing_token, int):
+            raise TaskSourceConflictError("steer requires a fencing token")
+        if fencing_token < 1:
+            raise TaskSourceConflictError("steer fencing token must be positive")
+        if delta is None or revision is None:
+            raise TaskSourceIntegrityError("steer requires a revision and closed delta")
+
+        current_projection = self.plan_projection()
+        current_tasks = self._projection_tasks(
+            current_projection, noun="current plan projection"
+        )
+        source_root = str(self.plan_root_cid or "")
+        if not source_root:
+            active_plans = [
+                item
+                for item in current_projection.get("plans", [])
+                if isinstance(item, Mapping) and item.get("status") == "active"
+            ]
+            if len(active_plans) != 1:
+                raise TaskSourceIntegrityError(
+                    "steer requires one exact active predecessor plan"
+                )
+            source_root = str(active_plans[0].get("plan_cid") or "")
+        predecessor = self._intent.get_plan(source_root)
+        if predecessor is None:
+            raise TaskSourceIntegrityError(
+                "steer predecessor plan is absent from the intent repository"
+            )
+
+        with tempfile.TemporaryDirectory(prefix="intent-plan-candidate-") as temp_dir:
+            candidate_source = DatabaseTaskSource(
+                Path(temp_dir) / "candidate.duckdb",
+                repository_tree_id=repository_tree_id,
+                plan_root_cid=str(getattr(revision, "plan_root_cid", "") or ""),
+            )
+            try:
+                candidate_source.materialize(
+                    population,
+                    repository_tree_id=repository_tree_id,
+                    plan_root_cid=str(
+                        getattr(revision, "plan_root_cid", "") or ""
+                    ),
+                )
+                candidate_projection = candidate_source.plan_projection()
+            finally:
+                candidate_source.close()
+        candidate_tasks = self._projection_tasks(
+            candidate_projection, noun="candidate plan projection"
+        )
+
+        current_cids = set(current_tasks)
+        candidate_cids = set(candidate_tasks)
+        if current_cids - candidate_cids:
+            raise TaskSourceConflictError(
+                "steer candidate would drop existing logical tasks: "
+                + ", ".join(sorted(current_cids - candidate_cids))
+            )
+        retained = {str(task_cid) for task_cid in retained_task_cids}
+        claimed = {str(task_cid) for task_cid in claimed_task_cids}
+        if (retained | claimed) - current_cids:
+            raise TaskSourceConflictError(
+                "steer lifecycle population references an unknown live task"
+            )
+
+        from ..planning.plan_revision_contracts import (
+            DeltaEffectClass,
+            LifecycleState,
+            PlanDeltaOperation,
+        )
+
+        amendments: dict[str, Any] = {}
+        additions: dict[str, Any] = {}
+        for item in tuple(getattr(delta, "items", ())):
+            effect_class = getattr(item, "effect_class", None)
+            if effect_class is not DeltaEffectClass.MATERIALIZABLE_NOW:
+                continue
+            operation = getattr(item, "operation", None)
+            if operation in {
+                PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+                PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
+            }:
+                target = str(getattr(item, "target_cid", "") or "")
+                if not target or target in amendments:
+                    raise TaskSourceIntegrityError(
+                        "amend delta target is missing or duplicated"
+                    )
+                amendments[target] = item
+            elif operation is PlanDeltaOperation.ADD_TASK:
+                task_cid = str(getattr(item, "after_record_cid", "") or "")
+                if not task_cid or task_cid in additions:
+                    raise TaskSourceIntegrityError(
+                        "add-task delta identity is missing or duplicated"
+                    )
+                additions[task_cid] = item
+            elif operation in {
+                PlanDeltaOperation.ATTACH_EVIDENCE,
+                PlanDeltaOperation.RECORD_UNCERTAINTY,
+            }:
+                continue
+            else:
+                raise TaskSourceIntegrityError(
+                    "DatabaseTaskSource cannot materialize operation "
+                    f"{getattr(operation, 'value', operation)!r}"
+                )
+
+        new_cids = candidate_cids - current_cids
+        if new_cids != set(additions):
+            raise TaskSourceConflictError(
+                "candidate task additions do not match the admitted delta"
+            )
+        changed_existing = {
+            task_cid
+            for task_cid in current_cids
+            if task_projection_spec_cid(current_tasks[task_cid])
+            != task_projection_spec_cid(candidate_tasks[task_cid])
+        }
+        if changed_existing != set(amendments):
+            raise TaskSourceConflictError(
+                "candidate task amendments do not match the admitted delta"
+            )
+
+        for task_cid, item in amendments.items():
+            current = current_tasks[task_cid]
+            candidate = candidate_tasks[task_cid]
+            lifecycle = self._lifecycle_for_status(str(current.get("status") or ""))
+            if lifecycle not in {
+                LifecycleState.PROPOSED,
+                LifecycleState.ADMITTED,
+                LifecycleState.UNSTARTED,
+                LifecycleState.READY,
+                LifecycleState.BLOCKED,
+            }:
+                raise TaskSourceConflictError(
+                    f"task {task_cid} is no longer amendable ({lifecycle.value})"
+                )
+            expected_lifecycle = getattr(item, "expected_target_lifecycle", None)
+            if expected_lifecycle not in {lifecycle, LifecycleState.READY}:
+                raise TaskSourceConflictError(
+                    f"task {task_cid} lifecycle changed before steer apply"
+                )
+            live_spec = task_projection_spec_cid(current)
+            if str(getattr(item, "expected_target_spec_revision", "")) != live_spec:
+                raise TaskSourceConflictError(
+                    f"task {task_cid} specification CAS is stale"
+                )
+            candidate_spec = task_projection_spec_cid(candidate)
+            if str(getattr(item, "after_record_cid", "")) != candidate_spec:
+                raise TaskSourceConflictError(
+                    f"task {task_cid} replacement spec CID is not the candidate"
+                )
+        if claimed & changed_existing:
+            raise TaskSourceConflictError("steer would amend claimed task history")
+
+        for task_cid in sorted(amendments, key=lambda cid: (
+            int(candidate_tasks[cid].get("ordinal") or 0), cid
+        )):
+            candidate = candidate_tasks[task_cid]
+            live = current_tasks[task_cid]
+            dependencies, outputs, acceptance, validations = (
+                self._task_upsert_relations(candidate)
+            )
+            self._intent.upsert_task(
+                task_cid=task_cid,
+                task_alias=str(candidate["task_alias"]),
+                goal_cid=str(candidate["goal_cid"]),
+                plan_cid=str(live.get("plan_cid") or ""),
+                objective_id=str(candidate.get("objective_id") or ""),
+                ordinal=int(candidate.get("ordinal") or 0),
+                status=str(live.get("status") or "ready"),
+                priority=str(candidate.get("priority") or ""),
+                body=dict(candidate.get("body") or {}),
+                identity=dict(candidate.get("identity") or {}),
+                dependencies=dependencies,
+                outputs=outputs,
+                acceptance=acceptance,
+                validations=validations,
+                expected_revision=int(live.get("revision") or 0),
+            )
+
+        candidate_root = str(getattr(revision, "plan_root_cid", "") or "")
+        if not candidate_root:
+            raise TaskSourceIntegrityError("steer revision has no plan root CID")
+        for task_cid in sorted(additions, key=lambda cid: (
+            int(candidate_tasks[cid].get("ordinal") or 0), cid
+        )):
+            candidate = candidate_tasks[task_cid]
+            candidate_lifecycle = self._lifecycle_for_status(
+                str(candidate.get("status") or "")
+            )
+            if candidate_lifecycle not in {
+                LifecycleState.PROPOSED,
+                LifecycleState.ADMITTED,
+                LifecycleState.READY,
+                LifecycleState.UNSTARTED,
+                LifecycleState.BLOCKED,
+            }:
+                raise TaskSourceConflictError(
+                    f"new task {task_cid} has a non-admissible initial lifecycle"
+                )
+            dependencies, outputs, acceptance, validations = (
+                self._task_upsert_relations(candidate)
+            )
+            self._intent.upsert_task(
+                task_cid=task_cid,
+                task_alias=str(candidate["task_alias"]),
+                goal_cid=str(candidate["goal_cid"]),
+                plan_cid=candidate_root,
+                objective_id=str(candidate.get("objective_id") or ""),
+                ordinal=int(candidate.get("ordinal") or 0),
+                status=str(candidate.get("status") or "ready"),
+                priority=str(candidate.get("priority") or ""),
+                body=dict(candidate.get("body") or {}),
+                identity=dict(candidate.get("identity") or {}),
+                dependencies=dependencies,
+                outputs=outputs,
+                acceptance=acceptance,
+                validations=validations,
+                expected_revision=0,
+            )
+
+        continuation = self.plans.continue_from(
+            plan_cid=source_root,
+            continuation_plan_cid=candidate_root,
+            expected_revision=int(predecessor.get("revision") or 0),
+            body={
+                "revision_cid": str(getattr(revision, "revision_cid", "") or ""),
+                "delta_cid": str(getattr(delta, "delta_cid", "") or ""),
+                "idempotency_key": idempotency_key,
+                "repository_tree_id": repository_tree_id,
+            },
+        )
+        self.plan_root_cid = candidate_root
+        projection = self.plan_projection()
+        projected_tasks = self._projection_tasks(
+            projection, noun="applied plan projection"
+        )
+        for task_cid in set(amendments) | set(additions):
+            if task_projection_spec_cid(projected_tasks[task_cid]) != (
+                task_projection_spec_cid(candidate_tasks[task_cid])
+            ):
+                raise TaskSourceIntegrityError(
+                    f"task {task_cid} failed post-apply spec verification"
+                )
+        return MappingProxyType(
+            {
+                "projection_cid": str(projection.get("projection_cid") or ""),
+                "receipt_cid": continuation.event_id,
+                "plan_root_cid": candidate_root,
+                "changed": bool(amendments or additions),
+                "replayed": False,
+                "amended_task_cids": sorted(amendments),
+                "added_task_cids": sorted(additions),
+                "deferred_item_keys": list(deferred_item_keys),
+                "delta_cid": str(getattr(delta, "delta_cid", "") or ""),
+            }
         )
 
     def get_task(

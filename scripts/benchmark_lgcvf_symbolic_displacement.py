@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -40,6 +41,23 @@ DEFAULT_OUTPUT: Final[Path] = (
     / "logic_governed_compositional_verification_fabric"
     / "benchmark_result.json"
 )
+QUALIFICATION_OUTPUT: Final[Path] = (
+    _REPOSITORY_ROOT
+    / "data"
+    / "agent_supervisor"
+    / "logic_governed_compositional_verification_fabric"
+    / "independent_qualification_result.json"
+)
+QUALIFICATION_SCHEMA: Final[str] = "lgcvf-independent-hermetic-qualification@1"
+QUALIFICATION_PLAN_CID: Final[str] = (
+    "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq"
+)
+QUALIFICATION_VALIDATOR: Final[Path] = (
+    _REPOSITORY_ROOT
+    / "scripts"
+    / "qualify_logic_governed_compositional_verification_fabric.py"
+)
+QUALIFICATION_REPLAY_TIMEOUT_SECONDS: Final[int] = 900
 
 REQUIRED_TASK_CLASSES: Final[tuple[str, ...]] = (
     "local_bug_repair",
@@ -70,6 +88,7 @@ class BenchmarkSchemaError(RuntimeError):
 
 
 VerticalRunner = Callable[..., dict[str, Any]]
+QualificationGate = Callable[[], str]
 
 
 def _threshold(
@@ -436,10 +455,165 @@ def _load_checked_report(path: Path) -> dict[str, Any]:
     return loaded
 
 
+def _qualification_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Match the protected qualifier's reproducible evidence projection."""
+
+    observations = value.get("suites")
+    if not isinstance(observations, list):
+        raise BenchmarkSchemaError("independent qualification suite population is absent")
+    suites: list[dict[str, Any]] = []
+    suite_fields = (
+        "schema",
+        "suite_id",
+        "manifest",
+        "collected",
+        "passed_count",
+        "failed_count",
+        "skipped_count",
+        "xfailed_count",
+        "xpassed_count",
+        "error_count",
+        "nodeids_cid",
+        "exit_code",
+        "passed",
+        "isolation",
+    )
+    for index, observation in enumerate(observations):
+        if not isinstance(observation, Mapping):
+            raise BenchmarkSchemaError(
+                f"independent qualification suite {index} is not an object"
+            )
+        suites.append({field: observation.get(field) for field in suite_fields})
+    stable_fields = (
+        "schema",
+        "plan_cid",
+        "predecessor_plan_cid",
+        "cohort",
+        "candidate_suites_are_self_authority",
+        "independent_fixed_manifest_executed",
+        "checkout_fingerprint_cid",
+        "checkout_unchanged",
+        "passed",
+        "totals",
+        "task_implementation_complete",
+        "test_qualification_complete",
+        "objective_complete",
+        "release_qualified",
+        "production_authorized",
+        "production_authoritative",
+        "limitations",
+    )
+    return {field: value.get(field) for field in stable_fields} | {"suites": suites}
+
+
+def _run_protected_qualification_validator() -> dict[str, Any]:
+    """Reconstruct qualification in the repository-owned isolated judge."""
+
+    try:
+        validator = QUALIFICATION_VALIDATOR.resolve(strict=True)
+    except OSError as error:
+        raise BenchmarkSchemaError(
+            f"protected qualification validator is unavailable: {error}"
+        ) from error
+    if validator != QUALIFICATION_VALIDATOR.absolute() or not validator.is_file():
+        raise BenchmarkSchemaError(
+            "protected qualification validator path is not an exact regular file"
+        )
+    try:
+        completed = subprocess.run(
+            (sys.executable, str(validator), "--check"),
+            cwd=_REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=QUALIFICATION_REPLAY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise BenchmarkSchemaError(
+            f"protected qualification reconstruction failed: {error}"
+        ) from error
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()[-2_000:]
+        raise BenchmarkSchemaError(
+            "protected qualification reconstruction returned "
+            f"{completed.returncode}: {detail}"
+        )
+    try:
+        replayed = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise BenchmarkSchemaError(
+            "protected qualification reconstruction did not emit one JSON object"
+        ) from error
+    if not isinstance(replayed, dict):
+        raise BenchmarkSchemaError(
+            "protected qualification reconstruction root is not an object"
+        )
+    return replayed
+
+
+def _validate_independent_qualification_gate(
+    path: Path = QUALIFICATION_OUTPUT,
+) -> str:
+    """Require the protected LGCVF-113 result before benchmark admission."""
+
+    try:
+        encoded = path.read_bytes()
+        value = json.loads(encoded.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise BenchmarkSchemaError(
+            f"independent qualification result is unavailable: {error}"
+        ) from error
+    if not isinstance(value, dict):
+        raise BenchmarkSchemaError("independent qualification result is not an object")
+    claimed = value.get("result_cid")
+    body = {key: item for key, item in value.items() if key != "result_cid"}
+    if not isinstance(claimed, str) or content_identity(body) != claimed:
+        raise BenchmarkSchemaError("independent qualification result identity differs")
+    if (
+        value.get("schema") != QUALIFICATION_SCHEMA
+        or value.get("plan_cid") != QUALIFICATION_PLAN_CID
+        or value.get("passed") is not True
+        or value.get("test_qualification_complete") is not True
+    ):
+        raise BenchmarkSchemaError("independent qualification is stale or unsuccessful")
+    if any(
+        value.get(field) is not False
+        for field in ("objective_complete", "release_qualified", "production_authorized")
+    ):
+        raise BenchmarkSchemaError("independent qualification raises unsupported authority")
+    replayed = _run_protected_qualification_validator()
+    try:
+        if path.read_bytes() != encoded:
+            raise BenchmarkSchemaError(
+                "independent qualification changed during protected reconstruction"
+            )
+    except OSError as error:
+        raise BenchmarkSchemaError(
+            f"independent qualification disappeared during reconstruction: {error}"
+        ) from error
+    replayed_claimed = replayed.get("result_cid")
+    replayed_body = {
+        key: item for key, item in replayed.items() if key != "result_cid"
+    }
+    if (
+        not isinstance(replayed_claimed, str)
+        or content_identity(replayed_body) != replayed_claimed
+    ):
+        raise BenchmarkSchemaError(
+            "protected qualification reconstruction identity differs"
+        )
+    if _qualification_projection(value) != _qualification_projection(replayed):
+        raise BenchmarkSchemaError(
+            "protected qualification reconstruction differs from stored evidence"
+        )
+    return claimed
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     runner: VerticalRunner = run_compositional_verification_vertical_slice,
+    qualification_gate: QualificationGate = _validate_independent_qualification_gate,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture-root", type=Path, default=None)
@@ -453,6 +627,8 @@ def main(
     arguments = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
+        if arguments.check:
+            qualification_gate()
         existing = _load_checked_report(arguments.output) if arguments.check else None
         report = run_benchmark(fixture_root=arguments.fixture_root, runner=runner)
         if existing is not None and _reproducible_projection(existing) != _reproducible_projection(

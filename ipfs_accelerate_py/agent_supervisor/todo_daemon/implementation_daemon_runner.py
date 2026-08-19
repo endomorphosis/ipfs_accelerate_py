@@ -1277,6 +1277,7 @@ def bind_database_portal_execution_from_args(
         repository_root=repo_root,
         worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
     )
     binder(
         provider_fn=bridge.run_provider,

@@ -10,6 +10,7 @@ correctness nor release qualification, and it never changes task status.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -42,11 +43,17 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 
 PROGRAM = "logic-governed-compositional-verification-fabric-v1"
 ROOT_GOAL = "LGCVF-G000"
-PREDECESSOR_PLAN_CID = "sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e"
-ACCELERATOR_BASE_HEAD = "12c4e8387de4986d38d69534f3d74864e7bb15c1"
-ACCELERATOR_BASE_TREE = "96504e7744d741784bc8076456f4b169dd665ab5"
-DATASETS_BASE_HEAD = "480a1666f144ad606fcb3cacb66e59775f28d0d1"
-DATASETS_BASE_TREE = "6fdc81fabb04a86683d0f26200636fa8f61fd25c"
+PLAN_REVISION = 2
+IMMEDIATE_PREDECESSOR_PLAN_CID = (
+    "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q"
+)
+PROGRAM_ANCESTOR_PLAN_CID = (
+    "sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e"
+)
+ACCELERATOR_BASE_HEAD = "3f95a908d8220517d8255421ad993609f64fca60"
+ACCELERATOR_BASE_TREE = "dbbddee9eaa755bcb69384f73620aebcbf93e561"
+DATASETS_BASE_HEAD = "af1d2d76d2cd6332baf8cea50df6b2eb4e988203"
+DATASETS_BASE_TREE = "8f44e00a49d6f67c67ee6810e04e4aae4d869af5"
 TRACE_BOUND = 128
 OUTPUT = (
     REPO_ROOT
@@ -54,6 +61,11 @@ OUTPUT = (
     / "agent_supervisor"
     / "logic_governed_compositional_verification_fabric"
     / "formal_work_plan.json"
+)
+PREDECESSOR_ARCHIVE = (
+    OUTPUT.parent
+    / "plan_revisions"
+    / f"{IMMEDIATE_PREDECESSOR_PLAN_CID}.json"
 )
 
 
@@ -130,10 +142,16 @@ TASKS: tuple[dict[str, object], ...] = (
     {"id": "LGCVF-111", "phase": "LGCVF-G120", "status": "todo", "deps": ("LGCVF-110",)},
     {"id": "LGCVF-112", "phase": "LGCVF-G120", "status": "todo", "deps": ("LGCVF-110",)},
     {
+        "id": "LGCVF-113",
+        "phase": "LGCVF-G120",
+        "status": "todo",
+        "deps": ("LGCVF-111", "LGCVF-112"),
+    },
+    {
         "id": "LGCVF-120",
         "phase": "LGCVF-G130",
         "status": "todo",
-        "deps": ("LGCVF-111", "LGCVF-112"),
+        "deps": ("LGCVF-111", "LGCVF-112", "LGCVF-113"),
     },
     {
         "id": "LGCVF-121",
@@ -355,8 +373,14 @@ def build_plan() -> FormalWorkPlan:
             "board_namespace": PROGRAM,
             "datasets_construction_head": DATASETS_BASE_HEAD,
             "datasets_construction_tree": DATASETS_BASE_TREE,
-            "predecessor_board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
-            "predecessor_plan_cid": PREDECESSOR_PLAN_CID,
+            "immediate_predecessor_plan_cid": IMMEDIATE_PREDECESSOR_PLAN_CID,
+            "plan_revision": PLAN_REVISION,
+            "predecessor_board_namespace": PROGRAM,
+            "predecessor_plan_cid": IMMEDIATE_PREDECESSOR_PLAN_CID,
+            "program_ancestor_board_namespace": (
+                "logic-governed-semantic-work-fabric-actual-v1"
+            ),
+            "program_ancestor_plan_cid": PROGRAM_ANCESTOR_PLAN_CID,
             "production_authorized": False,
             "program": "logic-governed-compositional-verification-fabric",
             "release_qualified": False,
@@ -365,8 +389,83 @@ def build_plan() -> FormalWorkPlan:
     )
 
 
+def _archive_immediate_predecessor(*, replacement: FormalWorkPlan) -> None:
+    """Preserve revision 1 exactly before replacing the active projection."""
+
+    predecessor_bytes: bytes | None = None
+    if OUTPUT.is_file():
+        try:
+            current = FormalWorkPlan.from_dict(
+                json.loads(OUTPUT.read_text(encoding="utf-8"))
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise RuntimeError("existing formal plan cannot be reconstructed") from exc
+        if current.content_id == IMMEDIATE_PREDECESSOR_PLAN_CID:
+            predecessor_bytes = OUTPUT.read_bytes()
+        elif current.content_id != replacement.content_id:
+            # Revision 2 may be regenerated while it is still an uncommitted
+            # construction overlay, but never after revision 2 itself enters
+            # Git history.  Bind that exception to the exact predecessor blob
+            # at HEAD; this keeps later reruns append-only.
+            completed = subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "show",
+                    f"HEAD:{OUTPUT.relative_to(REPO_ROOT).as_posix()}",
+                ],
+                cwd=REPO_ROOT,
+                env={
+                    "GIT_CONFIG_GLOBAL": "/dev/null",
+                    "GIT_CONFIG_NOSYSTEM": "1",
+                    "GIT_OPTIONAL_LOCKS": "0",
+                    "LANG": "C.UTF-8",
+                    "PATH": "/usr/bin:/bin",
+                },
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            try:
+                head = FormalWorkPlan.from_dict(json.loads(completed.stdout))
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "existing formal plan is neither the immediate predecessor nor this revision"
+                ) from exc
+            if (
+                completed.returncode != 0
+                or head.content_id != IMMEDIATE_PREDECESSOR_PLAN_CID
+                or current.metadata.get("plan_revision") != PLAN_REVISION
+                or current.metadata.get("immediate_predecessor_plan_cid")
+                != IMMEDIATE_PREDECESSOR_PLAN_CID
+            ):
+                raise RuntimeError(
+                    "existing formal plan is neither the immediate predecessor nor this revision"
+                )
+
+    if PREDECESSOR_ARCHIVE.is_file():
+        try:
+            archived = FormalWorkPlan.from_dict(
+                json.loads(PREDECESSOR_ARCHIVE.read_text(encoding="utf-8"))
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise RuntimeError("archived predecessor cannot be reconstructed") from exc
+        if archived.content_id != IMMEDIATE_PREDECESSOR_PLAN_CID:
+            raise RuntimeError("archived predecessor identity differs")
+        if predecessor_bytes is not None and PREDECESSOR_ARCHIVE.read_bytes() != predecessor_bytes:
+            raise RuntimeError("archived predecessor bytes differ from revision 1")
+        return
+
+    if predecessor_bytes is None:
+        raise RuntimeError("immediate predecessor is unavailable for archival")
+    PREDECESSOR_ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
+    PREDECESSOR_ARCHIVE.write_bytes(predecessor_bytes)
+
+
 def main() -> int:
     plan = build_plan()
+    _archive_immediate_predecessor(replacement=plan)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(
         json.dumps(plan.to_dict(), indent=2, sort_keys=True) + "\n",
@@ -377,6 +476,8 @@ def main() -> int:
             {
                 "content_id": plan.content_id,
                 "goals": len(plan.goals),
+                "plan_revision": PLAN_REVISION,
+                "predecessor_archive": str(PREDECESSOR_ARCHIVE),
                 "path": str(OUTPUT),
                 "schema": FormalWorkPlan.SCHEMA,
                 "subgoals": len(plan.subgoals),

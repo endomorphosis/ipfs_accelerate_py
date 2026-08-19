@@ -101,6 +101,9 @@ PREPARED_COMPLETION_STATUS: Final[str] = "prepared"
 TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-preparation@1"
 )
+TASK_DEPENDENCY_AMENDMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-dependency-amendment@1"
+)
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
 )
@@ -1835,6 +1838,141 @@ class DatabaseCoordinator:
                     "dependency_task_cids": list(deps),
                     "registered_at_ms": now,
                 }
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
+    def add_unstarted_task_dependency(
+        self,
+        *,
+        task_cid: str,
+        dependency_task_cid: str,
+        expected_dependency_task_cids: Sequence[str],
+        operation_id: str,
+    ) -> dict[str, Any]:
+        """Add one dependency edge to an exactly matched, unstarted task.
+
+        This is the deliberately narrow coordination counterpart of an
+        ``AMEND_UNSTARTED_TASK`` plan revision.  It never rewrites the task
+        row, task identity, completion evidence, or execution history.  The
+        caller must provide the complete dependency set it observed; a stale
+        set fails closed.  Retrying after response loss is idempotent only
+        when the current set is exactly that expected set plus this one edge.
+
+        A task with any completion, claim, or attempt history is no longer
+        amendable, including when that history has reached a terminal state.
+        This prevents a plan amendment from changing the prerequisites under
+        evidence already produced for the task.
+        """
+
+        cid = _text(task_cid, "task_cid")
+        dependency_cid = _text(dependency_task_cid, "dependency_task_cid")
+        operation = _text(operation_id, "operation_id")
+        if cid == dependency_cid:
+            raise DatabaseCoordinationConflictError(
+                "a task cannot depend on itself"
+            )
+        expected = tuple(
+            sorted(
+                {
+                    _text(item, "expected_dependency_task_cid")
+                    for item in expected_dependency_task_cids
+                }
+            )
+        )
+        if len(expected) != len(expected_dependency_task_cids):
+            raise DatabaseCoordinationConflictError(
+                "expected_dependency_task_cids must be unique"
+            )
+        if dependency_cid in expected:
+            raise DatabaseCoordinationConflictError(
+                "new dependency is already present in the expected set"
+            )
+        after = tuple(sorted((*expected, dependency_cid)))
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                task = connection.execute(
+                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if task is None:
+                    raise DatabaseCoordinationConflictError(
+                        f"task is absent from the coordination registry: {cid}"
+                    )
+                dependency_task = connection.execute(
+                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    [dependency_cid],
+                ).fetchone()
+                if dependency_task is None:
+                    raise DatabaseCoordinationConflictError(
+                        "dependency task is absent from the coordination registry: "
+                        f"{dependency_cid}"
+                    )
+
+                for table in ("task_completions", "task_claims", "task_attempts"):
+                    history = connection.execute(
+                        f"SELECT 1 FROM {table} WHERE task_cid = ? LIMIT 1",
+                        [cid],
+                    ).fetchone()
+                    if history is not None:
+                        raise DatabaseCoordinationConflictError(
+                            "dependency amendment requires an unstarted task; "
+                            f"{table} history exists for {cid}"
+                        )
+
+                rows = connection.execute(
+                    """
+                    SELECT dependency_task_cid FROM task_dependencies
+                    WHERE task_cid = ? ORDER BY dependency_task_cid
+                    """,
+                    [cid],
+                ).fetchall()
+                current = tuple(
+                    str(
+                        _row_get(
+                            _row_mapping(row),
+                            "dependency_task_cid",
+                            "0",
+                        )
+                    )
+                    for row in rows
+                )
+                if current == expected:
+                    connection.execute(
+                        """
+                        INSERT INTO task_dependencies(task_cid, dependency_task_cid)
+                        VALUES (?, ?)
+                        """,
+                        [cid, dependency_cid],
+                    )
+                    changed = True
+                elif current == after:
+                    changed = False
+                else:
+                    raise DatabaseCoordinationConflictError(
+                        "dependency amendment compare-and-swap failed: "
+                        f"expected {list(expected)!r}, observed {list(current)!r}"
+                    )
+
+                body = {
+                    "schema": TASK_DEPENDENCY_AMENDMENT_SCHEMA,
+                    "operation_id": operation,
+                    "task_cid": cid,
+                    "dependency_task_cid": dependency_cid,
+                    "before_dependency_task_cids": list(expected),
+                    "after_dependency_task_cids": list(after),
+                    "changed": changed,
+                    "task_identity_preserved": True,
+                    "execution_history_preserved": True,
+                }
+                body["receipt_cid"] = _sha256_hex(
+                    _canonical_json(body).encode("utf-8")
+                )
+                self._commit_if_idle(connection)
+                return body
             except Exception:
                 self._rollback_if_open(connection)
                 raise
@@ -5614,12 +5752,16 @@ class DatabaseCoordinator:
         owner_session_id: str,
         lease_ms: int | None = None,
         exclude_task_cids: Iterable[str] = (),
+        eligible_task_cids: Sequence[str] | None = None,
         now_ms: int | None = None,
     ) -> TaskClaim | None:
-        """Fair-schedule: claim the oldest ready unclaimed task.
+        """Claim a ready task in the caller's canonical eligibility order.
 
         Selection and acceptance share one transaction (LeaseCoordinator
-        ``claim_ready`` algorithm).
+        ``claim_ready`` algorithm).  ``None`` preserves legacy registration-
+        time fairness.  An explicit sequence is an authority boundary: only
+        those tasks are considered, in exactly that order, and an empty
+        sequence claims nothing.
         """
 
         owner = _text(owner_session_id, "owner_session_id")
@@ -5630,6 +5772,23 @@ class DatabaseCoordinator:
         )
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         excluded = {str(item) for item in exclude_task_cids}
+        eligible: tuple[str, ...] | None = None
+        if eligible_task_cids is not None:
+            if len(eligible_task_cids) > MAX_PREPARED_COMPLETION_QUERY:
+                raise DatabaseCoordinationBoundsError(
+                    "eligible task population exceeds the bounded claim query"
+                )
+            ordered: list[str] = []
+            seen: set[str] = set()
+            for raw_task_cid in eligible_task_cids:
+                task_cid = _text(raw_task_cid, "eligible_task_cid")
+                if task_cid in seen:
+                    raise DatabaseCoordinationError(
+                        "eligible_task_cids must be unique"
+                    )
+                seen.add(task_cid)
+                ordered.append(task_cid)
+            eligible = tuple(ordered)
         with self._lock:
             connection = self._require()
             self._begin(connection)
@@ -5648,12 +5807,28 @@ class DatabaseCoordinator:
                         str(_row_get(_row_mapping(row), "scope_key", "0")),
                         now,
                     )
-                candidates = connection.execute(
-                    """
-                    SELECT * FROM coordination_tasks WHERE ready = TRUE
-                    ORDER BY registered_at_ms, task_cid
-                    """
-                ).fetchall()
+                if eligible is None:
+                    candidates = connection.execute(
+                        """
+                        SELECT * FROM coordination_tasks WHERE ready = TRUE
+                        ORDER BY registered_at_ms, task_cid
+                        """
+                    ).fetchall()
+                else:
+                    candidates = []
+                    for task_cid in eligible:
+                        row = connection.execute(
+                            "SELECT * FROM coordination_tasks WHERE task_cid = ?",
+                            [task_cid],
+                        ).fetchone()
+                        if row is None:
+                            raise DatabaseCoordinationError(
+                                "eligible task is absent from the coordination "
+                                f"registry: {task_cid}"
+                            )
+                        mapping = _row_mapping(row)
+                        if bool(_row_get(mapping, "ready", default=False)):
+                            candidates.append(row)
                 for task in candidates:
                     mapping = _row_mapping(task)
                     cid = str(_row_get(mapping, "task_cid", default=""))
@@ -6365,6 +6540,7 @@ __all__ = [
     "MAINTENANCE_LEASE_INTERFACE",
     "DATABASE_COORDINATION_SCHEMA",
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
+    "TASK_DEPENDENCY_AMENDMENT_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",

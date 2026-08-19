@@ -279,7 +279,6 @@
         "LGCVF-110",
         "LGCVF-111",
         "LGCVF-112",
-        "LGCVF-113",
         "LGCVF-G120"
       ]
     },
@@ -780,26 +779,22 @@
     }
   ],
   "metadata": {
-    "accelerator_construction_head": "3f95a908d8220517d8255421ad993609f64fca60",
-    "accelerator_construction_tree": "dbbddee9eaa755bcb69384f73620aebcbf93e561",
+    "accelerator_construction_head": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
+    "accelerator_construction_tree": "96504e7744d741784bc8076456f4b169dd665ab5",
     "authority_boundary": "datasets-semantic_accelerator-operational",
     "board_namespace": "logic-governed-compositional-verification-fabric-v1",
-    "datasets_construction_head": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
-    "datasets_construction_tree": "8f44e00a49d6f67c67ee6810e04e4aae4d869af5",
-    "immediate_predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
-    "plan_revision": 2,
-    "predecessor_board_namespace": "logic-governed-compositional-verification-fabric-v1",
-    "predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
+    "datasets_construction_head": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "datasets_construction_tree": "6fdc81fabb04a86683d0f26200636fa8f61fd25c",
+    "predecessor_board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
+    "predecessor_plan_cid": "sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e",
     "production_authorized": false,
     "program": "logic-governed-compositional-verification-fabric",
-    "program_ancestor_board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
-    "program_ancestor_plan_cid": "sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e",
     "release_qualified": false,
     "task_prefix": "LGCVF-"
   },
   "norms": [],
   "preconditions": [],
-  "repository_tree_id": "git-tree:dbbddee9eaa755bcb69384f73620aebcbf93e561",
+  "repository_tree_id": "git-tree:96504e7744d741784bc8076456f4b169dd665ab5",
   "schema": "ipfs_accelerate_py/agent-supervisor/formal-work-plan@1",
   "source_ids": [
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md",
@@ -1725,37 +1720,6 @@
       "depends_on": [
         "LGCVF-111",
         "LGCVF-112"
-      ],
-      "effect_ids": [],
-      "event_ids": [],
-      "evidence_requirement_ids": [
-        "evidence:lgcvf-g120"
-      ],
-      "goal_id": "LGCVF-G000",
-      "metadata": {
-        "board_namespace": "logic-governed-compositional-verification-fabric-v1",
-        "construction_status": "todo",
-        "phase": "LGCVF-G120"
-      },
-      "precondition_ids": [],
-      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
-      "subgoal_id": "LGCVF-G120",
-      "task_id": "LGCVF-113",
-      "terminal_states": [
-        "cancelled",
-        "completed",
-        "failed"
-      ]
-    },
-    {
-      "actor_ids": [
-        "actor:lgcvf-implementer"
-      ],
-      "contract_version": 1,
-      "depends_on": [
-        "LGCVF-111",
-        "LGCVF-112",
-        "LGCVF-113"
       ],
       "effect_ids": [],
       "event_ids": [],

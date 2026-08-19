@@ -5,10 +5,14 @@ not production-authorized.
 
 Program namespace:
 `logic-governed-compositional-verification-fabric-v1` (`LGCVF-`).
-Predecessor: the immutable LGSWF plan
+Plan revision: 2. Immediate predecessor: immutable LGCVF revision 1
+`baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q`.
+Original program ancestor: immutable LGSWF plan
 `sha256:651702def0aaa564830ec2fda46531a6dcb07fd834484682e0da18837a09589e`.
-This document adds a successor revision. It does not amend the protected LGSWF
-board, its completed records, quarantined attempts, or manual seals.
+This revision retains every revision-1 task identity and accepted operational
+receipt, adds one independent qualification task, and strengthens only
+unstarted task scopes and judges. It does not amend either predecessor's
+completed records, quarantined attempts, or manual seals.
 
 ## 1. Purpose and completion boundary
 
@@ -27,12 +31,13 @@ separate later decisions; neither is implied by this plan or its fixture.
 
 ## 2. Construction source truth
 
-The plan was constructed against these immutable starting identities:
+The revision-2 delta was constructed against these immutable identities; the
+archived revision-1 artifact retains its original construction identities:
 
 | Authority | Topology | HEAD | Tree |
 | --- | --- | --- | --- |
-| accelerator | superproject | `12c4e8387de4986d38d69534f3d74864e7bb15c1` | `96504e7744d741784bc8076456f4b169dd665ab5` |
-| datasets | initialized Git submodule/gitlink | `480a1666f144ad606fcb3cacb66e59775f28d0d1` | `6fdc81fabb04a86683d0f26200636fa8f61fd25c` |
+| accelerator revision-2 baseline | superproject | `3f95a908d8220517d8255421ad993609f64fca60` | `dbbddee9eaa755bcb69384f73620aebcbf93e561` |
+| datasets revision-2 baseline | initialized Git submodule/gitlink | `af1d2d76d2cd6332baf8cea50df6b2eb4e988203` | `8f44e00a49d6f67c67ee6810e04e4aae4d869af5` |
 
 The datasets checkout is not flattened. Datasets changes must be validated and
 committed in that repository before an intentional accelerator gitlink update.
@@ -58,6 +63,22 @@ Observed construction-time assumptions are conservative:
 Every later execution must re-observe exact heads, recursive gitlinks, dirty
 overlays, configuration, toolchains, policies, and capability receipts. A
 construction baseline is not a freshness waiver.
+
+### Revision-2 reconciliation
+
+- Retained: all 27 revision-1 task identities, all accepted task/merge/test
+  receipts, both authority blockers, all 14 goal identities, and the original
+  LGSWF ancestry.
+- Amended while unstarted: LGCVF-081 gains the existing synthesizer as an exact
+  companion; LGCVF-111/112 explicitly classify their tests as candidate
+  evidence; LGCVF-120 is gated by independent qualification; LGCVF-122/124 use
+  protected semantic validators rather than file-existence/JSON-syntax checks.
+- Added: LGCVF-113, the protected independent hermetic qualification task.
+- Superseded: no task and no accepted evidence.
+- Removed: no task, goal, blocker, receipt, or historical artifact.
+
+The revision-1 formal JSON is archived under its own content ID. Revision 2 is
+an immutable descendant, not an edit to revision-1 history.
 
 ## 3. Authority and trust invariants
 
@@ -258,8 +279,8 @@ partial/no-go and minimal successor tasks.
 | W2 | LGCVF-051, LGCVF-060, LGCVF-070, LGCVF-080 | disjoint solver, interpolation, translation, and repair lanes after P5 |
 | W3 | LGCVF-061, LGCVF-071, LGCVF-081 | refinement/slicing/synthesis hardening |
 | W4 | LGCVF-090→091 and LGCVF-100→(101 ‖ 102) | join semantic evidence, then integrate context/persistence projections |
-| W5 | LGCVF-110→(111 ‖ 112) | vertical execution, then focused and adversarial qualification |
-| W6 | LGCVF-120→(121 ‖ 122), then LGCVF-124 | benchmark, explicit blocker/release disposition, final report |
+| W5 | LGCVF-110→(111 ‖ 112)→113 | vertical execution, candidate suites, then protected independent qualification |
+| W6 | LGCVF-120→(121 ‖ 122), then LGCVF-124 | benchmark gated by 113, explicit blocker/release disposition, final report |
 | Operator | LGCVF-123 | never schedulable; requires independent human authority |
 
 Lane labels are hints only. The compiled dependency/conflict/resource plan is
@@ -302,10 +323,15 @@ only.
   `docs/architecture/logic_governed_compositional_verification_fabric.todo.md`
 - Formal plan:
   `data/agent_supervisor/logic_governed_compositional_verification_fabric/formal_work_plan.json`
+- Immutable revision-1 formal plan:
+  `data/agent_supervisor/logic_governed_compositional_verification_fabric/plan_revisions/baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q.json`
 - Generator:
   `scripts/emit_logic_governed_compositional_verification_fabric_plan.py`
 - Validator:
   `scripts/validate_logic_governed_compositional_verification_fabric_plan.py`
+- Protected qualification and closeout judges:
+  `scripts/qualify_logic_governed_compositional_verification_fabric.py` and
+  `scripts/validate_logic_governed_compositional_verification_fabric_closeout.py`
 
 The formal plan is a typed statement of intended work. Its content ID proves
 canonical content identity only; validator success proves internal plan/board
