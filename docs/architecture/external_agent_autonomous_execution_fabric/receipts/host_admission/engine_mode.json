@@ -1,72 +1,39 @@
 {
   "board_cid": "sha256:7e270aca4c6cd8011625bdd849e1e120588a217ed7b4b983f0419adc919a1f53",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
-  "decision": "typed_missing",
+  "decision": "admitted",
   "evidence": {
-    "decision": "typed_missing",
-    "docker_host": "unix:///var/run/docker.sock",
+    "decision": "admitted",
+    "docker_host": "unix:///run/user/1000/docker.sock",
     "docker_info_returncode": 0,
     "docker_socket_mounted": false,
-    "fallback_package": {
-      "capabilities": "drop_all",
-      "docker_socket_mount": "prohibited",
-      "engine": "docker",
-      "host_daemon_mode": "rootful",
-      "independent_security_review_required": true,
-      "network_default": "deny",
-      "no_new_privileges": true,
-      "observed_root_dir": "/var/lib/docker",
-      "observed_security_options": [
-        "name=apparmor",
-        "name=seccomp,profile=builtin",
-        "name=cgroupns"
-      ],
-      "observed_server_version": "29.1.3",
-      "read_only_root": true,
-      "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-rootful-fallback-package@1",
-      "signed": false,
-      "worker_user": "nonroot"
-    },
-    "host_docker_socket_used": true,
-    "mode": "rootful_host_daemon_unsigned_fallback",
+    "fallback_package": null,
+    "host_docker_socket_used": false,
+    "mode": "verified_rootless",
     "probes": [
       {
         "docker_host": "unix:///run/user/1000/docker.sock",
-        "returncode": 1,
-        "root_dir": "",
-        "rootless": false,
-        "security_options": []
-      },
-      {
-        "docker_host": "unix:///home/barberb/.docker/run/docker.sock",
-        "returncode": 1,
-        "root_dir": "",
-        "rootless": false,
-        "security_options": []
-      },
-      {
-        "docker_host": "unix:///var/run/docker.sock",
         "returncode": 0,
-        "root_dir": "/var/lib/docker",
-        "rootless": false,
+        "root_dir": "/home/barberb/.local/share/docker",
+        "rootless": true,
         "security_options": [
-          "name=apparmor",
           "name=seccomp,profile=builtin",
+          "name=rootless",
           "name=cgroupns"
         ]
       }
     ],
-    "rootless": false,
+    "rootless": true,
     "supervisor_started": false
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:6a9395d473f924fc9e1b86d563a63fe9525753deee056290b410c5d5354f9a5a",
+  "receipt_cid": "sha256:218fc9d1bfeba405ba5c5454b69975f64d08720e3aef7fe8fce7bcf318fcad6a",
   "receipt_name": "engine_mode.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "a28150a38d7f0aeafe1bf7f85220f4893fff7b59",
-  "source_tree": "463a0fd947cb2523b22048f23fbd8dd1bd825c5a",
+  "source_head": "d255caa7563188e173ceaed6b5b27aca5d112385",
+  "source_tree": "255b8d56649e955a2a85a2ba5f0016696d28e04f",
   "supervisor_process_started": false,
   "task_id": "EAAEF-183"
 }
