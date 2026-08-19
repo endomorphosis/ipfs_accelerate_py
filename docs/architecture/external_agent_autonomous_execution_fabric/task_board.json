@@ -1,5 +1,5 @@
 {
-  "board_cid": "sha256:7e270aca4c6cd8011625bdd849e1e120588a217ed7b4b983f0419adc919a1f53",
+  "board_cid": "sha256:982190e50bbc2738bf8d7a8b1846446ffc2c163d5c5c3566f2f8e5559e56d6bd",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
   "control_artifact_ownership": [
     {
@@ -27405,7 +27405,7 @@
       "blocked_reason": "",
       "board_namespace": "external-agent-autonomous-execution-fabric-v1",
       "completion_contract": "Bind a source-addressed EAAEF provider-authorization artifact for the grok_cli/codex route that an independent signer, not the prospective supervisor, attests; unsigned or self-signed material is a typed no-go. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.",
-      "completion_mode": "manual",
+      "completion_mode": "auto",
       "conflict_and_merge_contract": "No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.",
       "container_profile": "ContainerExecutionProfile@1:host-controlled-bootstrap-admission",
       "context_artifacts": [
@@ -27419,10 +27419,12 @@
       ],
       "epic": "S",
       "execution_outputs": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json",
+        "scripts/issue_eaaef_provider_authorization.py"
       ],
       "execution_owned_files": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json",
+        "scripts/issue_eaaef_provider_authorization.py"
       ],
       "execution_validation": [
         {
@@ -27461,7 +27463,7 @@
           "schema": "VerificationBundle@1"
         }
       ],
-      "idempotency_key": "sha256:097e11a09cc04a9d3373ae47c0b6fc4f834268cb013443352e66045243809e8b",
+      "idempotency_key": "sha256:8e5307e6e421f5fbd4053d9779735855912da7e3cf4187dcece2c95032af392b",
       "initial_population": true,
       "integration_conflict_keys": [],
       "is_schedulable": true,
@@ -27490,11 +27492,13 @@
         "unsupported_language": "completed"
       },
       "outputs": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json",
+        "scripts/issue_eaaef_provider_authorization.py"
       ],
       "overlap_merge_contracts": [],
       "owned_files": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json",
+        "scripts/issue_eaaef_provider_authorization.py"
       ],
       "owning_repository": "ipfs_accelerate_py",
       "parent_goal_id": "EAAEF-G000",
@@ -27585,7 +27589,7 @@
       "stable_task_id": "EAAEF-184",
       "status": "todo",
       "subgoal_id": "EAAEF-G190",
-      "task_spec_cid": "sha256:ddae3792500f054f5be3674d9516d8e246550958fbae49abce3841f3861390c7",
+      "task_spec_cid": "sha256:35097dff9a256e410fbe7884894fb99b74d95665035696aa6afa52363c7c9d5c",
       "terminal_status": "not_terminal",
       "test_requirements": {
         "affected_integration": "select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv",
@@ -27599,7 +27603,8 @@
       "track": "host-gated-bootstrap-admission-evidence",
       "validation": "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k provider_authorization",
       "write_scope": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json",
+        "scripts/issue_eaaef_provider_authorization.py"
       ]
     },
     {

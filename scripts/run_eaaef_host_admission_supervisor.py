@@ -43,6 +43,7 @@ AUTO_TASKS = {
     "EAAEF-181",
     "EAAEF-182",
     "EAAEF-183",
+    "EAAEF-184",
     "EAAEF-185",
     "EAAEF-186",
     "EAAEF-187",
@@ -50,7 +51,11 @@ AUTO_TASKS = {
     "EAAEF-189",
     "EAAEF-190",
 }
-ADMIT_REQUIRED_AUTO = {"EAAEF-183"}
+ADMIT_REQUIRED_AUTO = {"EAAEF-183", "EAAEF-184"}
+ADMIT_WAIT_STATUS = {
+    "EAAEF-183": "waiting_rootless_engine",
+    "EAAEF-184": "waiting_signed_provider_authorization",
+}
 S_TASKS = {f"EAAEF-{number}" for number in range(180, 192)}
 
 
@@ -95,7 +100,7 @@ def _complete_auto_task(source: DatabaseTaskSource, alias: str) -> dict:
             if current.get("decision") != "admitted":
                 return {
                     "task_id": alias,
-                    "status": "waiting_rootless_engine",
+                    "status": ADMIT_WAIT_STATUS.get(alias, "waiting_admission"),
                     "decision": current.get("decision"),
                 }
     receipt_path = RECEIPT_DIR / receipt_name
@@ -111,6 +116,7 @@ def _complete_auto_task(source: DatabaseTaskSource, alias: str) -> dict:
             "EAAEF-181": "principals",
             "EAAEF-182": "duckdb_quack",
             "EAAEF-183": "engine_mode",
+            "EAAEF-184": "provider_authorization",
             "EAAEF-185": "worker_image",
             "EAAEF-186": "container_profile",
             "EAAEF-187": "worker_network",

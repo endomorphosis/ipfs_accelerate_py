@@ -151,8 +151,21 @@ def test_engine_mode_receipt_contract() -> None:
 
 def test_provider_authorization_receipt_contract() -> None:
     payload = _receipt("provider_authorization.json")
-    assert payload["decision"] == "typed_missing"
-    assert payload["evidence"]["independent_signature_present"] is False
+    evidence = payload["evidence"]
+    assert evidence["self_signed_rejected"] is True
+    assert evidence["supervisor_signed"] is False
+    assert evidence["configured_board_launch"] is False
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert evidence["reviewer_provider"] == "local_operator"
+        assert evidence["route_id"] == (
+            "agent-supervisor-eaaef-v1-grok46-terra56-high-auth-or-hard-quota-v1"
+        )
+        assert str(evidence.get("artifact_path") or "").endswith(".json")
+        assert str(evidence.get("authorization_id") or "").startswith("sha256:")
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_worker_image_receipt_contract() -> None:
@@ -204,7 +217,7 @@ def test_admission_bundle_receipt_contract() -> None:
         assert child_cids[task_id] == child["receipt_cid"]
     assert _tasks()["EAAEF-191"]["completion_mode"] == "manual"
     assert _tasks()["EAAEF-183"]["completion_mode"] == "auto"
-    assert _tasks()["EAAEF-184"]["completion_mode"] == "manual"
+    assert _tasks()["EAAEF-184"]["completion_mode"] == "auto"
 
 
 def test_collector_refuses_live_launch_allowed_plan() -> None:

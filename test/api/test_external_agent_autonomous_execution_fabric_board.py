@@ -33,7 +33,7 @@ def test_generated_board_passes_fail_closed_validator() -> None:
         "goal_count": 20,
         "task_count": 116,
         "initial_population_count": 22,
-        "owned_path_count": 377,
+        "owned_path_count": 378,
         "owned_path_overlap_count": 29,
         "overlap_merge_contract_count": 31,
         "dependency_edge_count": 270,

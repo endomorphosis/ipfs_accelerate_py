@@ -1,5 +1,5 @@
 {
-  "board_cid": "sha256:7e270aca4c6cd8011625bdd849e1e120588a217ed7b4b983f0419adc919a1f53",
+  "board_cid": "sha256:982190e50bbc2738bf8d7a8b1846446ffc2c163d5c5c3566f2f8e5559e56d6bd",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
   "decision": "typed_missing",
   "evidence": {
@@ -12,12 +12,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:549cf33d5fd61a1682d4c8107be2bdf65347783337cfe9618a75f8c6509d94ac",
+  "receipt_cid": "sha256:4d15b32d6b8e456163d10f4fd61bb7663f58d23c934e681a3b1cb50d69f28536",
   "receipt_name": "plan_r2_remote_owner.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "d255caa7563188e173ceaed6b5b27aca5d112385",
-  "source_tree": "255b8d56649e955a2a85a2ba5f0016696d28e04f",
+  "source_head": "8ea6ead2cdf5f522779208433751e5e1300b5d45",
+  "source_tree": "febff3495850754f4f227bcdc7057ec9100c83a1",
   "supervisor_process_started": false,
   "task_id": "EAAEF-190"
 }

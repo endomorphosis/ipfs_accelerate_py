@@ -49,12 +49,13 @@ ROOT = Path(__file__).resolve().parents[3]
 CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
 RECEIPT_DIR = CAMPAIGN / "receipts" / "host_admission"
 BOARD_PATH = CAMPAIGN / "task_board.json"
-AUTHORITY_DIR = (
+ROUTE_AUTHORITY_DIR = (
     ROOT
     / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
     / "authority"
-    / "runtime-principals"
 )
+AUTHORITY_DIR = ROUTE_AUTHORITY_DIR / "runtime-principals"
+PROVIDER_AUTHORIZATION_GLOB = "provider-route-authorization-*.json"
 LAUNCHER = ROOT / (
     "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
 )
@@ -449,6 +450,86 @@ def probe_engine_mode() -> dict[str, Any]:
     }
 
 
+def _committed_provider_authorization_paths() -> list[str]:
+    completed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--",
+            f"data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/{PROVIDER_AUTHORIZATION_GLOB}",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def probe_provider_authorization() -> dict[str, Any]:
+    """Admit only a loadable source-addressed grok_cli/codex authorization.
+
+    The prospective supervisor does not sign this artifact. Unsigned, self-signed,
+    or unloadable material remains typed_missing.
+    """
+
+    from ipfs_accelerate_py import agent_implementation_route as routes
+
+    candidates = _committed_provider_authorization_paths()
+    attempts: list[dict[str, str]] = []
+    for relative in candidates:
+        try:
+            authorization = routes.load_agent_implementation_route_authorization(
+                repo_root=ROOT,
+                artifact_path=relative,
+                board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            attempts.append({"path": relative, "error": str(exc)})
+            continue
+        return {
+            "decision": "admitted",
+            "artifact": "eaaef_scoped_provider_authorization",
+            "independent_signature_present": True,
+            "self_signed_rejected": True,
+            "source_only_factory_authority": False,
+            "supervisor_signed": False,
+            "supervisor_started": False,
+            "configured_board_launch": False,
+            "artifact_path": authorization.artifact_path,
+            "artifact_sha256": authorization.artifact_sha256,
+            "authorization_id": authorization.authorization_id,
+            "source_head": authorization.source_head,
+            "source_tree": authorization.source_tree,
+            "reviewer_identity": authorization.reviewer_identity,
+            "reviewer_provider": authorization.reviewer_provider,
+            "lifecycle_root_identity_did": authorization.lifecycle_root_identity_did,
+            "route_id": routes._EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID,
+            "prospective_only": True,
+            "requires_descendant_tree": True,
+            "rejected_candidates": attempts,
+        }
+    return {
+        "decision": "typed_missing",
+        "artifact": "eaaef_scoped_provider_authorization",
+        "reason": (
+            "independently signed grok_cli/codex provider authorization is absent"
+            if not candidates
+            else "committed provider authorization failed load_agent_implementation_route_authorization"
+        ),
+        "independent_signature_present": False,
+        "self_signed_rejected": True,
+        "source_only_factory_authority": False,
+        "supervisor_signed": False,
+        "supervisor_started": False,
+        "configured_board_launch": False,
+        "candidate_paths": candidates,
+        "load_attempts": attempts,
+    }
+
+
 def _typed_missing_artifact(
     *,
     artifact: str,
@@ -494,6 +575,8 @@ def collect_host_admission_receipts(
     principals = bind_runtime_principals()
     duckdb = probe_duckdb_quack()
     engine = probe_engine_mode()
+    provider_authorization = probe_provider_authorization()
+    provider_authorization["bound_provider_did"] = principals["principals"][1]["did"]
     receipts: dict[str, dict[str, Any]] = {
         "EAAEF-180": _base_receipt(
             "EAAEF-180",
@@ -526,12 +609,8 @@ def collect_host_admission_receipts(
         ),
         "EAAEF-184": _base_receipt(
             "EAAEF-184",
-            decision="typed_missing",
-            evidence=_typed_missing_artifact(
-                artifact="eaaef_scoped_provider_authorization",
-                reason="independently signed grok_cli/codex provider authorization is absent",
-                extra={"bound_provider_did": principals["principals"][1]["did"]},
-            ),
+            decision=str(provider_authorization["decision"]),
+            evidence=provider_authorization,
         ),
         "EAAEF-185": _base_receipt(
             "EAAEF-185",
