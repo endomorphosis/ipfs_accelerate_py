@@ -45276,6 +45276,54 @@ class PortalImplementationDaemon:
                 staged.append(normalized)
         return tuple(staged)
 
+    def _run_host_bootstrap_generation_recovery(self) -> dict[str, Any]:
+        """Advance a failed/stale EAAEF namespace without starting a supervisor."""
+
+        import importlib.util
+
+        repo_root = Path(self.repo_root).resolve()
+        script = (
+            repo_root
+            / "scripts"
+            / "materialize_external_agent_autonomous_execution_fabric_control_plane.py"
+        )
+        if not script.is_file():
+            return {
+                "attempted": False,
+                "process_started": False,
+                "reason": "eaaef_materializer_unavailable",
+            }
+        spec = importlib.util.spec_from_file_location(
+            "eaaef_bootstrap_recovery_materializer",
+            script,
+        )
+        if spec is None or spec.loader is None:
+            return {
+                "attempted": False,
+                "process_started": False,
+                "reason": "eaaef_materializer_unimportable",
+            }
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        try:
+            config = module._load_object(module.CONFIG_PATH)
+            receipt = module.materialize_with_recovery(config)
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "process_started": False,
+                "reason": "eaaef_bootstrap_recovery_failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        return {
+            "attempted": True,
+            "process_started": receipt.get("process_started") is True,
+            "reason": "eaaef_bootstrap_recovery_completed",
+            "receipt_cid": str(receipt.get("receipt_cid") or ""),
+            "source_head": str(receipt.get("source_head") or ""),
+            "generation_recoveries": list(receipt.get("generation_recoveries") or ()),
+        }
+
     def _stage_declared_candidate_outputs(
         self,
         workspace_path: Path,
@@ -45638,6 +45686,17 @@ class PortalImplementationDaemon:
             )
             steps.append(plan.to_record())
             if plan.action is AutoRescueAction.NONE:
+                break
+
+            if plan.action is AutoRescueAction.HOST_BOOTSTRAP_RECOVERY:
+                recovery = self._run_host_bootstrap_generation_recovery()
+                steps[-1]["bootstrap_recovery"] = recovery
+                result = dict(result)
+                result["auto_rescue"] = True
+                result["auto_rescue_action"] = plan.action.value
+                result["auto_rescue_steps"] = list(steps)
+                result["auto_rescue_terminal"] = True
+                result["host_bootstrap_recovery"] = recovery
                 break
 
             if plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE:

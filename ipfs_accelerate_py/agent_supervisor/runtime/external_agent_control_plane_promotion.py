@@ -525,11 +525,32 @@ def verify_external_agent_quack_owner_qualification_v1(
 ) -> dict[str, Any]:
     """Verify historical owner evidence without promoting a dispatcher."""
 
-    receipt = (
-        dict(qualification_receipt)
-        if isinstance(qualification_receipt, Mapping)
-        else {}
-    )
+    if not isinstance(qualification_receipt, Mapping) or not qualification_receipt:
+        report = {
+            "schema": EAAEF_QUACK_OWNER_VERIFICATION_SCHEMA,
+            "allowed": False,
+            "historical_only": True,
+            "promotion_allowed": False,
+            "blockers": ["quack_owner_qualification_missing"],
+            "receipt_cid": "",
+            "board_cid": "",
+            "source_head": "",
+            "source_tree": "",
+            "materialization_receipt_cid": "",
+            "shard_id": "",
+            "store_id": "",
+            "owner_principal_did": "",
+            "owner_generation": 0,
+            "epoch": 0,
+            "fence": 0,
+            "expires_at_ms": 0,
+            "authority_mutated": False,
+            "process_started": False,
+        }
+        report["decision_cid"] = _cid(report)
+        return report
+
+    receipt = dict(qualification_receipt)
     source = _closed(receipt.get("source"), _SOURCE_FIELDS)
     materialization = _closed(receipt.get("materialization"), _MATERIALIZATION_FIELDS)
     profile = _closed(receipt.get("profile"), _V1_PROFILE_FIELDS)

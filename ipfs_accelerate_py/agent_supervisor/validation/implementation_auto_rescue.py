@@ -77,6 +77,24 @@ HARD_DENY_REASON_CODES = frozenset(
     }
 )
 
+# Control-plane ingest failures must not burn provider budget. The host
+# bootstrap recoverer advances a failed/stale namespace instead.
+BOOTSTRAP_RECOVERY_REASON_CODES = frozenset(
+    {
+        "control_plane_identity_error",
+        "unsafe_output_path",
+        "bootstrap_namespace_failed_partial",
+        "store_generation_exhausted",
+        "stale_materialization_namespace",
+    }
+)
+_BOOTSTRAP_RECOVERY_TEXT = (
+    "output path is not a safe identifier",
+    "advance to a new explicit store generation",
+    "bootstrap namespace claim is immutable",
+    "nested checkout is dirty",
+)
+
 _VALIDATE_TOKEN_RE = re.compile(r"(?i)(?<![A-Za-z0-9_])validate(?![A-Za-z0-9_])")
 _MATERIALIZE_ALIASES = ("materialize", "write", "generate")
 
@@ -89,6 +107,7 @@ class AutoRescueAction(str, Enum):
     STAGE_AND_REVALIDATE = "stage_and_revalidate"
     STRIP_DENIED_HELPERS = "strip_denied_helpers"
     INLINE_PROVIDER_RESCUE = "inline_provider_rescue"
+    HOST_BOOTSTRAP_RECOVERY = "host_bootstrap_recovery"
 
 
 # Scratch helpers implementers add because they have no shell. These are
@@ -255,6 +274,27 @@ def plan_automatic_implementation_rescue(
             action=AutoRescueAction.NONE,
             reason="validation_already_passed",
         )
+    early_review = _failure_review_projection(result)
+    early_reasons = _as_str_tuple(
+        early_review.get("reason_codes") or result.get("reason_codes") or ()
+    )
+    early_text = " ".join(
+        (
+            str(result.get("error") or ""),
+            str(result.get("detail") or ""),
+            str(early_review.get("summary") or ""),
+            " ".join(early_reasons),
+        )
+    ).casefold()
+    if set(early_reasons) & BOOTSTRAP_RECOVERY_REASON_CODES or any(
+        token in early_text for token in _BOOTSTRAP_RECOVERY_TEXT
+    ):
+        return AutoRescuePlan(
+            action=AutoRescueAction.HOST_BOOTSTRAP_RECOVERY,
+            reason="control_plane_ingest_requires_generation_recovery",
+            reason_codes=early_reasons,
+            max_provider_rescue_passes=0,
+        )
     if (
         already_auto_rescued
         and provider_rescue_passes_used >= 1
@@ -376,6 +416,30 @@ def plan_automatic_implementation_rescue(
             failed_commands=failed_commands,
             expected_outputs=expected,
             missing_expected_outputs=missing,
+        )
+
+    error_text = " ".join(
+        (
+            str(result.get("error") or ""),
+            str(result.get("detail") or ""),
+            str(review.get("summary") or ""),
+            " ".join(failed_commands),
+            " ".join(reason_codes),
+            " ".join(finding_codes),
+        )
+    ).casefold()
+    if set(reason_codes) & BOOTSTRAP_RECOVERY_REASON_CODES or any(
+        token in error_text for token in _BOOTSTRAP_RECOVERY_TEXT
+    ):
+        return AutoRescuePlan(
+            action=AutoRescueAction.HOST_BOOTSTRAP_RECOVERY,
+            reason="control_plane_ingest_requires_generation_recovery",
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            missing_expected_outputs=missing,
+            max_provider_rescue_passes=0,
         )
 
     incomplete = bool(

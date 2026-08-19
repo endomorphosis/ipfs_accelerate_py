@@ -345,6 +345,21 @@ def test_plan_strips_helper_only_scope_denials_when_outputs_exist() -> None:
     assert after_strip.action is AutoRescueAction.NONE
 
 
+def test_plan_routes_control_plane_ingest_failures_to_host_bootstrap_recovery() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "ControlPlaneIdentityError: output path is not a safe identifier",
+            "failure_review": {
+                "decision": "guide_rescue",
+                "reason_codes": ["control_plane_identity_error"],
+            },
+        }
+    )
+    assert plan.action is AutoRescueAction.HOST_BOOTSTRAP_RECOVERY
+    assert plan.max_provider_rescue_passes == 0
+
+
 def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     hard = plan_automatic_implementation_rescue(
         validation_result={

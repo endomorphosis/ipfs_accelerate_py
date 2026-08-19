@@ -11,15 +11,17 @@ neither enables continuous Quack operation nor DuckLake authority.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -987,6 +989,163 @@ def _namespace_artifacts(config: Mapping[str, Any]) -> tuple[Path, ...]:
         paths["execution"].with_name(f".{paths['execution'].name}.writer.lock")
     )
     return tuple(dict.fromkeys(members))
+
+
+_GENERATION_RE = re.compile(r"^(?P<prefix>.+-v)(?P<n>\d+)$")
+GENERATION_CURSOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-store-generation-cursor@1"
+)
+MAX_GENERATION_RECOVERIES = 3
+_HOST_GATED_MARKERS = (
+    "quack_owner_",
+    "provider_container_qualification",
+    "oci_image_qualification",
+    "container_profile",
+    "eaaef_scoped_provider",
+    "worker_network_",
+    "signed_command_fabric_child_adapter",
+    "board validation has not admitted",
+    "container_policy.",
+    "configured-board launch admission",
+    "independently signed",
+    "provider/container qualification is diagnostic",
+    "versioned Grok mount",
+    "typed authenticated Quack",
+    "external source-addressed EAAEF-000",
+    "rootless",
+    "DuckDB",
+)
+_AUTO_RECOVERABLE_MARKERS = (
+    "advance to a new explicit store generation",
+    "bootstrap namespace claim is immutable",
+    "output path is not a safe identifier",
+    "refusing to overwrite existing bootstrap namespace",
+)
+
+
+def _generation_cursor_path() -> Path:
+    return (
+        ROOT
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "generation-cursor.json"
+    )
+
+
+def _configured_generation(config: Mapping[str, Any]) -> str:
+    generation = str(
+        ((config.get("bootstrap_database_program") or {}).get("store_generation"))
+        or ""
+    )
+    if not _GENERATION_RE.fullmatch(generation):
+        raise MaterializationError("store_generation is not a recoverable run-vN identity")
+    return generation
+
+
+def _successor_generation(generation: str) -> str:
+    match = _GENERATION_RE.fullmatch(str(generation or ""))
+    if match is None:
+        raise MaterializationError(
+            f"store_generation {generation!r} cannot be advanced automatically"
+        )
+    return f"{match.group('prefix')}{int(match.group('n')) + 1}"
+
+
+def _rewrite_generation(value: Any, from_generation: str, to_generation: str) -> Any:
+    from_match = _GENERATION_RE.fullmatch(from_generation)
+    to_match = _GENERATION_RE.fullmatch(to_generation)
+    if from_match is None or to_match is None:
+        raise MaterializationError("generation rewrite identities are invalid")
+    from_n = from_match.group("n")
+    to_n = to_match.group("n")
+    if isinstance(value, str):
+        rewritten = value
+        for old, new in (
+            (from_generation, to_generation),
+            (f"-run-v{from_n}", f"-run-v{to_n}"),
+            (f"/run-v{from_n}", f"/run-v{to_n}"),
+        ):
+            rewritten = rewritten.replace(old, new)
+        return rewritten
+    if isinstance(value, list):
+        return [_rewrite_generation(item, from_generation, to_generation) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _rewrite_generation(item, from_generation, to_generation)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _read_generation_cursor() -> dict[str, Any] | None:
+    path = _generation_cursor_path()
+    if not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict) or value.get("schema") != GENERATION_CURSOR_SCHEMA:
+        return None
+    return value
+
+
+def _write_generation_cursor(cursor: Mapping[str, Any]) -> None:
+    path = _generation_cursor_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(cursor)
+    payload["schema"] = GENERATION_CURSOR_SCHEMA
+    payload["process_started"] = False
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _active_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Overlay a gitignored generation cursor onto the committed scheduler config."""
+
+    working = copy.deepcopy(dict(config))
+    configured = _configured_generation(working)
+    cursor = _read_generation_cursor()
+    if (
+        not isinstance(cursor, Mapping)
+        or cursor.get("configured_generation") != configured
+    ):
+        return working
+    active = str(cursor.get("active_generation") or "")
+    if not active or active == configured:
+        return working
+    return _rewrite_generation(working, configured, active)
+
+
+def _namespace_state(config: Mapping[str, Any]) -> str:
+    receipt_path = _receipt_path(config)
+    claim_path = _claim_path(config)
+    if receipt_path.is_file():
+        try:
+            receipt = _load_object(receipt_path)
+            head = _git("rev-parse", "HEAD")
+        except MaterializationError:
+            return "failed_partial"
+        if str(receipt.get("source_head") or "") == head:
+            return "materialized"
+        return "stale_materialized"
+    if claim_path.is_file() or any(
+        path.exists() for path in _namespace_artifacts(config) if path != _paths(config)["control"].parent
+    ):
+        return "failed_partial"
+    return "fresh"
+
+
+def _classify_blocker(text: str) -> str:
+    raw = str(text or "")
+    if "nested checkout is dirty" in raw:
+        return "host_source_commit_required"
+    if any(marker in raw for marker in _AUTO_RECOVERABLE_MARKERS):
+        return "auto_recoverable"
+    if any(marker in raw for marker in _HOST_GATED_MARKERS):
+        return "host_gated_external_authority"
+    return "unclassified"
 
 
 def _source_generation(config: Mapping[str, Any]) -> dict[str, Any]:
@@ -2557,9 +2716,93 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         ) from exc
 
 
+def materialize_with_recovery(
+    config: Mapping[str, Any],
+    *,
+    materialize_fn: Callable[..., dict[str, Any]] | None = None,
+    max_recoveries: int = MAX_GENERATION_RECOVERIES,
+) -> dict[str, Any]:
+    """Materialize, advancing a failed or stale namespace without overwriting it."""
+
+    actor = materialize_fn or materialize
+    recoveries: list[dict[str, Any]] = []
+    working = _active_config(config)
+    configured = _configured_generation(config)
+    for attempt in range(max_recoveries + 1):
+        state = _namespace_state(working)
+        if state == "materialized":
+            receipt = dict(_load_object(_receipt_path(working)))
+            if recoveries:
+                receipt["generation_recoveries"] = recoveries
+            return receipt
+        if state in {"failed_partial", "stale_materialized"}:
+            if attempt >= max_recoveries:
+                raise MaterializationError(
+                    "store generation recovery budget exhausted; "
+                    f"state={state} generation={_configured_generation(working)}"
+                )
+            current = _configured_generation(working)
+            nxt = _successor_generation(current)
+            _write_generation_cursor(
+                {
+                    "configured_generation": configured,
+                    "active_generation": nxt,
+                    "superseded_generation": current,
+                    "namespace_state": state,
+                    "recovery_index": attempt + 1,
+                }
+            )
+            recoveries.append(
+                {
+                    "from_generation": current,
+                    "to_generation": nxt,
+                    "namespace_state": state,
+                }
+            )
+            working = _rewrite_generation(working, current, nxt)
+            continue
+        try:
+            receipt = dict(actor(working))
+        except MaterializationError as exc:
+            if (
+                "advance to a new explicit store generation" not in str(exc)
+                and _namespace_state(working) != "failed_partial"
+            ):
+                raise
+            if attempt >= max_recoveries:
+                raise
+            current = _configured_generation(working)
+            nxt = _successor_generation(current)
+            _write_generation_cursor(
+                {
+                    "configured_generation": configured,
+                    "active_generation": nxt,
+                    "superseded_generation": current,
+                    "namespace_state": "failed_partial",
+                    "recovery_index": attempt + 1,
+                    "failure": str(exc),
+                }
+            )
+            recoveries.append(
+                {
+                    "from_generation": current,
+                    "to_generation": nxt,
+                    "namespace_state": "failed_partial",
+                    "failure": str(exc),
+                }
+            )
+            working = _rewrite_generation(working, current, nxt)
+            continue
+        if recoveries:
+            receipt["generation_recoveries"] = recoveries
+        return receipt
+    raise MaterializationError("store generation recovery budget exhausted")
+
+
 def verify(
     config: Mapping[str, Any], *, invocation_command: str = "verify"
 ) -> dict[str, Any]:
+    config = _active_config(config)
     runtime_binding = _validated_runtime_binding(config)
     runtime_binding_cid = _cid(runtime_binding)
     verification_invocation = _validated_runtime_invocation(
@@ -2880,6 +3123,7 @@ def launch_plan(
 ) -> dict[str, Any]:
     if invocation_command not in {"launch-plan", "configured-board-launch"}:
         raise MaterializationError("launch-plan invocation command is invalid")
+    config = _active_config(config)
     policy = config.get("launch_policy") or {}
     database_program_bindings = _database_program_bindings(config)
     runtime_binding = _runtime_binding_contract(config)
@@ -2948,6 +3192,9 @@ def launch_plan(
         except MaterializationError as exc:
             blockers.append(str(exc))
     blockers = list(dict.fromkeys(blockers))
+    blocker_classes = {
+        blocker: _classify_blocker(blocker) for blocker in blockers
+    }
     requested = policy.get("live_multi_supervisor_allowed") is True
     allowed = bool(requested and live_admission is not None and not blockers)
     # A no-go report must not double as a copy/paste executable command.
@@ -2956,6 +3203,7 @@ def launch_plan(
         "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2",
         "allowed": allowed,
         "blockers": blockers,
+        "blocker_classes": blocker_classes,
         "argv": executable_argv,
         "argv_cid": _cid(executable_argv),
         "candidate_argv": executable_argv,
@@ -3000,7 +3248,7 @@ def main(argv: list[str] | None = None) -> int:
                 "process_started": False,
             }
         elif args.command == "materialize":
-            result = materialize(config)
+            result = materialize_with_recovery(config)
         elif args.command == "verify":
             result = verify(config)
         else:

@@ -515,6 +515,72 @@ def test_database_program_role_inversion_and_direct_file_fallback_fail_closed() 
         materializer._database_program_bindings(config)
 
 
+def test_successor_generation_and_rewrite_preserve_path_shape() -> None:
+    assert materializer._successor_generation("eaaef-run-v7") == "eaaef-run-v8"
+    assert materializer._successor_generation("eaaef-test-run-v1") == "eaaef-test-run-v2"
+    rewritten = materializer._rewrite_generation(
+        {
+            "store_generation": "eaaef-run-v7",
+            "store_id": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v7/control.duckdb",
+            "operational_store_id": "eaaef-control-run-v7",
+        },
+        "eaaef-run-v7",
+        "eaaef-run-v8",
+    )
+    assert rewritten["store_generation"] == "eaaef-run-v8"
+    assert rewritten["store_id"].endswith("/run-v8/control.duckdb")
+    assert rewritten["operational_store_id"] == "eaaef-control-run-v8"
+
+
+def test_classify_blocker_separates_host_gates_from_recoverable() -> None:
+    assert (
+        materializer._classify_blocker("advance to a new explicit store generation")
+        == "auto_recoverable"
+    )
+    assert (
+        materializer._classify_blocker("ipfs_accelerate_py nested checkout is dirty")
+        == "host_source_commit_required"
+    )
+    assert (
+        materializer._classify_blocker("quack_owner_qualification_missing")
+        == "host_gated_external_authority"
+    )
+
+
+def test_materialize_with_recovery_advances_failed_partial_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = _config("state/run-v1")
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+    calls: list[str] = []
+
+    def fake_materialize(working):
+        calls.append(str(working["bootstrap_database_program"]["store_generation"]))
+        if working["bootstrap_database_program"]["store_generation"] == "eaaef-test-run-v1":
+            raise materializer.MaterializationError(
+                "bootstrap namespace claim is immutable and partial effects are preserved; "
+                "advance to a new explicit store generation after review"
+            )
+        return {
+            "receipt_cid": "sha256:" + "a" * 64,
+            "process_started": False,
+            "source_head": "1" * 40,
+        }
+
+    receipt = materializer.materialize_with_recovery(
+        config,
+        materialize_fn=fake_materialize,
+    )
+    assert calls == ["eaaef-test-run-v1", "eaaef-test-run-v2"]
+    assert receipt["process_started"] is False
+    assert receipt["generation_recoveries"][0]["to_generation"] == "eaaef-test-run-v2"
+    cursor = materializer._read_generation_cursor()
+    assert cursor is not None
+    assert cursor["active_generation"] == "eaaef-test-run-v2"
+    assert cursor["process_started"] is False
+
+
 def test_launch_plan_attaches_unsigned_no_go_admission_statement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

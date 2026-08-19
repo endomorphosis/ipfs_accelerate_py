@@ -264,6 +264,9 @@ def test_prepare_emits_no_go_when_runtime_principals_are_absent() -> None:
     assert statement["decision"] == "no_go"
     assert statement["outcome"] == "mutation_not_admitted"
     assert "worker_network_runtime_principals_unavailable" in statement["blockers"]
+    assert "quack_owner_qualification_missing" in statement["blockers"]
+    assert "provider_container_qualification_missing" in statement["blockers"]
+    assert "quack_owner_board_identity_mismatch" not in statement["blockers"]
     assert statement["provider_task_dispatch_admitted"] is False
 
 
