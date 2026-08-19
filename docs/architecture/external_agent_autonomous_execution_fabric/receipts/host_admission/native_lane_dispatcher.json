@@ -11,12 +11,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:01105deb31c178eaa460617ce928c894f561de6f4efec1506dec09f22fa44f4e",
+  "receipt_cid": "sha256:a9ce166452007979085028c4dd6d299b1786c661a0d2f9bef4b821f10d459253",
   "receipt_name": "native_lane_dispatcher.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "2cb0745b5f555996cc614889ab82932b255a69e1",
-  "source_tree": "522b7f0a3bedb249d6f0ebc76a837f90695e33a1",
+  "source_head": "89888a05338d2f17d019a719931e8491b02ac496",
+  "source_tree": "fa3115a2bfabdbbbc92b174912aa3a34afb22ac1",
   "supervisor_process_started": false,
   "task_id": "EAAEF-189"
 }
