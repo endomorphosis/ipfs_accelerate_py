@@ -2976,7 +2976,7 @@ def _configured_board_launch_admission(
 
     try:
         board = load_configured_board(CONFIG_PATH, repo_root=ROOT)
-        if dict(board.payload) != dict(config):
+        if _active_config(dict(board.payload)) != _active_config(dict(config)):
             raise MaterializationError(
                 "configured-board scheduler bytes differ from launch-plan input"
             )
