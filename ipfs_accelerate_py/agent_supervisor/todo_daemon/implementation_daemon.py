@@ -68182,6 +68182,7 @@ class DatabaseImplementationDaemon:
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
+        self._require_execution_authority("bind execution callbacks")
         callbacks = (provider_fn, effect_fn, validation_fn)
         if not all(callable(callback) for callback in callbacks):
             raise TypeError("database execution callbacks must all be callable")
@@ -68203,6 +68204,50 @@ class DatabaseImplementationDaemon:
             self._provider_fn = provider_fn
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
+
+    def _require_execution_authority(self, operation: str) -> None:
+        """Require the explicit real-execution permit for a mutating phase.
+
+        DatabaseProgramConfig may arrive through the inherited environment so
+        store identity alone cannot authorize execution.  In particular, a
+        supervisor image replacement which loses ``--implement`` must not
+        resume an in-flight attempt or turn the testing no-op callbacks into
+        authoritative task completion evidence.
+        """
+
+        if not self.require_real_execution:
+            raise DatabaseImplementationAuthorityError(
+                f"database {operation} requires explicit real-execution "
+                "authority (--implement / require_real_execution=True)"
+            )
+
+    def _execution_disabled_observation(self) -> dict[str, Any]:
+        """Return one read-only pass result without reconciling or claiming.
+
+        Reconciliation methods can update task, claim, and attempt records.
+        They therefore cannot run merely because an inherited environment
+        identifies a database store.  An observer without the explicit
+        execution permit reports a stable idle result and leaves all task and
+        attempt revisions untouched.
+        """
+
+        return {
+            "unchanged": True,
+            "write_count": 0,
+            "active_task_id": "",
+            "selection_idle_reason": "database_execution_not_authorized",
+            "implementation_result": None,
+            "execution_authorized": False,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "markdown_status_writes": self._markdown_status_writes,
+            "projections_required": False,
+            "control_schema_evidence": dict(self.control_schema_evidence),
+            "completion_reconciliations": [],
+            "expired_attempt_reconciliations": [],
+            "terminal_retry_reconciliations": [],
+            "terminal_portal_reconciliations": [],
+        }
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
@@ -68888,6 +68933,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt | None:
         """Claim one ready task for this session; four sessions never share work."""
 
+        self._require_execution_authority("task claim")
         canonical_ready_task_cids = tuple(
             self.sync_ready_tasks_into_coordination()
         )
@@ -69113,6 +69159,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt:
         """Commit an attempt phase durably (crash boundary)."""
 
+        self._require_execution_authority("attempt phase commit")
         phase_text = str(phase or "").strip().lower()
         if phase_text not in {
             *_ATTEMPT_PHASE_ORDER,
@@ -69324,6 +69371,7 @@ class DatabaseImplementationDaemon:
         when a prior committed provider invocation was replayed.
         """
 
+        self._require_execution_authority("provider phase")
         self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
@@ -69425,6 +69473,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         """Apply effect work once per attempt idempotency key."""
 
+        self._require_execution_authority("effect phase")
         self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
         prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
@@ -70630,6 +70679,7 @@ class DatabaseImplementationDaemon:
         attempt, manual task, or exhausted budget fails closed.
         """
 
+        self._require_execution_authority("validation retry recovery")
         current = (
             attempt
             if isinstance(attempt, DatabaseTaskAttempt)
@@ -70872,6 +70922,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt:
         """Record validation evidence and complete the task in the database."""
 
+        self._require_execution_authority("task completion")
         current = self.get_attempt(attempt.attempt_id) or attempt
         validation_payload = dict(validation_result or {})
         if self.require_real_execution and (
@@ -71142,6 +71193,7 @@ class DatabaseImplementationDaemon:
         immediately before ordinary claim settlement.
         """
 
+        self._require_execution_authority("prepared completion reconciliation")
         list_unsettled = getattr(
             self.coordinator,
             "list_unsettled_task_completions",
@@ -71270,6 +71322,7 @@ class DatabaseImplementationDaemon:
         new attempt number and fencing token.
         """
 
+        self._require_execution_authority("expired attempt reconciliation")
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
             raise DatabaseImplementationAuthorityError(
@@ -71689,6 +71742,7 @@ class DatabaseImplementationDaemon:
         never treats a generic failed attempt as retryable.
         """
 
+        self._require_execution_authority("terminal retry reconciliation")
         outcomes: list[dict[str, Any]] = []
         for attempt in self._latest_failed_attempts():
             evidence = self._terminal_retry_evidence(attempt)
@@ -71765,6 +71819,7 @@ class DatabaseImplementationDaemon:
     def reconcile_terminal_portal_failures(self) -> list[dict[str, Any]]:
         """Finish fail-closed control transitions for untyped Portal errors."""
 
+        self._require_execution_authority("terminal failure reconciliation")
         outcomes: list[dict[str, Any]] = []
         for attempt in self._latest_failed_attempts():
             reason = self._terminal_portal_failure_reason(attempt)
@@ -71817,6 +71872,7 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any]:
         """Resume from the last committed phase without duplicating work."""
 
+        self._require_execution_authority("attempt resume")
         current = (
             attempt
             if isinstance(attempt, DatabaseTaskAttempt)
@@ -72192,6 +72248,8 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        if not self.require_real_execution:
+            return self._execution_disabled_observation()
         completion_reconciliations = self.reconcile_prepared_task_completions()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
         terminal_portal_reconciliations = (

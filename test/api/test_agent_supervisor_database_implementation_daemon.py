@@ -13,6 +13,7 @@ not duplicate provider/effect work.
 from __future__ import annotations
 
 import importlib
+import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,6 +32,13 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
+    DatabaseProgramConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon_runner as daemon_runner,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
@@ -113,7 +121,11 @@ def _open_daemon(
     def default_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         if provider_calls is not None:
             provider_calls.append(attempt.task_cid)
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     def effect(
         attempt: DatabaseTaskAttempt, provider_result: dict[str, object]
@@ -124,6 +136,16 @@ def _open_daemon(
             "status": "applied",
             "task_cid": attempt.task_cid,
             "provider_result": dict(provider_result),
+        }
+
+    def validation(
+        attempt: DatabaseTaskAttempt, effect_result: dict[str, object]
+    ) -> dict[str, object]:
+        return {
+            "outcome": "passed",
+            "evidence_digest": "sha256:" + "a" * 64,
+            "argv": ["focused-database-validation", attempt.task_cid],
+            "effect_result": dict(effect_result),
         }
 
     return DatabaseImplementationDaemon(
@@ -144,6 +166,8 @@ def _open_daemon(
         max_task_attempts=max_task_attempts,
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
+        validation_fn=validation,
+        require_real_execution=True,
         clock_ms=clock_ms,
     )
 
@@ -403,13 +427,165 @@ def test_json_projections_can_be_absent(tmp_path: Path) -> None:
         assert daemon.queue_path is None
         # No projection files created by open/materialize/run.
         daemon.materialize_population(_population(1))
-        daemon.run_once()
+        result = daemon.run_once()
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        assert task.status == "ready"
+        assert daemon.list_running_attempts() == []
         assert not (tmp_path / "task_state.json").exists()
         assert not (tmp_path / "events.jsonl").exists()
         assert not (tmp_path / "task_queue.json").exists()
         assert not list(tmp_path.glob("*.pid"))
     finally:
         daemon.close()
+
+
+def test_database_observer_without_real_execution_never_resumes_or_claims(
+    tmp_path: Path,
+) -> None:
+    """Inherited store authority cannot replace the explicit execution permit."""
+
+    seed = _open_daemon(tmp_path)
+    try:
+        seed.materialize_population(_population(2))
+        running = seed.claim_next()
+        assert running is not None
+        running = seed.commit_phase(
+            running,
+            "context",
+            body={"source": "pre-reload-real-execution"},
+        )
+        running_attempt_id = running.attempt_id
+    finally:
+        seed.close()
+
+    observer = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        # Exact failed-reload shape: the database environment survives but
+        # programmatic argv lost --implement, so no callbacks or execution
+        # permit are present.
+        require_real_execution=False,
+    )
+    try:
+        before_tasks = {
+            task_cid: observer.task_source.get(task_cid).to_dict()
+            for task_cid in ("task:cid:001", "task:cid:002")
+        }
+        before_attempt = observer.get_attempt(running_attempt_id)
+        assert before_attempt is not None
+        before_count_row = observer._require_connection().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM database_task_attempts),
+                (SELECT COUNT(*) FROM provider_invocations),
+                (SELECT COUNT(*) FROM effect_claims)
+            """
+        ).fetchone()
+        before_counts = tuple(
+            int(before_count_row[index]) for index in range(3)
+        )
+
+        result = observer.run_once()
+
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["execution_authorized"] is False
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        assert result["implementation_result"] is None
+        assert result["completion_reconciliations"] == []
+        assert result["expired_attempt_reconciliations"] == []
+        assert result["terminal_retry_reconciliations"] == []
+        assert result["terminal_portal_reconciliations"] == []
+
+        after_tasks = {
+            task_cid: observer.task_source.get(task_cid).to_dict()
+            for task_cid in ("task:cid:001", "task:cid:002")
+        }
+        after_attempt = observer.get_attempt(running_attempt_id)
+        after_count_row = observer._require_connection().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM database_task_attempts),
+                (SELECT COUNT(*) FROM provider_invocations),
+                (SELECT COUNT(*) FROM effect_claims)
+            """
+        ).fetchone()
+        after_counts = tuple(
+            int(after_count_row[index]) for index in range(3)
+        )
+        assert after_tasks == before_tasks
+        assert after_attempt == before_attempt
+        assert after_counts == before_counts == (1, 0, 0)
+        assert after_tasks["task:cid:001"]["status"] == "in_progress"
+        assert after_tasks["task:cid:002"]["status"] == "ready"
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="explicit real-execution authority",
+        ):
+            observer.claim_next()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="explicit real-execution authority",
+        ):
+            observer.resume_attempt(running_attempt_id)
+        guarded_mutations = (
+            (
+                "attempt phase commit",
+                lambda: observer.commit_phase(running_attempt_id, "provider"),
+            ),
+            (
+                "provider phase",
+                lambda: observer.run_provider(before_attempt),
+            ),
+            (
+                "effect phase",
+                lambda: observer.run_effect(before_attempt, {}),
+            ),
+            (
+                "task completion",
+                lambda: observer.complete_attempt(before_attempt),
+            ),
+            (
+                "prepared completion reconciliation",
+                observer.reconcile_prepared_task_completions,
+            ),
+            (
+                "expired attempt reconciliation",
+                observer.reconcile_expired_running_attempts,
+            ),
+            (
+                "terminal retry reconciliation",
+                observer.reconcile_terminal_retry_states,
+            ),
+            (
+                "terminal failure reconciliation",
+                observer.reconcile_terminal_portal_failures,
+            ),
+        )
+        for operation, mutation in guarded_mutations:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match=operation,
+            ):
+                mutation()
+        final_count = observer._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts"
+        ).fetchone()
+        assert int(final_count[0]) == 1
+    finally:
+        observer.close()
 
 
 def test_datasets_authoritative_open_requires_preinstalled_operational_profile(
@@ -720,7 +896,11 @@ def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
                 break
             time.sleep(0.005)
         assert len(observed_revisions) == 2, "background lease renewal did not run"
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     daemon = _open_daemon(
         tmp_path,
@@ -1803,7 +1983,11 @@ def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> No
         assert replacement is not None
         assert replacement.task_cid == attempt.task_cid
         replacement_claim_ids.append(replacement.claim_id)
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     daemon = _open_daemon(
         tmp_path,
@@ -2416,6 +2600,98 @@ def test_runner_builds_database_daemon_without_json_projections(
         result = daemon.run_once()
         assert result["authority_mode"] == "embedded"
         assert result["markdown_status_writes"] == 0
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["execution_authorized"] is False
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        assert task.status == "ready"
+        assert daemon.list_running_attempts() == []
+    finally:
+        daemon.close()
+
+
+def test_portal_builder_with_inherited_database_program_without_implement_is_observer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replacement child must not infer execution authority from its DB env."""
+
+    monkeypatch.chdir(tmp_path)
+    program = DatabaseProgramConfig(
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        store_id="control.duckdb",
+        store_generation="generation-reload-regression",
+        schema_revision="reload-regression-v1",
+    )
+    monkeypatch.setenv(
+        DATABASE_PROGRAM_JSON_ENV,
+        json.dumps(program.to_dict(), separators=(",", ":"), sort_keys=True),
+    )
+    args = parse_args(
+        [
+            *program.daemon_cli_args(),
+            "--todo-path",
+            str(tmp_path / "wrong-default-board.md"),
+            "--state-dir",
+            str(tmp_path / "wrong-default-state"),
+            "--state-prefix",
+            "wrong-default",
+            "--once",
+            # Deliberately no --implement: this is the failed reload shape.
+        ]
+    )
+    bind_results: list[object | None] = []
+    real_bind = daemon_runner.bind_database_portal_execution_from_args
+
+    def record_bind(*bind_args: object, **bind_kwargs: object) -> object | None:
+        result = real_bind(*bind_args, **bind_kwargs)
+        bind_results.append(result)
+        return result
+
+    monkeypatch.setattr(
+        daemon_runner,
+        "bind_database_portal_execution_from_args",
+        record_bind,
+    )
+    daemon, _context = daemon_runner.build_portal_implementation_daemon_from_args(
+        args,
+        repo_root=tmp_path,
+    )
+    try:
+        assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.require_real_execution is False
+        assert daemon.execution_callbacks_bound is False
+        assert bind_results == [None]
+        daemon.materialize_population(_population(1))
+        before = daemon.task_source.get("task:cid:001")
+        assert before is not None
+
+        result = daemon.run_once()
+
+        after = daemon.task_source.get("task:cid:001")
+        assert after is not None
+        assert result["execution_authorized"] is False
+        assert result["write_count"] == 0
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        assert after.to_dict() == before.to_dict()
+        assert after.status == "ready"
+        assert daemon.list_running_attempts() == []
+        counts = daemon._require_connection().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM database_task_attempts),
+                (SELECT COUNT(*) FROM provider_invocations),
+                (SELECT COUNT(*) FROM effect_claims)
+            """
+        ).fetchone()
+        assert tuple(int(counts[index]) for index in range(3)) == (0, 0, 0)
     finally:
         daemon.close()
 
@@ -2438,6 +2714,7 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
             "dqp",
             "--max-task-attempts",
             "4",
+            "--implement",
             "--once",
         ]
     )
