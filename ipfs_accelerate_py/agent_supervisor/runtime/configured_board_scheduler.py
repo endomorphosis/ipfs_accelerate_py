@@ -1886,6 +1886,13 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "objective_goal_refinement_enabled must be boolean"
         )
+    for field in (
+        "retry_budget_guardrail_enabled",
+        "dependency_guardrail_enabled",
+        "reconciliation_guardrail_enabled",
+    ):
+        if field in payload and not isinstance(payload.get(field), bool):
+            raise ConfiguredBoardError(f"{field} must be boolean")
 
     for field in (
         "poll_interval_seconds",
@@ -2401,6 +2408,13 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
+    for field, disabled_flag in (
+        ("retry_budget_guardrail_enabled", "--no-retry-budget-guardrail"),
+        ("dependency_guardrail_enabled", "--no-dependency-guardrail"),
+        ("reconciliation_guardrail_enabled", "--no-reconciliation-guardrail"),
+    ):
+        if payload.get(field, True) is False:
+            args.append(disabled_flag)
     # Always emit an explicit task-source/authority selection so the managed
     # daemon never relies on its deprecated implicit legacy-Markdown default.
     program = board.resolved_database_program()
