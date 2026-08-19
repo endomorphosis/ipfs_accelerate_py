@@ -1,7 +1,7 @@
 # ExternalAgentAutonomousExecutionFabric task board
 
 Board namespace: `external-agent-autonomous-execution-fabric-v1`. Plan revision: `EAAEF-PLAN-R1`.
-Canonical board identity: `sha256:a3f65f77235198441c9c144b6e3ca1bebf55fbf5abbdf3cfab0a05fd80a6603c`.
+Canonical board identity: `sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b`.
 
 DuckDB is the private transactional mutable database. Quack is the mandatory bounded multi-reader/multi-writer command and projection transport; one fenced local owner verifies every signed effect envelope and is the only process that opens the operational DuckDB. DuckLake is downstream immutable history and analytics only.
 
@@ -5966,8 +5966,8 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Parent goal ID: EAAEF-G000
 - Subgoal ID: EAAEF-G190
 - Owning repository: ipfs_accelerate_py
-- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
-- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py","scripts/collect_eaaef_host_admission_receipts.py","test/api/test_eaaef_host_admission_unblocking.py"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py","scripts/collect_eaaef_host_admission_receipts.py","test/api/test_eaaef_host_admission_unblocking.py"]
 - Integration conflict keys: []
 - Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
@@ -5976,7 +5976,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Depends on:
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
-- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py","scripts/collect_eaaef_host_admission_receipts.py","test/api/test_eaaef_host_admission_unblocking.py"]
 - External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
 - Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
 - Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
@@ -5988,7 +5988,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
 - Completion contract: Capture the current isolated launch-plan no-go, classify every blocker as auto_recoverable, host_source_commit_required or host_gated_external_authority, and publish a content-addressed inventory that later S tasks must close or restate as typed missing evidence. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
 - Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
-- Idempotency key: sha256:bb54b9acc7388c955cffa8d6d082d02fa985452735516e44f3e137b6fab8990b
+- Idempotency key: sha256:c992d2ff553c6c27cc0b224044063af2925128036d80f67807b7c10d61fb8a6d
 - Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
 - Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
 - Terminal status: not_terminal
@@ -5999,15 +5999,15 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
 - Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
 - Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
-- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json, test/api/test_eaaef_host_admission_unblocking.py
-- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json, ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py, scripts/collect_eaaef_host_admission_receipts.py, test/api/test_eaaef_host_admission_unblocking.py
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py","scripts/collect_eaaef_host_admission_receipts.py","test/api/test_eaaef_host_admission_unblocking.py"]
 - Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k inventory
 - Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","inventory"],"working_directory":"."}]
 - Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:0c3c708672d65ea25d2d9996a1adc072740088078b5a4577121a62f05280da94
+- Task specification CID: sha256:77b00956b5f90ed3dd92c37979bb99f3235dfab15bcad67edcd01f7ad0126292
 
 ## EAAEF-181 Bind worker, provider and Quack-owner runtime principals
 

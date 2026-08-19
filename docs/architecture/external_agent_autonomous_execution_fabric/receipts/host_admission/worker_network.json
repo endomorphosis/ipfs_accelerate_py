@@ -1,0 +1,26 @@
+{
+  "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "typed_missing",
+  "evidence": {
+    "artifact": "worker_network_authorizations",
+    "child_propagation_status": "unavailable_fail_closed",
+    "independent_signature_present": false,
+    "provider_did": "did:key:z6Mkt4Zfw3xDeBrN7rRuAM1DbEMuRBowWrRdzz7Guooz6yor",
+    "reason": "five collision-free signed lane authorizations are absent; child propagation remains fail-closed",
+    "required_lanes": 5,
+    "self_signed_rejected": true,
+    "source_only_factory_authority": false,
+    "worker_did": "did:key:z6Mkoee8u2Um7nA3xeGuVf4RhUDfKoBcBiNW83V1CKpfyLEB"
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:c3fd96ae15012cf73f63ffb7edbbf13c442df0b31e79b934982577ca0a60687d",
+  "receipt_name": "worker_network.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "2cb0745b5f555996cc614889ab82932b255a69e1",
+  "source_tree": "522b7f0a3bedb249d6f0ebc76a837f90695e33a1",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-187"
+}

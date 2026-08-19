@@ -1,0 +1,111 @@
+{
+  "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "inventory",
+  "evidence": {
+    "auto_recoverable_action": "host_bootstrap_recovery",
+    "bootstrap_admission_decision": null,
+    "items": [
+      {
+        "blocker": "provider/container qualification is diagnostic-only and does not admit task dispatch",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-185",
+          "EAAEF-186"
+        ]
+      },
+      {
+        "blocker": "the versioned Grok mount and execution-profile schemas are implemented fail-closed, but no externally signed @2 profile artifact or admitted container engine exists",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-183",
+          "EAAEF-186"
+        ]
+      },
+      {
+        "blocker": "typed authenticated Quack ingress, private-owner atomic CAS and read-only egress are implemented but unqualified; signed lane admission, a durable ambiguity journal, signed verifier and merge evidence, and a qualified dispatcher factory are absent",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-188",
+          "EAAEF-189"
+        ]
+      },
+      {
+        "blocker": "external source-addressed EAAEF-000 operational capability and per-lane launch-admission artifacts are absent",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "ipfs_accelerate_py nested checkout is dirty",
+        "class": "host_source_commit_required",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "signed_command_fabric_child_adapter_unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-188"
+        ]
+      },
+      {
+        "blocker": "worker_network_authorization_propagation_unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-187"
+        ]
+      },
+      {
+        "blocker": "board validation has not admitted live launch",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "container_policy.live_dispatch_allowed is not true",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-183"
+        ]
+      },
+      {
+        "blocker": "container_policy.bootstrap_image_status is not admitted",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-183"
+        ]
+      },
+      {
+        "blocker": "container_policy.bootstrap_image_digest is not a full sha256 identity",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-183"
+        ]
+      },
+      {
+        "blocker": "configured-board launch admission rejected: bootstrap admission receipt is unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      }
+    ],
+    "launch_plan_allowed": false,
+    "launch_plan_schema": "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2",
+    "materialization_receipt_cid": ""
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:9d4e26e99b89628c0f9f8172b2ef2eeb39bcf349ac7f94beae2d20fff79cca25",
+  "receipt_name": "blocker_inventory.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "2cb0745b5f555996cc614889ab82932b255a69e1",
+  "source_tree": "522b7f0a3bedb249d6f0ebc76a837f90695e33a1",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-180"
+}

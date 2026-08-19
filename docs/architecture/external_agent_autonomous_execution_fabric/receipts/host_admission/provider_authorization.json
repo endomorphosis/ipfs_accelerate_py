@@ -1,0 +1,23 @@
+{
+  "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "typed_missing",
+  "evidence": {
+    "artifact": "eaaef_scoped_provider_authorization",
+    "bound_provider_did": "did:key:z6Mkt4Zfw3xDeBrN7rRuAM1DbEMuRBowWrRdzz7Guooz6yor",
+    "independent_signature_present": false,
+    "reason": "independently signed grok_cli/codex provider authorization is absent",
+    "self_signed_rejected": true,
+    "source_only_factory_authority": false
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:2eadd7e8e6f057f06e644f908255800560a7c9dade550c9cee9a08a3204030bf",
+  "receipt_name": "provider_authorization.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "2cb0745b5f555996cc614889ab82932b255a69e1",
+  "source_tree": "522b7f0a3bedb249d6f0ebc76a837f90695e33a1",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-184"
+}

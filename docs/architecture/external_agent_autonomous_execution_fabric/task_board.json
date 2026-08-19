@@ -1,5 +1,5 @@
 {
-  "board_cid": "sha256:a3f65f77235198441c9c144b6e3ca1bebf55fbf5abbdf3cfab0a05fd80a6603c",
+  "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
   "control_artifact_ownership": [
     {
@@ -26523,10 +26523,14 @@
       "epic": "S",
       "execution_outputs": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
+        "scripts/collect_eaaef_host_admission_receipts.py",
         "test/api/test_eaaef_host_admission_unblocking.py"
       ],
       "execution_owned_files": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
+        "scripts/collect_eaaef_host_admission_receipts.py",
         "test/api/test_eaaef_host_admission_unblocking.py"
       ],
       "execution_validation": [
@@ -26566,7 +26570,7 @@
           "schema": "VerificationBundle@1"
         }
       ],
-      "idempotency_key": "sha256:bb54b9acc7388c955cffa8d6d082d02fa985452735516e44f3e137b6fab8990b",
+      "idempotency_key": "sha256:c992d2ff553c6c27cc0b224044063af2925128036d80f67807b7c10d61fb8a6d",
       "initial_population": true,
       "integration_conflict_keys": [],
       "is_schedulable": true,
@@ -26596,11 +26600,15 @@
       },
       "outputs": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
+        "scripts/collect_eaaef_host_admission_receipts.py",
         "test/api/test_eaaef_host_admission_unblocking.py"
       ],
       "overlap_merge_contracts": [],
       "owned_files": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
+        "scripts/collect_eaaef_host_admission_receipts.py",
         "test/api/test_eaaef_host_admission_unblocking.py"
       ],
       "owning_repository": "ipfs_accelerate_py",
@@ -26692,7 +26700,7 @@
       "stable_task_id": "EAAEF-180",
       "status": "todo",
       "subgoal_id": "EAAEF-G190",
-      "task_spec_cid": "sha256:0c3c708672d65ea25d2d9996a1adc072740088078b5a4577121a62f05280da94",
+      "task_spec_cid": "sha256:77b00956b5f90ed3dd92c37979bb99f3235dfab15bcad67edcd01f7ad0126292",
       "terminal_status": "not_terminal",
       "test_requirements": {
         "affected_integration": "select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv",
@@ -26707,6 +26715,8 @@
       "validation": "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k inventory",
       "write_scope": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
+        "scripts/collect_eaaef_host_admission_receipts.py",
         "test/api/test_eaaef_host_admission_unblocking.py"
       ]
     },

@@ -1,0 +1,49 @@
+{
+  "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "no_go",
+  "evidence": {
+    "bootstrap_admission_statement_cid": null,
+    "child_receipt_cids": {
+      "EAAEF-180": "sha256:9d4e26e99b89628c0f9f8172b2ef2eeb39bcf349ac7f94beae2d20fff79cca25",
+      "EAAEF-181": "sha256:276c19f6cc52b928f0f32d4017bb125f65f02ece46e7cdd5a9cc7dda7ccc731c",
+      "EAAEF-182": "sha256:c9424bda123eae893768f966568216e8f347a83e31d022c1857cd1fc90ca6b2e",
+      "EAAEF-183": "sha256:5b200ccc27215d52d2216916787403833996ed01a425146a0ad0be26d92b413e",
+      "EAAEF-184": "sha256:2eadd7e8e6f057f06e644f908255800560a7c9dade550c9cee9a08a3204030bf",
+      "EAAEF-185": "sha256:fca2ff12d3525049f01d0764e8427916c1d5d064a0a2d6fdab509d3e483c3152",
+      "EAAEF-186": "sha256:59b731d1f3974784e54674e646ffd67555584e040f3a4420fc2501cc0cbcac0e",
+      "EAAEF-187": "sha256:c3fd96ae15012cf73f63ffb7edbbf13c442df0b31e79b934982577ca0a60687d",
+      "EAAEF-188": "sha256:4da4dc2d0afa1af3eebac1eb50731a62f17b5c70208ec763e508ee2fc9b3dbb4",
+      "EAAEF-189": "sha256:01105deb31c178eaa460617ce928c894f561de6f4efec1506dec09f22fa44f4e",
+      "EAAEF-190": "sha256:002067c53f8e832559d85ea9207bbdb2a4d82af4d507c7b4220e649e2b313e6d"
+    },
+    "independent_operator_signature": "",
+    "independent_security_reviewer_signature": "",
+    "inventory_open_host_gated": [
+      "provider/container qualification is diagnostic-only and does not admit task dispatch",
+      "the versioned Grok mount and execution-profile schemas are implemented fail-closed, but no externally signed @2 profile artifact or admitted container engine exists",
+      "typed authenticated Quack ingress, private-owner atomic CAS and read-only egress are implemented but unqualified; signed lane admission, a durable ambiguity journal, signed verifier and merge evidence, and a qualified dispatcher factory are absent",
+      "external source-addressed EAAEF-000 operational capability and per-lane launch-admission artifacts are absent",
+      "signed_command_fabric_child_adapter_unavailable",
+      "worker_network_authorization_propagation_unavailable",
+      "board validation has not admitted live launch",
+      "container_policy.live_dispatch_allowed is not true",
+      "container_policy.bootstrap_image_status is not admitted",
+      "container_policy.bootstrap_image_digest is not a full sha256 identity",
+      "configured-board launch admission rejected: bootstrap admission receipt is unavailable"
+    ],
+    "launch_plan_allowed": false,
+    "materialization_receipt_cid": "",
+    "prospective_supervisor_signature_rejected": true
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:729e5bbeea86720943785af49b24c1274120531ce359b5a0cdcb898b71cbb4b1",
+  "receipt_name": "admission_bundle.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-bundle@1",
+  "self_signed": false,
+  "source_head": "2cb0745b5f555996cc614889ab82932b255a69e1",
+  "source_tree": "522b7f0a3bedb249d6f0ebc76a837f90695e33a1",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-191"
+}
