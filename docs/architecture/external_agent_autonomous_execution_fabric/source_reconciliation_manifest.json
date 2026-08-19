@@ -227,6 +227,349 @@
         "forward_fix_tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c",
         "qualification": {"authority_forwarding_tests": {"collected": 16, "passed": 16, "skipped": 0, "failed": 0}, "py_compile": "passed", "import": "passed"}
       },
+      "semantic_contract_assurance_merge_deletion": {
+        "classification": "partially_merged_exact_source_regression",
+        "source_snapshot": {
+          "commit": "38cd50092d300b61327a9225e7f10cfe8acefb4f",
+          "tree": "005f885e270bbc7573710686a78fc2f740ee5b9f"
+        },
+        "retained_parent": {
+          "commit": "56ef4fa6479eee78cacfe7372df67a5eda329060",
+          "tree": "baa136198bb182f2b9be7c932f87fab46f94d5fa",
+          "relation": "first parent of ea9b2af0c1e772ba445ab1589b123050484c217a; all listed path blobs are byte-identical to 38cd50092d300b61327a9225e7f10cfe8acefb4f"
+        },
+        "accidental_drop": {
+          "commit": "ea9b2af0c1e772ba445ab1589b123050484c217a",
+          "parents": [
+            "56ef4fa6479eee78cacfe7372df67a5eda329060",
+            "4bba1bd73bec8316773b3542bb9e58b7c01508c6"
+          ],
+          "subject": "Merge origin/main into LGSWF actual-v1.",
+          "effect": "deleted a still-referenced semantic-contract-assurance runtime closure from the merge result"
+        },
+        "restoration": {
+          "method": "exact_blob_restore_without_history_rewrite_or_squash",
+          "path_count": 25,
+          "production_module_count": 12,
+          "paired_test_count": 12,
+          "runtime_helper_count": 1,
+          "paths": [
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/contract_mismatch_analyzer.py", "blob": "c4583102f68f5818b0eaad0d5984cf188a7e91b1"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/contract_vulnerability_rules.py", "blob": "8a1ab25365ec9b5b1f8706362064425d33fc6dba"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py", "blob": "986656ec49b66cf2a7abbbbedb3151f33bc817ec"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py", "blob": "9499a1b75aee3ec3c0c6e43a5613d13596ef75a9"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/parser_failure_triage.py", "blob": "5a48a69cb14cf8038b58fbaa51a40641389ddf19"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/polyglot_ast_health.py", "blob": "f23ec0db9bd5844b0d3d4593c86014d03e84c9f4"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/polyglot_ast_provider.py", "blob": "0a32cc04859d4c13169890339f24b167f2c4d2b0"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/python_mcp_surface_extractor.py", "blob": "c720dffdd8b2e935c7715f8241dc4a72a07d8910"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/runtime_component_catalog.py", "blob": "9796cb77155554bff38333047feb6d0cb6606442"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/runtime_contract_evidence_compiler.py", "blob": "8be5f8d2742091698200844198393fa95509a925"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/analysis/swissknife_contract_extractor.py", "blob": "cdb860ee79b4821e405605bcadc62c72978980ec"},
+            {"path": "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py", "blob": "e4307c18ca154ffc3546d45676bc1245cbadb3dd"},
+            {"path": "scripts/extract_typescript_ast.mjs", "blob": "c055db99d21959d7ac799f0fbf7b26718fb93b4b"},
+            {"path": "test/api/test_agent_supervisor_contract_mismatch_analyzer.py", "blob": "2a108c44eab45e5123a073b9e50b3178b6bf725d"},
+            {"path": "test/api/test_agent_supervisor_contract_vulnerability_rules.py", "blob": "b7f539357f5086589b1cb6cb777cda022a8be199"},
+            {"path": "test/api/test_agent_supervisor_mcp_contract_catalog.py", "blob": "bf8ac99400970c750d8aaeffd0442158b7de7245"},
+            {"path": "test/api/test_agent_supervisor_mcp_invocation_trace.py", "blob": "710d89ffe604de4c8a11ce03a5decbe3966fefe9"},
+            {"path": "test/api/test_agent_supervisor_parser_failure_triage.py", "blob": "ab6707406503fbe4b4bc9ef9e0a114b6d88f8804"},
+            {"path": "test/api/test_agent_supervisor_polyglot_ast_health.py", "blob": "32cfebdce68c8a684334a5343ce2cd7d54cfa831"},
+            {"path": "test/api/test_agent_supervisor_polyglot_ast_provider.py", "blob": "418008b430c8583c2968a4e70d2a3055d62e896e"},
+            {"path": "test/api/test_agent_supervisor_python_mcp_surface_extractor.py", "blob": "a637432cfc32d63e011c91a611ae0699f36bae72"},
+            {"path": "test/api/test_agent_supervisor_runtime_component_catalog.py", "blob": "03b329a62ac64638799396ca8365b04945e330f5"},
+            {"path": "test/api/test_agent_supervisor_runtime_contract_evidence_compiler.py", "blob": "9fcc5bd105951f16ad1a29f3c81d38fb51ea5c7e"},
+            {"path": "test/api/test_agent_supervisor_swissknife_contract_extractor.py", "blob": "df31096d5da95221ae0997dc6e41791519dcf760"},
+            {"path": "test/api/test_agent_supervisor_mcp_contract_proof_cache.py", "blob": "484d2de586585cd925d3c9c4e8147aed31a9a187"}
+          ],
+          "qualification_status": "current focused qualification required by EAAEF-000; historical results are not promotion evidence"
+        }
+      },
+      "moved_module_import_regressions": {
+        "classification": "narrow_forward_repairs_against_current_domain_layout",
+        "domain_move_commit": "ab984496fb1109700ec37ed91bda5b29d7214ecb",
+        "merge_regression": "ea9b2af0c1e772ba445ab1589b123050484c217a",
+        "repairs": [
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+            "from": "agent_supervisor.canonical_logic_adapter",
+            "to": "agent_supervisor.proof.canonical_logic_adapter",
+            "provenance": "ab984496 repair was present at ea9b2af0 first parent and lost in the merge result; current file received the same one-line import repair"
+          },
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/validation/proof_cached_test_validation.py",
+            "from": "agent_supervisor.repository_forest",
+            "to": "agent_supervisor.analysis.repository_forest",
+            "provenance": "exact ab984496 blob 9f314a3f62c5e461ff6e5d40f3f18bce1951d304 was present at ea9b2af0 first parent and lost in the merge result"
+          },
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+            "from": "agent_supervisor.evidence_output_scope",
+            "to": "agent_supervisor.validation.evidence_output_scope",
+            "provenance": "sealed bootstrap cannot rely on mutable package-level compatibility aliases"
+          },
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+            "from": "agent_supervisor.multiformats_identity",
+            "to": "agent_supervisor.core.multiformats_identity",
+            "provenance": "three latent imports from the 6a0047436/aaf7d722a inference-runtime lineage were not updated when ab984496 moved the module"
+          },
+          {
+            "path": "ipfs_accelerate_py/testing/proof_reuse/item_identity.py",
+            "from": "agent_supervisor.repository_forest",
+            "to": "agent_supervisor.analysis.repository_forest",
+            "provenance": "direct canonical import required for compatibility-alias-independent proof-reuse execution"
+          },
+          {
+            "path": "ipfs_accelerate_py/testing/proof_reuse/default_identity_services.py",
+            "from": "agent_supervisor.repository_forest",
+            "to": "agent_supervisor.analysis.repository_forest",
+            "provenance": "four direct canonical imports required for compatibility-alias-independent proof-reuse execution"
+          },
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py",
+            "from": "agent_supervisor.merge.formal_verification_policy",
+            "to": "agent_supervisor.proof.formal_verification_policy",
+            "provenance": "lazy merge-gate receipt import introduced at d290895d21c3cede9bf95acc1acf78a90845feac was not updated by the 22f7f54063ef1a599940f1a6754f6503361e5b1e domain move; current code received the one-line canonical import repair"
+          }
+        ],
+        "qualification_status": "current focused qualification required by EAAEF-000"
+      },
+      "worktree_lifecycle_restart_reconciliation": {
+        "classification": "provenance_bound_forward_reconciliation",
+        "source_commit": "9e39c6c9edb0b756f99f9857a89e70642ef1321c",
+        "source_tree": "ea321ea749103ece6a175c4e984372e42ac204bd",
+        "source_subject": "fix(agent-supervisor): auto-reclaim dead same-lane worktree leases",
+        "paths": [
+          "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+          "test/api/test_agent_supervisor_worktree_lifecycle.py"
+        ],
+        "restored_contracts": [
+          "evaluate_cleanup and authorize_cleanup receive the caller's exact expected_state_dir",
+          "only a provably dead owner in the same lane may be reclaimed before lease expiry during a controlled restart",
+          "peer lanes remain lease-expiry gated and every accepted restart advances the fence"
+        ],
+        "method": "narrow semantic forward reconciliation into the current lifecycle source; no historical branch merge, squash or overwrite",
+        "qualification_observation": {
+          "scope": "test/api/test_agent_supervisor_worktree_lifecycle.py",
+          "collected": 48,
+          "passed": 48,
+          "sealed_promotion_receipt": false,
+          "disposition": "unsealed in-session diagnostic; current EAAEF-000 evidence still required"
+        }
+      },
+      "todo_daemon_registered_shared_dependency_reconciliation": {
+        "classification": "provenance_bound_forward_reconciliation_with_containment_correction",
+        "source_commit": "a4413463c6e9d356b0143750db98486c0689bb0a",
+        "source_tree": "f205cbf01c9677549e25ae733a7ad2fdf8610b3d",
+        "source_subject": "fix(agent-supervisor): restore worktree links, merge abandon, refill mapping",
+        "paths": [
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "test/api/test_agent_supervisor_todo_daemon_port.py"
+        ],
+        "source_intent": "restore shared dependency links for managed implementation worktrees",
+        "containment_correction": "a repository sibling is admitted only when Git registers it as a worktree of the exact repository; an arbitrary sibling remains outside the mutation boundary",
+        "method": "narrow semantic forward reconciliation into the current daemon plus a direct positive registered-sibling and retained negative outside-sibling regression",
+        "qualification_observation": {
+          "scope": "focused todo-daemon shared-dependency containment slice",
+          "collected": 8,
+          "passed": 8,
+          "sealed_promotion_receipt": false,
+          "disposition": "unsealed in-session diagnostic; current EAAEF-000 evidence still required"
+        }
+      },
+      "signed_command_fabric_profile_v2_reconciliation": {
+        "classification": "post_freeze_contract_drift_repair",
+        "authoritative_schema": "ipfs_accelerate_py/agent-supervisor/eaaef-signed-command-fabric-profile@2",
+        "operational_schema_revision": "datasets-authoritative-eaaef-operational-control-plane@2",
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "shard_id": "control-shard-0",
+        "drift": "the tracked scheduler configuration and materializer required profile @2 with explicit board_namespace and shard_id, while two downstream validation field sets and one runner fixture still described profile @1",
+        "paths": [
+          "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/validation/external_agent_bootstrap_admission.py",
+          "ipfs_accelerate_py/agent_supervisor/validation/external_agent_configured_board_capsule.py",
+          "test/api/test_external_agent_bootstrap_admission.py",
+          "test/api/test_external_agent_configured_board_capsule.py",
+          "test/api/test_external_agent_configured_board_runner_gate.py"
+        ],
+        "restored_contracts": [
+          "profile @2 has an exact canonical field set that includes board_namespace and shard_id",
+          "the capsule validator joins both identities to independent canonical expectations rather than profile-supplied values",
+          "bootstrap admission joins board_namespace to the materializer's board validation and requires the exact control shard",
+          "bootstrap and operational database programs require the exact EAAEF operational profile @2",
+          "the EAAEF @2 operational revision triggers the live-seal child gate without changing the legacy datasets-authoritative @1 marker"
+        ],
+        "method": "narrow forward reconciliation of duplicated consumers to the already reviewed tracked configuration and materializer @2 contract; profile @1 was not widened in place",
+        "qualification_observation": {
+          "scope": "capsule, bootstrap admission, configured runner gate and real tracked scheduler config",
+          "collected": 36,
+          "passed": 36,
+          "sealed_promotion_receipt": false,
+          "disposition": "unsealed in-session diagnostic; exact final source-freeze evidence remains required"
+        }
+      },
+      "isolated_materializer_validator_import_root_reconciliation": {
+        "classification": "fail_closed_runtime_dependency_projection_repair",
+        "drift": "the outer isolated materializer launcher verified and admitted one exact approved_import_root, but its fresh -I -S board-validator child did not receive that closed dependency root and therefore failed importing cryptography before board validation",
+        "paths": [
+          "scripts/materialize_external_agent_autonomous_execution_fabric_control_plane.py",
+          "test/api/test_external_agent_autonomous_execution_fabric_materializer.py"
+        ],
+        "restored_contracts": [
+          "the materializer board validator accepts only the already verified bootstrap runtime binding",
+          "the approved dependency root must exist, be absolute and equal its strict canonical resolution",
+          "the isolated child receives only the reviewed repository root followed by the approved dependency root as explicit argv data",
+          "the child retains -I, -S and -B and does not inherit PYTHONPATH or user-site discovery",
+          "all production callers validate the runtime binding before constructing the isolated validator child"
+        ],
+        "method": "narrow child-bootstrap repair; no ambient import path, dynamic code, provider, container, network or supervisor effect was admitted",
+        "security_review": {
+          "result": "no_p0_or_p1_finding",
+          "scope": "exact-root child bootstrap, ROOT-first ordering, static code/argv data, isolated flags and production caller verification order",
+          "sealed_promotion_receipt": false
+        },
+        "qualification_observation": {
+          "argv": [
+            "python3",
+            "-m",
+            "pytest",
+            "-q",
+            "test/api/test_external_agent_autonomous_execution_fabric_materializer.py"
+          ],
+          "collected": 20,
+          "passed": 20,
+          "sealed_promotion_receipt": false,
+          "actual_isolated_launch_plan_disposition": "advanced past dependency import and stopped at the exact dirty-source guard",
+          "process_started": false,
+          "disposition": "unsealed in-session diagnostic; no current CI or promotion claim"
+        }
+      },
+      "source_freeze_r1_r2_and_lifecycle_reconciliation": {
+        "classification": "working_overlay_source_seams_implemented_live_admission_absent",
+        "paths": [
+          "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py",
+          "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/eaaef_bootstrap_gateway.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py",
+          "ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py",
+          "ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+          "ipfs_accelerate_py/agent_supervisor/validation/agent_native_dependency_admission.py",
+          "ipfs_accelerate_py/agent_supervisor/validation/eaaef_lane_gateway_admission.py",
+          "ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py",
+          "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+          "test/api/test_agent_supervisor_configured_board_scheduler.py",
+          "test/api/test_agent_supervisor_database_implementation_daemon.py",
+          "test/api/test_agent_supervisor_incremental_runtime.py",
+          "test/api/test_agent_supervisor_native_dependency_admission.py",
+          "test/api/test_agent_supervisor_validation_scheduler.py",
+          "test/api/test_eaaef_lane_gateway_runtime.py",
+          "test/api/test_eaaef_supervisor_daemon_birth_wiring.py",
+          "test/api/test_external_agent_state_repository.py",
+          "test/api/test_plan_r2_remote_owner.py"
+        ],
+        "implemented_contracts": {
+          "r1_status": "r1_source_verified_runtime_factory_implemented",
+          "r1_native_admission": "AgentSupervisorNativeDependencyAdmission@1",
+          "r1_lane_chain": [
+            "EAAEFBootstrapLaneAuthority@2",
+            "EAAEFBootstrapLaneVerifierReceipt@2",
+            "EAAEFBootstrapLaneMergeAdmission@2"
+          ],
+          "r1_factories_and_journal": [
+            "EAAEFQuackClientFactoryQualification@1",
+            "EAAEFContainerDispatcherFactoryQualification@1",
+            "EAAEFContainerDynamicService@1",
+            "EAAEFExactEnvelopeJournal@1",
+            "EAAEFContainerDispatcherFactory@1"
+          ],
+          "r1_supervisor_birth_wiring": "implemented_and_source_tested",
+          "r2_status": "source_complete_external_signed_channel_required",
+          "r2_process_remote_chain": [
+            "PlanR2ProcessRemoteOwnerCapability@1",
+            "PlanR2CanonicalWireChannel@1",
+            "PlanR2RemoteOwnerService@1",
+            "PlanR2ProcessRemoteOwnerGateway@1",
+            "PlanR2RemoteExactEnvelopeJournal@1"
+          ]
+        },
+        "source_hashes_sha256": {
+          "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "12852c1d2524014cf91ef584b45e5595e489dfb982e2ba9e0054d5cfb0d9f86d",
+          "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "eb31256fd3babb78b66e8e59b4d88743b1101721287a0f5534b596b3ded9b4e1",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "2b92957d2ab11b25b434a55a6f19e8cf6c88746ed3f318a53a51049527493979",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": "dd5bb18a1f403c0570b554ee58d02cf38897adb3d4de6c451dc40408c63059b0",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "e1afa1156e3e385bf09d1188bcb9665ebda054592abb155e87346d17b8808701",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py": "522143586dbdc13a60eba5e0fb0e28fea1d1b0206952e75a7919c0ef0f819431"
+        },
+        "source_freeze_evidence": [
+          {"scope": "canonical_two_lane_recovery_matrix", "collected": 13, "passed": 13, "skipped": 0, "xfailed": 0},
+          {"scope": "configured_scheduler", "collected": 109, "passed": 109, "skipped": 0, "xfailed": 0},
+          {"scope": "todo_daemon_port", "collected": 567, "passed": 567, "skipped": 0, "xfailed": 0},
+          {"scope": "frozen_boundary_slice", "collected": 121, "passed": 121, "skipped": 0, "xfailed": 0},
+          {"scope": "frozen_validation_slice", "collected": 56, "passed": 56, "skipped": 0, "xfailed": 0},
+          {"scope": "incremental_runtime", "collected": 32, "passed": 32, "skipped": 0, "xfailed": 0},
+          {"scope": "r1_r2_and_supervisor_birth", "collected": 26, "passed": 26, "skipped": 0, "xfailed": 0, "duration_seconds": 6.53},
+          {"scope": "native_admission_and_pin", "collected": 51, "passed": 50, "skipped": 1, "xfailed": 0, "duration_seconds": 2.66},
+          {"scope": "ordinary_plan_r2_and_state", "collected": 13, "passed": 10, "skipped": 3, "xfailed": 0},
+          {"scope": "temporary_exact_duckdb_quack_plan_r2_diagnostic", "collected": 13, "passed": 13, "skipped": 0, "xfailed": 0, "production_qualification": false}
+        ],
+        "explicit_skips": [
+          {
+            "node": "test/api/test_agent_supervisor_native_dependency_pin.py::test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python",
+            "reason": "reviewed DuckDB/Python fixture is unavailable",
+            "classification": "environment_only_aarch64_reviewed_fixture_absent"
+          },
+          {
+            "nodes": [
+              "test_canonical_quack_owner_applies_and_reads_back_plan_r2_atomically",
+              "test_canonical_quack_owner_exact_prepare_replay_is_one_durable_result",
+              "test_canonical_quack_owner_rollback_replay_crash_and_live_fences"
+            ],
+            "reason": "requires DuckDB 1.5.5 and QUACK_155_EXTENSION_PATH",
+            "classification": "ordinary_environment_exact_extension_absent"
+          }
+        ],
+        "independent_final_review": {
+          "reviewer_lane": "Volta",
+          "p0_findings": 0,
+          "p1_findings": 0,
+          "git_diff_check": "passed"
+        },
+        "qualification_limit": "Source R1/R2 seams and focused lifecycle recovery are implemented and tested, but actual independently signed artifacts, deployed signed endpoints, a qualified DuckDB/Quack extension, and real admitted Docker/container/provider/network authority are absent. No live EAAEF launch or effect occurred.",
+        "sealed_promotion_receipt": false
+      },
+      "bootstrap_router_source_regressions": {
+        "classification": "provenance_bound_forward_reconciliation",
+        "repairs": [
+          {
+            "topic": "router-owned implementation-provider decision",
+            "source_commit": "757471e4a7dcb5b9f01800e8dd01ea2b89de3c1f",
+            "source_tree": "3b26ffed088cca2087612fc025afcecdfade6907",
+            "source_relation": "ancestor of the integration input whose decision block was absent from the current router while current capability consumers still imported it",
+            "restoration": "exact ASE3-028 RouterOwnedProviderObservation, RouterOwnedProviderPolicyContext, RouterOwnedProviderDecision, reason, ranking, decision and legacy-adapter block plus its Any typing dependency",
+            "restored_block_sha256": "aa7f9459e168add0a67b26dd2f309a8591d4a92b9fd32f1e76587222fc0cf17f"
+          },
+          {
+            "topic": "exact-provider fallback authority and cache identity",
+            "source_commit": "5a6a0859500e44094b6b11b467555855149c88ba",
+            "source_tree": "defcd14236f126dfb672c93994c42084fe8cf0a0",
+            "source_relation": "not reachable from the integration input even though its exact-provider contract tests survived through another merge",
+            "restoration": "narrow forward port of the explicit cross-provider fallback gate, exact-model retry suppression, cache-authority binding and usage-admission propagation; unrelated historical default-model changes were not replayed"
+          },
+          {
+            "topic": "verified-GUI-optimizer route authorization scope",
+            "source_commit": "dc6dbae8252206150210733ba31a5d1271617775",
+            "source_tree": "8bb89355735728d7be67a6010d61580d53ce2af3",
+            "source_relation": "ancestor of the integration input whose VGO constants and authorization policy were absent from the current split route module",
+            "restoration": "forward reconciliation of the exact VGO authorization, root-pin and lifecycle-witness scope while preserving legacy V3 Grok-4.5 and EAAEF Grok-4.6 as distinct namespaces"
+          }
+        ],
+        "qualification_status": "focused in-session diagnostics passed; immutable promotion receipts remain required by EAAEF-000"
+      },
       "committed_source_hygiene_risks": [
         "dashboard.pid",
         "data/model_manager.duckdb.wal",

@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,7 @@ if str(ROOT) not in sys.path:
 CONFIG_PATH = ROOT / "config/external_agent_autonomous_execution_fabric_scheduler.json"
 RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "external-agent-autonomous-execution-fabric-materialization@1"
+    "external-agent-autonomous-execution-fabric-materialization@2"
 )
 POPULATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -38,17 +39,106 @@ POPULATION_SCHEMA = (
 )
 NAMESPACE_CLAIM_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "external-agent-autonomous-execution-fabric-namespace-claim@1"
+    "external-agent-autonomous-execution-fabric-namespace-claim@2"
 )
 SCHEDULER_CONFIG_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
-    "external_agent_autonomous_execution_fabric.scheduler_config@1"
+    "external_agent_autonomous_execution_fabric.scheduler_config@2"
 )
 RUNTIME_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1"
 )
 RUNTIME_INVOCATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-invocation@1"
+)
+NAMESPACE_CLAIM_FIELDS = frozenset(
+    {
+        "schema",
+        "population_cid",
+        "plan_root_cid",
+        "source_head",
+        "source_tree",
+        "source_generation_cid",
+        "runtime_binding",
+        "runtime_binding_cid",
+        "materialization_invocation",
+        "store_generation",
+        "database_program_bindings",
+        "database_paths",
+        "maximum_writer_processes",
+        "partial_effect_policy",
+        "process_started",
+        "claim_cid",
+    }
+)
+MATERIALIZATION_RECEIPT_FIELDS = frozenset(
+    {
+        "schema",
+        "namespace_claim_cid",
+        "authority_mode",
+        "maximum_writer_processes",
+        "continuous_quack_authority",
+        "ducklake_authority",
+        "board_validation",
+        "population_cid",
+        "plan_root_cid",
+        "source_head",
+        "source_tree",
+        "source_generation",
+        "runtime_binding",
+        "runtime_binding_cid",
+        "materialization_invocation",
+        "controls",
+        "database_paths",
+        "database_program_bindings",
+        "schema_install",
+        "schema_verification",
+        "operation_vocabulary_cid",
+        "operational_profile_verification",
+        "borrowed_transaction_handler_source_evidence",
+        "control_schema_projection",
+        "database_materialization",
+        "control_projection",
+        "coordination_projection",
+        "execution_projection",
+        "ready_task_aliases",
+        "process_started",
+        "receipt_cid",
+    }
+)
+SIGNED_COMMAND_FABRIC_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-signed-command-fabric-profile@2"
+)
+SIGNED_COMMAND_FABRIC_PROFILE_FIELDS = frozenset(
+    {
+        "schema",
+        "transport_kind",
+        "board_namespace",
+        "shard_id",
+        "ingress_endpoint",
+        "ingress_secret_handle",
+        "projection_endpoint",
+        "projection_secret_handle",
+        "store_id",
+        "store_generation",
+        "schema_revision",
+        "owner_qualification_schema",
+        "command_envelope_schema",
+        "state_command_schema",
+        "ingress_relation",
+        "ingress_append_only",
+        "ingress_accepts_signed_envelopes_only",
+        "operational_database_private",
+        "operational_tables_remotely_exposed",
+        "one_mutable_owner",
+        "owner_verifies_signed_envelopes",
+        "projection_read_only",
+        "projection_append_allowed",
+        "atomic_plan_r2_required",
+        "direct_file_fallback",
+        "failover_policy",
+        "child_adapter_status",
+    }
 )
 
 
@@ -299,6 +389,7 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         "materialize",
         "verify",
         "launch-plan",
+        "configured-board-launch",
     ]:
         raise MaterializationError("bootstrap launcher allowed_commands is not canonical")
     _canonical_absent_runtime_path(
@@ -620,9 +711,16 @@ def _validated_runtime_invocation(
 def _paths(config: Mapping[str, Any]) -> dict[str, Path]:
     if str(config.get("schema") or "") != SCHEDULER_CONFIG_SCHEMA:
         raise MaterializationError("scheduler config schema identity is not canonical")
-    program = config.get("database_program")
+    program = config.get("bootstrap_database_program")
     if not isinstance(program, Mapping):
-        raise MaterializationError("database_program is missing")
+        raise MaterializationError("bootstrap_database_program is missing")
+    operational = config.get("database_program")
+    if not isinstance(operational, Mapping):
+        raise MaterializationError("operational database_program is missing")
+    if dict(program) == dict(operational):
+        raise MaterializationError(
+            "bootstrap and operational database programs must be distinct"
+        )
     if str(program.get("authority_mode") or "") != "embedded":
         raise MaterializationError("bootstrap database authority must be embedded")
     if str(program.get("task_source_kind") or "") != "duckdb":
@@ -639,25 +737,32 @@ def _paths(config: Mapping[str, Any]) -> dict[str, Path]:
         "failover_policy",
     ):
         if not str(program.get(field) or "").strip():
-            raise MaterializationError(f"database_program.{field} is required")
+            raise MaterializationError(
+                f"bootstrap_database_program.{field} is required"
+            )
     if str(program.get("failover_policy")) != "fail_closed":
         raise MaterializationError("bootstrap database failover policy must be fail_closed")
     result = {
-        "control": _relative_path(program.get("store_id"), field="database_program.store_id"),
+        "control": _relative_path(
+            program.get("store_id"),
+            field="bootstrap_database_program.store_id",
+        ),
         "coordination": _relative_path(
             program.get("coordination_store_id"),
-            field="database_program.coordination_store_id",
+            field="bootstrap_database_program.coordination_store_id",
         ),
         "execution": _relative_path(
             program.get("execution_store_id"),
-            field="database_program.execution_store_id",
+            field="bootstrap_database_program.execution_store_id",
         ),
     }
     if len(set(result.values())) != 3:
         raise MaterializationError("control, coordination and execution stores must be distinct")
     control = result["control"]
     if control.suffix.lower() not in {".duckdb", ".ddb"}:
-        raise MaterializationError("database_program.store_id must identify a DuckDB file")
+        raise MaterializationError(
+            "bootstrap_database_program.store_id must identify a DuckDB file"
+        )
     expected = {
         "coordination": control.with_name(f"{control.stem}.coordination.duckdb"),
         "execution": control.with_name(f"{control.stem}.execution.duckdb"),
@@ -665,24 +770,185 @@ def _paths(config: Mapping[str, Any]) -> dict[str, Path]:
     for name, path in expected.items():
         if result[name] != path:
             raise MaterializationError(
-                f"database_program.{name}_store_id must equal the deterministic "
+                f"bootstrap_database_program.{name}_store_id must equal the deterministic "
                 f"DatabaseImplementationDaemon sidecar {path.relative_to(ROOT)}"
             )
     return result
 
 
+def _operational_command_fabric_profile(
+    config: Mapping[str, Any],
+    *,
+    operational_program: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the prospective split ingress/private-owner/egress topology."""
+
+    raw = config.get("operational_command_fabric")
+    if not isinstance(raw, Mapping):
+        raise MaterializationError("operational_command_fabric is required")
+    if set(raw) != SIGNED_COMMAND_FABRIC_PROFILE_FIELDS:
+        raise MaterializationError(
+            "operational_command_fabric shape is not canonical"
+        )
+    profile = dict(raw)
+    exact = {
+        "schema": SIGNED_COMMAND_FABRIC_PROFILE_SCHEMA,
+        "transport_kind": "signed_command_fabric",
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "shard_id": "control-shard-0",
+        "owner_qualification_schema": (
+            "ipfs_accelerate_py/agent-supervisor/eaaef-quack-owner-qualification@1"
+        ),
+        "command_envelope_schema": (
+            "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
+        ),
+        "state_command_schema": (
+            "ipfs_accelerate_py/agent-supervisor/state-command@1"
+        ),
+        "ingress_relation": "command_inbox",
+        "ingress_append_only": True,
+        "ingress_accepts_signed_envelopes_only": True,
+        "operational_database_private": True,
+        "operational_tables_remotely_exposed": False,
+        "one_mutable_owner": True,
+        "owner_verifies_signed_envelopes": True,
+        "projection_read_only": True,
+        "projection_append_allowed": False,
+        "atomic_plan_r2_required": True,
+        "direct_file_fallback": False,
+        "failover_policy": "fail_closed",
+        "child_adapter_status": "implemented_unqualified_fail_closed",
+    }
+    if any(profile.get(field) != value for field, value in exact.items()):
+        raise MaterializationError(
+            "operational signed command fabric policy is not fail closed"
+        )
+    ingress = str(profile.get("ingress_endpoint") or "")
+    projection = str(profile.get("projection_endpoint") or "")
+    if (
+        ingress == projection
+        or not ingress.startswith("quack:127.0.0.1:")
+        or not projection.startswith("quack:127.0.0.1:")
+        or not str(profile.get("ingress_secret_handle") or "").startswith(
+            "secret-handle:"
+        )
+        or not str(profile.get("projection_secret_handle") or "").startswith(
+            "secret-handle:"
+        )
+        or profile.get("store_id") != operational_program.get("store_id")
+        or profile.get("store_generation")
+        != operational_program.get("store_generation")
+        or profile.get("schema_revision")
+        != operational_program.get("schema_revision")
+    ):
+        raise MaterializationError(
+            "operational signed command fabric identity is inconsistent"
+        )
+    if profile.get("board_namespace") != config.get("board_namespace"):
+        raise MaterializationError(
+            "operational signed command fabric board namespace differs"
+        )
+    return profile
+
+
+def _database_program_bindings(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind separate bootstrap and operational programs without opening Quack."""
+
+    bootstrap = config.get("bootstrap_database_program")
+    operational = config.get("database_program")
+    if not isinstance(bootstrap, Mapping) or not isinstance(operational, Mapping):
+        raise MaterializationError(
+            "bootstrap_database_program and operational database_program are required"
+        )
+    _paths(config)
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        DatabaseProgramConfig,
+        DatabaseProgramConfigError,
+    )
+
+    try:
+        bootstrap_program = DatabaseProgramConfig.from_mapping(bootstrap)
+        operational_program = DatabaseProgramConfig.from_mapping(operational)
+    except DatabaseProgramConfigError as exc:
+        raise MaterializationError(f"invalid database program: {exc}") from exc
+    if (
+        bootstrap_program.authority_mode != "embedded"
+        or bootstrap_program.task_source_kind != "duckdb"
+    ):
+        raise MaterializationError(
+            "bootstrap_database_program must be embedded DuckDB"
+        )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+        EAAEF_OPERATIONAL_PROFILE_ID,
+    )
+
+    if (
+        bootstrap_program.schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
+        or operational_program.schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
+    ):
+        raise MaterializationError(
+            "bootstrap and operational database programs must bind the exact "
+            "EAAEF operational profile @2"
+        )
+    if (
+        operational_program.authority_mode != "quack"
+        or operational_program.task_source_kind != "duckdb"
+        or operational_program.failover_policy != "fail_closed"
+        or not operational_program.quack_endpoint
+        or not operational_program.endpoint_secret_handle
+        or not operational_program.store_id
+        or "/" in operational_program.store_id
+        or "\\" in operational_program.store_id
+        or operational_program.store_id.endswith((".duckdb", ".ddb"))
+    ):
+        raise MaterializationError(
+            "operational database_program must be remote Quack with no direct-file fallback"
+        )
+    command_fabric = _operational_command_fabric_profile(
+        config,
+        operational_program=operational_program.to_dict(),
+    )
+    projection = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "eaaef-database-program-bindings@1"
+        ),
+        "bootstrap": bootstrap_program.to_dict(),
+        "bootstrap_source_cid": _cid(dict(bootstrap)),
+        "bootstrap_profile_cid": _cid(bootstrap_program.to_dict()),
+        "operational": operational_program.to_dict(),
+        "operational_source_cid": _cid(dict(operational)),
+        "operational_database_program_profile_cid": _cid(
+            operational_program.to_dict()
+        ),
+        "operational_command_fabric": command_fabric,
+        "operational_profile_cid": _cid(command_fabric),
+        "operational_child_adapter_status": "implemented_unqualified_fail_closed",
+        "materializer_opens_operational_profile": False,
+        "direct_file_fallback": False,
+    }
+    if projection["bootstrap_profile_cid"] == projection["operational_profile_cid"]:
+        raise MaterializationError("database program profile identities collide")
+    projection["binding_cid"] = _cid(projection)
+    return projection
+
+
 def _receipt_path(config: Mapping[str, Any]) -> Path:
     registry = _relative_path(
-        (config.get("database_program") or {}).get("runtime_registry_path"),
-        field="database_program.runtime_registry_path",
+        (config.get("bootstrap_database_program") or {}).get(
+            "runtime_registry_path"
+        ),
+        field="bootstrap_database_program.runtime_registry_path",
     )
     return registry / "bootstrap-materialization.json"
 
 
 def _claim_path(config: Mapping[str, Any]) -> Path:
     registry = _relative_path(
-        (config.get("database_program") or {}).get("runtime_registry_path"),
-        field="database_program.runtime_registry_path",
+        (config.get("bootstrap_database_program") or {}).get(
+            "runtime_registry_path"
+        ),
+        field="bootstrap_database_program.runtime_registry_path",
     )
     return registry / "bootstrap-materialization-claim.json"
 
@@ -700,7 +966,7 @@ def _namespace_artifacts(config: Mapping[str, Any]) -> tuple[Path, ...]:
         _claim_path(config),
         _receipt_path(config),
     ]
-    program = config.get("database_program") or {}
+    program = config.get("bootstrap_database_program") or {}
     for field in (
         "event_store_path",
         "runtime_registry_path",
@@ -709,7 +975,10 @@ def _namespace_artifacts(config: Mapping[str, Any]) -> tuple[Path, ...]:
         "state_dir",
     ):
         members.append(
-            _relative_path(program.get(field), field=f"database_program.{field}")
+            _relative_path(
+                program.get(field),
+                field=f"bootstrap_database_program.{field}",
+            )
         )
     for path in paths.values():
         members.append(Path(f"{path}.wal"))
@@ -817,15 +1086,62 @@ def _source_generation(config: Mapping[str, Any]) -> dict[str, Any]:
     return projection
 
 
-def _validate_board() -> dict[str, Any]:
+def _validate_board(runtime_binding: Mapping[str, Any]) -> dict[str, Any]:
     validator = ROOT / "scripts/validate_external_agent_autonomous_execution_fabric_board.py"
-    result = subprocess.run(
-        [sys.executable, "-I", "-S", "-B", str(validator), "--check-all"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
+    approved_raw = str(runtime_binding.get("approved_import_root") or "")
+    approved_import_root = Path(approved_raw)
+    try:
+        approved_resolved = approved_import_root.resolve(strict=True)
+    except OSError as exc:
+        raise MaterializationError(
+            "bootstrap approved import root is unavailable for board validation"
+        ) from exc
+    if (
+        not approved_raw
+        or not approved_import_root.is_absolute()
+        or approved_resolved != approved_import_root
+        or not approved_import_root.is_dir()
+    ):
+        raise MaterializationError(
+            "bootstrap approved import root is noncanonical for board validation"
+        )
+    # The outer launcher has already admitted this exact import root. A fresh
+    # isolated child does not inherit the launcher's sys.path mutation, so pass
+    # the two closed roots as argv data and add them explicitly before loading
+    # the native Markdown projection. The reviewed repository precedes the
+    # approved dependency root, matching the outer launcher. Never inherit
+    # PYTHONPATH or user-site discovery into the validator.
+    isolated_validator = (
+        "import runpy,sys;"
+        "validator=sys.argv[3];"
+        "sys.path[:0]=[sys.argv[2],sys.argv[1]];"
+        "sys.argv=[validator,'--check-all'];"
+        "runpy.run_path(validator,run_name='__main__')"
     )
+    command = [
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        isolated_validator,
+        str(approved_import_root),
+        str(ROOT),
+        str(validator),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise MaterializationError(
+            "board validation exceeded its 30-second sealed child deadline"
+        ) from exc
     if result.returncode != 0:
         raise MaterializationError(
             "board validation failed: " + (result.stderr.strip() or result.stdout.strip())
@@ -1223,6 +1539,99 @@ def _control_schema_projection(path: Path) -> dict[str, Any]:
         connection.close()
     projection["projection_root"] = _cid(projection)
     return projection
+
+
+def _eaaef_operational_profile_projection(path: Path) -> dict[str, Any]:
+    """Verify the exact @2 owner schema without acquiring runtime authority."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_bootstrap_daemon_gateway import (
+        EAAEF_BOOTSTRAP_DAEMON_OPERATIONS,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+        eaaef_operation_vocabulary_cid,
+        verify_eaaef_operational_schema,
+    )
+
+    operation_vocabulary_cid = eaaef_operation_vocabulary_cid(
+        EAAEF_BOOTSTRAP_DAEMON_OPERATIONS
+    )
+    try:
+        verified = dict(
+            verify_eaaef_operational_schema(
+                path,
+                operation_vocabulary_cid=operation_vocabulary_cid,
+            )
+        )
+    except Exception as exc:
+        raise MaterializationError(
+            "EAAEF operational profile @2 is absent or drifted"
+        ) from exc
+    if (
+        verified.get("valid") is not True
+        or verified.get("operation_vocabulary_cid")
+        != operation_vocabulary_cid
+    ):
+        raise MaterializationError(
+            "EAAEF operational profile @2 verification is not exact"
+        )
+    return verified
+
+
+def _borrowed_transaction_handler_source_evidence(
+    command_fabric_profile: Mapping[str, Any],
+    *,
+    operation_vocabulary_cid: str,
+) -> dict[str, Any]:
+    """Bind the exact 31-op source implementation without minting authority."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_borrowed_transaction import (
+        EAAEF_BORROWED_TRANSACTION_HANDLER_INTERFACE,
+        EAAEF_BORROWED_TRANSACTION_QUALIFICATION_STATUS,
+        eaaef_bootstrap_handler_source_evidence,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+        eaaef_operation_vocabulary_cid,
+    )
+
+    evidence = dict(
+        eaaef_bootstrap_handler_source_evidence(
+            board_namespace=str(command_fabric_profile.get("board_namespace") or ""),
+            shard_id=str(command_fabric_profile.get("shard_id") or ""),
+        )
+    )
+    operations = evidence.get("operations")
+    runtime_authority_fields = evidence.get("runtime_authority_fields")
+    if (
+        evidence.get("interface") != EAAEF_BORROWED_TRANSACTION_HANDLER_INTERFACE
+        or evidence.get("qualification_status")
+        != EAAEF_BORROWED_TRANSACTION_QUALIFICATION_STATUS
+        or evidence.get("operation_count") != 31
+        or not isinstance(operations, list)
+        or len(operations) != 31
+        or operations != sorted(set(str(item) for item in operations))
+        or eaaef_operation_vocabulary_cid(operations) != operation_vocabulary_cid
+        or not isinstance(runtime_authority_fields, list)
+        or "command_principal_did" not in runtime_authority_fields
+        or evidence.get("owns_transaction_lifecycle") is not False
+        or evidence.get("opens_database") is not False
+        or evidence.get("performs_external_effects") is not False
+        or evidence.get("accepts_operation_callback") is not False
+        or evidence.get("production_admitted") is not False
+        or evidence.get("handler_source_evidence_cid") != content_identity(
+            {
+                key: value
+                for key, value in evidence.items()
+                if key != "handler_source_evidence_cid"
+            }
+        )
+    ):
+        raise MaterializationError(
+            "EAAEF borrowed-transaction handler source evidence is invalid"
+        )
+    return evidence
 
 
 def _control_projection(path: Path) -> dict[str, Any]:
@@ -1972,8 +2381,9 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         runtime_binding, "materialize"
     )
     _assert_clean()
-    validation = _validate_board()
+    validation = _validate_board(runtime_binding)
     population = build_population(config)
+    database_program_bindings = _database_program_bindings(config)
     paths = _paths(config)
     claim_path = _claim_path(config)
     receipt_path = _receipt_path(config)
@@ -1994,8 +2404,12 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         "runtime_binding_cid": runtime_binding_cid,
         "materialization_invocation": materialization_invocation,
         "store_generation": str(
-            (config.get("database_program") or {}).get("store_generation") or ""
+            (config.get("bootstrap_database_program") or {}).get(
+                "store_generation"
+            )
+            or ""
         ),
+        "database_program_bindings": database_program_bindings,
         "database_paths": {
             name: path.relative_to(ROOT).as_posix() for name, path in paths.items()
         },
@@ -2007,27 +2421,35 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         "process_started": False,
     }
     namespace_claim["claim_cid"] = _cid(namespace_claim)
+    if set(namespace_claim) != NAMESPACE_CLAIM_FIELDS:
+        raise MaterializationError("namespace claim @2 shape is not canonical")
     _write_json_immutable(claim_path, namespace_claim)
     for path in paths.values():
         path.parent.mkdir(parents=True, exist_ok=True)
     try:
         from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
-            install_datasets_authoritative_operational_schema,
             verify_datasets_authoritative_operational_schema,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+            install_eaaef_operational_schema,
         )
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
             DatabaseImplementationDaemon,
         )
 
-        schema_install = install_datasets_authoritative_operational_schema(
+        schema_install = install_eaaef_operational_schema(
             paths["control"],
             application_version="0.0.45",
-            tool_version="1.5.2",
+            tool_version=str(
+                (runtime_binding.get("duckdb") or {}).get("module_version") or ""
+            ),
             owner_id="eaaef-materializer:embedded-single-writer",
         )
         prior_revision = os.environ.get("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION")
         os.environ["IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"] = str(
-            (config.get("database_program") or {}).get("schema_revision")
+            (config.get("bootstrap_database_program") or {}).get(
+                "schema_revision"
+            )
         )
         daemon = None
         try:
@@ -2053,6 +2475,15 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
             else:
                 os.environ["IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"] = prior_revision
         schema_verification = verify_datasets_authoritative_operational_schema(paths["control"])
+        operational_profile_verification = _eaaef_operational_profile_projection(
+            paths["control"]
+        )
+        handler_source_evidence = _borrowed_transaction_handler_source_evidence(
+            database_program_bindings["operational_command_fabric"],
+            operation_vocabulary_cid=operational_profile_verification[
+                "operation_vocabulary_cid"
+            ],
+        )
         control_schema = _control_schema_projection(paths["control"])
         control = _control_projection(paths["control"])
         from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
@@ -2090,8 +2521,16 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
             "materialization_invocation": materialization_invocation,
             "controls": population["controls"],
             "database_paths": dict(namespace_claim["database_paths"]),
+            "database_program_bindings": database_program_bindings,
             "schema_install": schema_install.to_dict(),
             "schema_verification": dict(schema_verification),
+            "operation_vocabulary_cid": operational_profile_verification[
+                "operation_vocabulary_cid"
+            ],
+            "operational_profile_verification": operational_profile_verification,
+            "borrowed_transaction_handler_source_evidence": (
+                handler_source_evidence
+            ),
             "control_schema_projection": control_schema,
             "database_materialization": dict(database_receipt),
             "control_projection": control,
@@ -2101,6 +2540,8 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
             "process_started": False,
         }
         receipt["receipt_cid"] = _cid(receipt)
+        if set(receipt) != MATERIALIZATION_RECEIPT_FIELDS:
+            raise MaterializationError("materialization receipt @2 shape is not canonical")
         _write_json_immutable(receipt_path, receipt)
         return receipt
     except Exception as exc:
@@ -2126,20 +2567,24 @@ def verify(
     materialization_invocation = _runtime_invocation_projection(
         runtime_binding, "materialize"
     )
-    validation = _validate_board()
+    validation = _validate_board(runtime_binding)
     population = build_population(config)
+    database_program_bindings = _database_program_bindings(config)
     paths = _paths(config)
     claim_path = _claim_path(config)
     receipt_path = _receipt_path(config)
     claim = _load_object(claim_path)
     claim_projection = dict(claim)
     claim_cid = str(claim_projection.pop("claim_cid", ""))
-    if claim_cid != _cid(claim_projection):
+    if set(claim) != NAMESPACE_CLAIM_FIELDS or claim_cid != _cid(claim_projection):
         raise MaterializationError("bootstrap namespace claim self-address is invalid")
     receipt = _load_object(receipt_path)
     receipt_projection = dict(receipt)
     receipt_cid = str(receipt_projection.pop("receipt_cid", ""))
-    if receipt_cid != _cid(receipt_projection):
+    if (
+        set(receipt) != MATERIALIZATION_RECEIPT_FIELDS
+        or receipt_cid != _cid(receipt_projection)
+    ):
         raise MaterializationError("bootstrap receipt self-address is invalid")
     for key in ("population_cid", "plan_root_cid", "source_head", "source_tree", "controls"):
         expected = population[
@@ -2161,8 +2606,12 @@ def verify(
         "runtime_binding_cid": runtime_binding_cid,
         "materialization_invocation": materialization_invocation,
         "store_generation": str(
-            (config.get("database_program") or {}).get("store_generation") or ""
+            (config.get("bootstrap_database_program") or {}).get(
+                "store_generation"
+            )
+            or ""
         ),
+        "database_program_bindings": database_program_bindings,
         "database_paths": expected_paths,
         "maximum_writer_processes": 1,
         "process_started": False,
@@ -2185,6 +2634,7 @@ def verify(
         "runtime_binding": runtime_binding,
         "runtime_binding_cid": runtime_binding_cid,
         "materialization_invocation": materialization_invocation,
+        "database_program_bindings": database_program_bindings,
         "ready_task_aliases": list(population["ready_task_aliases"]),
         "process_started": False,
     }
@@ -2196,6 +2646,15 @@ def verify(
     )
 
     control_schema = _control_schema_projection(paths["control"])
+    operational_profile_verification = _eaaef_operational_profile_projection(
+        paths["control"]
+    )
+    handler_source_evidence = _borrowed_transaction_handler_source_evidence(
+        database_program_bindings["operational_command_fabric"],
+        operation_vocabulary_cid=operational_profile_verification[
+            "operation_vocabulary_cid"
+        ],
+    )
     control = _control_projection(paths["control"])
     coordination = read_coordination_registry_projection(paths["coordination"])
     execution = _execution_projection(paths["execution"])
@@ -2207,6 +2666,18 @@ def verify(
         raise MaterializationError("execution authority differs from materialization receipt")
     if control_schema != receipt.get("control_schema_projection"):
         raise MaterializationError("control schema differs from materialization receipt")
+    if (
+        operational_profile_verification
+        != receipt.get("operational_profile_verification")
+        or receipt.get("operation_vocabulary_cid")
+        != operational_profile_verification["operation_vocabulary_cid"]
+        or receipt.get("borrowed_transaction_handler_source_evidence")
+        != handler_source_evidence
+    ):
+        raise MaterializationError(
+            "EAAEF operational profile or handler source differs from "
+            "materialization receipt"
+        )
     _assert_population_equivalent(population, control)
     _assert_database_materialization_equivalent(
         receipt.get("database_materialization"), population, control
@@ -2225,69 +2696,180 @@ def verify(
         "control_projection_root": control["projection_root"],
         "coordination_projection_root": coordination["projection_root"],
         "execution_projection_root": execution["projection_root"],
+        "operational_profile_verification_cid": operational_profile_verification[
+            "verification_cid"
+        ],
+        "borrowed_transaction_handler_source_evidence_cid": (
+            handler_source_evidence["handler_source_evidence_cid"]
+        ),
         "process_started": False,
     }
 
 
-def launch_plan(config: Mapping[str, Any]) -> dict[str, Any]:
-    report = verify(config, invocation_command="launch-plan")
-    policy = config.get("launch_policy") or {}
-    program = config.get("database_program") or {}
-    _paths(config)
-    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-        DatabaseProgramConfig,
-        DatabaseProgramConfigError,
+def _configured_board_launch_admission(
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Read and verify the post-freeze birth ticket without creating state."""
+
+    from ipfs_accelerate_py.agent_implementation_route import (
+        AgentImplementationControlPlanePin,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        ConfiguredBoardError,
+        load_configured_board,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
+        ExternalAgentBootstrapAdmissionError,
+        external_agent_bootstrap_admission_relative_path,
+        verify_external_agent_bootstrap_admission,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.external_agent_configured_board_capsule import (
+        ExternalAgentConfiguredBoardCapsuleError,
+        _read_stable_repo_json,
+        external_agent_configured_board_launch_capsule_relative_path,
+        verify_external_agent_configured_board_live_seal,
     )
 
     try:
-        database_program = DatabaseProgramConfig.from_mapping(program)
-    except DatabaseProgramConfigError as exc:
-        raise MaterializationError(f"invalid DatabaseProgramConfig: {exc}") from exc
-    if database_program.authority_mode != "embedded":
-        raise MaterializationError("bootstrap launch plan must retain embedded authority")
+        board = load_configured_board(CONFIG_PATH, repo_root=ROOT)
+        if dict(board.payload) != dict(config):
+            raise MaterializationError(
+                "configured-board scheduler bytes differ from launch-plan input"
+            )
+        if board.board_namespace != "external-agent-autonomous-execution-fabric-v1":
+            raise MaterializationError("configured-board namespace is not EAAEF")
+        if board.max_lanes < 1 or board.max_lanes > 5:
+            raise MaterializationError("configured-board lane ceiling must be one to five")
+        live_seal = config.get("configured_board_live_seal")
+        if not isinstance(live_seal, Mapping):
+            raise MaterializationError("configured_board_live_seal is absent")
+        source_head = _git("rev-parse", "HEAD")
+        source_tree = _git("rev-parse", "HEAD^{tree}")
+        registry_prefix = str(live_seal.get("authority_registry_prefix") or "")
+        admission_path = external_agent_bootstrap_admission_relative_path(
+            source_head,
+            registry_prefix=registry_prefix,
+        )
+        admission_receipt, _admission_file_cid = _read_stable_repo_json(
+            ROOT,
+            admission_path.as_posix(),
+            noun="bootstrap admission receipt",
+        )
+        admission = verify_external_agent_bootstrap_admission(
+            admission_receipt,
+            trusted_operator_dids=tuple(live_seal.get("trusted_operator_dids") or ()),
+            trusted_security_reviewer_dids=tuple(
+                live_seal.get("trusted_security_reviewer_dids") or ()
+            ),
+            now_ms=int(time.time() * 1000),
+        )
+        capsule_path = external_agent_configured_board_launch_capsule_relative_path(
+            source_head,
+            str(admission["plan_root_cid"]),
+            registry_prefix=registry_prefix,
+        )
+        capsule, _file_cid = _read_stable_repo_json(
+            ROOT,
+            capsule_path.as_posix(),
+            noun="configured-board launch capsule",
+        )
+        raw_pin = capsule.get("accepted_control_plane_pin")
+        if not isinstance(raw_pin, Mapping):
+            raise MaterializationError(
+                "configured-board launch capsule has no accepted pin"
+            )
+        pin = AgentImplementationControlPlanePin(**dict(raw_pin))
+        verification = verify_external_agent_configured_board_live_seal(
+            live_seal,
+            repo_root=ROOT,
+            configuration_root=board.configuration_root,
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            accepted_control_plane_pin=pin,
+            now_ms=int(time.time() * 1000),
+        )
+    except (
+        ConfiguredBoardError,
+        ExternalAgentBootstrapAdmissionError,
+        ExternalAgentConfiguredBoardCapsuleError,
+        OSError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise MaterializationError(
+            f"configured-board launch admission rejected: {exc}"
+        ) from exc
+    if verification.get("valid") is not True:
+        raise MaterializationError("configured-board launch admission is not valid")
+    actual_lanes = int(verification.get("actual_lane_count") or 0)
+    if actual_lanes < 1 or actual_lanes > board.max_lanes:
+        raise MaterializationError(
+            "configured-board launch frontier exceeds the configured lane ceiling"
+        )
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "eaaef-configured-board-launch-admission@1"
+        ),
+        "configuration_root": board.configuration_root,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "verification": verification,
+        "accepted_control_plane_pin_cid": verification[
+            "accepted_control_plane_pin_cid"
+        ],
+        "frontier_cid": verification["frontier_cid"],
+        "actual_lane_count": actual_lanes,
+        "maximum_lanes": board.max_lanes,
+        "authority_mutated": False,
+        "process_started": False,
+    }
+
+
+def launch_plan(
+    config: Mapping[str, Any],
+    *,
+    invocation_command: str = "launch-plan",
+) -> dict[str, Any]:
+    if invocation_command not in {"launch-plan", "configured-board-launch"}:
+        raise MaterializationError("launch-plan invocation command is invalid")
+    policy = config.get("launch_policy") or {}
+    database_program_bindings = _database_program_bindings(config)
+    runtime_binding = _runtime_binding_contract(config)
     command = [
-        sys.executable,
-        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
-        "--scheduler-config",
-        CONFIG_PATH.relative_to(ROOT).as_posix(),
-        "--todo-path",
-        str(config["taskboard_path"]),
-        "--task-prefix",
-        str(config["task_prefix"]),
-        *database_program.cli_args(),
-        "--state-dir",
-        str(program["state_dir"]),
-        "--worktree-root",
-        str(program["worktree_root"]),
-        "--merge-queue-dir",
-        str(program["merge_queue_dir"]),
-        "--merge-target-branch",
-        str(config["merge_target_branch"]),
-        "--strict-task-sharding",
-        "--task-shard-count",
-        "1",
-        "--task-shard-index",
-        "0",
-        "--implement",
+        *runtime_binding["launcher"]["argv_prefix"],
+        "configured-board-launch",
     ]
-    for protected in config.get("protected_paths") or ():
-        protected_path = _relative_path(
-            protected,
-            field="protected_paths[]",
-        )
-        command.extend(
-            ["--implementation-protected-path", protected_path.relative_to(ROOT).as_posix()]
-        )
-    for submodule in config.get("worktree_submodule_paths") or ():
-        submodule_path = _relative_path(
-            submodule,
-            field="worktree_submodule_paths[]",
-        )
-        command.extend(
-            ["--worktree-submodule-path", submodule_path.relative_to(ROOT).as_posix()]
-        )
     blockers = [str(item) for item in policy.get("blockers") or () if str(item)]
-    if report.get("board_validation", {}).get("live_launch_allowed") is not True:
+    report: dict[str, Any] | None = None
+    try:
+        report = verify(config, invocation_command=invocation_command)
+    except MaterializationError as exc:
+        # Dirty source, missing receipts, or other read-only verification
+        # failures are EAAEF-000 no-go evidence. They must not abort before a
+        # typed launch-plan is emitted, and they never start a process.
+        blockers.append(str(exc))
+    if (
+        database_program_bindings.get("operational_child_adapter_status")
+        != "admitted"
+    ):
+        blockers.append("signed_command_fabric_child_adapter_unavailable")
+    live_seal = config.get("configured_board_live_seal")
+    network_policy = (
+        live_seal.get("worker_network_authorization_policy")
+        if isinstance(live_seal, Mapping)
+        else None
+    )
+    if (
+        not isinstance(network_policy, Mapping)
+        or network_policy.get("child_propagation_status") != "admitted"
+    ):
+        blockers.append("worker_network_authorization_propagation_unavailable")
+    if (
+        not isinstance(report, Mapping)
+        or report.get("board_validation", {}).get("live_launch_allowed")
+        is not True
+    ):
         blockers.append("board validation has not admitted live launch")
     container = dict(config.get("container_policy") or {})
     if container.get("live_dispatch_allowed") is not True:
@@ -2296,32 +2878,35 @@ def launch_plan(config: Mapping[str, Any]) -> dict[str, Any]:
         blockers.append("container_policy.bootstrap_image_status is not admitted")
     image_digest = str(container.get("bootstrap_image_digest") or "")
     if not image_digest.startswith("sha256:") or len(image_digest) != 71:
-        blockers.append("container_policy.bootstrap_image_digest is not a full sha256 identity")
-    # EAAEF-000 is a manual, independently reviewed admission task.  This
-    # checkpoint deliberately contains no positive production path: a later
-    # immutable plan revision must add and verify the signed route/image/SBOM
-    # receipt at the actual OCI process-birth boundary.
-    blockers.append("trusted EAAEF-000 launch admission is not implemented")
+        blockers.append(
+            "container_policy.bootstrap_image_digest is not a full sha256 identity"
+        )
+    live_admission: dict[str, Any] | None = None
+    try:
+        live_admission = _configured_board_launch_admission(config)
+    except MaterializationError as exc:
+        blockers.append(str(exc))
     blockers = list(dict.fromkeys(blockers))
-    requested = policy.get("live_single_supervisor_allowed") is True
-    allowed = bool(requested and not blockers)
-    # A no-go report must not double as a copy/paste executable command.  Keep
-    # the reviewed candidate identity for diagnostics, but expose an argv only
-    # after every launch gate has admitted it.
+    requested = policy.get("live_multi_supervisor_allowed") is True
+    allowed = bool(requested and live_admission is not None and not blockers)
+    # A no-go report must not double as a copy/paste executable command.
     executable_argv = command if allowed else []
-    exposed_candidate_argv = command if allowed else []
     return {
-        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@1",
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2",
         "allowed": allowed,
         "blockers": blockers,
         "argv": executable_argv,
         "argv_cid": _cid(executable_argv),
-        "candidate_argv": exposed_candidate_argv,
+        "candidate_argv": executable_argv,
         "candidate_argv_cid": _cid(command),
         "candidate_argv_length": len(command),
         "candidate_executable_withheld": not allowed,
         "execution_prohibited": not allowed,
-        "materialization_receipt_cid": report["receipt_cid"],
+        "materialization_receipt_cid": str(
+            (report or {}).get("receipt_cid") or ""
+        ),
+        "database_program_bindings": database_program_bindings,
+        "configured_board_launch_admission": live_admission,
         "container_policy": container,
         "process_started": False,
     }

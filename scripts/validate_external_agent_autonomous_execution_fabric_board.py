@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import sys
 from collections import defaultdict, deque
+from itertools import pairwise
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -48,6 +49,7 @@ REQUIRED_TASK_FIELDS = {
     "source_semantic_state_root",
     "source_control_plane_schema_version",
     "dependencies",
+    "overlap_merge_contracts",
     "read_scope",
     "write_scope",
     "external_effect_scope",
@@ -147,6 +149,12 @@ EXECUTION_PREFIXES = {
     "ipfs_kit_py": "ipfs_kit_py",
     "Mcp-Plus-Plus": "ipfs_accelerate_py/mcplusplus",
 }
+OVERLAP_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "external-agent-owned-path-overlap-contract@1"
+)
+OVERLAP_STRATEGY = "serialized_forward_extension"
+OVERLAP_MERGE_LANE = "single_admitted_merge_lane"
 
 
 def _canonical_cid(value: Any) -> str:
@@ -353,7 +361,7 @@ def _validate_native_markdown_projection(
     if len(parsed) != len(expected):
         errors.append("native supervisor Markdown task count differs from JSON")
         return
-    for native, task in zip(parsed, expected):
+    for native, task in zip(parsed, expected, strict=True):
         task_id = str(task.get("stable_task_id") or "")
         if native.task_id != task_id:
             errors.append(f"{task_id}: native Markdown task identity differs")
@@ -464,6 +472,8 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
         if not isinstance(owned, list) or not owned:
             errors.append(f"{task_id}: owned_files must be nonempty")
             owned = []
+        if len(owned) != len(set(str(item) for item in owned)):
+            errors.append(f"{task_id}: owned_files contains a duplicate path")
         if owned != task.get("write_scope") or owned != task.get("outputs"):
             errors.append(f"{task_id}: owned/write/output path sets differ")
         prefix = EXECUTION_PREFIXES.get(repository, "")
@@ -516,24 +526,31 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
         if task.get("completion_mode") != expected_completion_mode:
             errors.append(f"{task_id}: completion mode must be {expected_completion_mode}")
         if task_id == "EAAEF-000":
-            if not isinstance(resource, dict) or any(
+            if (
+                not isinstance(resource, dict)
+                or resource.get("container_slots") != 1
+                or any(
                 resource.get(field) != 0
                 for field in (
                     "supervisor_processes",
-                    "container_slots",
                     "provider_concurrency",
                     "model_input_token_ceiling",
                     "model_output_token_ceiling",
                 )
+                )
             ):
-                errors.append("EAAEF-000: host bootstrap admission cannot reserve a supervisor, container or model/provider route")
+                errors.append(
+                    "EAAEF-000: host bootstrap admission requires exactly one "
+                    "diagnostic container and cannot reserve a supervisor or "
+                    "model/provider route"
+                )
             bootstrap_text = json.dumps(task, sort_keys=True).casefold()
             for required in (
                 "signed eaaef-scoped provider authorization",
-                "signed oci image and sbom",
-                "default-deny network",
+                "task-capable oci worker image and sbom",
+                "bounded allowlisted proxy egress",
                 "materialization",
-                "quack authority",
+                "quack 1.5.5 command-ingress qualification",
                 "no supervisor",
             ):
                 if required not in bootstrap_text:
@@ -618,13 +635,59 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
                 queue.append(child)
     if len(visited) != len(task_ids):
         errors.append("task dependency graph is cyclic")
-    collisions = {
-        f"{repository}:{path}": owners
-        for (repository, path), owners in path_owners.items()
-        if len(owners) > 1
+    expected_overlap_contracts: dict[str, list[dict[str, str]]] = {
+        task_id: [] for task_id in task_ids
     }
-    if collisions:
-        errors.append(f"owned-file collisions require explicit split: {collisions}")
+    overlap_path_count = 0
+    overlap_contract_count = 0
+    for (repository, path), owners in path_owners.items():
+        if len(owners) < 2:
+            continue
+        overlap_path_count += 1
+        for predecessor_task_id, successor_task_id in pairwise(owners):
+            expected_overlap_contracts[successor_task_id].append(
+                {
+                    "schema": OVERLAP_CONTRACT_SCHEMA,
+                    "repository": repository,
+                    "path": path,
+                    "predecessor_task_id": predecessor_task_id,
+                    "successor_task_id": successor_task_id,
+                    "dependency_type": "direct",
+                    "strategy": OVERLAP_STRATEGY,
+                    "merge_lane": OVERLAP_MERGE_LANE,
+                }
+            )
+            overlap_contract_count += 1
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("stable_task_id") or "")
+        actual_contracts = task.get("overlap_merge_contracts")
+        if not isinstance(actual_contracts, list):
+            errors.append(f"{task_id}: overlap_merge_contracts must be a list")
+            continue
+        expected_contracts = expected_overlap_contracts.get(task_id, [])
+        if sorted(
+            actual_contracts,
+            key=lambda contract: json.dumps(contract, sort_keys=True),
+        ) != sorted(
+            expected_contracts,
+            key=lambda contract: json.dumps(contract, sort_keys=True),
+        ):
+            errors.append(
+                f"{task_id}: owned-path overlap contracts differ from the exact "
+                f"serialized predecessor chain; expected {expected_contracts}, "
+                f"got {actual_contracts}"
+            )
+            continue
+        direct_dependencies = set(str(value) for value in task.get("dependencies") or ())
+        for contract in actual_contracts:
+            predecessor_task_id = contract["predecessor_task_id"]
+            if predecessor_task_id not in direct_dependencies:
+                errors.append(
+                    f"{task_id}: overlap predecessor {predecessor_task_id} is not "
+                    "a direct dependency"
+                )
     initial_ids = [task_id for task_id in task_ids if int(task_id.split("-")[-1]) < 10]
     if board.get("initial_population_task_ids") != initial_ids:
         errors.append("initial population list differs from task order")
@@ -643,6 +706,8 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
         "task_count": len(tasks),
         "initial_population_count": len(initial_ids),
         "owned_path_count": len(path_owners),
+        "owned_path_overlap_count": overlap_path_count,
+        "overlap_merge_contract_count": overlap_contract_count,
         "dependency_edge_count": sum(len(task.get("dependencies") or []) for task in tasks if isinstance(task, dict)),
     }
 
@@ -665,14 +730,17 @@ def validate(*, source_only: bool = False) -> dict[str, Any]:
         "warnings": warnings,
         "counts": counts,
         "source_forest_root": source.get("source_forest_root"),
+        "board_namespace": board.get("board_namespace"),
         "board_cid": board.get("board_cid"),
-        "qualification_status": "planning_and_bootstrap_only",
+        "qualification_status": "source_r1_r2_seams_implemented_live_no_go",
         "live_launch_allowed": False,
         "live_launch_blockers": [
-            "bootstrap OCI worker identity is not admitted",
-            "single-supervisor provider route and rootless no-network container policy are not admitted",
+            "actual independently signed native-dependency, V2 lane/verifier/merge, Quack-client, dispatcher-service and Plan-R2 remote-owner artifacts are absent",
+            "independently deployed signed command-authorizer, Quack and dispatcher endpoints plus a qualified DuckDB/Quack extension are absent",
+            "real Docker/container engine, image/profile/SBOM, provider and effect-bound network authority are not admitted",
             "configured multi-supervisor launch requires an immutable accepted control-plane capsule",
             "continuous Quack and live DuckLake exact profiles remain unqualified",
+            "source R1/R2 factories and supervisor wiring do not authorize live launch or effects",
         ],
     }
 

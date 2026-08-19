@@ -27,7 +27,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..evidence_output_scope import (
+from ..validation.evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
     normalize_evidence_output_path,

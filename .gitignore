@@ -12,6 +12,7 @@ state/*
 *model_functionality_report*
 *model_functionality*
 *.json
+!config/external_agent_autonomous_execution_fabric_bootstrap.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
 !data/agent_supervisor/prompt_only_self_improvement_v3/convergence/*.json
 .venv-test
@@ -183,6 +184,7 @@ data/**/*.db.wal
 # Local state leftovers (state/* already ignored; explicit WAL/out patterns)
 state/**/*.wal
 state/**/*.out
+/test/*.db.wal
 
 # ---------------------------------------------------------------------------
 # Misplaced root one-off tests (prefer test/ — ASREF-G090 / ASREF-013 / ASREF-014)

@@ -73,6 +73,10 @@ from ..control.plan_execution_store import (
     _secure_store_continuation,
 )
 from ..runtime.resource_scheduler import evaluate_capacity_drift
+from ..runtime.worker_network_dispatch import (
+    EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+    canonical_worker_network_launch_authority_json,
+)
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
@@ -87,6 +91,7 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
     TASK_SOURCE_LEGACY_MARKDOWN,
+    parse_accepted_control_plane_pin,
     provider_subprocess_environment,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
@@ -159,6 +164,7 @@ from .supervisor_runtime import (
 )
 from .worktrees import (
     WORKTREE_POOL_SCHEMA,
+    WorktreePool,
     pid_is_alive,
     python_identifier_worktree_basename,
 )
@@ -251,7 +257,7 @@ IMPORTED_CONTROL_PLANE_SOURCE = _read_control_plane_source_snapshot()
 
 SCHEDULER_CONFIG_SCHEMA_PATTERN = re.compile(
     r"^ipfs_accelerate_py\.agent_supervisor\."
-    r"[a-z0-9_.-]+\.(?:scheduler_config|scheduler-config)@1$"
+    r"[a-z0-9_.-]+\.(?:scheduler_config|scheduler-config)@(?:1|2)$"
 )
 
 
@@ -280,6 +286,29 @@ SELECTION_DISPOSITION_IDLE_REASON_PREFIX = "disposition_idle:"
 PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
 
 
+_DISPOSITION_SELECTION_PRIORITY = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+_DISPOSITION_IDLE_CLASSES = frozenset(
+    {"abstain_review", "defer_capability"}
+)
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS = frozenset(
+    {"no_shard_selectable_ready_tasks", "no_tasks_found"}
+)
+_QUIESCENT_POLICY_IDLE_REASONS = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
+
+
 # --- restored IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX ---
 
 IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX = "implementation_retry_deferred:"
@@ -303,9 +332,150 @@ class PlanBoundReplanRequired(PlanBoundDispatchError):
     """A typed plan-bound proposal result requires a fenced wave replan."""
 
 
+class PlanBoundHandoffRecoveryRequired(PlanBoundReplanRequired):
+    """A durable prepared handoff must retain its claim for exact recovery."""
+
+
 # --- restored PLAN_BOUND_REPLAN_RETURN_CODE ---
 
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
+PLAN_BOUND_LIFECYCLE_PREPUBLICATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "plan-bound-worktree-lifecycle-prepublication@1"
+)
+PLAN_BOUND_LIFECYCLE_HANDOFF_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "plan-bound-worktree-lifecycle-handoff@1"
+)
+PLAN_BOUND_LIFECYCLE_HANDOFF_REASONS = frozenset(
+    {
+        "merge_queue_handoff",
+        "pooled_merge_queue_handoff",
+        "plan_bound_no_change_merge_queue_handoff",
+        "plan_bound_recovered_merge_queue_handoff",
+    }
+)
+
+
+EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO_BLOCKERS = (
+    "independently_signed_native_dependency_acceptance_absent",
+    "independent_native_dependency_authority_verifier_absent",
+    "accepted_signed_per_birth_lane_artifact_instances_absent",
+    "accepted_signed_quack_client_qualification_instance_absent",
+    "accepted_signed_container_service_qualification_instance_absent",
+    "qualified_live_native_dependency_authority_absent",
+    "qualified_live_container_service_authority_absent",
+)
+EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO = (
+    "eaaef_implementation_daemon_birth_no_go:"
+    + ",".join(EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO_BLOCKERS)
+)
+EAAEF_OPERATIONAL_SCHEMA_REVISION = (
+    "datasets-authoritative-eaaef-operational-control-plane@2"
+)
+
+
+def _requires_eaaef_implementation_daemon_birth(
+    database_program: DatabaseProgramConfig | None,
+) -> bool:
+    """Identify the source-only EAAEF child boundary without consulting env/argv."""
+
+    return bool(
+        database_program is not None
+        and database_program.authority_mode == "quack"
+        and database_program.schema_revision == EAAEF_OPERATIONAL_SCHEMA_REVISION
+    )
+
+
+def prepare_eaaef_implementation_daemon_birth_source_coordinates(
+    *,
+    plan: object,
+    source_artifacts: object,
+    now_ms: int,
+) -> object:
+    """Parent-side accept/reverify/project seam for one planned daemon birth.
+
+    The returned coordinates contain no authority, path, descriptor, token, or
+    callback.  A child must re-open every independently signed, hash-pinned
+    source and join its actual process birth before constructing a daemon.
+    """
+
+    from ..validation.eaaef_lane_gateway_admission import (
+        VerifiedEAAEFLaneRuntimeSourceArtifacts,
+        eaaef_lane_runtime_dependency_source_coordinates,
+    )
+    from .implementation_daemon_runner import (
+        EAAEFImplementationDaemonBirthError,
+        EAAEFImplementationDaemonBirthPlan,
+        require_eaaef_implementation_daemon_birth_plan,
+    )
+
+    if type(plan) is not EAAEFImplementationDaemonBirthPlan:
+        raise PlanBoundDispatchError(
+            "EAAEF parent requires the exact typed daemon birth plan"
+        )
+    if type(source_artifacts) is not VerifiedEAAEFLaneRuntimeSourceArtifacts:
+        raise PlanBoundDispatchError(
+            "EAAEF parent requires independently signed runtime source artifacts"
+        )
+    try:
+        require_eaaef_implementation_daemon_birth_plan(
+            plan=plan,
+            source_artifacts=source_artifacts,
+            now_ms=now_ms,
+        )
+        return eaaef_lane_runtime_dependency_source_coordinates(
+            admission=source_artifacts.admission,
+            native_admission=source_artifacts.native_admission,
+            quack_qualification=source_artifacts.quack_qualification,
+            dispatcher_qualification=source_artifacts.dispatcher_qualification,
+        )
+    except EAAEFImplementationDaemonBirthError as exc:
+        raise PlanBoundDispatchError(
+            "EAAEF parent rejected the planned signed daemon birth"
+        ) from exc
+    except Exception as exc:
+        raise PlanBoundDispatchError(
+            "EAAEF parent could not project exact signed birth coordinates"
+        ) from exc
+
+
+def _reject_unsealed_eaaef_daemon_gateway(
+    *,
+    daemon_class: type[Any],
+    local_authority_paths: Sequence[object],
+) -> None:
+    """Keep an EAAEF plan-bound child off Portal and local sidecars.
+
+    Source-safe typed factories now exist, but this live bootstrap cannot yet
+    deliver their independently accepted signed artifact instances, protected
+    native descriptor/module, or qualified dynamic service instances.  A
+    structural gateway object or serialized identity is not enough, so this
+    boundary deliberately has no success return until those exact live objects
+    can be injected and verified before construction.
+    """
+
+    selected_paths = tuple(
+        str(value) for value in local_authority_paths if value is not None and str(value)
+    )
+    if selected_paths:
+        raise PlanBoundDispatchError(
+            "EAAEF/Quack plan-bound child refuses local Markdown/JSON/"
+            "DuckDB authority paths; a sealed full Quack daemon gateway "
+            "factory is required"
+        )
+    if daemon_class is PortalImplementationDaemon or issubclass(
+        daemon_class,
+        PortalImplementationDaemon,
+    ):
+        raise PlanBoundDispatchError(
+            "EAAEF/Quack plan-bound child cannot construct "
+            "PortalImplementationDaemon"
+        )
+    raise PlanBoundDispatchError(
+        "EAAEF/Quack plan-bound child lacks accepted signed runtime artifact "
+        "instances and qualified live native/container authority"
+    )
 
 
 # --- restored _canonical_plan_bound_repo_root ---
@@ -745,8 +915,8 @@ def load_supervisor_scheduler_config(
         schema
     ):
         raise SupervisorSchedulerConfigError(
-            "scheduler config schema must be a supported scheduler-config@1 "
-            "or legacy scheduler_config@1"
+            "scheduler config schema must be a supported scheduler-config@1/@2 "
+            "or legacy scheduler_config@1/@2"
         )
 
     normalized = dict(payload)
@@ -1919,6 +2089,11 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     parser.add_argument("--plan-bound-accepted-tree-root", type=Path, required=True)
     parser.add_argument("--accepted-control-plane-pin-json", required=True)
     parser.add_argument("--accepted-control-plane-fd", type=int, required=True)
+    parser.add_argument(
+        EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+        dest="worker_network_launch_authority_json",
+        default="",
+    )
     parser.add_argument("--plan-bound-task-id", action="append", default=[])
     parser.add_argument("--plan-bound-task-cid", action="append", default=[])
     pinned = parser.parse_args(binding_argv)
@@ -1989,6 +2164,32 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
         raise PlanBoundDispatchError(
             "daemon selection arguments differ from the plan-bound slice"
         )
+    pinned_worker_authority = str(
+        pinned.worker_network_launch_authority_json or ""
+    )
+    daemon_worker_authority = str(
+        getattr(daemon_args, "worker_network_launch_authority_json", "") or ""
+    )
+    if pinned_worker_authority or daemon_worker_authority:
+        try:
+            canonical_worker_authority = (
+                canonical_worker_network_launch_authority_json(
+                    pinned_worker_authority,
+                    accepted_control_plane_pin=accepted_control_plane_pin,
+                    require_admitted=True,
+                )
+            )
+        except ValueError as exc:
+            raise PlanBoundDispatchError(
+                "plan-bound daemon worker-network authority is invalid"
+            ) from exc
+        if (
+            pinned_worker_authority != canonical_worker_authority
+            or daemon_worker_authority != canonical_worker_authority
+        ):
+            raise PlanBoundDispatchError(
+                "plan-bound daemon worker-network work packet drifted"
+            )
 
     (
         accepted_tree_root,
@@ -2056,6 +2257,29 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 slice_id=pinned.plan_bound_slice_id,
                 lane_id=pinned.plan_bound_lane_id,
             )
+    from ..runtime.worker_network_dispatch import EAAEF_BOARD_NAMESPACE
+
+    if manifest.board_namespace == EAAEF_BOARD_NAMESPACE:
+        # The current plan-bound bootstrap delegates to implementation_daemon
+        # by replacing PortalImplementationDaemon with an in-process factory.
+        # That is never a Quack command gateway: it retains local Markdown,
+        # JSON, and DuckDB path surfaces and could silently demote shared
+        # authority to a process-local Portal daemon.  No serializable CLI
+        # option can establish the required sealed component objects.  Keep
+        # the EAAEF child pre-construction fail-closed until the accepted
+        # control-plane archive injects a fully qualified
+        # QuackDaemonCommandGateway factory.
+        _reject_unsealed_eaaef_daemon_gateway(
+            daemon_class=daemon_module.PortalImplementationDaemon,
+            local_authority_paths=(
+                getattr(daemon_args, "todo_path", None),
+                getattr(daemon_args, "database_path", None),
+                getattr(daemon_args, "coordination_path", None),
+                getattr(daemon_args, "execution_path", None),
+                getattr(daemon_args, "state_dir", None),
+            ),
+        )
+        raise AssertionError("unsealed EAAEF daemon gateway unexpectedly admitted")
     recovery_phases = {
         "proposal_ready",
         "merge_enqueue_prepared",
@@ -2534,6 +2758,12 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     class PlanBoundImplementationDaemon(canonical_daemon_class):
         """Delegate daemon policy while joining its real fenced resources."""
 
+        @staticmethod
+        def _retain_task_claim_for_handoff_exception(
+            exception: BaseException,
+        ) -> bool:
+            return isinstance(exception, PlanBoundHandoffRecoveryRequired)
+
         def _restore_out_of_scope_workspace_paths(
             self,
             workspace_path: Path,
@@ -2835,6 +3065,806 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     "worktree lifecycle differs from the canonical execution claim"
                 )
             return raw, lifecycle_path, raw_cid
+
+        @staticmethod
+        def _lifecycle_record_json(
+            payload: Mapping[str, Any],
+        ) -> tuple[str, str]:
+            encoded = json.dumps(
+                dict(payload),
+                indent=2,
+                sort_keys=True,
+            ) + "\n"
+            return encoded, "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
+
+        @staticmethod
+        def _plan_bound_lifecycle_continuation_key(
+            operation: str,
+            prepared_cid: str,
+        ) -> str:
+            return (
+                f"{operation}:{pinned.plan_bound_revision_cid}:"
+                f"{pinned.plan_bound_slice_id}:"
+                f"{pinned.plan_bound_lane_id}:{prepared_cid}"
+            )
+
+        def _plan_bound_lifecycle_prepublication_record(
+            self,
+            *,
+            prepared_cid: str,
+            prepared: PlanBoundExecutionLease,
+            lifecycle_raw: Mapping[str, Any],
+            lifecycle_path: Path,
+            authorization: Mapping[str, Any],
+            intent: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            lifecycle_json, lifecycle_cid = self._lifecycle_record_json(
+                lifecycle_raw
+            )
+            return {
+                "schema": PLAN_BOUND_LIFECYCLE_PREPUBLICATION_SCHEMA,
+                "revision_cid": prepared.revision_cid,
+                "plan_root_cid": prepared.plan_root_cid,
+                "execution_plan_cid": prepared.execution_plan_cid,
+                "capacity_snapshot_id": prepared.capacity_snapshot_id,
+                "slice_manifest_cid": prepared.slice_manifest_cid,
+                "slice_id": prepared.slice_id,
+                "lane_id": prepared.lane_id,
+                "reassignment_cid": prepared.reassignment_cid,
+                "task_id": prepared.active_task_id,
+                "task_cid": prepared.active_task_cid,
+                "source_head": pinned.plan_bound_source_head,
+                "source_tree": pinned.plan_bound_source_tree,
+                "task_source_revision": (
+                    pinned.plan_bound_task_source_revision
+                ),
+                "configuration_root": (
+                    pinned.plan_bound_configuration_root
+                ),
+                "accepted_tree_root": str(accepted_tree_root),
+                "process_birth_cid": prepared.process_birth_cid,
+                "daemon_process_birth": dict(
+                    prepared.daemon_process_birth
+                ),
+                "prepared_execution_lease_cid": prepared_cid,
+                "proposal_handoff_cid": prepared.proposal_handoff_cid,
+                "merge_authorization_cid": (
+                    prepared.merge_authorization_cid
+                ),
+                "merge_enqueue_intent_cid": (
+                    prepared.merge_enqueue_intent_cid
+                ),
+                "enqueue_fields_cid": str(
+                    intent.get("enqueue_fields_cid") or ""
+                ),
+                "canonical_claim_cid": prepared.canonical_claim_cid,
+                "canonical_claim_lease_id": (
+                    prepared.canonical_claim_lease_id
+                ),
+                "workspace_lifecycle_path": str(lifecycle_path),
+                "workspace_lifecycle_cid": lifecycle_cid,
+                "workspace_lifecycle_json": lifecycle_json,
+                "workspace_record_id": prepared.workspace_record_id,
+                "workspace_lease_id": prepared.workspace_lease_id,
+                "workspace_fence": prepared.workspace_fence,
+                "workspace_path": prepared.workspace_path,
+                "attempt": int(authorization.get("attempt") or 0),
+                "branch_name": str(
+                    authorization.get("branch_name") or ""
+                ),
+                "baseline_ref": str(
+                    authorization.get("baseline_ref") or ""
+                ),
+                "implementation_commit": str(
+                    authorization.get("implementation_commit") or ""
+                ),
+                "actual_changed_paths": list(
+                    authorization.get("actual_changed_paths") or ()
+                ),
+                "authorized_at_ms": int(
+                    authorization.get("authorized_at_ms") or 0
+                ),
+            }
+
+        def _persist_plan_bound_lifecycle_prepublication(
+            self,
+            *,
+            prepared_cid: str,
+            prepared: PlanBoundExecutionLease,
+        ) -> dict[str, Any]:
+            """Bind the exact SETTLING row before terminalization starts."""
+
+            lifecycle_path = Path(prepared.workspace_lifecycle_path)
+            with serialized_lock_update(lifecycle_path):
+                lifecycle_raw, lifecycle_cid = stable_effect_record(
+                    lifecycle_path
+                )
+                try:
+                    from ..merge.worktree_lifecycle import (
+                        WorkspaceLifecycleRecord,
+                    )
+
+                    lifecycle = WorkspaceLifecycleRecord.from_dict(
+                        lifecycle_raw
+                    )
+                except Exception as exc:
+                    raise PlanBoundDispatchError(
+                        "prepublication lifecycle is malformed"
+                    ) from exc
+                if (
+                    lifecycle.to_dict() != lifecycle_raw
+                    or lifecycle.state.value != "settling"
+                    or lifecycle.task_id != prepared.active_task_id
+                    or lifecycle.canonical_task_cid
+                    != prepared.active_task_cid
+                    or lifecycle.owner.to_dict()
+                    != prepared.daemon_process_birth
+                    or lifecycle.workspace_path != prepared.workspace_path
+                    or lifecycle.state_dir
+                    != str(self.state_path.parent.resolve(strict=False))
+                    or lifecycle.repo_root
+                    != str(self.repo_root.resolve(strict=False))
+                    or lifecycle_cid != prepared.workspace_lifecycle_cid
+                    or str(lifecycle_raw.get("record_id") or "")
+                    != prepared.workspace_record_id
+                    or str(lifecycle_raw.get("lease_id") or "")
+                    != prepared.workspace_lease_id
+                    or int(lifecycle_raw.get("fence") or 0)
+                    != prepared.workspace_fence
+                ):
+                    raise PlanBoundDispatchError(
+                        "prepublication lifecycle differs from the prepared "
+                        "execution lease"
+                    )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    current = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=prepared.revision_cid,
+                        slice_id=prepared.slice_id,
+                        lane_id=prepared.lane_id,
+                    )
+                    if current != (prepared_cid, prepared):
+                        raise PlanBoundDispatchError(
+                            "execution lease changed before lifecycle "
+                            "prepublication"
+                        )
+                    authorization = _secure_store_cas(
+                        store,
+                        prepared.merge_authorization_cid,
+                    )
+                    intent = _secure_store_cas(
+                        store,
+                        prepared.merge_enqueue_intent_cid,
+                    )
+                    if (
+                        intent.get("authorization_cid")
+                        != prepared.merge_authorization_cid
+                        or content_identity(intent.get("enqueue_fields"))
+                        != intent.get("enqueue_fields_cid")
+                    ):
+                        raise PlanBoundDispatchError(
+                            "prepared enqueue intent changed before lifecycle "
+                            "prepublication"
+                        )
+                    prepublication = (
+                        self._plan_bound_lifecycle_prepublication_record(
+                            prepared_cid=prepared_cid,
+                            prepared=prepared,
+                            lifecycle_raw=lifecycle_raw,
+                            lifecycle_path=lifecycle_path,
+                            authorization=authorization,
+                            intent=intent,
+                        )
+                    )
+                    prepublication_cid = store.put_cas(prepublication)
+                    if (
+                        _secure_store_cas(store, prepublication_cid)
+                        != prepublication
+                    ):
+                        raise PlanBoundDispatchError(
+                            "lifecycle prepublication failed CAS round trip"
+                        )
+                    key = self._plan_bound_lifecycle_continuation_key(
+                        "plan-bound-worktree-lifecycle-prepublication",
+                        prepared_cid,
+                    )
+                    continuation = {
+                        "phase": "committed",
+                        "operation": (
+                            "plan_bound_worktree_lifecycle_prepublication"
+                        ),
+                        "revision_cid": prepared.revision_cid,
+                        "slice_id": prepared.slice_id,
+                        "lane_id": prepared.lane_id,
+                        "prepared_execution_lease_cid": prepared_cid,
+                        "prepublication_cid": prepublication_cid,
+                    }
+                    prior = _secure_store_continuation(store, key)
+                    if prior is not None and prior != continuation:
+                        raise PlanBoundDispatchError(
+                            "lifecycle prepublication pointer changed"
+                        )
+                    store.put_continuation(key, continuation)
+                    if _secure_store_continuation(store, key) != continuation:
+                        raise PlanBoundDispatchError(
+                            "lifecycle prepublication pointer failed durable "
+                            "round trip"
+                        )
+            return {
+                "prepared_cid": prepared_cid,
+                "prepared": prepared,
+                "prepublication_cid": prepublication_cid,
+                "prepublication": prepublication,
+            }
+
+        def _plan_bound_lifecycle_handoff_receipt(
+            self,
+            *,
+            prepublication_cid: str,
+            prepublication: Mapping[str, Any],
+            terminal_raw: Mapping[str, Any],
+            terminal_path: Path,
+        ) -> dict[str, Any]:
+            terminal_json, terminal_cid = self._lifecycle_record_json(
+                terminal_raw
+            )
+            return {
+                "schema": PLAN_BOUND_LIFECYCLE_HANDOFF_SCHEMA,
+                "revision_cid": prepublication["revision_cid"],
+                "plan_root_cid": prepublication["plan_root_cid"],
+                "execution_plan_cid": prepublication["execution_plan_cid"],
+                "capacity_snapshot_id": prepublication[
+                    "capacity_snapshot_id"
+                ],
+                "slice_manifest_cid": prepublication[
+                    "slice_manifest_cid"
+                ],
+                "slice_id": prepublication["slice_id"],
+                "lane_id": prepublication["lane_id"],
+                "source_head": prepublication["source_head"],
+                "source_tree": prepublication["source_tree"],
+                "task_source_revision": prepublication[
+                    "task_source_revision"
+                ],
+                "configuration_root": prepublication[
+                    "configuration_root"
+                ],
+                "process_birth_cid": prepublication[
+                    "process_birth_cid"
+                ],
+                "daemon_process_birth": dict(
+                    prepublication["daemon_process_birth"]
+                ),
+                "prepared_execution_lease_cid": prepublication[
+                    "prepared_execution_lease_cid"
+                ],
+                "prepublication_cid": prepublication_cid,
+                "merge_authorization_cid": prepublication[
+                    "merge_authorization_cid"
+                ],
+                "merge_enqueue_intent_cid": prepublication[
+                    "merge_enqueue_intent_cid"
+                ],
+                "enqueue_fields_cid": prepublication[
+                    "enqueue_fields_cid"
+                ],
+                "task_id": prepublication["task_id"],
+                "task_cid": prepublication["task_cid"],
+                "baseline_ref": prepublication["baseline_ref"],
+                "implementation_commit": prepublication[
+                    "implementation_commit"
+                ],
+                "actual_changed_paths": list(
+                    prepublication["actual_changed_paths"]
+                ),
+                "workspace_lifecycle_path": str(terminal_path),
+                "settling_lifecycle_cid": prepublication[
+                    "workspace_lifecycle_cid"
+                ],
+                "settling_workspace_fence": prepublication[
+                    "workspace_fence"
+                ],
+                "settling_workspace_lease_id": prepublication[
+                    "workspace_lease_id"
+                ],
+                "terminal_lifecycle_cid": terminal_cid,
+                "terminal_lifecycle_json": terminal_json,
+                "terminalization_result": {
+                    "finalized": True,
+                    "reason": str(terminal_raw.get("terminal_reason") or ""),
+                    "prior_fence": prepublication["workspace_fence"],
+                    "terminal_fence": int(terminal_raw.get("fence") or 0),
+                    "state": str(terminal_raw.get("state") or ""),
+                },
+            }
+
+        def _persist_plan_bound_lifecycle_handoff_receipt(
+            self,
+            *,
+            context: Mapping[str, Any],
+            prior: Any,
+            terminal: Any,
+        ) -> dict[str, Any]:
+            """Commit terminal custody proof before its row is deleted."""
+
+            prepublication_cid = str(
+                context.get("prepublication_cid") or ""
+            )
+            prepublication = context.get("prepublication")
+            if not isinstance(prepublication, Mapping):
+                raise PlanBoundDispatchError(
+                    "lifecycle handoff lacks its prepublication record"
+                )
+            prior_raw = prior.to_dict()
+            terminal_raw = terminal.to_dict()
+            prior_json, prior_cid = self._lifecycle_record_json(prior_raw)
+            if (
+                prior_json != prepublication.get("workspace_lifecycle_json")
+                or prior_cid
+                != prepublication.get("workspace_lifecycle_cid")
+                or terminal.state.value != "terminal"
+                or terminal.record_id != prior.record_id
+                or terminal.lease_id != prior.lease_id
+                or terminal.fence != prior.fence + 1
+                or terminal.owner != prior.owner
+                or terminal.workspace_path != prior.workspace_path
+                or terminal.task_id != prior.task_id
+                or terminal.canonical_task_cid
+                != prior.canonical_task_cid
+                or terminal.terminal_reason
+                not in PLAN_BOUND_LIFECYCLE_HANDOFF_REASONS
+            ):
+                raise PlanBoundDispatchError(
+                    "terminal lifecycle differs from its exact SETTLING "
+                    "prepublication"
+                )
+            terminal_path = Path(
+                str(prepublication["workspace_lifecycle_path"])
+            )
+            receipt = self._plan_bound_lifecycle_handoff_receipt(
+                prepublication_cid=prepublication_cid,
+                prepublication=prepublication,
+                terminal_raw=terminal_raw,
+                terminal_path=terminal_path,
+            )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    if (
+                        _secure_store_cas(store, prepublication_cid)
+                        != dict(prepublication)
+                    ):
+                        raise PlanBoundDispatchError(
+                            "lifecycle prepublication changed before handoff"
+                        )
+                    receipt_cid = store.put_cas(receipt)
+                    if _secure_store_cas(store, receipt_cid) != receipt:
+                        raise PlanBoundDispatchError(
+                            "lifecycle handoff receipt failed CAS round trip"
+                        )
+                    key = self._plan_bound_lifecycle_continuation_key(
+                        "plan-bound-worktree-lifecycle-handoff",
+                        str(
+                            prepublication[
+                                "prepared_execution_lease_cid"
+                            ]
+                        ),
+                    )
+                    continuation = {
+                        "phase": "committed",
+                        "operation": (
+                            "plan_bound_worktree_lifecycle_handoff"
+                        ),
+                        "revision_cid": prepublication["revision_cid"],
+                        "slice_id": prepublication["slice_id"],
+                        "lane_id": prepublication["lane_id"],
+                        "prepared_execution_lease_cid": prepublication[
+                            "prepared_execution_lease_cid"
+                        ],
+                        "prepublication_cid": prepublication_cid,
+                        "handoff_receipt_cid": receipt_cid,
+                    }
+                    existing = _secure_store_continuation(store, key)
+                    if existing is not None and existing != continuation:
+                        raise PlanBoundDispatchError(
+                            "lifecycle handoff receipt pointer changed"
+                        )
+                    store.put_continuation(key, continuation)
+                    if _secure_store_continuation(store, key) != continuation:
+                        raise PlanBoundDispatchError(
+                            "lifecycle handoff receipt pointer failed durable "
+                            "round trip"
+                        )
+            return {
+                "prepublication_cid": prepublication_cid,
+                "handoff_receipt_cid": receipt_cid,
+                "terminal_lifecycle_cid": receipt[
+                    "terminal_lifecycle_cid"
+                ],
+            }
+
+        def _load_plan_bound_lifecycle_handoff(
+            self,
+            *,
+            prepared_cid: str,
+            prepared: PlanBoundExecutionLease,
+        ) -> tuple[
+            str,
+            dict[str, Any],
+            str,
+            dict[str, Any] | None,
+        ]:
+            """Load and rederive the exact prepublication/terminal proofs."""
+
+            prepublication_key = self._plan_bound_lifecycle_continuation_key(
+                "plan-bound-worktree-lifecycle-prepublication",
+                prepared_cid,
+            )
+            pointer = _secure_store_continuation(
+                store,
+                prepublication_key,
+            )
+            if pointer is None:
+                raise PlanBoundReplanRequired(
+                    "prepared merge handoff lacks lifecycle prepublication"
+                )
+            expected_pointer_fields = {
+                "phase",
+                "operation",
+                "revision_cid",
+                "slice_id",
+                "lane_id",
+                "prepared_execution_lease_cid",
+                "prepublication_cid",
+            }
+            if (
+                set(pointer) != expected_pointer_fields
+                or pointer.get("phase") != "committed"
+                or pointer.get("operation")
+                != "plan_bound_worktree_lifecycle_prepublication"
+                or pointer.get("revision_cid") != prepared.revision_cid
+                or pointer.get("slice_id") != prepared.slice_id
+                or pointer.get("lane_id") != prepared.lane_id
+                or pointer.get("prepared_execution_lease_cid")
+                != prepared_cid
+            ):
+                raise PlanBoundReplanRequired(
+                    "lifecycle prepublication pointer is mixed"
+                )
+            prepublication_cid = str(
+                pointer.get("prepublication_cid") or ""
+            )
+            prepublication = _secure_store_cas(
+                store,
+                prepublication_cid,
+            )
+            try:
+                lifecycle_json = prepublication[
+                    "workspace_lifecycle_json"
+                ]
+                lifecycle_raw = json.loads(lifecycle_json)
+                if not isinstance(lifecycle_raw, Mapping):
+                    raise TypeError("lifecycle prepublication is not an object")
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "lifecycle prepublication record is malformed"
+                ) from exc
+            authorization = _secure_store_cas(
+                store,
+                prepared.merge_authorization_cid,
+            )
+            intent = _secure_store_cas(
+                store,
+                prepared.merge_enqueue_intent_cid,
+            )
+            expected_prepublication = (
+                self._plan_bound_lifecycle_prepublication_record(
+                    prepared_cid=prepared_cid,
+                    prepared=prepared,
+                    lifecycle_raw=lifecycle_raw,
+                    lifecycle_path=Path(prepared.workspace_lifecycle_path),
+                    authorization=authorization,
+                    intent=intent,
+                )
+            )
+            if (
+                prepublication != expected_prepublication
+                or prepublication.get("schema")
+                != PLAN_BOUND_LIFECYCLE_PREPUBLICATION_SCHEMA
+                or prepublication.get("workspace_lifecycle_cid")
+                != prepared.workspace_lifecycle_cid
+            ):
+                raise PlanBoundReplanRequired(
+                    "lifecycle prepublication authority is mixed"
+                )
+
+            handoff_key = self._plan_bound_lifecycle_continuation_key(
+                "plan-bound-worktree-lifecycle-handoff",
+                prepared_cid,
+            )
+            handoff_pointer = _secure_store_continuation(
+                store,
+                handoff_key,
+            )
+            if handoff_pointer is None:
+                return prepublication_cid, prepublication, "", None
+            expected_handoff_pointer_fields = {
+                "phase",
+                "operation",
+                "revision_cid",
+                "slice_id",
+                "lane_id",
+                "prepared_execution_lease_cid",
+                "prepublication_cid",
+                "handoff_receipt_cid",
+            }
+            if (
+                set(handoff_pointer) != expected_handoff_pointer_fields
+                or handoff_pointer.get("phase") != "committed"
+                or handoff_pointer.get("operation")
+                != "plan_bound_worktree_lifecycle_handoff"
+                or handoff_pointer.get("revision_cid")
+                != prepared.revision_cid
+                or handoff_pointer.get("slice_id") != prepared.slice_id
+                or handoff_pointer.get("lane_id") != prepared.lane_id
+                or handoff_pointer.get("prepared_execution_lease_cid")
+                != prepared_cid
+                or handoff_pointer.get("prepublication_cid")
+                != prepublication_cid
+            ):
+                raise PlanBoundReplanRequired(
+                    "lifecycle handoff receipt pointer is mixed"
+                )
+            receipt_cid = str(
+                handoff_pointer.get("handoff_receipt_cid") or ""
+            )
+            receipt = _secure_store_cas(store, receipt_cid)
+            try:
+                terminal_json = receipt["terminal_lifecycle_json"]
+                terminal_raw = json.loads(terminal_json)
+                if not isinstance(terminal_raw, Mapping):
+                    raise TypeError("terminal lifecycle is not an object")
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "lifecycle handoff receipt is malformed"
+                ) from exc
+            expected_receipt = self._plan_bound_lifecycle_handoff_receipt(
+                prepublication_cid=prepublication_cid,
+                prepublication=prepublication,
+                terminal_raw=terminal_raw,
+                terminal_path=Path(prepared.workspace_lifecycle_path),
+            )
+            try:
+                from ..merge.worktree_lifecycle import (
+                    WorkspaceLifecycleRecord,
+                )
+
+                settling = WorkspaceLifecycleRecord.from_dict(
+                    lifecycle_raw
+                )
+                terminal = WorkspaceLifecycleRecord.from_dict(terminal_raw)
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "lifecycle handoff receipt records are malformed"
+                ) from exc
+            if (
+                receipt != expected_receipt
+                or receipt.get("schema")
+                != PLAN_BOUND_LIFECYCLE_HANDOFF_SCHEMA
+                or settling.state.value != "settling"
+                or terminal.state.value != "terminal"
+                or terminal.record_id != settling.record_id
+                or terminal.lease_id != settling.lease_id
+                or terminal.fence != settling.fence + 1
+                or terminal.owner != settling.owner
+                or terminal.workspace_path != settling.workspace_path
+                or terminal.task_id != settling.task_id
+                or terminal.canonical_task_cid
+                != settling.canonical_task_cid
+                or terminal.terminal_reason
+                not in PLAN_BOUND_LIFECYCLE_HANDOFF_REASONS
+            ):
+                raise PlanBoundReplanRequired(
+                    "lifecycle handoff receipt authority is mixed"
+                )
+            return (
+                prepublication_cid,
+                prepublication,
+                receipt_cid,
+                receipt,
+            )
+
+        def _complete_plan_bound_prepared_lifecycle_handoff(
+            self,
+            *,
+            prepared_cid: str,
+            prepared: PlanBoundExecutionLease,
+        ) -> str:
+            """Recover terminalization without treating absence as proof."""
+
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    current = _load_plan_bound_execution_lease_locked(
+                        store,
+                        revision_cid=prepared.revision_cid,
+                        slice_id=prepared.slice_id,
+                        lane_id=prepared.lane_id,
+                    )
+                    if current != (prepared_cid, prepared):
+                        raise PlanBoundReplanRequired(
+                            "prepared execution lease changed during lifecycle "
+                            "recovery"
+                        )
+                    try:
+                        (
+                            prepublication_cid,
+                            prepublication,
+                            receipt_cid,
+                            receipt,
+                        ) = self._load_plan_bound_lifecycle_handoff(
+                            prepared_cid=prepared_cid,
+                            prepared=prepared,
+                        )
+                    except PlanBoundReplanRequired:
+                        raise
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "prepared lifecycle authority is unreadable"
+                        ) from exc
+            lifecycle_path = Path(prepared.workspace_lifecycle_path)
+            try:
+                os.lstat(lifecycle_path)
+            except FileNotFoundError:
+                if receipt is None or not receipt_cid:
+                    raise PlanBoundReplanRequired(
+                        "missing lifecycle is not terminalization evidence"
+                    )
+                return receipt_cid
+            except OSError as exc:
+                raise PlanBoundReplanRequired(
+                    "cannot inspect prepared lifecycle during recovery"
+                ) from exc
+
+            lifecycle_raw, lifecycle_cid = stable_effect_record(
+                lifecycle_path
+            )
+            try:
+                from ..merge.worktree_lifecycle import (
+                    WorkspaceLifecycleRecord,
+                )
+
+                lifecycle = WorkspaceLifecycleRecord.from_dict(
+                    lifecycle_raw
+                )
+                settling = WorkspaceLifecycleRecord.from_dict(
+                    json.loads(prepublication["workspace_lifecycle_json"])
+                )
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "prepared lifecycle recovery record is malformed"
+                ) from exc
+            if lifecycle.state.value == "settling":
+                if (
+                    lifecycle_raw
+                    != json.loads(
+                        prepublication["workspace_lifecycle_json"]
+                    )
+                    or lifecycle_cid
+                    != prepublication["workspace_lifecycle_cid"]
+                ):
+                    raise PlanBoundReplanRequired(
+                        "SETTLING lifecycle changed after prepublication"
+                    )
+                self._active_worktree_lifecycle = lifecycle
+                result = self._finalize_exact_worktree_lifecycle(
+                    lifecycle,
+                    reason="plan_bound_recovered_merge_queue_handoff",
+                    terminal_callback=(
+                        lambda prior, terminal: (
+                            self._persist_plan_bound_lifecycle_handoff_receipt(
+                                context={
+                                    "prepublication_cid": prepublication_cid,
+                                    "prepublication": prepublication,
+                                },
+                                prior=prior,
+                                terminal=terminal,
+                            )
+                        )
+                    ),
+                )
+                if result.get("finalized") is not True:
+                    raise PlanBoundReplanRequired(
+                        "recovered lifecycle terminalization did not finalize"
+                    )
+            elif lifecycle.state.value == "terminal":
+                if (
+                    lifecycle.record_id != settling.record_id
+                    or lifecycle.lease_id != settling.lease_id
+                    or lifecycle.fence != settling.fence + 1
+                    or lifecycle.owner != settling.owner
+                    or lifecycle.workspace_path != settling.workspace_path
+                    or lifecycle.task_id != settling.task_id
+                    or lifecycle.canonical_task_cid
+                    != settling.canonical_task_cid
+                    or lifecycle.terminal_reason
+                    not in PLAN_BOUND_LIFECYCLE_HANDOFF_REASONS
+                ):
+                    raise PlanBoundReplanRequired(
+                        "terminal lifecycle changed after prepublication"
+                    )
+                if receipt is None:
+                    receipt_result = (
+                        self._persist_plan_bound_lifecycle_handoff_receipt(
+                            context={
+                                "prepublication_cid": prepublication_cid,
+                                "prepublication": prepublication,
+                            },
+                            prior=settling,
+                            terminal=lifecycle,
+                        )
+                    )
+                    receipt_cid = str(
+                        receipt_result["handoff_receipt_cid"]
+                    )
+                elif (
+                    lifecycle_cid != receipt["terminal_lifecycle_cid"]
+                    or json.dumps(
+                        lifecycle_raw,
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n"
+                    != receipt["terminal_lifecycle_json"]
+                ):
+                    raise PlanBoundReplanRequired(
+                        "terminal lifecycle differs from its handoff receipt"
+                    )
+                if not self.worktree_lifecycle.compare_and_delete(
+                    lifecycle.workspace_path,
+                    expected_fence=lifecycle.fence,
+                    lease_id=lifecycle.lease_id,
+                ):
+                    raise PlanBoundReplanRequired(
+                        "terminal lifecycle compare-delete failed during "
+                        "recovery"
+                    )
+            else:
+                raise PlanBoundReplanRequired(
+                    "prepared lifecycle has no recoverable custody state"
+                )
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    try:
+                        (
+                            _prepublication_cid,
+                            _prepublication,
+                            receipt_cid,
+                            receipt,
+                        ) = self._load_plan_bound_lifecycle_handoff(
+                            prepared_cid=prepared_cid,
+                            prepared=prepared,
+                        )
+                    except PlanBoundReplanRequired:
+                        raise
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "recovered lifecycle receipt is unreadable"
+                        ) from exc
+            if receipt is None or not receipt_cid:
+                raise PlanBoundReplanRequired(
+                    "recovered terminalization lacks its durable receipt"
+                )
+            try:
+                os.lstat(lifecycle_path)
+            except FileNotFoundError:
+                return receipt_cid
+            except OSError as exc:
+                raise PlanBoundReplanRequired(
+                    "cannot verify lifecycle deletion after recovery"
+                ) from exc
+            raise PlanBoundReplanRequired(
+                "terminal lifecycle remained after recovered handoff"
+            )
 
         @staticmethod
         def _seal_owned_directory(path: Path) -> None:
@@ -3794,6 +4824,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             expected_branch: str,
             current_branch: str,
             validation_result: Mapping[str, Any],
+            require_no_change_policy_gate: bool = True,
+            expected_task_id: str = "",
+            expected_task_cid: str = "",
+            authoritative_no_change_policy_gate: Mapping[str, Any] | None = None,
         ) -> dict[str, Any]:
             """Publish no-change only after the canonical final guard allows it."""
 
@@ -3803,6 +4837,12 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 expected_branch=expected_branch,
                 current_branch=current_branch,
                 validation_result=validation_result,
+                require_no_change_policy_gate=require_no_change_policy_gate,
+                expected_task_id=expected_task_id,
+                expected_task_cid=expected_task_cid,
+                authoritative_no_change_policy_gate=(
+                    authoritative_no_change_policy_gate
+                ),
             )
             pending = getattr(self, "_plan_bound_pending_no_change", None)
             self._plan_bound_pending_no_change = None
@@ -3878,35 +4918,76 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 raise PlanBoundDispatchError(
                     "no-change candidate changed after barrier release"
                 )
-            prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
-                enqueue_fields=enqueue_fields,
-                barrier_cid=barrier_cid,
-                worktree_path=workspace_path,
-                baseline_ref=resolved_baseline,
-                implementation_commit=resolved_baseline,
-                actual_paths=(),
-                branch_name=current_branch,
-                attempt=attempt,
-            )
-            request = self.merge_queue.enqueue(**enqueue_fields)
-            confirmed_cid, confirmed = self._confirm_plan_bound_merge_enqueue(
-                prepared_cid=prepared_cid,
-                prepared=prepared,
-                request=request,
-                enqueue_fields=enqueue_fields,
-            )
-            completed = self._drain_plan_bound_merge_request(
-                request_id=str(request.request_id),
-                execution_lease=confirmed,
-                enqueue_fields=enqueue_fields,
-            )
-            completed_cid, _completed_lease = (
-                self._mark_plan_bound_merge_completed(
-                    lease_cid=confirmed_cid,
-                    execution_lease=confirmed,
-                    request=completed,
+            try:
+                # The preparation CAS itself can succeed durably before its
+                # caller observes the response.  Cover that call and every
+                # later prepublication step with the retained-claim exception,
+                # not merely the final queue operation.
+                prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
+                    enqueue_fields=enqueue_fields,
+                    barrier_cid=barrier_cid,
+                    worktree_path=workspace_path,
+                    baseline_ref=resolved_baseline,
+                    implementation_commit=resolved_baseline,
+                    actual_paths=(),
+                    branch_name=current_branch,
+                    attempt=attempt,
                 )
-            )
+                lifecycle_prepublication = (
+                    self._persist_plan_bound_lifecycle_prepublication(
+                        prepared_cid=prepared_cid,
+                        prepared=prepared,
+                    )
+                )
+                lifecycle_record = self._active_worktree_lifecycle
+                if lifecycle_record is None:
+                    raise PlanBoundDispatchError(
+                        "no-change enqueue lost its exact SETTLING lifecycle"
+                    )
+                lifecycle_handoff = self._finalize_exact_worktree_lifecycle(
+                    lifecycle_record,
+                    reason="plan_bound_no_change_merge_queue_handoff",
+                    terminal_callback=(
+                        lambda prior, terminal: (
+                            self._persist_plan_bound_lifecycle_handoff_receipt(
+                                context=lifecycle_prepublication,
+                                prior=prior,
+                                terminal=terminal,
+                            )
+                        )
+                    ),
+                )
+                if lifecycle_handoff.get("finalized") is not True:
+                    raise PlanBoundReplanRequired(
+                        "no-change lifecycle handoff did not finalize"
+                    )
+                request = self.merge_queue.enqueue(**enqueue_fields)
+                confirmed_cid, confirmed = (
+                    self._confirm_plan_bound_merge_enqueue(
+                        prepared_cid=prepared_cid,
+                        prepared=prepared,
+                        request=request,
+                        enqueue_fields=enqueue_fields,
+                    )
+                )
+                completed = self._drain_plan_bound_merge_request(
+                    request_id=str(request.request_id),
+                    execution_lease=confirmed,
+                    enqueue_fields=enqueue_fields,
+                )
+                completed_cid, _completed_lease = (
+                    self._mark_plan_bound_merge_completed(
+                        lease_cid=confirmed_cid,
+                        execution_lease=confirmed,
+                        request=completed,
+                    )
+                )
+            except Exception as exc:
+                if isinstance(exc, PlanBoundHandoffRecoveryRequired):
+                    raise
+                raise PlanBoundHandoffRecoveryRequired(
+                    "no-change prepared handoff requires exact recovery"
+                ) from exc
             self._plan_bound_no_change_queue_completion = {
                 "workspace_path": str(workspace_path),
                 "request_id": str(request.request_id),
@@ -3927,6 +5008,13 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 raise PlanBoundReplanRequired(
                     "no-change cleanup bypassed the canonical completion guard"
                 )
+            # A plan-bound claim remains the cleanup-obligation marker until
+            # the exact queue completion is fully closed.  Publishing a pool
+            # entry idle before the subsequent branch/claim steps would let a
+            # peer warm-borrow that checkout across a crash window.  Plan-bound
+            # workspaces are therefore always discarded, never returned to the
+            # warm pool.
+            kwargs["reusable"] = False
             no_change_completion = getattr(
                 self,
                 "_plan_bound_no_change_queue_completion",
@@ -3940,11 +5028,52 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     != no_change_completion.get("workspace_path")
                     or no_change_completion.get("status") != "completed"
                 ):
-                    raise PlanBoundReplanRequired(
+                    raise PlanBoundHandoffRecoveryRequired(
                         "no-change queue completion changed before cleanup"
                     )
+                try:
+                    cleanup = super()._cleanup_merged_worktree(
+                        *args,
+                        **kwargs,
+                    )
+                except Exception as exc:
+                    if isinstance(exc, PlanBoundHandoffRecoveryRequired):
+                        raise
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "no-change canonical worktree cleanup requires exact "
+                        "recovery"
+                    ) from exc
+                if (
+                    not isinstance(cleanup, Mapping)
+                    or cleanup.get("cleaned") is not True
+                ):
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "no-change canonical worktree cleanup did not complete"
+                    )
+                try:
+                    completed_cid, completed_lease = (
+                        self._load_execution_lease(
+                            phases=("merge_completed",)
+                        )
+                    )
+                    if (
+                        completed_cid
+                        != no_change_completion["execution_lease_cid"]
+                    ):
+                        raise PlanBoundHandoffRecoveryRequired(
+                            "no-change cleanup completion lease changed"
+                        )
+                    self._cleanup_plan_bound_completed_workspace_custody(
+                        completed_lease
+                    )
+                except Exception as exc:
+                    if isinstance(exc, PlanBoundHandoffRecoveryRequired):
+                        raise
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "no-change exact workspace cleanup proof failed"
+                    ) from exc
                 return {
-                    "cleaned": True,
+                    **dict(cleanup),
                     "reason": "plan_bound_no_change_merge_completed",
                     "worktree_path": str(worktree_path),
                     "request_id": no_change_completion["request_id"],
@@ -4071,7 +5200,44 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             return captured[0]
 
         @staticmethod
+        def _queue_intent_dedupe_key(
+            enqueue_fields: Mapping[str, Any],
+        ) -> str:
+            """Derive the canonical queue identity bound by one stored intent."""
+
+            canonical_task_id = str(
+                enqueue_fields.get("canonical_task_id")
+                or enqueue_fields.get("canonical_task_cid")
+                or ""
+            )
+            identity = str(
+                enqueue_fields["canonical_task_key"]
+                or canonical_task_id
+                or enqueue_fields["task_id"]
+            ).strip().casefold()
+            commit = str(enqueue_fields["commit_sha"]).strip().casefold()
+            dedupe_parts = [identity, commit]
+            target_repository_id = str(
+                enqueue_fields["target_repository_id"]
+            ).strip()
+            target_branch = str(enqueue_fields["target_branch"]).strip()
+            if target_repository_id or target_branch:
+                if not target_repository_id or not target_branch:
+                    raise PlanBoundReplanRequired(
+                        "merge queue intent target binding is partial"
+                    )
+                dedupe_parts.extend((target_repository_id, target_branch))
+            if not commit:
+                raise PlanBoundReplanRequired(
+                    "merge queue intent lacks an implementation commit"
+                )
+            return sha256(
+                "\0".join(dedupe_parts).encode("utf-8")
+            ).hexdigest()
+
+        @classmethod
         def _require_queue_request_matches_intent(
+            cls,
             request: Any,
             enqueue_fields: Mapping[str, Any],
         ) -> None:
@@ -4146,33 +5312,36 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     f"({request_attempt!r}!={original_attempt!r}+"
                     f"{failure_count!r})"
                 )
-            identity = str(
-                expected["canonical_task_key"]
-                or expected["canonical_task_id"]
-                or expected["task_id"]
-            ).strip().casefold()
-            commit = str(expected["commit_sha"]).strip().casefold()
-            dedupe_parts = [identity, commit]
-            target_repository_id = str(
-                enqueue_fields["target_repository_id"]
-            ).strip()
-            target_branch = str(enqueue_fields["target_branch"]).strip()
-            if target_repository_id or target_branch:
-                if not target_repository_id or not target_branch:
-                    raise PlanBoundReplanRequired(
-                        "merge queue intent target binding is partial"
-                    )
-                dedupe_parts.extend((target_repository_id, target_branch))
-            expected_dedupe = sha256(
-                "\0".join(dedupe_parts).encode("utf-8")
-            ).hexdigest()
+            expected_dedupe = cls._queue_intent_dedupe_key(enqueue_fields)
             if (
-                not commit
-                or str(getattr(request, "dedupe_key", "")) != expected_dedupe
+                str(getattr(request, "dedupe_key", "")) != expected_dedupe
             ):
                 raise PlanBoundReplanRequired(
                     "canonical merge queue dedupe identity changed"
                 )
+
+        def _find_queue_request_for_intent(
+            self,
+            enqueue_fields: Mapping[str, Any],
+        ) -> Any | None:
+            """Find an already-published row without creating a queue effect."""
+
+            dedupe_key = self._queue_intent_dedupe_key(enqueue_fields)
+            try:
+                with self.merge_queue._connect() as connection:  # noqa: SLF001
+                    row = self.merge_queue._find_by_dedupe_key(  # noqa: SLF001
+                        connection,
+                        dedupe_key,
+                    )
+                if row is None:
+                    return None
+                return self.merge_queue._request_from_row(row)  # noqa: SLF001
+            except PlanBoundReplanRequired:
+                raise
+            except Exception as exc:
+                raise PlanBoundReplanRequired(
+                    "canonical merge queue intent lookup failed"
+                ) from exc
 
         def _quarantine_merge_request_mismatch(
             self,
@@ -4180,6 +5349,8 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             *,
             prepared: PlanBoundExecutionLease,
             reason: str,
+            failure_reason: str = "plan_bound_merge_enqueue_mismatch",
+            reason_code: str = "merge_queue_intent_mismatch",
         ) -> None:
             """Fence a mismatched canonical row before another train uses it."""
 
@@ -4191,7 +5362,7 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             try:
                 receipt_path = self.merge_queue.quarantine(
                     request,
-                    reason="plan_bound_merge_enqueue_mismatch",
+                    reason=failure_reason,
                     metadata={
                         "schema": (
                             "ipfs_accelerate_py/agent-supervisor/"
@@ -4227,7 +5398,7 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 execution_lease=prepared,
                 request=observed,
                 reason_codes=(
-                    "merge_queue_intent_mismatch",
+                    reason_code,
                     reason,
                 ),
             )
@@ -5006,11 +6177,140 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             prior_recovery_daemon = original_daemon_birth
             prior_supervisor_process_birth_cid = execution_lease.process_birth_cid
             recovery_generation = 1
-            custody_kind = (
-                "canonical_queue"
-                if execution_lease.phase == "merge_enqueue_confirmed"
-                else "settling_candidate"
-            )
+            prepared_lifecycle: WorkspaceLifecycleRecord | None = None
+            prepared_lifecycle_cid = ""
+            prepared_lifecycle_json = ""
+            if execution_lease.phase in {
+                "merge_enqueue_confirmed",
+                "merge_completed",
+            }:
+                custody_kind = "canonical_queue"
+            elif execution_lease.phase == "merge_enqueue_prepared":
+                try:
+                    (
+                        _prepublication_cid,
+                        prepublication,
+                        handoff_receipt_cid,
+                        handoff_receipt,
+                    ) = self._load_plan_bound_lifecycle_handoff(
+                        prepared_cid=execution_lease_cid,
+                        prepared=execution_lease,
+                    )
+                except PlanBoundReplanRequired:
+                    raise
+                except Exception as exc:
+                    raise PlanBoundReplanRequired(
+                        "prepared lifecycle handoff authority is unreadable"
+                    ) from exc
+                lifecycle_path = Path(
+                    execution_lease.workspace_lifecycle_path
+                )
+                try:
+                    os.lstat(lifecycle_path)
+                except FileNotFoundError:
+                    if handoff_receipt is None or not handoff_receipt_cid:
+                        raise PlanBoundReplanRequired(
+                            "missing prepared lifecycle lacks an exact handoff "
+                            "receipt"
+                        )
+                    custody_kind = "finalized_candidate"
+                    prepared_lifecycle_cid = handoff_receipt_cid
+                    prepared_lifecycle_json = json.dumps(
+                        handoff_receipt,
+                        indent=2,
+                        sort_keys=True,
+                    ) + "\n"
+                except OSError as exc:
+                    raise PlanBoundReplanRequired(
+                        "cannot inspect prepared lifecycle custody"
+                    ) from exc
+                else:
+                    lifecycle_raw, prepared_lifecycle_cid = (
+                        stable_effect_record(lifecycle_path)
+                    )
+                    prepared_lifecycle_json = json.dumps(
+                        lifecycle_raw,
+                        indent=2,
+                        sort_keys=True,
+                    ) + "\n"
+                    try:
+                        prepared_lifecycle = (
+                            WorkspaceLifecycleRecord.from_dict(
+                                lifecycle_raw
+                            )
+                        )
+                        settling_lifecycle = (
+                            WorkspaceLifecycleRecord.from_dict(
+                                json.loads(
+                                    prepublication[
+                                        "workspace_lifecycle_json"
+                                    ]
+                                )
+                            )
+                        )
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "prepared lifecycle custody is malformed"
+                        ) from exc
+                    if prepared_lifecycle.state.value == "settling":
+                        if (
+                            lifecycle_raw
+                            != json.loads(
+                                prepublication[
+                                    "workspace_lifecycle_json"
+                                ]
+                            )
+                            or prepared_lifecycle_cid
+                            != prepublication[
+                                "workspace_lifecycle_cid"
+                            ]
+                        ):
+                            raise PlanBoundReplanRequired(
+                                "prepared SETTLING custody changed"
+                            )
+                        custody_kind = "settling_candidate"
+                    elif prepared_lifecycle.state.value == "terminal":
+                        if (
+                            prepared_lifecycle.record_id
+                            != settling_lifecycle.record_id
+                            or prepared_lifecycle.lease_id
+                            != settling_lifecycle.lease_id
+                            or prepared_lifecycle.fence
+                            != settling_lifecycle.fence + 1
+                            or prepared_lifecycle.owner
+                            != settling_lifecycle.owner
+                            or prepared_lifecycle.workspace_path
+                            != settling_lifecycle.workspace_path
+                            or prepared_lifecycle.task_id
+                            != settling_lifecycle.task_id
+                            or prepared_lifecycle.canonical_task_cid
+                            != settling_lifecycle.canonical_task_cid
+                            or prepared_lifecycle.terminal_reason
+                            not in PLAN_BOUND_LIFECYCLE_HANDOFF_REASONS
+                            or (
+                                handoff_receipt is not None
+                                and (
+                                    prepared_lifecycle_cid
+                                    != handoff_receipt[
+                                        "terminal_lifecycle_cid"
+                                    ]
+                                    or prepared_lifecycle_json
+                                    != handoff_receipt[
+                                        "terminal_lifecycle_json"
+                                    ]
+                                )
+                            )
+                        ):
+                            raise PlanBoundReplanRequired(
+                                "prepared terminal custody changed"
+                            )
+                        custody_kind = "terminal_candidate"
+                    else:
+                        raise PlanBoundReplanRequired(
+                            "prepared lifecycle custody is not terminalizable"
+                        )
+            else:
+                custody_kind = "settling_candidate"
             expected_recovery_fields = {
                 "schema",
                 "revision_cid",
@@ -5080,7 +6380,12 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     or prior.get("canonical_claim_lease_id")
                     != execution_lease.canonical_claim_lease_id
                     or prior.get("custody_kind")
-                    not in {"settling_candidate", "canonical_queue"}
+                    not in {
+                        "settling_candidate",
+                        "terminal_candidate",
+                        "finalized_candidate",
+                        "canonical_queue",
+                    }
                     or prior.get("authorized_workspace_lifecycle_cid")
                     != execution_lease.workspace_lifecycle_cid
                     or prior.get("workspace_lifecycle_path")
@@ -5092,6 +6397,14 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         and (
                             prior.get("workspace_lifecycle_cid")
                             != execution_lease.workspace_lifecycle_cid
+                            or not prior.get("workspace_lifecycle_json")
+                        )
+                    )
+                    or (
+                        prior.get("custody_kind")
+                        in {"terminal_candidate", "finalized_candidate"}
+                        and (
+                            not prior.get("workspace_lifecycle_cid")
                             or not prior.get("workspace_lifecycle_json")
                         )
                     )
@@ -5130,17 +6443,273 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     supervisor_birth,
                 )
             )
-            same_recovery_process = bool(
+            same_recovery_identity = bool(
                 prior_recovery is not None
                 and prior_recovery_daemon.to_dict() == daemon_birth.to_dict()
                 and prior_supervisor_process_birth_cid
                 == current_birth_cid
+            )
+            same_original_process = bool(
+                prior_recovery is None
+                and original_daemon_birth.to_dict() == daemon_birth.to_dict()
+                and execution_lease.process_birth_cid == current_birth_cid
+            )
+
+            def exact_same_process_execution_lineage() -> bool:
+                """Prove a same-birth prepared/confirmed descendant chain."""
+
+                if prior_recovery is None:
+                    return False
+                prior_execution_cid = str(
+                    prior_recovery.get("execution_lease_cid") or ""
+                )
+                if prior_execution_cid == execution_lease_cid:
+                    return True
+                lineage_cid = execution_lease_cid
+                lineage = execution_lease
+                if execution_lease.phase == "merge_completed":
+                    confirmed_cid = execution_lease.prior_execution_lease_cid
+                    try:
+                        confirmed = PlanBoundExecutionLease.from_dict(
+                            _secure_store_cas(store, confirmed_cid)
+                        )
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "completed recovery predecessor is malformed"
+                        ) from exc
+                    expected_completed = replace(
+                        confirmed,
+                        generation=confirmed.generation + 1,
+                        phase="merge_completed",
+                        prior_execution_lease_cid=confirmed_cid,
+                        merge_queue_receipt_cid=(
+                            execution_lease.merge_queue_receipt_cid
+                        ),
+                    )
+                    try:
+                        completion_receipt = _secure_store_cas(
+                            store,
+                            execution_lease.merge_queue_receipt_cid,
+                        )
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "completed recovery queue receipt is unreadable"
+                        ) from exc
+                    if (
+                        execution_lease != expected_completed
+                        or confirmed.phase != "merge_enqueue_confirmed"
+                        or completion_receipt.get("schema")
+                        != PLAN_BOUND_MERGE_QUEUE_RECEIPT_SCHEMA
+                        or completion_receipt.get("authorization_cid")
+                        != confirmed.merge_authorization_cid
+                        or completion_receipt.get("intent_cid")
+                        != confirmed.merge_enqueue_intent_cid
+                        or completion_receipt.get("request_id")
+                        != confirmed.merge_request_id
+                        or completion_receipt.get("observed_status")
+                        != "completed"
+                    ):
+                        return False
+                    if prior_execution_cid == confirmed_cid:
+                        return True
+                    lineage_cid = confirmed_cid
+                    lineage = confirmed
+
+                prepared_cid = lineage_cid
+                prepared = lineage
+                if lineage.phase == "merge_enqueue_confirmed":
+                    prepared_cid = lineage.prior_execution_lease_cid
+                    try:
+                        prepared = PlanBoundExecutionLease.from_dict(
+                            _secure_store_cas(store, prepared_cid)
+                        )
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "confirmed recovery predecessor is malformed"
+                        ) from exc
+                    expected_confirmed = replace(
+                        prepared,
+                        generation=prepared.generation + 1,
+                        phase="merge_enqueue_confirmed",
+                        prior_execution_lease_cid=prepared_cid,
+                        merge_request_id=lineage.merge_request_id,
+                        merge_queue_receipt_cid=(
+                            lineage.merge_queue_receipt_cid
+                        ),
+                    )
+                    if lineage != expected_confirmed:
+                        return False
+                    try:
+                        queue_receipt = _secure_store_cas(
+                            store,
+                            lineage.merge_queue_receipt_cid,
+                        )
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "confirmed recovery queue receipt is unreadable"
+                        ) from exc
+                    if (
+                        queue_receipt.get("schema")
+                        != PLAN_BOUND_MERGE_QUEUE_RECEIPT_SCHEMA
+                        or queue_receipt.get("authorization_cid")
+                        != prepared.merge_authorization_cid
+                        or queue_receipt.get("intent_cid")
+                        != prepared.merge_enqueue_intent_cid
+                        or queue_receipt.get("request_id")
+                        != lineage.merge_request_id
+                    ):
+                        return False
+                    try:
+                        (
+                            _prepublication_cid,
+                            _prepublication,
+                            lifecycle_receipt_cid,
+                            lifecycle_receipt,
+                        ) = self._load_plan_bound_lifecycle_handoff(
+                            prepared_cid=prepared_cid,
+                            prepared=prepared,
+                        )
+                    except PlanBoundReplanRequired:
+                        raise
+                    except Exception as exc:
+                        raise PlanBoundReplanRequired(
+                            "confirmed recovery lifecycle receipt is unreadable"
+                        ) from exc
+                    if not lifecycle_receipt_cid or lifecycle_receipt is None:
+                        return False
+                    try:
+                        os.lstat(Path(prepared.workspace_lifecycle_path))
+                    except FileNotFoundError:
+                        pass
+                    except OSError as exc:
+                        raise PlanBoundReplanRequired(
+                            "confirmed recovery lifecycle cannot be inspected"
+                        ) from exc
+                    else:
+                        return False
+                elif lineage.phase != "merge_enqueue_prepared":
+                    return False
+
+                try:
+                    authorization = _secure_store_cas(
+                        store,
+                        prepared.merge_authorization_cid,
+                    )
+                    intent = _secure_store_cas(
+                        store,
+                        prepared.merge_enqueue_intent_cid,
+                    )
+                    ancestor_cid = str(
+                        authorization.get("execution_lease_cid") or ""
+                    )
+                    ancestor = PlanBoundExecutionLease.from_dict(
+                        _secure_store_cas(store, ancestor_cid)
+                    )
+                except Exception as exc:
+                    raise PlanBoundReplanRequired(
+                        "recovery execution lineage is unreadable"
+                    ) from exc
+                expected_prepared = replace(
+                    ancestor,
+                    generation=ancestor.generation + 1,
+                    phase="merge_enqueue_prepared",
+                    prior_execution_lease_cid=ancestor_cid,
+                    merge_enqueue_reached=True,
+                    merge_authorization_cid=(
+                        prepared.merge_authorization_cid
+                    ),
+                    merge_enqueue_intent_cid=(
+                        prepared.merge_enqueue_intent_cid
+                    ),
+                )
+                enqueue_fields = intent.get("enqueue_fields")
+                if (
+                    prepared != expected_prepared
+                    or ancestor_cid != prior_execution_cid
+                    or ancestor.phase != "proposal_ready"
+                    or authorization.get("schema")
+                    != PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA
+                    or authorization.get("recovery_birth_cid")
+                    != prior_recovery_birth_cid
+                    or authorization.get("proposal_handoff_cid")
+                    != ancestor.proposal_handoff_cid
+                    or authorization.get("canonical_claim_cid")
+                    != ancestor.canonical_claim_cid
+                    or authorization.get("workspace_lifecycle_cid")
+                    != ancestor.workspace_lifecycle_cid
+                    or authorization.get("workspace_fence")
+                    != ancestor.workspace_fence
+                    or authorization.get("workspace_lease_id")
+                    != ancestor.workspace_lease_id
+                    or authorization.get("workspace_path")
+                    != ancestor.workspace_path
+                    or authorization.get("task_id")
+                    != ancestor.active_task_id
+                    or authorization.get("task_cid")
+                    != ancestor.active_task_cid
+                    or authorization.get("actual_changed_paths")
+                    != list(ancestor.actual_changed_paths)
+                    or prior_recovery.get("proposal_handoff_cid")
+                    != ancestor.proposal_handoff_cid
+                    or prior_recovery.get("canonical_claim_cid")
+                    != ancestor.canonical_claim_cid
+                    or prior_recovery.get("canonical_claim_lease_id")
+                    != ancestor.canonical_claim_lease_id
+                    or prior_recovery.get(
+                        "authorized_workspace_lifecycle_cid"
+                    )
+                    != ancestor.workspace_lifecycle_cid
+                    or intent.get("schema")
+                    != PLAN_BOUND_MERGE_ENQUEUE_INTENT_SCHEMA
+                    or intent.get("authorization_cid")
+                    != prepared.merge_authorization_cid
+                    or not isinstance(enqueue_fields, Mapping)
+                    or intent.get("enqueue_fields_cid")
+                    != content_identity(dict(enqueue_fields))
+                ):
+                    return False
+                return True
+
+            prior_custody_kind = str(
+                (prior_recovery or {}).get("custody_kind") or ""
+            )
+            same_execution_lineage = bool(
+                same_recovery_identity
+                and exact_same_process_execution_lineage()
+            )
+            monotonic_custody = custody_kind in {
+                "settling_candidate": {
+                    "settling_candidate",
+                    "terminal_candidate",
+                    "finalized_candidate",
+                    "canonical_queue",
+                },
+                "terminal_candidate": {
+                    "terminal_candidate",
+                    "finalized_candidate",
+                    "canonical_queue",
+                },
+                "finalized_candidate": {
+                    "finalized_candidate",
+                    "canonical_queue",
+                },
+                "canonical_queue": {"canonical_queue"},
+            }.get(prior_custody_kind, set())
+            same_recovery_process = bool(
+                same_recovery_identity
+                and same_execution_lineage
+                and monotonic_custody
+            )
+            same_recovery_observation = bool(
+                same_recovery_process
+                and prior_recovery is not None
                 and prior_recovery.get("execution_lease_cid")
                 == execution_lease_cid
-                and prior_recovery.get("custody_kind") == custody_kind
+                and prior_custody_kind == custody_kind
             )
             dead_supervisor_predecessors = (
-                same_recovery_process
+                same_original_process
+                or same_recovery_process
                 or dead_supervisor_birth_chain_reaches(
                     birth.get("prior_process_birth_cid"),
                     prior_supervisor_process_birth_cid,
@@ -5150,19 +6719,24 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 supervisor_state != "alive"
                 or supervisor_birth.to_dict() != birth["process_birth"]
                 or (
-                    not same_recovery_process
+                    not same_original_process
+                    and not same_recovery_process
                     and not dead_supervisor_predecessors
                 )
                 or daemon_birth.pid != os.getpid()
                 or daemon_birth.parent_pid != supervisor_birth.pid
                 or daemon_birth.start_time_ticks <= 0
                 or (
-                    not same_recovery_process
+                    not same_original_process
+                    and not same_recovery_process
                     and owner_liveness(prior_recovery_daemon)
                     is not WorktreeOwnerLiveness.DEAD
                 )
-                or owner_liveness(original_daemon_birth)
-                is not WorktreeOwnerLiveness.DEAD
+                or (
+                    not same_original_process
+                    and owner_liveness(original_daemon_birth)
+                    is not WorktreeOwnerLiveness.DEAD
+                )
             ):
                 raise PlanBoundReplanRequired(
                     "merge recovery lacks an exact dead predecessor and live "
@@ -5170,10 +6744,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 )
 
             lifecycle_path = Path(execution_lease.workspace_lifecycle_path)
-            lifecycle: WorkspaceLifecycleRecord | None = None
-            lifecycle_cid = ""
-            lifecycle_json = ""
-            if custody_kind == "settling_candidate":
+            lifecycle: WorkspaceLifecycleRecord | None = prepared_lifecycle
+            lifecycle_cid = prepared_lifecycle_cid
+            lifecycle_json = prepared_lifecycle_json
+            if custody_kind != "canonical_queue":
                 claim_path = Path(execution_lease.canonical_claim_path)
                 with serialized_lock_update(claim_path):
                     claim = stable_effect_json(claim_path)
@@ -5191,61 +6765,83 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         raise PlanBoundReplanRequired(
                             "merge recovery canonical task claim changed"
                         )
-                    with serialized_lock_update(lifecycle_path):
-                        lifecycle_raw, lifecycle_cid = stable_effect_record(
-                            lifecycle_path
+                    if execution_lease.phase != "merge_enqueue_prepared":
+                        with serialized_lock_update(lifecycle_path):
+                            lifecycle_raw, lifecycle_cid = stable_effect_record(
+                                lifecycle_path
+                            )
+                            lifecycle_json = (
+                                json.dumps(
+                                    lifecycle_raw,
+                                    indent=2,
+                                    sort_keys=True,
+                                )
+                                + "\n"
+                            )
+                            try:
+                                lifecycle = WorkspaceLifecycleRecord.from_dict(
+                                    lifecycle_raw
+                                )
+                            except Exception as exc:
+                                raise PlanBoundReplanRequired(
+                                    "merge recovery lifecycle is malformed"
+                                ) from exc
+                            if (
+                                lifecycle.to_dict() != lifecycle_raw
+                                or lifecycle.state.value != "settling"
+                                or lifecycle.task_id
+                                != execution_lease.active_task_id
+                                or lifecycle.canonical_task_cid
+                                != execution_lease.active_task_cid
+                                or lifecycle.owner.to_dict()
+                                != original_daemon_birth.to_dict()
+                                or lifecycle_path
+                                != self.worktree_lifecycle.workspace_path_for(
+                                    execution_lease.workspace_path
+                                )
+                                or lifecycle.workspace_path
+                                != execution_lease.workspace_path
+                                or lifecycle.record_id
+                                != execution_lease.workspace_record_id
+                                or lifecycle.lease_id
+                                != execution_lease.workspace_lease_id
+                                or lifecycle.fence
+                                != execution_lease.workspace_fence
+                                or lifecycle_cid
+                                != execution_lease.workspace_lifecycle_cid
+                                or lifecycle.state_dir
+                                != str(
+                                    self.state_path.parent.resolve(strict=False)
+                                )
+                                or lifecycle.repo_root
+                                != str(self.repo_root.resolve(strict=False))
+                            ):
+                                raise PlanBoundReplanRequired(
+                                    "merge recovery lifecycle changed before "
+                                    "custody"
+                                )
+            elif execution_lease.phase == "merge_completed":
+                claim_path = Path(execution_lease.canonical_claim_path)
+                with serialized_lock_update(claim_path):
+                    claim = stable_effect_json(claim_path)
+                    if (
+                        content_identity(claim)
+                        != execution_lease.canonical_claim_cid
+                        or claim.get("lease_id")
+                        != execution_lease.canonical_claim_lease_id
+                        or claim.get("task_id")
+                        != execution_lease.active_task_id
+                        or claim.get("canonical_task_cid")
+                        != execution_lease.active_task_cid
+                        or claim.get("owner_process_birth")
+                        != original_daemon_birth.to_dict()
+                        or claim.get("pid") != original_daemon_birth.pid
+                    ):
+                        raise PlanBoundReplanRequired(
+                            "completed cleanup canonical task claim changed"
                         )
-                        lifecycle_json = (
-                            json.dumps(
-                                lifecycle_raw,
-                                indent=2,
-                                sort_keys=True,
-                            )
-                            + "\n"
-                        )
-                        try:
-                            lifecycle = WorkspaceLifecycleRecord.from_dict(
-                                lifecycle_raw
-                            )
-                        except Exception as exc:
-                            raise PlanBoundReplanRequired(
-                                "merge recovery lifecycle is malformed"
-                            ) from exc
-                        if (
-                            lifecycle.to_dict() != lifecycle_raw
-                            or lifecycle.state.value != "settling"
-                            or lifecycle.task_id
-                            != execution_lease.active_task_id
-                            or lifecycle.canonical_task_cid
-                            != execution_lease.active_task_cid
-                            or lifecycle.owner.to_dict()
-                            != original_daemon_birth.to_dict()
-                            or lifecycle_path
-                            != self.worktree_lifecycle.workspace_path_for(
-                                execution_lease.workspace_path
-                            )
-                            or lifecycle.workspace_path
-                            != execution_lease.workspace_path
-                            or lifecycle.record_id
-                            != execution_lease.workspace_record_id
-                            or lifecycle.lease_id
-                            != execution_lease.workspace_lease_id
-                            or lifecycle.fence
-                            != execution_lease.workspace_fence
-                            or lifecycle_cid
-                            != execution_lease.workspace_lifecycle_cid
-                            or lifecycle.state_dir
-                            != str(
-                                self.state_path.parent.resolve(strict=False)
-                            )
-                            or lifecycle.repo_root
-                            != str(self.repo_root.resolve(strict=False))
-                        ):
-                            raise PlanBoundReplanRequired(
-                                "merge recovery lifecycle changed before custody"
-                            )
 
-            if same_recovery_process:
+            if same_recovery_observation:
                 assert prior_recovery is not None
                 if (
                     prior_recovery.get("workspace_lifecycle_json")
@@ -5254,7 +6850,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     raise PlanBoundReplanRequired(
                         "current merge recovery lifecycle evidence changed"
                     )
-                if lifecycle is not None:
+                if (
+                    lifecycle is not None
+                    and lifecycle.state.value == "settling"
+                ):
                     self._active_worktree_lifecycle = lifecycle
                 return prior_recovery_birth_cid
 
@@ -5320,7 +6919,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             # Only the process named by the durable recovery record receives
             # the canonical lifecycle capability in memory.  No provider or
             # task-claim authority is transferred.
-            if lifecycle is not None:
+            if (
+                lifecycle is not None
+                and lifecycle.state.value == "settling"
+            ):
                 self._active_worktree_lifecycle = lifecycle
             return recovery_birth_cid
 
@@ -5411,6 +7013,112 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     # retry within the compiler-owned execution bound.
                     last_exception = exc
                 time.sleep(0.05)
+
+        def _release_plan_bound_completed_task_claim(
+            self,
+            execution_lease: PlanBoundExecutionLease,
+            request: Any,
+        ) -> None:
+            """Release the exact retained claim only after queue completion."""
+
+            if (
+                str(getattr(request, "status", "") or "") != "completed"
+                or str(getattr(request, "request_id", "") or "")
+                != execution_lease.merge_request_id
+            ):
+                raise PlanBoundHandoffRecoveryRequired(
+                    "task claim release lacks exact queue completion"
+                )
+            claim_path = Path(execution_lease.canonical_claim_path)
+            expected_claim_path = self._implementation_task_claim_path(
+                execution_lease.active_task_id,
+                canonical_task_cid=execution_lease.active_task_cid,
+            )
+            if claim_path != expected_claim_path:
+                raise PlanBoundHandoffRecoveryRequired(
+                    "completed handoff task claim path is not canonical"
+                )
+            with serialized_lock_update(claim_path):
+                try:
+                    before = os.lstat(claim_path)
+                except FileNotFoundError:
+                    return
+                except OSError as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim cannot be inspected"
+                    ) from exc
+                try:
+                    claim = stable_effect_json(claim_path)
+                    claim_pid = int(claim.get("pid") or 0)
+                    expected_pid = int(
+                        execution_lease.daemon_process_birth.get("pid") or 0
+                    )
+                    claim_cid = content_identity(claim)
+                except Exception as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim is malformed"
+                    ) from exc
+                try:
+                    after = os.lstat(claim_path)
+                except OSError as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim changed during release"
+                    ) from exc
+                if (
+                    (before.st_dev, before.st_ino)
+                    != (after.st_dev, after.st_ino)
+                    or stat.S_IMODE(after.st_mode) != 0o600
+                    or int(after.st_nlink) != 1
+                    or int(after.st_uid) != os.geteuid()
+                    or claim_cid != execution_lease.canonical_claim_cid
+                    or claim.get("kind")
+                    != daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+                    or claim.get("lease_role")
+                    != daemon_module.IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE
+                    or claim.get("lease_id")
+                    != execution_lease.canonical_claim_lease_id
+                    or claim.get("task_id")
+                    != execution_lease.active_task_id
+                    or claim.get("canonical_task_cid")
+                    != execution_lease.active_task_cid
+                    or claim.get("owner_process_birth")
+                    != execution_lease.daemon_process_birth
+                    or claim_pid != expected_pid
+                ):
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim changed before release"
+                    )
+                try:
+                    protected_fences = (
+                        daemon_module.implementation_task_claim_protected_fence_paths(
+                            claim
+                        )
+                    )
+                except Exception as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim fences are malformed"
+                    ) from exc
+                if protected_fences:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim still anchors a safety fence"
+                    )
+                try:
+                    claim_path.unlink()
+                except OSError as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim release failed"
+                    ) from exc
+                try:
+                    os.lstat(claim_path)
+                except FileNotFoundError:
+                    return
+                except OSError as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed handoff task claim absence is unverifiable"
+                    ) from exc
+                raise PlanBoundHandoffRecoveryRequired(
+                    "completed handoff task claim release was not durable"
+                )
 
         def _mark_plan_bound_merge_completed(
             self,
@@ -5532,18 +7240,91 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
 
             with store._thread_lock:  # noqa: SLF001
                 with store._guard():  # noqa: SLF001
-                    recovery_birth_cid = (
-                        self._bind_current_merge_recovery_birth_locked(
-                            execution_lease_cid=lease_cid,
-                            execution_lease=lease,
-                        )
-                    )
                     intent = _secure_store_cas(
                         store,
                         lease.merge_enqueue_intent_cid,
                     )
                     enqueue_fields = dict(intent["enqueue_fields"])
+            try:
+                with store._thread_lock:  # noqa: SLF001
+                    with store._guard():  # noqa: SLF001
+                        recovery_birth_cid = (
+                            self._bind_current_merge_recovery_birth_locked(
+                                execution_lease_cid=lease_cid,
+                                execution_lease=lease,
+                            )
+                        )
+            except PlanBoundReplanRequired as exc:
+                if lease.phase == "merge_enqueue_prepared":
+                    request = self._find_queue_request_for_intent(
+                        enqueue_fields
+                    )
+                    if request is not None:
+                        try:
+                            self._require_queue_request_matches_intent(
+                                request,
+                                enqueue_fields,
+                            )
+                        except PlanBoundReplanRequired as row_exc:
+                            row_detail = f";queue_intent_invalid:{row_exc}"
+                        else:
+                            row_detail = ""
+                        self._quarantine_merge_request_mismatch(
+                            request,
+                            prepared=lease,
+                            reason=(
+                                "lifecycle_handoff_authority_invalid:"
+                                f"{exc}{row_detail}"
+                            ),
+                            failure_reason=(
+                                "plan_bound_lifecycle_handoff_authority_invalid"
+                            ),
+                            reason_code=(
+                                "lifecycle_handoff_authority_invalid"
+                            ),
+                        )
+                raise
             if lease.phase == "merge_enqueue_prepared":
+                try:
+                    self._complete_plan_bound_prepared_lifecycle_handoff(
+                        prepared_cid=lease_cid,
+                        prepared=lease,
+                    )
+                except PlanBoundReplanRequired as exc:
+                    # A response may have been lost after enqueue but before
+                    # the execution lease was confirmed.  Never call enqueue
+                    # again when the exact post-terminalization custody proof
+                    # is missing or mixed.  If that response-loss row exists,
+                    # terminally quarantine it so another lane cannot consume
+                    # an unauthoritative handoff while the wave replans.
+                    request = self._find_queue_request_for_intent(
+                        enqueue_fields
+                    )
+                    if request is not None:
+                        try:
+                            self._require_queue_request_matches_intent(
+                                request,
+                                enqueue_fields,
+                            )
+                        except PlanBoundReplanRequired as row_exc:
+                            row_detail = f";queue_intent_invalid:{row_exc}"
+                        else:
+                            row_detail = ""
+                        self._quarantine_merge_request_mismatch(
+                            request,
+                            prepared=lease,
+                            reason=(
+                                "lifecycle_handoff_authority_invalid:"
+                                f"{exc}{row_detail}"
+                            ),
+                            failure_reason=(
+                                "plan_bound_lifecycle_handoff_authority_invalid"
+                            ),
+                            reason_code=(
+                                "lifecycle_handoff_authority_invalid"
+                            ),
+                        )
+                    raise
                 try:
                     request = self.merge_queue.enqueue(**enqueue_fields)
                 except Exception as exc:
@@ -5594,12 +7375,19 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 execution_lease=lease,
                 enqueue_fields=enqueue_fields,
             )
-            completed_cid, _completed_lease = (
+            completed_cid, completed_lease = (
                 self._mark_plan_bound_merge_completed(
                     lease_cid=lease_cid,
                     execution_lease=lease,
                     request=completed_request,
                 )
+            )
+            self._cleanup_plan_bound_completed_workspace_custody(
+                completed_lease
+            )
+            self._release_plan_bound_completed_task_claim(
+                completed_lease,
+                completed_request,
             )
             return {
                 "reason": "plan_bound_merge_enqueue_recovered",
@@ -5670,6 +7458,34 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 attempt=int(handoff["attempt"]),
                 recovery_birth_cid=recovery_birth_cid,
             )
+            lifecycle_prepublication = (
+                self._persist_plan_bound_lifecycle_prepublication(
+                    prepared_cid=prepared_cid,
+                    prepared=prepared,
+                )
+            )
+            lifecycle_record = self._active_worktree_lifecycle
+            if lifecycle_record is None:
+                raise PlanBoundReplanRequired(
+                    "proposal recovery lost its exact SETTLING lifecycle"
+                )
+            lifecycle_handoff = self._finalize_exact_worktree_lifecycle(
+                lifecycle_record,
+                reason="plan_bound_recovered_merge_queue_handoff",
+                terminal_callback=(
+                    lambda prior, terminal: (
+                        self._persist_plan_bound_lifecycle_handoff_receipt(
+                            context=lifecycle_prepublication,
+                            prior=prior,
+                            terminal=terminal,
+                        )
+                    )
+                ),
+            )
+            if lifecycle_handoff.get("finalized") is not True:
+                raise PlanBoundReplanRequired(
+                    "proposal recovery lifecycle handoff did not finalize"
+                )
             try:
                 request = self.merge_queue.enqueue(**enqueue_fields)
             except Exception as exc:
@@ -5687,10 +7503,15 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 execution_lease=confirmed,
                 enqueue_fields=enqueue_fields,
             )
-            completed_cid, _completed = self._mark_plan_bound_merge_completed(
+            completed_cid, completed = self._mark_plan_bound_merge_completed(
                 lease_cid=confirmed_cid,
                 execution_lease=confirmed,
                 request=completed_request,
+            )
+            self._cleanup_plan_bound_completed_workspace_custody(completed)
+            self._release_plan_bound_completed_task_claim(
+                completed,
+                completed_request,
             )
             return {
                 "reason": "plan_bound_proposal_recovered",
@@ -5701,6 +7522,345 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 "attempt_consumed": False,
                 "merge_request_status": completed_request.status,
             }
+
+        def _cleanup_plan_bound_completed_workspace_custody(
+            self,
+            execution_lease: PlanBoundExecutionLease,
+        ) -> dict[str, Any]:
+            """Close the exact completed workspace before deleting its claim.
+
+            A recovery child has no process-local ``WorktreeLease`` mapping.
+            Rebuild it only from the immutable proposal handoff plus the exact
+            dead owner's pool state/lock.  An already-idle entry is the
+            idempotent crash-after-cleanup case; any mixed sidecar fails closed.
+            """
+
+            from ..runtime.multi_supervisor_runner import (
+                _read_stable_regular_json,
+            )
+
+            with store._thread_lock:  # noqa: SLF001
+                with store._guard():  # noqa: SLF001
+                    handoff = _secure_store_cas(
+                        store,
+                        execution_lease.proposal_handoff_cid,
+                    )
+            workspace_path = Path(str(handoff.get("workspace_path") or ""))
+            branch_name = str(handoff.get("branch_name") or "")
+            outcome = str(handoff.get("outcome") or "")
+            if (
+                handoff.get("schema") != PLAN_BOUND_PROPOSAL_HANDOFF_SCHEMA
+                or outcome not in {"changed", "no_change"}
+                or handoff.get("task_id")
+                != execution_lease.active_task_id
+                or handoff.get("task_cid")
+                != execution_lease.active_task_cid
+                or handoff.get("canonical_claim_cid")
+                != execution_lease.canonical_claim_cid
+                or handoff.get("canonical_claim_lease_id")
+                != execution_lease.canonical_claim_lease_id
+                or str(workspace_path) != execution_lease.workspace_path
+                or handoff.get("workspace_lease_id")
+                != execution_lease.workspace_lease_id
+                or handoff.get("workspace_lifecycle_cid")
+                != execution_lease.workspace_lifecycle_cid
+                or handoff.get("actual_changed_paths")
+                != list(execution_lease.actual_changed_paths)
+                or (outcome == "no_change")
+                != (not execution_lease.actual_changed_paths)
+                or not branch_name
+            ):
+                raise PlanBoundHandoffRecoveryRequired(
+                    "completed workspace cleanup handoff is mixed"
+                )
+
+            pool = self.worktree_pool
+            pool_state_path: Path | None = None
+            pool_lock_path: Path | None = None
+            pool_state: dict[str, Any] | None = None
+            if pool is not None:
+                name_match = re.fullmatch(
+                    r"workspace_([0-9a-f]{12})_([0-9a-f]{12})",
+                    workspace_path.name,
+                )
+                if name_match is None:
+                    name_match = re.fullmatch(
+                        r"workspace-([0-9a-f]{12})-([0-9a-f]{12})",
+                        workspace_path.name,
+                    )
+                if name_match is not None:
+                    entry_id = f"{name_match.group(1)}-{name_match.group(2)}"
+                    pool_state_path = pool.state_root / f"{entry_id}.json"
+                    pool_lock_path = pool.state_root / f"{entry_id}.lock"
+
+            def secure_optional_json(path: Path) -> dict[str, Any] | None:
+                try:
+                    payload, evidence = _read_stable_regular_json(path)
+                except Exception as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed workspace pool custody is unreadable"
+                    ) from exc
+                if payload is None:
+                    return None
+                mode = stat.S_IMODE(int(evidence.get("mode") or 0))
+                if (
+                    int(evidence.get("uid", -1)) != os.geteuid()
+                    or int(evidence.get("link_count") or 0) != 1
+                    or mode & 0o022
+                ):
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed workspace pool custody is unsafe"
+                    )
+                return payload
+
+            if pool_state_path is not None:
+                assert pool_lock_path is not None
+                expected_entry_id = pool_state_path.stem
+                original_birth = dict(
+                    execution_lease.daemon_process_birth or {}
+                )
+                original_pid = int(original_birth.get("pid") or 0)
+                if original_pid <= 0:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed workspace pool owner is malformed"
+                    )
+                from ..merge.worktree_lifecycle import current_process_birth
+
+                same_original_process = (
+                    current_process_birth().to_dict() == original_birth
+                )
+
+                # The completed execution lease, its retained exact task
+                # claim, and the recovery-birth bind are the authority for
+                # this cleanup.  Do not call WorktreePool.release here: even
+                # with reusable=False it consults the ordinary reuse
+                # authorizer first, and a completed lifecycle is intentionally
+                # no longer a reusable nonterminal lease.  More importantly,
+                # release would feed unauthenticated cache/dependency fields
+                # from the crash sidecar into Git restore commands.  Discard
+                # only the exact path/token fields joined below.
+                def exact_completed_cleanup_lock(
+                    payload: Mapping[str, Any] | None,
+                ) -> bool:
+                    if payload is None or set(payload) != {
+                        "pid",
+                        "created_at_epoch",
+                    }:
+                        return False
+                    try:
+                        lock_pid = int(payload.get("pid") or 0)
+                        created_at = float(
+                            payload.get("created_at_epoch") or 0.0
+                        )
+                    except (TypeError, ValueError):
+                        return False
+                    if created_at <= 0.0 or lock_pid <= 0:
+                        return False
+                    if lock_pid == original_pid and same_original_process:
+                        return True
+                    # A sibling pool acquisition may exclusively replace the
+                    # dead owner's lock while reclaiming a workspace that the
+                    # completed cleanup already removed, then die before it
+                    # removes the state/lock pair.  The retained exact task
+                    # claim and completed execution lease authorize cleanup of
+                    # that response-loss seam, but never a live claimant.
+                    return not pid_is_alive(lock_pid)
+
+                try:
+                    workspace_parent = workspace_path.parent.resolve(
+                        strict=True
+                    )
+                    pool_root = pool.worktree_root.resolve(strict=True)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed workspace pool root is unverifiable"
+                    ) from exc
+                if workspace_parent != pool_root:
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed workspace is outside its exact pool root"
+                    )
+
+                with serialized_lock_update(pool_lock_path):
+                    pool_state = secure_optional_json(pool_state_path)
+                    pool_lock = secure_optional_json(pool_lock_path)
+                    if pool_state is None:
+                        # WorktreePool._discard_state removes JSON before
+                        # release removes the paired lock.  Therefore an exact
+                        # dead-original lock is a valid response-loss seam;
+                        # any other orphan remains mixed custody.
+                        if pool_lock is not None:
+                            if not exact_completed_cleanup_lock(pool_lock):
+                                raise PlanBoundHandoffRecoveryRequired(
+                                    "completed workspace pool state has a "
+                                    "mixed orphan lock"
+                                )
+                            try:
+                                pool._remove_lock(pool_lock_path)  # noqa: SLF001
+                            except Exception as exc:
+                                raise PlanBoundHandoffRecoveryRequired(
+                                    "completed workspace orphan lock cleanup "
+                                    "failed"
+                                ) from exc
+                    else:
+                        try:
+                            lease_pid = int(pool_state.get("lease_pid") or 0)
+                        except (TypeError, ValueError) as exc:
+                            raise PlanBoundHandoffRecoveryRequired(
+                                "completed workspace pool owner is malformed"
+                            ) from exc
+                        if (
+                            pool_state.get("schema")
+                            != WORKTREE_POOL_SCHEMA
+                            or pool_state.get("lease_token")
+                            != expected_entry_id
+                            or pool_state.get("path")
+                            != str(workspace_path)
+                            or pool_state.get("repo_root")
+                            != str(pool.repo_root)
+                            or pool_state.get("repo_common_dir")
+                            != str(pool.repo_common_dir)
+                            or pool_state.get("state")
+                            not in {"leased", "idle"}
+                        ):
+                            raise PlanBoundHandoffRecoveryRequired(
+                                "completed workspace pool state is mixed"
+                            )
+                        if pool_state["state"] == "leased":
+                            if (
+                                pool_state.get("branch") != branch_name
+                                or lease_pid != original_pid
+                                or not exact_completed_cleanup_lock(pool_lock)
+                            ):
+                                raise PlanBoundHandoffRecoveryRequired(
+                                    "completed leased pool custody is mixed"
+                                )
+                        else:
+                            if (
+                                pool_state.get("branch") != ""
+                                or lease_pid != 0
+                                or (
+                                    pool_lock is not None
+                                    and not exact_completed_cleanup_lock(
+                                        pool_lock
+                                    )
+                                )
+                            ):
+                                raise PlanBoundHandoffRecoveryRequired(
+                                    "completed idle pool custody is mixed"
+                                )
+                            if pool_lock is not None:
+                                try:
+                                    pool._remove_lock(  # noqa: SLF001
+                                        pool_lock_path
+                                    )
+                                except Exception as exc:
+                                    raise PlanBoundHandoffRecoveryRequired(
+                                        "completed idle pool lock cleanup "
+                                        "failed"
+                                    ) from exc
+
+                    # Use only the exact signed workspace path and filename-
+                    # bound token.  Poisoned cache/base/dependency values in
+                    # an otherwise exact stale sidecar are never interpreted.
+                    try:
+                        discard = pool._discard_state(  # noqa: SLF001
+                            {
+                                "path": str(workspace_path),
+                                "lease_token": expected_entry_id,
+                            }
+                        )
+                        pool._remove_lock(pool_lock_path)  # noqa: SLF001
+                    except Exception as exc:
+                        raise PlanBoundHandoffRecoveryRequired(
+                            "completed workspace pool discard failed"
+                        ) from exc
+
+                    if (
+                        workspace_path.exists()
+                        or self._worktree_path_registered_in_repo(
+                            self.repo_root,
+                            workspace_path,
+                        )
+                    ):
+                        raise PlanBoundHandoffRecoveryRequired(
+                            "completed workspace pool discard is incomplete"
+                        )
+                    try:
+                        if self._git_ref_exists(branch_name):
+                            self._run_git(
+                                ["branch", "-D", branch_name],
+                                cwd=self.repo_root,
+                            )
+                    except Exception as exc:
+                        raise PlanBoundHandoffRecoveryRequired(
+                            "completed workspace branch cleanup failed"
+                        ) from exc
+
+                final_state = secure_optional_json(pool_state_path)
+                final_lock = secure_optional_json(pool_lock_path)
+                if (
+                    final_state is not None
+                    or final_lock is not None
+                    or workspace_path.exists()
+                    or self._worktree_path_registered_in_repo(
+                        self.repo_root,
+                        workspace_path,
+                    )
+                    or self._git_ref_exists(branch_name)
+                ):
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "completed workspace pool cleanup proof is incomplete"
+                    )
+                return {
+                    "cleaned": True,
+                    "pooled": False,
+                    "reason": "completed_handoff_pool_entry_discarded",
+                    "worktree_path": str(workspace_path),
+                    "branch": branch_name,
+                    "discard": discard,
+                }
+
+            cleanup_needed = bool(
+                workspace_path.exists()
+                or self._worktree_path_registered_in_repo(
+                    self.repo_root,
+                    workspace_path,
+                )
+                or self._git_ref_exists(branch_name)
+            )
+            try:
+                cleanup = (
+                    super()._cleanup_merged_worktree(
+                        workspace_path,
+                        branch_name,
+                    )
+                    if cleanup_needed
+                    else {
+                        "cleaned": True,
+                        "reason": "already_absent_nonpooled_workspace",
+                        "worktree_path": str(workspace_path),
+                    }
+                )
+            except Exception as exc:
+                if isinstance(exc, PlanBoundHandoffRecoveryRequired):
+                    raise
+                raise PlanBoundHandoffRecoveryRequired(
+                    "completed nonpool workspace cleanup failed"
+                ) from exc
+            if (
+                not isinstance(cleanup, Mapping)
+                or cleanup.get("cleaned") is not True
+                or workspace_path.exists()
+                or self._worktree_path_registered_in_repo(
+                    self.repo_root,
+                    workspace_path,
+                )
+                or self._git_ref_exists(branch_name)
+            ):
+                raise PlanBoundHandoffRecoveryRequired(
+                    "completed nonpool cleanup proof is incomplete"
+                )
+            return dict(cleanup)
 
         def run_once(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
             """Resume only a durable merge handoff before ordinary selection."""
@@ -5721,6 +7881,48 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             if current is not None and current[1].phase == "proposal_ready":
                 return self._recover_plan_bound_proposal_ready(*current)
             if current is not None and current[1].phase == "merge_completed":
+                completed_request = self.merge_queue.get(
+                    current[1].merge_request_id
+                )
+                if completed_request is None:
+                    raise PlanBoundReplanRequired(
+                        "completed execution lease lost its canonical queue row"
+                    )
+                with store._thread_lock:  # noqa: SLF001
+                    with store._guard():  # noqa: SLF001
+                        intent = _secure_store_cas(
+                            store,
+                            current[1].merge_enqueue_intent_cid,
+                        )
+                self._require_queue_request_matches_intent(
+                    completed_request,
+                    dict(intent["enqueue_fields"]),
+                )
+                with store._thread_lock:  # noqa: SLF001
+                    with store._guard():  # noqa: SLF001
+                        recovery_birth_cid = (
+                            self._bind_current_merge_recovery_birth_locked(
+                                execution_lease_cid=current[0],
+                                execution_lease=current[1],
+                            )
+                        )
+                with store._thread_lock:  # noqa: SLF001
+                    with store._guard():  # noqa: SLF001
+                        handoff = _secure_store_cas(
+                            store,
+                            current[1].proposal_handoff_cid,
+                        )
+                if handoff.get("outcome") not in {"changed", "no_change"}:
+                    raise PlanBoundReplanRequired(
+                        "completed cleanup disposition is invalid"
+                    )
+                self._cleanup_plan_bound_completed_workspace_custody(
+                    current[1]
+                )
+                self._release_plan_bound_completed_task_claim(
+                    current[1],
+                    completed_request,
+                )
                 return {
                     "reason": "plan_bound_merge_already_completed",
                     "execution_lease_cid": current[0],
@@ -5728,6 +7930,7 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     "provider_dispatched": False,
                     "attempt_consumed": False,
                     "merge_request_status": "completed",
+                    "merge_recovery_birth_cid": recovery_birth_cid,
                 }
             return super().run_once(*args, **kwargs)
 
@@ -5854,6 +8057,45 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 phases=("proposal_ready",)
             )
             self._await_plan_bound_merge_turn(turn_lease)
+            # Persist the exact enqueue authorization while the candidate's
+            # SETTLING lifecycle is still present.  The base handoff then
+            # terminalizes that exact lease/fence before it reaches the
+            # guarded queue publication below, so no consumable request can
+            # race an active workspace owner.
+            try:
+                # Preparation is itself a durable CAS.  If its response (or
+                # the following prepublication response) is lost, preserve the
+                # exact task claim so run_once can adopt that prepared lease.
+                prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
+                    enqueue_fields=proposal_enqueue_fields,
+                    barrier_cid=barrier_cid,
+                    worktree_path=worktree_path,
+                    baseline_ref=resolved_baseline,
+                    implementation_commit=resolved_implementation,
+                    actual_paths=actual_paths,
+                    branch_name=branch_name,
+                    attempt=attempt,
+                )
+                lifecycle_prepublication = (
+                    self._persist_plan_bound_lifecycle_prepublication(
+                        prepared_cid=prepared_cid,
+                        prepared=prepared,
+                    )
+                )
+            except Exception as exc:
+                if isinstance(exc, PlanBoundHandoffRecoveryRequired):
+                    raise
+                raise PlanBoundHandoffRecoveryRequired(
+                    "prepared candidate publication requires exact recovery"
+                ) from exc
+
+            def record_terminal_handoff(prior: Any, terminal: Any) -> dict[str, Any]:
+                return self._persist_plan_bound_lifecycle_handoff_receipt(
+                    context=lifecycle_prepublication,
+                    prior=prior,
+                    terminal=terminal,
+                )
+
             original_enqueue = self.merge_queue.enqueue
             captured_enqueue_fields: dict[str, Any] = {}
 
@@ -5867,16 +8109,6 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         "canonical enqueue fields changed after wave release"
                     )
                 captured_enqueue_fields.update(enqueue_fields)
-                prepared_cid, prepared = self._prepare_plan_bound_merge_enqueue(
-                    enqueue_fields=enqueue_fields,
-                    barrier_cid=barrier_cid,
-                    worktree_path=worktree_path,
-                    baseline_ref=resolved_baseline,
-                    implementation_commit=resolved_implementation,
-                    actual_paths=actual_paths,
-                    branch_name=branch_name,
-                    attempt=attempt,
-                )
                 request = original_enqueue(**enqueue_fields)
                 self._confirm_plan_bound_merge_enqueue(
                     prepared_cid=prepared_cid,
@@ -5888,38 +8120,55 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
 
             self.merge_queue.enqueue = guarded_enqueue
             try:
-                result = super()._enqueue_validated_worktree(
-                    state=state,
-                    task=task,
-                    attempt=attempt,
-                    branch_name=branch_name,
-                    baseline_ref=resolved_baseline,
-                    worktree_path=worktree_path,
-                    implementation_commit=resolved_implementation,
-                    commit_result=commit_result,
-                    validation_result=validation_result,
-                    changed_submodule_paths=changed_submodule_paths,
-                )
+                try:
+                    result = super()._enqueue_validated_worktree(
+                        state=state,
+                        task=task,
+                        attempt=attempt,
+                        branch_name=branch_name,
+                        baseline_ref=resolved_baseline,
+                        worktree_path=worktree_path,
+                        implementation_commit=resolved_implementation,
+                        commit_result=commit_result,
+                        validation_result=validation_result,
+                        changed_submodule_paths=changed_submodule_paths,
+                        lifecycle_terminal_callback=record_terminal_handoff,
+                    )
+                    confirmed = self._load_execution_lease(
+                        phases=("merge_enqueue_confirmed",)
+                    )
+                    if (
+                        str(result.get("request_id") or "")
+                        != confirmed[1].merge_request_id
+                    ):
+                        raise PlanBoundReplanRequired(
+                            "canonical merge result differs from its durable "
+                            "receipt"
+                        )
+                    completed_request = self._drain_plan_bound_merge_request(
+                        request_id=confirmed[1].merge_request_id,
+                        execution_lease=confirmed[1],
+                        enqueue_fields=captured_enqueue_fields,
+                    )
+                    _completed_cid, completed_lease = (
+                        self._mark_plan_bound_merge_completed(
+                        lease_cid=confirmed[0],
+                        execution_lease=confirmed[1],
+                        request=completed_request,
+                        )
+                    )
+                    self._cleanup_plan_bound_completed_workspace_custody(
+                        completed_lease
+                    )
+                    return result
+                except Exception as exc:
+                    if isinstance(exc, PlanBoundHandoffRecoveryRequired):
+                        raise
+                    raise PlanBoundHandoffRecoveryRequired(
+                        "prepared candidate handoff requires exact recovery"
+                    ) from exc
             finally:
                 self.merge_queue.enqueue = original_enqueue
-            confirmed = self._load_execution_lease(
-                phases=("merge_enqueue_confirmed",)
-            )
-            if str(result.get("request_id") or "") != confirmed[1].merge_request_id:
-                raise PlanBoundReplanRequired(
-                    "canonical merge result differs from its durable receipt"
-                )
-            completed_request = self._drain_plan_bound_merge_request(
-                request_id=confirmed[1].merge_request_id,
-                execution_lease=confirmed[1],
-                enqueue_fields=captured_enqueue_fields,
-            )
-            self._mark_plan_bound_merge_completed(
-                lease_cid=confirmed[0],
-                execution_lease=confirmed[1],
-                request=completed_request,
-            )
-            return result
 
         def _release_pooled_worktree_lease(
             self,
@@ -5978,6 +8227,27 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
 
             proposal = getattr(result, "proposal", None)
             receipt = getattr(result, "receipt", None)
+            # ``_run_clean_candidate_validation`` deliberately asks the
+            # proposal gate to describe one already-proven empty candidate.
+            # The canonical no-change policy gate consumes that diagnostic
+            # rejection and is the only authority allowed to publish the
+            # eventual ``no_change`` disposition.  Publishing ``rejected``
+            # here would immutably win the plan-bound barrier before the
+            # no-change guard can run.  The diagnostics mapping is supplied
+            # only by that canonical path, and the exact empty-patch plus
+            # missing-required-field diagnostic pair prevents an actual
+            # rejected mutation from being deferred.
+            diagnostics = kwargs.get("diagnostics")
+            candidate_diff = tuple(
+                getattr(proposal, "candidate_diff", ()) or ()
+            )
+            if (
+                isinstance(diagnostics, dict)
+                and not candidate_diff
+                and reason_codes
+                == ("empty_patch", "missing_required_field")
+            ):
+                return result
             proposal_id = str(getattr(proposal, "proposal_id", "") or "")
             receipt_id = str(getattr(receipt, "receipt_id", "") or "")
             if not proposal_id or not receipt_id or not reason_codes:
@@ -6387,6 +8657,7 @@ class PortalSupervisorConfig:
     plan_bound_accepted_tree_root: Path | None = None
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
     accepted_control_plane_descriptor: int = -1
+    worker_network_launch_authority_json: str = ""
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -6521,6 +8792,24 @@ class PortalSupervisorConfig:
                 raise PlanBoundDispatchError(
                     "plan-bound accepted control-plane generation drifted"
                 )
+            try:
+                self.worker_network_launch_authority_json = (
+                    canonical_worker_network_launch_authority_json(
+                        self.worker_network_launch_authority_json,
+                        accepted_control_plane_pin=self.accepted_control_plane_pin,
+                        require_admitted=True,
+                    )
+                    if self.worker_network_launch_authority_json
+                    else ""
+                )
+            except ValueError as exc:
+                raise PlanBoundDispatchError(
+                    "plan-bound worker-network launch authority is invalid"
+                ) from exc
+        elif self.worker_network_launch_authority_json:
+            raise PlanBoundDispatchError(
+                "worker-network launch authority requires plan-bound dispatch"
+            )
         if (
             self.manual_completion_authority_revalidation_only
             and not self.manual_completion_authority_task_ids
@@ -7775,6 +10064,10 @@ class PortalImplementationSupervisor:
             }
         update_maintenance_phase("stale_worktree_detection")
         stale_worktree_detection = self.detect_stale_worktrees()
+        update_maintenance_phase("worktree_pool_orphan_reconciliation")
+        worktree_pool_orphan_reconciliation = (
+            self.reconcile_orphaned_worktree_pool_metadata()
+        )
         update_maintenance_phase("stale_active_state_repair")
         stale_active_state_repair = self.repair_stale_active_execution_state()
         update_maintenance_phase("main_checkout_repair")
@@ -7908,6 +10201,9 @@ class PortalImplementationSupervisor:
                 "state_file_repair": state_file_repair,
                 "stale_active_state_repair": stale_active_state_repair,
                 "stale_worktree_detection": stale_worktree_detection,
+                "worktree_pool_orphan_reconciliation": (
+                    worktree_pool_orphan_reconciliation
+                ),
                 "todo_board_repair": todo_board_repair,
                 "objective_task_janitor": objective_task_janitor,
                 "objective_goal_migration": objective_goal_migration,
@@ -8168,6 +10464,9 @@ class PortalImplementationSupervisor:
             "state_file_repair": state_file_repair,
             "stale_active_state_repair": stale_active_state_repair,
             "stale_worktree_detection": stale_worktree_detection,
+            "worktree_pool_orphan_reconciliation": (
+                worktree_pool_orphan_reconciliation
+            ),
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
             "generated_dirty_repair": generated_dirty_repair,
@@ -8182,7 +10481,7 @@ class PortalImplementationSupervisor:
             ),
         }
 
-    def run_forever(self) -> None:
+    def run_forever(self) -> int:
         """Run continuously and fence the managed daemon on process signals."""
 
         stop_signal: int | None = None
@@ -8199,13 +10498,28 @@ class PortalImplementationSupervisor:
             previous_term = signal.signal(signal.SIGTERM, request_stop)
             previous_int = signal.signal(signal.SIGINT, request_stop)
         try:
-            self._run_forever_loop()
+            return self._run_forever_loop()
         finally:
             if stop_signal is not None:
                 cleanup = self._terminate_managed_daemon_tree()
-                interrupted_reconciliation = (
-                    self._reconcile_interrupted_implementation_after_shutdown()
-                )
+                if self.config.plan_bound_dispatch:
+                    # Signed plan-bound execution owns interrupted recovery.
+                    # The legacy broad reconciler may release the exact task
+                    # claim that marks a durable merge-completed workspace as
+                    # still needing cleanup, making the cleanup-only birth
+                    # unreachable.  Retain all plan custody for the bounded
+                    # runner/recovery state machine after the child tree is
+                    # quiesced.
+                    interrupted_reconciliation = {
+                        "reconciled": False,
+                        "blocked": False,
+                        "reason": "plan_bound_recovery_custody_retained",
+                        "custody_retained": True,
+                    }
+                else:
+                    interrupted_reconciliation = (
+                        self._reconcile_interrupted_implementation_after_shutdown()
+                    )
                 try:
                     self._record_event(
                         "supervisor_signal_shutdown",
@@ -8231,22 +10545,58 @@ class PortalImplementationSupervisor:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
 
-    def _run_forever_loop(self) -> None:
+    def _run_forever_loop(self) -> int:
         self.ensure_event_log_file()
-        self.repair_main_checkout_merge_state()
-        self.ensure_managed_daemon_pid_file()
-        try:
-            preflight = self.run_once(include_refill=False)
-        except Exception as exc:
+        if (
+            self.config.plan_bound_dispatch
+            and not self.config.execution_slice_task_ids
+            and not self.config.execution_slice_task_cids
+        ):
             self._record_event(
-                "supervisor_preflight_maintenance_failed",
+                "plan_bound_empty_slice",
+                {"daemon_started": False},
+            )
+            return 0
+        if self.config.plan_bound_dispatch:
+            self._validated_plan_bound_slice()
+        else:
+            self.repair_main_checkout_merge_state()
+        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
+        if managed_daemon_guard.get("blocked", False):
+            self._record_event(
+                "managed_daemon_start_blocked",
+                managed_daemon_guard,
+            )
+            raise RuntimeError(
+                str(
+                    managed_daemon_guard.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
+        if self.config.plan_bound_dispatch:
+            # The canonical plan and task source were re-observed above.  Do
+            # not run broad supervisor maintenance between that fence and the
+            # exact daemon slice.
+            self._record_event(
+                "plan_bound_preflight_pass",
                 {
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
+                    "revision_cid": self.config.plan_bound_revision_cid,
+                    "slice_id": self.config.plan_bound_slice_id,
                 },
             )
-            raise
-        self._record_event("supervisor_preflight_maintenance_pass", preflight)
+        else:
+            try:
+                preflight = self.run_once(include_refill=False)
+            except Exception as exc:
+                self._record_event(
+                    "supervisor_preflight_maintenance_failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+                raise
+            self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
             loop = self.shared_supervisor_loop_class(
@@ -8266,6 +10616,13 @@ class PortalImplementationSupervisor:
                 "last_log_path": result.last_log_path,
             }
             self._record_event("supervisor_loop_finished", result_payload)
+            if self.config.plan_bound_dispatch:
+                exit_code = result.last_exit_code
+                if exit_code is None:
+                    return 0
+                if isinstance(exit_code, bool) or not isinstance(exit_code, int):
+                    return 1
+                return exit_code if 0 <= exit_code <= 255 else 1
             if result.status == CONTROL_PLANE_RELOAD_STATUS:
                 self._record_event(
                     "supervisor_control_plane_reload",
@@ -8276,7 +10633,7 @@ class PortalImplementationSupervisor:
                 )
                 self._reload_for_control_plane_update()
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
-                return
+                return 0
 
             try:
                 recovery = self.run_once()
@@ -11745,6 +14102,40 @@ class PortalImplementationSupervisor:
         }
         if processed:
             self._record_event("worktree_reconciliation", result)
+        return result
+
+    def reconcile_orphaned_worktree_pool_metadata(
+        self,
+        *,
+        max_entries: int = 100,
+    ) -> dict[str, Any]:
+        """Reconcile dead pool sidecars that no Git worktree scan can see."""
+
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            return {
+                "attempted": False,
+                "reason": "worktree_root_not_configured",
+            }
+        state_root = worktree_root / ".pool-state"
+        if not state_root.is_dir():
+            return {
+                "attempted": False,
+                "reason": "worktree_pool_state_not_found",
+                "worktree_root": str(worktree_root),
+            }
+        pool = WorktreePool(
+            repo_root=self.config.repo_root,
+            worktree_root=worktree_root,
+        )
+        result = pool.reconcile_orphaned_metadata(
+            max_entries=max_entries,
+        )
+        if result.get("removed_count"):
+            self._record_event(
+                "worktree_pool_orphan_metadata_reconciled",
+                result,
+            )
         return result
 
     def recover_already_merged_reconciliation_candidates(
@@ -17329,6 +19720,17 @@ class PortalImplementationSupervisor:
         return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
+        # The accepted native bootstrap currently denies this supervisor
+        # before repository import, and no serializable command-line value can
+        # replace the absent independently verified per-birth objects.  Keep a
+        # second source-level fence here so direct/in-process callers also stop
+        # before PID-file repair, command construction, or Popen.
+        if _requires_eaaef_implementation_daemon_birth(
+            self.config.database_program
+        ):
+            raise PlanBoundDispatchError(
+                EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO
+            )
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
         env = os.environ.copy()
@@ -17896,10 +20298,22 @@ class PortalImplementationSupervisor:
                 ]
                 return values == [expected]
 
+            worker_values = [
+                tokens[index + 1]
+                for index, token in enumerate(tokens[:-1])
+                if token == EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG
+            ]
+            expected_worker_values = (
+                [self.config.worker_network_launch_authority_json]
+                * (2 if self.config.plan_bound_dispatch else 1)
+                if self.config.worker_network_launch_authority_json
+                else []
+            )
             return (
                 exact_option("--state-dir", str(self.config.state_dir))
                 and exact_option("--state-prefix", self.config.state_prefix)
                 and exact_option("--todo-path", str(self.config.todo_path))
+                and worker_values == expected_worker_values
             )
 
     def _remove_managed_daemon_identity_markers(
@@ -18095,6 +20509,13 @@ class PortalImplementationSupervisor:
                     command.extend(["--plan-bound-task-id", str(task_id)])
                 for task_cid in self.config.execution_slice_task_cids:
                     command.extend(["--plan-bound-task-cid", str(task_cid)])
+                if self.config.worker_network_launch_authority_json:
+                    command.extend(
+                        [
+                            EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+                            self.config.worker_network_launch_authority_json,
+                        ]
+                    )
                 command.append("--")
             elif daemon_script_path is None:
                 # Safe-path mode prevents a stale nested checkout in the working
@@ -18123,6 +20544,13 @@ class PortalImplementationSupervisor:
                     str(max(0, int(self.config.max_task_attempts))),
                 ]
             )
+            if self.config.worker_network_launch_authority_json:
+                command.extend(
+                    [
+                        EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+                        self.config.worker_network_launch_authority_json,
+                    ]
+                )
             if self.config.database_program is not None:
                 program = self.config.database_program
                 program.assert_quack_not_demoted(
@@ -18148,6 +20576,20 @@ class PortalImplementationSupervisor:
                 command.extend(
                     ["--merge-queue-dir", str(self.config.merge_queue_dir)]
                 )
+            # Crash-fence and objective reconciliation run even when provider
+            # dispatch is disabled.  Keep their path identity identical to an
+            # implementing pass so a maintenance-only daemon can safely inspect
+            # worktrees and receipts created by the implementing daemon.
+            if self.config.worktree_root is not None:
+                command.extend(["--worktree-root", str(self.config.worktree_root)])
+            for relative in self.config.worktree_submodule_paths:
+                command.extend(["--worktree-submodule-path", relative])
+            if self.config.objective_path is not None:
+                command.extend(["--objective-path", str(self.config.objective_path)])
+            if self.config.objective_bundle_dir is not None:
+                command.extend(
+                    ["--objective-bundle-dir", str(self.config.objective_bundle_dir)]
+                )
             if self.config.implement:
                 command.append("--implement")
                 command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
@@ -18164,14 +20606,6 @@ class PortalImplementationSupervisor:
                     )
                 if not self.config.use_ephemeral_worktree:
                     command.append("--no-ephemeral-worktree")
-                if self.config.worktree_root is not None:
-                    command.extend(["--worktree-root", str(self.config.worktree_root)])
-                for relative in self.config.worktree_submodule_paths:
-                    command.extend(["--worktree-submodule-path", relative])
-                if self.config.objective_path is not None:
-                    command.extend(["--objective-path", str(self.config.objective_path)])
-                if self.config.objective_bundle_dir is not None:
-                    command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
             if self.config.objective_refill_enabled:
                 command.extend(
                     [
@@ -18531,6 +20965,29 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_ids
         ):
             return False
+        if option_values("--manual-completion-authority-task-id") != set(
+            self.config.manual_completion_authority_task_ids
+        ):
+            return False
+        if option_values(
+            "--manual-completion-authority-required-task-id"
+        ) != set(self.config.manual_completion_authority_required_task_ids):
+            return False
+        expected_authority_epoch_ids = (
+            {self.config.manual_completion_authority_epoch_id}
+            if self.config.manual_completion_authority_epoch_id
+            else set()
+        )
+        if option_values(
+            "--manual-completion-authority-epoch-id"
+        ) != expected_authority_epoch_ids:
+            return False
+        if (
+            "--manual-completion-authority-revalidation-only" in tokens
+        ) != bool(
+            self.config.manual_completion_authority_revalidation_only
+        ):
+            return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
         ):
@@ -18548,6 +21005,15 @@ class PortalImplementationSupervisor:
             else set()
         )
         if option_values("--merge-queue-dir") != expected_merge_queue_dirs:
+            return False
+        expected_worker_authorities = (
+            {self.config.worker_network_launch_authority_json}
+            if self.config.worker_network_launch_authority_json
+            else set()
+        )
+        if option_values(
+            EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG
+        ) != expected_worker_authorities:
             return False
         return True
 
@@ -18578,6 +21044,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "repository-local scheduler profile. Explicit later CLI options "
             "retain precedence."
         ),
+    )
+    parser.add_argument("--plan-bound-dispatch", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-revision-store-path", type=Path, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-revision-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-plan-root-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-execution-plan-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-capacity-snapshot-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-slice-manifest-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-slice-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-lane-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-reassignment-cid", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-source-head", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-source-tree", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-task-source-revision", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-configuration-root", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--plan-bound-accepted-tree-root", type=Path, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--accepted-control-plane-pin-json", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--accepted-control-plane-fd", type=int, default=-1, help=argparse.SUPPRESS)
+    parser.add_argument(
+        EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
+        dest="worker_network_launch_authority_json",
+        default="",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
     parser.add_argument(
@@ -18701,6 +21190,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Exact repo-relative file that managed implementation agents must treat as "
             "read-only. May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID governed by operator-sealed manual "
+            "completion. Pending descendants must be freshly revalidated "
+            "after its seal becomes active."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID whose status cannot be selected or "
+            "accepted as complete until a fresh scheduler load verifies its "
+            "operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help=(
+            "Content-addressed identity of the verified manual-completion "
+            "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Supervise only zero-provider manual-completion authority "
+            "revalidation and suppress ordinary supervisor maintenance, "
+            "refill, merge repair, and implementation dispatch."
         ),
     )
     parser.add_argument(
@@ -19268,6 +21794,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--objective-scan-max-findings", type=int, default=5)
     parser.add_argument("--objective-scan-cooldown-seconds", type=int, default=21600)
     parser.add_argument(
+        "--objective-scan-exclude-path",
+        action="append",
+        default=[],
+        help=(
+            "Repo-relative operational or control path excluded from objective "
+            "evidence scans and completion-tree identity. May be repeated or "
+            "comma-separated."
+        ),
+    )
+    parser.add_argument(
         "--objective-refill-timeout-seconds",
         type=float,
         default=0.0,
@@ -19369,6 +21905,14 @@ def supervisor_config_from_args(
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
     database_program = database_program_from_cli_namespace(args)
+    accepted_control_plane_pin = None
+    accepted_control_plane_pin_json = str(
+        getattr(args, "accepted_control_plane_pin_json", "") or ""
+    ).strip()
+    if accepted_control_plane_pin_json:
+        accepted_control_plane_pin = parse_accepted_control_plane_pin(
+            accepted_control_plane_pin_json
+        )
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -19402,6 +21946,34 @@ def supervisor_config_from_args(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
         ),
+        manual_completion_authority_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_required_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_required_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_epoch_id=str(
+            getattr(args, "manual_completion_authority_epoch_id", "") or ""
+        ).strip(),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                args,
+                "manual_completion_authority_revalidation_only",
+                False,
+            )
+        ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
@@ -19420,6 +21992,28 @@ def supervisor_config_from_args(
         assumed_completed_task_ids=tuple(args.assume_completed_task_id or ()),
         execution_slice_task_ids=tuple(args.execution_slice_task_id or ()),
         execution_slice_task_cids=tuple(args.execution_slice_task_cid or ()),
+        plan_bound_dispatch=bool(getattr(args, "plan_bound_dispatch", False)),
+        plan_revision_store_path=getattr(args, "plan_revision_store_path", None),
+        plan_bound_revision_cid=str(getattr(args, "plan_bound_revision_cid", "") or ""),
+        plan_bound_plan_root_cid=str(getattr(args, "plan_bound_plan_root_cid", "") or ""),
+        plan_bound_execution_plan_cid=str(getattr(args, "plan_bound_execution_plan_cid", "") or ""),
+        plan_bound_capacity_snapshot_id=str(getattr(args, "plan_bound_capacity_snapshot_id", "") or ""),
+        plan_bound_slice_manifest_cid=str(getattr(args, "plan_bound_slice_manifest_cid", "") or ""),
+        plan_bound_slice_id=str(getattr(args, "plan_bound_slice_id", "") or ""),
+        plan_bound_lane_id=str(getattr(args, "plan_bound_lane_id", "") or ""),
+        plan_bound_reassignment_cid=str(getattr(args, "plan_bound_reassignment_cid", "") or ""),
+        plan_bound_source_head=str(getattr(args, "plan_bound_source_head", "") or ""),
+        plan_bound_source_tree=str(getattr(args, "plan_bound_source_tree", "") or ""),
+        plan_bound_task_source_revision=str(getattr(args, "plan_bound_task_source_revision", "") or ""),
+        plan_bound_configuration_root=str(getattr(args, "plan_bound_configuration_root", "") or ""),
+        plan_bound_accepted_tree_root=getattr(args, "plan_bound_accepted_tree_root", None),
+        accepted_control_plane_pin=accepted_control_plane_pin,
+        accepted_control_plane_descriptor=int(
+            getattr(args, "accepted_control_plane_fd", -1)
+        ),
+        worker_network_launch_authority_json=str(
+            getattr(args, "worker_network_launch_authority_json", "") or ""
+        ),
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
@@ -19510,6 +22104,9 @@ def supervisor_config_from_args(
         objective_scan_min_open_tasks=args.objective_scan_min_open_tasks,
         objective_scan_max_findings=args.objective_scan_max_findings,
         objective_scan_cooldown_seconds=args.objective_scan_cooldown_seconds,
+        objective_scan_exclude_paths=split_csv_values(
+            args.objective_scan_exclude_path
+        ),
         objective_refill_timeout_seconds=args.objective_refill_timeout_seconds,
         objective_scan_depends_on=split_csv_values(args.objective_scan_depends_on),
         objective_max_refinement_children=args.objective_max_refinement_children,
@@ -19600,6 +22197,9 @@ def _reconciliation_preflight_failure_reason(
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == PLAN_BOUND_DAEMON_CHILD_MARKER:
+        return _run_plan_bound_daemon_child(raw_argv[1:])
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -19620,8 +22220,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
         return 0
-    supervisor.run_forever()
-    return 0
+    return supervisor.run_forever()
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ from ...llm_router import (
     AgentImplementationControlPlanePin,
     AgentImplementationRoutePlan,
     AgentImplementationSealedControlPlane,
+    eaaef_agent_route_authorization_path,
     load_agent_implementation_route_authorization,
     materialize_agent_implementation_control_plane_capsule,
     project_agent_implementation_route_capacity,
@@ -84,8 +85,12 @@ from ..task_sources.task_source import recompute_readiness_statuses
 from ..task_sources.todo_vector_index import parse_todo_blocks, split_csv
 from ..validation.validation_commands import split_validation_commands
 from .multi_supervisor_runner import (
+    AUTHORITY_MODE_EMBEDDED,
     AUTHORITY_MODE_LEGACY_MARKDOWN,
+    AUTHORITY_MODE_QUACK,
     DATABASE_PROGRAM_CONFIG_INTERFACE,
+    FAILOVER_FAIL_CLOSED,
+    TASK_SOURCE_DUCKDB,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
@@ -109,7 +114,7 @@ from .resource_scheduler import sample_host_resources
 
 SCHEDULER_SCHEMA_PATTERN = re.compile(
     r"^ipfs_accelerate_py\.agent_supervisor\."
-    r"[a-z0-9_.-]+\.scheduler_config@1$"
+    r"[a-z0-9_.-]+\.scheduler_config@(?:1|2)$"
 )
 IMPLEMENTATION_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
@@ -178,6 +183,7 @@ ORDERED_PROVIDER_FIELDS = (
 )
 ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
 ORDERED_PRIMARY_MODEL_ID = "grok-4.6"
+LEGACY_V3_PRIMARY_MODEL_ID = "grok-4.5"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
@@ -195,6 +201,27 @@ class ConfiguredBoardError(ValueError):
     """The scheduler document or its repository binding is inadmissible."""
 
 
+EAAEF_BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
+EAAEF_SCHEDULER_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "external_agent_autonomous_execution_fabric.scheduler_config@2"
+)
+EAAEF_CONFIG_PATH = "config/external_agent_autonomous_execution_fabric_scheduler.json"
+EAAEF_TASKBOARD_PATH = (
+    "docs/architecture/external_agent_autonomous_execution_fabric/TASK_BOARD.md"
+)
+EAAEF_TASKBOARD_JSON_PATH = (
+    "docs/architecture/external_agent_autonomous_execution_fabric/task_board.json"
+)
+EAAEF_OBJECTIVES_PATH = (
+    "docs/architecture/external_agent_autonomous_execution_fabric/OBJECTIVES.md"
+)
+EAAEF_PLAN_PATH = "docs/architecture/external_agent_autonomous_execution_fabric/PLAN.md"
+EAAEF_VALIDATOR_PATH = (
+    "scripts/validate_external_agent_autonomous_execution_fabric_board.py"
+)
+
+
 @dataclass(frozen=True)
 class _ConfiguredBoardTaskPopulation:
     all_records: tuple[dict[str, Any], ...]
@@ -204,10 +231,111 @@ class _ConfiguredBoardTaskPopulation:
     state_snapshot_id: str
 
 
-def _plan_bound_profile(board: "ConfiguredBoard") -> bool:
-    """Whether this is the sealed v3 profile, rather than a legacy board."""
+def _plan_bound_profile(board: ConfiguredBoard) -> bool:
+    """Whether this board requires exact compiler slices and sealed births."""
 
-    return board.board_namespace == "agent-supervisor-prompt-only-self-improvement-v3"
+    return board.board_namespace in {
+        "agent-supervisor-prompt-only-self-improvement-v3",
+        EAAEF_BOARD_NAMESPACE,
+    }
+
+
+def _eaaef_plan_bound_profile(board: ConfiguredBoard) -> bool:
+    return (
+        board.board_namespace == EAAEF_BOARD_NAMESPACE
+        and board.payload.get("schema") == EAAEF_SCHEDULER_SCHEMA
+    )
+
+
+def _ordered_primary_models_for_namespace(board_namespace: str) -> frozenset[str]:
+    """Return only canonical models admitted by one scheduler namespace.
+
+    The signed prompt-only V3 route is permanently model-bound to Grok 4.5.
+    EAAEF has a different source-addressed route and is permanently bound to
+    Grok 4.6.  Other scheduler_config@1 boards may use either canonical
+    quota-only route; the canonical router still rejects every hybrid tuple.
+    """
+
+    if board_namespace == "agent-supervisor-prompt-only-self-improvement-v3":
+        return frozenset({LEGACY_V3_PRIMARY_MODEL_ID})
+    if board_namespace == EAAEF_BOARD_NAMESPACE:
+        return frozenset({ORDERED_PRIMARY_MODEL_ID})
+    return frozenset({LEGACY_V3_PRIMARY_MODEL_ID, ORDERED_PRIMARY_MODEL_ID})
+
+
+def _validate_eaaef_database_programs(
+    *,
+    board_namespace: str,
+    payload: Mapping[str, Any],
+    operational_program: DatabaseProgramConfig | None,
+) -> None:
+    """Keep bootstrap DuckDB and operational Quack roles non-substitutable."""
+
+    if board_namespace != EAAEF_BOARD_NAMESPACE:
+        return
+    from ..task_sources.eaaef_operational_schema import (
+        EAAEF_OPERATIONAL_PROFILE_ID,
+    )
+
+    raw_bootstrap = payload.get("bootstrap_database_program")
+    if not isinstance(raw_bootstrap, Mapping):
+        raise ConfiguredBoardError(
+            "EAAEF requires bootstrap_database_program for immutable materialization"
+        )
+    try:
+        bootstrap_program = parse_database_program_config(dict(raw_bootstrap))
+    except DatabaseProgramConfigError as exc:
+        raise ConfiguredBoardError(
+            f"invalid EAAEF bootstrap_database_program: {exc}"
+        ) from exc
+    if (
+        bootstrap_program is None
+        or bootstrap_program.authority_mode != AUTHORITY_MODE_EMBEDDED
+        or bootstrap_program.task_source_kind != TASK_SOURCE_DUCKDB
+        or bootstrap_program.failover_policy != FAILOVER_FAIL_CLOSED
+        or bootstrap_program.schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
+        or not bootstrap_program.store_id.endswith((".duckdb", ".ddb"))
+    ):
+        raise ConfiguredBoardError(
+            "EAAEF bootstrap_database_program must be embedded DuckDB under "
+            "the exact operational profile @2"
+        )
+    if (
+        operational_program is None
+        or operational_program.authority_mode != AUTHORITY_MODE_QUACK
+        or operational_program.task_source_kind != TASK_SOURCE_DUCKDB
+        or operational_program.failover_policy != FAILOVER_FAIL_CLOSED
+        or operational_program.schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
+        or not operational_program.quack_endpoint
+        or not operational_program.endpoint_secret_handle
+        or not operational_program.store_id
+        or "/" in operational_program.store_id
+        or "\\" in operational_program.store_id
+        or operational_program.store_id.endswith((".duckdb", ".ddb"))
+    ):
+        raise ConfiguredBoardError(
+            "EAAEF operational database_program must be remote Quack with no "
+            "direct-file fallback under the exact operational profile @2"
+        )
+    if bootstrap_program.to_dict() == operational_program.to_dict():
+        raise ConfiguredBoardError(
+            "EAAEF bootstrap and operational database programs are conflated"
+        )
+    from ..validation.external_agent_configured_board_capsule import (
+        EAAEF_OPERATIONAL_COMMAND_FABRIC_SHARD_ID,
+        ExternalAgentConfiguredBoardCapsuleError,
+        validate_eaaef_operational_command_fabric_profile,
+    )
+
+    try:
+        validate_eaaef_operational_command_fabric_profile(
+            payload.get("operational_command_fabric"),
+            operational_program=operational_program.to_dict(),
+            expected_board_namespace=board_namespace,
+            expected_shard_id=EAAEF_OPERATIONAL_COMMAND_FABRIC_SHARD_ID,
+        )
+    except ExternalAgentConfiguredBoardCapsuleError as exc:
+        raise ConfiguredBoardError(str(exc)) from exc
 
 
 def _sanitized_git_environment() -> dict[str, str]:
@@ -1411,6 +1539,17 @@ def _resolved_ordered_provider_route(
     authorization_path = str(
         provider.get(ROUTE_AUTHORIZATION_PATH_FIELD) or ""
     ).strip()
+    if (
+        not authorization_path
+        and board_namespace == EAAEF_BOARD_NAMESPACE
+        and values["fallback_trigger"] == "primary_quota_or_auth_unavailable"
+    ):
+        # The EAAEF authorization is deliberately published only after the
+        # reviewed source tree is frozen.  Derive its create-once path from
+        # that tree rather than embedding a post-freeze CID/path in the
+        # tracked scheduler config (which would create a source-tree cycle).
+        _source_head, source_tree = _git_identity(repo_root)
+        authorization_path = eaaef_agent_route_authorization_path(source_tree)
     if authorization_path:
         try:
             authorization = load_agent_implementation_route_authorization(
@@ -1746,6 +1885,28 @@ def load_configured_board(
     board_namespace = _required_string(payload, "board_namespace")
     if re.fullmatch(r"[a-z0-9][a-z0-9._-]*", board_namespace) is None:
         raise ConfiguredBoardError("board_namespace is unsafe")
+    config_relative = path.relative_to(root).as_posix()
+    eaaef_markers = {
+        "schema": schema == EAAEF_SCHEDULER_SCHEMA,
+        "config_path": config_relative == EAAEF_CONFIG_PATH,
+        "board_namespace": board_namespace == EAAEF_BOARD_NAMESPACE,
+        "task_prefix": _task_header_prefix(task_prefix) == "## EAAEF-",
+        "taskboard_path": taskboard_path == EAAEF_TASKBOARD_PATH,
+        "taskboard_json_path": (
+            payload.get("taskboard_json_path") == EAAEF_TASKBOARD_JSON_PATH
+        ),
+        "objectives_path": objectives_path == EAAEF_OBJECTIVES_PATH,
+        "plan_path": plan_path == EAAEF_PLAN_PATH,
+        "validator_path": validator_path == EAAEF_VALIDATOR_PATH,
+    }
+    if any(eaaef_markers.values()) and not all(eaaef_markers.values()):
+        mismatched = sorted(
+            name for name, matches in eaaef_markers.items() if not matches
+        )
+        raise ConfiguredBoardError(
+            "EAAEF scheduler identity markers cannot be downgraded: "
+            + ", ".join(mismatched)
+        )
     merge_target_branch = _required_string(payload, "merge_target_branch")
     if (
         merge_target_branch.startswith("-")
@@ -1812,7 +1973,6 @@ def load_configured_board(
         payload.get("protected_paths"),
         field="protected_paths",
     )
-    config_relative = path.relative_to(root).as_posix()
     if config_relative not in protected:
         raise ConfiguredBoardError(
             "scheduler config must protect its own source path"
@@ -1873,10 +2033,14 @@ def load_configured_board(
                 "provider.primary_provider_id must be 'grok_cli' for "
                 "the ordered provider contract"
             )
-        if primary_model_id != ORDERED_PRIMARY_MODEL_ID:
+        admitted_primary_models = _ordered_primary_models_for_namespace(
+            board_namespace
+        )
+        if primary_model_id not in admitted_primary_models:
+            expected_models = ", ".join(sorted(admitted_primary_models))
             raise ConfiguredBoardError(
-                "provider.primary_model_id must be 'grok-4.6' for "
-                "the ordered provider contract"
+                "provider.primary_model_id must be one of "
+                f"{expected_models!r} for the scoped ordered provider contract"
             )
         if fallback_provider_id != ORDERED_FALLBACK_PROVIDER_ID:
             raise ConfiguredBoardError(
@@ -1906,11 +2070,20 @@ def load_configured_board(
                 "ordered provider fields cannot be mixed with legacy "
                 "provider_id/model_id"
             )
-        _resolved_ordered_provider_route(
-            provider,
-            repo_root=root,
-            board_namespace=board_namespace,
+        launch_policy = payload.get("launch_policy")
+        eaaef_route_is_post_freeze_and_live_blocked = (
+            board_namespace == EAAEF_BOARD_NAMESPACE
+            and schema == EAAEF_SCHEDULER_SCHEMA
+            and isinstance(launch_policy, Mapping)
+            and launch_policy.get("live_multi_supervisor_allowed") is False
+            and launch_policy.get("live_single_supervisor_allowed") is False
         )
+        if not eaaef_route_is_post_freeze_and_live_blocked:
+            _resolved_ordered_provider_route(
+                provider,
+                repo_root=root,
+                board_namespace=board_namespace,
+            )
     else:
         provider_id = _optional_provider_string(
             provider,
@@ -1980,6 +2153,12 @@ def load_configured_board(
             database_program = parse_database_program_config(program_payload)
         except DatabaseProgramConfigError as exc:
             raise ConfiguredBoardError(str(exc)) from exc
+
+    _validate_eaaef_database_programs(
+        board_namespace=board_namespace,
+        payload=payload,
+        operational_program=database_program,
+    )
 
     _objective_refill_controls(payload)
 
@@ -2277,11 +2456,17 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             passed=(
                 validator.returncode == 0
                 and validator_report.get("valid") is True
+                and (
+                    not _eaaef_plan_bound_profile(board)
+                    or validator_report.get("board_namespace")
+                    == EAAEF_BOARD_NAMESPACE
+                )
             ),
             detail={
                 "returncode": validator.returncode,
                 "stderr": validator.stderr[-2000:],
                 "errors": validator_report.get("errors"),
+                "board_namespace": validator_report.get("board_namespace"),
             },
         )
 
@@ -2661,6 +2846,16 @@ def configured_board_launch_plan(
                     str(accepted_control_plane_descriptor),
                 ]
             )
+        if _eaaef_plan_bound_profile(board):
+            try:
+                live_config = board.config_path.relative_to(board.repo_root).as_posix()
+            except ValueError as exc:
+                raise ConfiguredBoardError(
+                    "EAAEF scheduler config escapes the accepted repository"
+                ) from exc
+            runner_args.extend(
+                ["--require-configured-board-live-seal", live_config]
+            )
     else:
         runner_args.extend(
             [
@@ -2982,6 +3177,78 @@ def _publish_reserved_coordinator_pid(
         ) from exc
 
 
+def _repair_unreaped_coordinator_pid_projection(
+    pid_path: Path,
+    descriptor: int,
+    reserved_identity: tuple[int, int],
+    pid: int,
+) -> None:
+    """Repair the reserved projection with the exact known unreaped PID.
+
+    This is used only after process-group termination failed.  It never opens
+    a replacement pathname for writing: the original exclusive descriptor and
+    its device/inode identity remain the authority boundary.
+    """
+
+    try:
+        opened = os.fstat(descriptor)
+        observed = os.lstat(pid_path)
+        if (
+            (int(opened.st_dev), int(opened.st_ino)) != reserved_identity
+            or (int(observed.st_dev), int(observed.st_ino))
+            != reserved_identity
+            or stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or int(observed.st_nlink) != 1
+            or int(opened.st_uid) != os.geteuid()
+            or int(observed.st_uid) != os.geteuid()
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or stat.S_IMODE(observed.st_mode) != 0o600
+        ):
+            raise ConfiguredBoardError(
+                "cannot preserve unreaped coordinator PID in a changed projection"
+            )
+        os.ftruncate(descriptor, 0)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        _publish_reserved_coordinator_pid(
+            pid_path,
+            descriptor,
+            reserved_identity,
+            pid,
+        )
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            f"cannot preserve unreaped coordinator PID {int(pid)}"
+        ) from exc
+
+
+def _publish_foreground_unreaped_coordinator_pid(
+    board: ConfiguredBoard,
+    pid: int,
+) -> Path:
+    """Create one secure recovery projection for an unreaped foreground PID."""
+
+    state_dir = _ensure_plan_bound_runtime_directory(
+        board.repo_root,
+        board.path(board.runtime_paths["state"]),
+    )
+    pid_path = state_dir / f"configured-board-unreaped-{int(pid)}.pid"
+    descriptor, identity = _reserve_coordinator_pid_projection(pid_path)
+    try:
+        _publish_reserved_coordinator_pid(
+            pid_path,
+            descriptor,
+            identity,
+            pid,
+        )
+    except BaseException:
+        _remove_reserved_coordinator_pid(pid_path, identity)
+        raise
+    finally:
+        os.close(descriptor)
+    return pid_path
+
+
 def _remove_reserved_coordinator_pid(
     pid_path: Path,
     reserved_identity: tuple[int, int],
@@ -3018,6 +3285,104 @@ def _materialize_plan_bound_control_plane(
             "plan-bound coordinator repo root is not the accepted module tree"
         )
     source_head, source_tree = _git_identity(accepted_tree_root)
+    if _eaaef_plan_bound_profile(board):
+        # EAAEF authority is signed only after the tracked source/configuration
+        # is frozen.  The tracked config therefore names stable registry paths,
+        # never the post-freeze receipt CIDs (which would form a cryptographic
+        # fixed-point cycle).  Re-open and verify those create-once records
+        # before sealing the exact accepted archive for this coordinator.
+        live_seal = board.payload.get("configured_board_live_seal")
+        if not isinstance(live_seal, Mapping):
+            raise ConfiguredBoardError(
+                "EAAEF configured_board_live_seal is absent"
+            )
+        from ..validation.external_agent_bootstrap_admission import (
+            ExternalAgentBootstrapAdmissionError,
+            external_agent_bootstrap_admission_relative_path,
+            verify_external_agent_bootstrap_admission,
+        )
+        from ..validation.external_agent_configured_board_capsule import (
+            ExternalAgentConfiguredBoardCapsuleError,
+            _read_stable_repo_json,
+            external_agent_configured_board_launch_capsule_relative_path,
+            verify_external_agent_configured_board_live_seal,
+        )
+
+        try:
+            registry_prefix = str(live_seal.get("authority_registry_prefix") or "")
+            admission_path = external_agent_bootstrap_admission_relative_path(
+                source_head,
+                registry_prefix=registry_prefix,
+            )
+            admission_payload, _admission_evidence = _read_stable_repo_json(
+                board.repo_root,
+                admission_path.as_posix(),
+                noun="bootstrap admission receipt",
+            )
+            admission = verify_external_agent_bootstrap_admission(
+                admission_payload,
+                trusted_operator_dids=tuple(
+                    live_seal.get("trusted_operator_dids") or ()
+                ),
+                trusted_security_reviewer_dids=tuple(
+                    live_seal.get("trusted_security_reviewer_dids") or ()
+                ),
+                now_ms=int(time.time() * 1000),
+            )
+            capsule_path = external_agent_configured_board_launch_capsule_relative_path(
+                source_head,
+                str(admission["plan_root_cid"]),
+                registry_prefix=registry_prefix,
+            )
+            capsule_payload, _capsule_evidence = _read_stable_repo_json(
+                board.repo_root,
+                capsule_path.as_posix(),
+                noun="configured-board launch capsule",
+            )
+            raw_pin = capsule_payload["accepted_control_plane_pin"]
+            if not isinstance(raw_pin, dict):
+                raise TypeError("pin is not an object")
+            pin = AgentImplementationControlPlanePin(**raw_pin)
+        except (
+            ExternalAgentBootstrapAdmissionError,
+            ExternalAgentConfiguredBoardCapsuleError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise ConfiguredBoardError(
+                "EAAEF configured-board capsule has no canonical pin"
+            ) from exc
+
+        sealed = None
+        try:
+            verify_external_agent_configured_board_live_seal(
+                live_seal,
+                repo_root=board.repo_root,
+                configuration_root=board.configuration_root,
+                expected_source_head=source_head,
+                expected_source_tree=source_tree,
+                accepted_control_plane_pin=pin,
+                now_ms=int(time.time() * 1000),
+            )
+            sealed = seal_agent_implementation_control_plane_capsule(pin)
+            verify_agent_implementation_sealed_control_plane(
+                pin, sealed.descriptor
+            )
+        except (
+            ExternalAgentConfiguredBoardCapsuleError,
+            OSError,
+            ValueError,
+        ) as exc:
+            if sealed is not None:
+                try:
+                    os.close(sealed.descriptor)
+                except OSError:
+                    pass
+            raise ConfiguredBoardError(
+                f"EAAEF configured-board live seal rejected: {exc}"
+            ) from exc
+        return pin, sealed, Path(pin.capsule_root).parent
     capsule_parent = Path(
         tempfile.mkdtemp(prefix="asref-configured-control-plane-")
     )
@@ -3115,13 +3480,122 @@ def _cleanup_plan_bound_control_plane(
         return
 
 
+def _require_plan_bound_process_launch_policy(
+    board: ConfiguredBoard,
+    *,
+    implement: bool,
+) -> None:
+    """Fail before process birth when a configured board prohibits live launch.
+
+    Older configured boards predate the explicit policy object and retain their
+    existing behavior.  Once a board supplies ``launch_policy``, however, the
+    policy is an authority boundary rather than advisory metadata: a signed
+    control-plane capsule cannot override it.
+    """
+
+    raw_policy = board.payload.get("launch_policy")
+    if raw_policy is None:
+        if _eaaef_plan_bound_profile(board):
+            raise ConfiguredBoardError(
+                "EAAEF configured-board live launch requires an explicit "
+                "launch_policy authority boundary"
+            )
+        return
+    if not isinstance(raw_policy, Mapping):
+        raise ConfiguredBoardError("launch_policy must be an object")
+    if _eaaef_plan_bound_profile(board):
+        expected_policy_fields = {
+            "blockers",
+            "bypass_prohibited",
+            "dry_run_allowed",
+            "live_multi_supervisor_allowed",
+            "live_single_supervisor_allowed",
+            "materialize_allowed",
+            "verify_allowed",
+        }
+        if set(raw_policy) != expected_policy_fields:
+            raise ConfiguredBoardError(
+                "EAAEF launch_policy fields do not match the closed authority "
+                "contract"
+            )
+        for field in expected_policy_fields - {"blockers"}:
+            if type(raw_policy.get(field)) is not bool:
+                raise ConfiguredBoardError(
+                    f"EAAEF launch_policy.{field} must be boolean"
+                )
+    if raw_policy.get("bypass_prohibited") is not True:
+        raise ConfiguredBoardError(
+            "configured-board live launch requires bypass_prohibited=true"
+        )
+    if raw_policy.get("live_multi_supervisor_allowed") is not True:
+        raise ConfiguredBoardError(
+            "configured-board live multi-supervisor launch is prohibited by policy"
+        )
+    raw_blockers = raw_policy.get("blockers")
+    if not isinstance(raw_blockers, list) or any(
+        not isinstance(item, str) or not item.strip() for item in raw_blockers
+    ):
+        raise ConfiguredBoardError(
+            "launch_policy.blockers must be a list of nonempty strings"
+        )
+    if raw_blockers:
+        raise ConfiguredBoardError(
+            "configured-board live launch retains policy blockers: "
+            + "; ".join(raw_blockers)
+        )
+    if not implement:
+        return
+    container_policy = board.payload.get("container_policy")
+    if not isinstance(container_policy, Mapping):
+        raise ConfiguredBoardError(
+            "implementation launch requires a container_policy object"
+        )
+    if container_policy.get("live_dispatch_allowed") is not True:
+        raise ConfiguredBoardError(
+            "implementation launch is prohibited by container live-dispatch policy"
+        )
+    if str(container_policy.get("bootstrap_image_status") or "") != "admitted":
+        raise ConfiguredBoardError(
+            "implementation launch requires an admitted immutable worker image"
+        )
+
+
+def _terminate_plan_bound_coordinator(process: subprocess.Popen[bytes]) -> None:
+    """Boundedly terminate and reap the coordinator's dedicated process group."""
+
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=2.0)
+        return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        pass
+    try:
+        process.wait(timeout=2.0)
+    except subprocess.TimeoutExpired as exc:
+        if process.poll() is None:
+            raise ConfiguredBoardError(
+                "configured-board coordinator process-group "
+                f"{int(process.pid)} remained live after SIGKILL and could not "
+                "be reaped"
+            ) from exc
+
+
 def _launch_foreground_plan_bound_coordinator(
     board: ConfiguredBoard,
     *,
     implement: bool,
     duration_seconds: float,
 ) -> int:
+    _require_plan_bound_process_launch_policy(board, implement=implement)
     pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
+    process: subprocess.Popen[bytes] | None = None
+    preserve_capsule_for_unreaped_process = False
     try:
         command = build_sealed_control_plane_module_command(
             python_executable=sys.executable,
@@ -3151,13 +3625,36 @@ def _launch_foreground_plan_bound_coordinator(
             cwd=board.repo_root,
             env=environment,
             stdin=subprocess.DEVNULL,
-            start_new_session=False,
+            start_new_session=True,
             pass_fds=(sealed.descriptor,),
         )
         return int(process.wait())
+    except BaseException as exc:
+        if process is not None:
+            try:
+                _terminate_plan_bound_coordinator(process)
+            except ConfiguredBoardError as termination_error:
+                preserve_capsule_for_unreaped_process = True
+                exc.add_note(str(termination_error))
+                try:
+                    recovery_path = _publish_foreground_unreaped_coordinator_pid(
+                        board,
+                        process.pid,
+                    )
+                    exc.add_note(
+                        "unreaped coordinator recovery projection: "
+                        f"{recovery_path}; preserved capsule: {capsule_parent}"
+                    )
+                except (ConfiguredBoardError, OSError) as recovery_error:
+                    exc.add_note(
+                        "unreaped coordinator recovery projection failed: "
+                        f"{recovery_error}; preserved capsule: {capsule_parent}"
+                    )
+        raise
     finally:
         os.close(sealed.descriptor)
-        _cleanup_plan_bound_control_plane(pin, capsule_parent)
+        if not preserve_capsule_for_unreaped_process:
+            _cleanup_plan_bound_control_plane(pin, capsule_parent)
 
 
 def _launch_detached_plan_bound_coordinator(
@@ -3168,6 +3665,7 @@ def _launch_detached_plan_bound_coordinator(
 ) -> dict[str, Any]:
     """Detach the outer coordinator, never an individual finite wave."""
 
+    _require_plan_bound_process_launch_policy(board, implement=implement)
     state_dir = _ensure_plan_bound_runtime_directory(
         board.repo_root,
         board.path(board.runtime_paths["state"]),
@@ -3201,6 +3699,7 @@ def _launch_detached_plan_bound_coordinator(
         pid_path
     )
     process: subprocess.Popen[bytes] | None = None
+    pin: AgentImplementationControlPlanePin | None = None
     sealed: AgentImplementationSealedControlPlane | None = None
     capsule_parent: Path | None = None
     try:
@@ -3247,26 +3746,31 @@ def _launch_detached_plan_bound_coordinator(
             reserved_identity,
             process.pid,
         )
-    except BaseException:
-        if process is not None and process.poll() is None:
+    except BaseException as exc:
+        termination_failed = False
+        if process is not None:
             try:
-                os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=2.0)
-            except (OSError, subprocess.TimeoutExpired):
+                _terminate_plan_bound_coordinator(process)
+            except ConfiguredBoardError as termination_error:
+                termination_failed = True
+                exc.add_note(str(termination_error))
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except OSError:
-                    pass
-                try:
-                    process.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    pass
-        _remove_reserved_coordinator_pid(pid_path, reserved_identity)
-        if capsule_parent is not None:
-            try:
-                shutil.rmtree(capsule_parent)
-            except OSError:
-                pass
+                    _repair_unreaped_coordinator_pid_projection(
+                        pid_path,
+                        descriptor,
+                        reserved_identity,
+                        process.pid,
+                    )
+                except ConfiguredBoardError as projection_error:
+                    exc.add_note(str(projection_error))
+        if not termination_failed:
+            _remove_reserved_coordinator_pid(pid_path, reserved_identity)
+        if (
+            not termination_failed
+            and pin is not None
+            and capsule_parent is not None
+        ):
+            _cleanup_plan_bound_control_plane(pin, capsule_parent)
         raise
     finally:
         os.close(descriptor)
@@ -3290,6 +3794,7 @@ def _run_plan_bound_coordinator(
 ) -> int:
     """Publish and execute fresh exact waves until drain or the run bound."""
 
+    _require_plan_bound_process_launch_policy(board, implement=implement)
     from .multi_supervisor_runner import PLAN_BOUND_REPLAN_RETURN_CODE
     from .multi_supervisor_runner import main as multi_supervisor_main
 
@@ -3303,6 +3808,10 @@ def _run_plan_bound_coordinator(
             current_board = load_configured_board(
                 board.config_path,
                 repo_root=board.repo_root,
+            )
+            _require_plan_bound_process_launch_policy(
+                current_board,
+                implement=implement,
             )
             if current_board.board_namespace != board.board_namespace:
                 raise ConfiguredBoardError(
@@ -3511,6 +4020,28 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     detach = not bool(args.foreground)
     if _plan_bound_profile(board):
+        try:
+            _require_plan_bound_process_launch_policy(
+                board,
+                implement=bool(args.implement),
+            )
+        except ConfiguredBoardError as exc:
+            print(
+                json.dumps(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "configured-board-launch-no-go@1"
+                        ),
+                        "valid": False,
+                        "process_started": False,
+                        "errors": [str(exc)],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 2
         if args.dry_run:
             plan = configured_board_launch_plan(
                 board,
@@ -3536,9 +4067,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
             except (ConfiguredBoardError, OSError) as exc:
+                notes = [
+                    str(note)
+                    for note in getattr(exc, "__notes__", ())
+                    if str(note).strip()
+                ]
                 print(
                     json.dumps(
-                        {"valid": False, "errors": [f"coordinator_launch: {exc}"]},
+                        {
+                            "valid": False,
+                            "errors": [f"coordinator_launch: {exc}", *notes],
+                        },
                         indent=2,
                         sort_keys=True,
                     )
@@ -3554,11 +4093,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     duration_seconds=float(args.duration_seconds),
                 )
             except (ConfiguredBoardError, OSError, ValueError) as exc:
+                notes = [
+                    str(note)
+                    for note in getattr(exc, "__notes__", ())
+                    if str(note).strip()
+                ]
                 print(
                     json.dumps(
                         {
                             "valid": False,
-                            "errors": [f"coordinator_launch: {exc}"],
+                            "errors": [f"coordinator_launch: {exc}", *notes],
                         },
                         indent=2,
                         sort_keys=True,

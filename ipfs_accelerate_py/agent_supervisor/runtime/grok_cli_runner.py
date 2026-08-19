@@ -32,6 +32,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TextIO
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
@@ -77,14 +78,37 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
     render_grok_route_outcome,
     valid_grok_failure_receipt,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.worker_container_execution_profile import (
+    EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SCHEMA_V2,
+    WorkerContainerExecutionMount,
+    WorkerContainerExecutionProfile,
+    load_worker_container_execution_profile,
+    reverify_worker_container_execution_grok_mounts,
+    reverify_worker_container_execution_profile,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.worker_network import (
+    PROVIDER_HOSTNAME_ALLOWLISTS,
+    WorkerNetworkProfile,
+    is_proxy_variable,
+    load_worker_network_authorization,
+    validate_provider_worker_command,
+    validate_worker_network_inspection,
+    worker_network_approval_cid,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.worker_network_dispatch import (
+    EAAEF_BOARD_NAMESPACE,
+    EAAEF_WORKER_NETWORK_ATTEMPT_AUTHORITY_FLAG,
+    parse_worker_network_launch_authority,
+    verify_worker_network_attempt_authority,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
 )
 from ipfs_accelerate_py.llm_router import (
     AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
-    AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
     AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS,
+    AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
 )
 
 # Self-heal: if a static import is incomplete on an older pin or partial merge,
@@ -113,6 +137,7 @@ ensure_provider_command_bindings(
 )
 
 DEFAULT_GROK_MODEL = "grok-4.6"
+LEGACY_V3_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
@@ -121,6 +146,41 @@ GROK_QUOTA_RECEIPT_SCHEMA = (
 )
 MAX_GROK_ERROR_BYTES = 128 * 1024
 _SCOPED_ROUTE_MAX_AGE_MS = 5 * 60 * 1000
+
+# A signed EAAEF route has an exact image, worker principal, provider
+# principal, invocation and network authorization, but the currently shipped
+# DurableProviderAttemptCAS receipt vocabulary is specific to the Codex
+# fallback effect.  In particular it cannot validate/adopt/terminalize a Grok
+# container.  Keep the primary route structurally parseable and independently
+# testable while refusing any provider effect until the versioned neutral CAS
+# capability exists.  This is source truth, not an operator-toggleable
+# environment flag.
+EAAEF_PRIMARY_GROK_EFFECT_CAS_CAPABILITY = (
+    "ipfs_accelerate_py/agent-supervisor/provider-neutral-effect-cas@1"
+)
+EAAEF_PRIMARY_GROK_EFFECT_CAS_STATUS = "unavailable_fail_closed"
+EAAEF_CONTAINERIZED_GROK_PREFLIGHT_CAPABILITY = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "containerized-grok-preflight-receipt@1"
+)
+EAAEF_CONTAINERIZED_GROK_PREFLIGHT_STATUS = "unavailable_fail_closed"
+EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_CAPABILITY = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "source-addressed-container-execution-profile-launch@1"
+)
+EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_STATUS = (
+    "implemented_unqualified_fail_closed"
+)
+EAAEF_GROK_CONTAINER_EXECUTION_PROFILE_LAUNCH_CAPABILITY = (
+    EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SCHEMA_V2
+)
+
+
+def _eaaef_container_execution_profile_launch_blocker() -> str:
+    return (
+        f"{EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_CAPABILITY}="
+        f"{EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_STATUS}"
+    )
 
 
 def _agent_prompt_cid(prompt: str) -> str:
@@ -359,6 +419,25 @@ _CODEX_DOCKER_IMAGE_ENV_OVERRIDES = (
 )
 _DOCKER_CONTAINER_NAME_RE = re.compile(
     r"ipfs-accelerate-(?:grok|codex)-[0-9]+-[0-9a-f]{32}"
+)
+_QUALIFIED_WORKER_IMAGE_LABEL = (
+    "ipfs_accelerate.eaaef.qualified_worker_image_digest"
+)
+_QUALIFIED_WORKER_PROFILE_LABEL = (
+    "ipfs_accelerate.eaaef.qualified_worker_container_profile_cid"
+)
+_QUALIFIED_WORKER_EXECUTION_PROFILE_LABEL = (
+    "ipfs_accelerate.eaaef.container_execution_profile_artifact_cid"
+)
+_QUALIFIED_WORKER_DAEMON_IDENTITY_LABEL = (
+    "ipfs_accelerate.eaaef.container_daemon_identity_cid"
+)
+_QUALIFIED_WORKER_ENGINE_ENDPOINT_LABEL = (
+    "ipfs_accelerate.eaaef.container_engine_endpoint_cid"
+)
+_EAAEF_WORKER_EFFECT_IMAGE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "eaaef-worker-effect-image-receipt@1"
 )
 _DOCKER_ISOLATION_PROVIDERS = frozenset({"grok", "codex"})
 _DOCKER_CLEANUP_TIMEOUT_SECONDS = 8.0
@@ -601,26 +680,41 @@ def build_grok_quota_routed_agent_command(
     enable_codex_fallback: bool = True,
     enable_internal_legacy_preflight: bool = False,
     accepted_runner_path: str | Path = "",
+    eaaef_in_image_provider_binaries: bool = False,
 ) -> list[str]:
-    """Build a sealed Grok-4.5 then typed-failure Terra route.
+    """Build a model-bound Grok then typed-failure Terra route.
 
     The returned parent runner owns the Codex argv.  Grok receives neither the
     executable/auth authority nor any way to invoke this fallback directly.
+    Explicit compatibility preflights retain their frozen V3/Grok-4.5 model;
+    current callers use Grok-4.6.
     """
 
     workspace_text = str(workspace)
     reasoning_effort = str(fallback_reasoning_effort).strip()
     if reasoning_effort not in CODEX_QUOTA_FALLBACK_REASONING_EFFORTS:
         raise ValueError("Codex fallback reasoning must be medium or high")
-    codex = (
-        resolve_codex_quota_fallback_executable(
-            workspace=workspace,
-            configured=codex_bin,
-        )
-        if enable_codex_fallback
-        else ""
-    )
     runner = str(accepted_runner_path or "").strip()
+    if eaaef_in_image_provider_binaries:
+        if not runner:
+            raise ValueError(
+                "EAAEF in-image providers require an accepted sealed runner"
+            )
+        if str(grok_bin or "").strip() not in {"", "/opt/eaaef/bin/grok"}:
+            raise ValueError("EAAEF Grok must use /opt/eaaef/bin/grok")
+        if str(codex_bin or "").strip() not in {"", "/opt/eaaef/bin/codex"}:
+            raise ValueError("EAAEF Codex must use /opt/eaaef/bin/codex")
+        codex = "/opt/eaaef/bin/codex" if enable_codex_fallback else ""
+        grok_bin = "/opt/eaaef/bin/grok"
+    else:
+        codex = (
+            resolve_codex_quota_fallback_executable(
+                workspace=workspace,
+                configured=codex_bin,
+            )
+            if enable_codex_fallback
+            else ""
+        )
     runner_argv = (
         ["-I", runner]
         if runner
@@ -628,13 +722,18 @@ def build_grok_quota_routed_agent_command(
     )
     if runner and (not Path(runner).is_absolute() or not Path(runner).is_file()):
         raise ValueError("accepted Grok runner must be an absolute file")
+    route_model = (
+        LEGACY_V3_GROK_MODEL
+        if enable_internal_legacy_preflight
+        else DEFAULT_GROK_MODEL
+    )
     command = [
         str(python_executable or sys.executable),
         *runner_argv,
         "--workspace",
         workspace_text,
         "--model",
-        DEFAULT_GROK_MODEL,
+        route_model,
         "--max-turns",
         str(max(1, int(max_turns))),
         "--mode",
@@ -1615,7 +1714,9 @@ def _grok_custom_sandbox_available() -> bool:
     return completed.returncode == 0
 
 
-def _docker_isolation_binary() -> str:
+def _docker_isolation_binary(
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> str:
     """Resolve a working Docker CLI with the pinned local isolation image."""
 
     docker_candidate = shutil.which("docker") or ""
@@ -1634,7 +1735,16 @@ def _docker_isolation_binary() -> str:
         or stat_result.st_mode & 0o022
     ):
         return ""
-    image = DEFAULT_GROK_ISOLATION_IMAGE
+    image = (
+        execution_profile.image_digest
+        if execution_profile is not None
+        else DEFAULT_GROK_ISOLATION_IMAGE
+    )
+    engine_endpoint = (
+        execution_profile.engine_endpoint
+        if execution_profile is not None
+        else _DOCKER_LOCAL_HOST
+    )
     try:
         with tempfile.TemporaryDirectory(
             prefix="asref-docker-config-probe-"
@@ -1642,7 +1752,7 @@ def _docker_isolation_binary() -> str:
             completed = subprocess.run(
                 [
                     str(docker),
-                    f"--host={_DOCKER_LOCAL_HOST}",
+                    f"--host={engine_endpoint}",
                     "--config",
                     config_root,
                     "image",
@@ -1702,6 +1812,391 @@ def _docker_isolation_image_id(
         and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
         else ""
     )
+
+
+def _qualified_worker_bounds(
+    launch_authority: Mapping[str, object],
+) -> tuple[str, str]:
+    image_digest = str(
+        launch_authority.get("qualified_worker_image_digest") or ""
+    )
+    profile_cid = str(
+        launch_authority.get("qualified_worker_container_profile_cid") or ""
+    )
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest) is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", profile_cid) is None
+    ):
+        raise ValueError("qualified worker image/profile identity is invalid")
+    return image_digest, profile_cid
+
+
+def _require_eaaef_container_execution_profile_launch(
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> WorkerContainerExecutionProfile:
+    """Reverify the full source artifact before a qualified Docker boundary."""
+
+    _qualified_worker_bounds(launch_authority)
+    if EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_STATUS != (
+        "implemented_unqualified_fail_closed"
+    ):
+        raise ValueError(
+            "EAAEF container effect is unavailable_fail_closed: "
+            + _eaaef_container_execution_profile_launch_blocker()
+        )
+    if execution_profile is None:
+        raise ValueError(
+            "EAAEF container effect lacks an independently signed artifact: "
+            f"{EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_CAPABILITY}="
+            "artifact_missing_or_unverified"
+        )
+    verified = reverify_worker_container_execution_profile(
+        execution_profile,
+        launch_authority=launch_authority,
+    )
+    image_digest, profile_cid = _qualified_worker_bounds(launch_authority)
+    if (
+        verified.image_digest != image_digest
+        or verified.profile_cid != profile_cid
+    ):
+        raise ValueError("qualified worker execution profile identity drifted")
+    return verified
+
+
+def _require_eaaef_grok_container_execution_profile_launch(
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None,
+    *,
+    workspace: Path,
+    prompt_path: Path,
+    policy_path: Path,
+    provider_home: Path,
+) -> WorkerContainerExecutionProfile:
+    """Reverify the signed @2 envelope and concrete Grok mount sources."""
+
+    _qualified_worker_bounds(launch_authority)
+    if EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_STATUS != (
+        "implemented_unqualified_fail_closed"
+    ):
+        raise ValueError(
+            "EAAEF Grok container effect is unavailable_fail_closed: "
+            + _eaaef_container_execution_profile_launch_blocker()
+        )
+    if execution_profile is None:
+        raise ValueError(
+            "EAAEF Grok effect lacks an independently signed artifact: "
+            f"{EAAEF_GROK_CONTAINER_EXECUTION_PROFILE_LAUNCH_CAPABILITY}="
+            "artifact_missing_or_unverified"
+        )
+    verified = reverify_worker_container_execution_grok_mounts(
+        execution_profile,
+        launch_authority=launch_authority,
+        workspace=workspace,
+        prompt_path=prompt_path,
+        policy_path=policy_path,
+        provider_home=provider_home,
+    )
+    image_digest, profile_cid = _qualified_worker_bounds(launch_authority)
+    if (
+        verified.image_digest != image_digest
+        or verified.profile_cid != profile_cid
+    ):
+        raise ValueError("qualified Grok execution profile identity drifted")
+    return verified
+
+
+def _qualified_worker_daemon_identity(
+    *,
+    runtime: str,
+    server: object,
+) -> str:
+    payload = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "eaaef-container-daemon-identity@1"
+        ),
+        "runtime": runtime,
+        "server": server,
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _inspect_qualified_worker_engine(
+    *,
+    docker_bin: str,
+    docker_config: Path,
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None,
+) -> WorkerContainerExecutionProfile:
+    """Reverify the signed endpoint and exact daemon before any Docker effect."""
+
+    profile = _require_eaaef_container_execution_profile_launch(
+        launch_authority,
+        execution_profile,
+    )
+    common = [
+        docker_bin,
+        f"--host={profile.engine_endpoint}",
+        "--config",
+        str(docker_config),
+    ]
+    try:
+        version = subprocess.run(
+            [*common, "version", "--format", "{{json .}}"],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+        security = subprocess.run(
+            [*common, "info", "--format", "{{json .SecurityOptions}}"],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("qualified worker container engine inspection failed") from exc
+    if (
+        version.returncode != 0
+        or security.returncode != 0
+        or len(version.stdout.encode("utf-8")) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(security.stdout.encode("utf-8")) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("qualified worker container engine inspection failed")
+    try:
+        version_payload = json.loads(version.stdout)
+        security_options = json.loads(security.stdout)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("qualified worker container engine inspection is invalid") from exc
+    if not isinstance(version_payload, Mapping) or not isinstance(
+        security_options, list
+    ):
+        raise ValueError("qualified worker container engine inspection is invalid")
+    daemon_identity = _qualified_worker_daemon_identity(
+        runtime=("docker" if profile.runtime in {"docker", "oci"} else profile.runtime),
+        server=version_payload.get("Server"),
+    )
+    rootless = any(
+        "rootless" in str(item).casefold() for item in security_options
+    )
+    if (
+        daemon_identity != profile.daemon_identity_cid
+        or (profile.execution_mode == "rootless_engine" and not rootless)
+        or (
+            profile.execution_mode == "rootful_daemon_nonroot_worker"
+            and rootless
+        )
+    ):
+        raise ValueError("qualified worker container daemon identity drifted")
+    return profile
+
+
+def _inspect_qualified_worker_image(
+    *,
+    docker_bin: str,
+    docker_config: Path,
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> str:
+    """Resolve only the exact capsule-qualified immutable image digest."""
+
+    execution_profile = _inspect_qualified_worker_engine(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        launch_authority=launch_authority,
+        execution_profile=execution_profile,
+    )
+    image_digest, _profile_cid = _qualified_worker_bounds(launch_authority)
+    try:
+        completed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={execution_profile.engine_endpoint}",
+                "--config",
+                str(docker_config),
+                "image",
+                "inspect",
+                "--format",
+                "{{.Id}}",
+                image_digest,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("qualified worker image inspection failed") from exc
+    if completed.returncode != 0 or completed.stdout.strip() != image_digest:
+        raise ValueError("qualified worker image digest drifted")
+    return image_digest
+
+
+def _qualified_worker_container_label_arguments(
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> list[str]:
+    execution_profile = _require_eaaef_container_execution_profile_launch(
+        launch_authority,
+        execution_profile,
+    )
+    image_digest, profile_cid = _qualified_worker_bounds(launch_authority)
+    endpoint_cid = "sha256:" + hashlib.sha256(
+        execution_profile.engine_endpoint.encode("utf-8")
+    ).hexdigest()
+    return [
+        "--label",
+        f"{_QUALIFIED_WORKER_IMAGE_LABEL}={image_digest}",
+        "--label",
+        f"{_QUALIFIED_WORKER_PROFILE_LABEL}={profile_cid}",
+        "--label",
+        (
+            f"{_QUALIFIED_WORKER_EXECUTION_PROFILE_LABEL}="
+            f"{execution_profile.artifact_cid}"
+        ),
+        "--label",
+        (
+            f"{_QUALIFIED_WORKER_DAEMON_IDENTITY_LABEL}="
+            f"{execution_profile.daemon_identity_cid}"
+        ),
+        "--label",
+        f"{_QUALIFIED_WORKER_ENGINE_ENDPOINT_LABEL}={endpoint_cid}",
+    ]
+
+
+def _eaaef_worker_effect_image_label(
+    *,
+    launch_authority: Mapping[str, object],
+    network_profile: WorkerNetworkProfile,
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> str:
+    """Bind the EAAEF image/profile and exact network grant into CAS evidence."""
+
+    authorization = network_profile.authorization
+    if authorization is None:
+        raise ValueError("EAAEF effect receipt lacks network authorization")
+    parsed_launch = parse_worker_network_launch_authority(
+        launch_authority,
+        require_admitted=True,
+    )
+    execution_profile = _require_eaaef_container_execution_profile_launch(
+        parsed_launch,
+        execution_profile,
+    )
+    if (
+        authorization.worker_principal_did
+        != parsed_launch["worker_principal_did"]
+        or authorization.provider_principal_did
+        != parsed_launch["provider_principal_did"]
+    ):
+        raise ValueError("EAAEF effect receipt principal binding drifted")
+    payload = {
+        "schema": _EAAEF_WORKER_EFFECT_IMAGE_RECEIPT_SCHEMA,
+        "launch_authority": parsed_launch,
+        "container_execution_profile_artifact_cid": (
+            execution_profile.artifact_cid
+        ),
+        "container_engine_endpoint_cid": "sha256:"
+        + hashlib.sha256(
+            execution_profile.engine_endpoint.encode("utf-8")
+        ).hexdigest(),
+        "container_daemon_identity_cid": (
+            execution_profile.daemon_identity_cid
+        ),
+        "network_authorization_artifact_cid": authorization.artifact_cid,
+        "network_authorization_id": authorization.authorization_id,
+        "network_approval_cid": network_profile.approval_cid,
+        "worker_principal_did": authorization.worker_principal_did,
+        "provider_principal_did": authorization.provider_principal_did,
+    }
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def _inspect_qualified_worker_container(
+    *,
+    docker_bin: str,
+    docker_config: Path,
+    container_id: str,
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> None:
+    """Recheck exact image/profile bindings immediately before a start."""
+
+    execution_profile = _inspect_qualified_worker_engine(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        launch_authority=launch_authority,
+        execution_profile=execution_profile,
+    )
+    image_digest, profile_cid = _qualified_worker_bounds(launch_authority)
+    endpoint_cid = "sha256:" + hashlib.sha256(
+        execution_profile.engine_endpoint.encode("utf-8")
+    ).hexdigest()
+    runtime_id = str(container_id).removeprefix("sha256:")
+    if re.fullmatch(r"[0-9a-f]{64}", runtime_id) is None:
+        raise ValueError("qualified worker container identity is invalid")
+    try:
+        completed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={execution_profile.engine_endpoint}",
+                "--config",
+                str(docker_config),
+                "container",
+                "inspect",
+                "--format",
+                (
+                    '{{.Image}}|{{index .Config.Labels "'
+                    + _QUALIFIED_WORKER_IMAGE_LABEL
+                    + '"}}|{{index .Config.Labels "'
+                    + _QUALIFIED_WORKER_PROFILE_LABEL
+                    + '"}}|{{index .Config.Labels "'
+                    + _QUALIFIED_WORKER_EXECUTION_PROFILE_LABEL
+                    + '"}}|{{index .Config.Labels "'
+                    + _QUALIFIED_WORKER_DAEMON_IDENTITY_LABEL
+                    + '"}}|{{index .Config.Labels "'
+                    + _QUALIFIED_WORKER_ENGINE_ENDPOINT_LABEL
+                    + '"}}'
+                ),
+                runtime_id,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("qualified worker container inspection failed") from exc
+    expected = (
+        f"{image_digest}|{image_digest}|{profile_cid}|"
+        f"{execution_profile.artifact_cid}|"
+        f"{execution_profile.daemon_identity_cid}|{endpoint_cid}"
+    )
+    if completed.returncode != 0 or completed.stdout.strip() != expected:
+        raise ValueError("qualified worker container image/profile drifted")
 
 
 def _docker_codex_task_toolchain_image_id(
@@ -1788,6 +2283,83 @@ def _codex_task_container_environment() -> dict[str, str]:
     }
 
 
+def _qualified_worker_container_environment() -> dict[str, str]:
+    """Return the sealed environment embedded in the qualified EAAEF image.
+
+    Unlike the legacy Codex boundary, a source-addressed EAAEF worker must not
+    project the host task toolchain into its container.  Both provider
+    executables and their runtime dependencies are part of the independently
+    qualified immutable image.
+    """
+
+    return {
+        "BASH_ENV": "",
+        "CODEX_HOME": str(_CODEX_CONTAINER_HOME),
+        "ENV": "",
+        "HOME": str(_CODEX_CONTAINER_HOME),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/opt/eaaef/bin:/usr/bin:/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "TERM": "dumb",
+    }
+
+
+def _qualified_worker_profile_arguments(
+    execution_profile: WorkerContainerExecutionProfile,
+) -> list[str]:
+    """Project signed resource and hardening fields into Docker create argv."""
+
+    if (
+        not execution_profile.read_only_base
+        or execution_profile.network_mode != "policy_proxy_only"
+        or execution_profile.cap_drop != ("ALL",)
+        or not execution_profile.no_new_privileges
+        or execution_profile.privileged
+        or execution_profile.host_pid
+        or execution_profile.host_ipc
+        or execution_profile.devices
+        or execution_profile.docker_socket_mounted
+        or execution_profile.inherit_host_environment
+        or execution_profile.gpu_mode != "none"
+        or execution_profile.gpu_device_ids
+        or execution_profile.gpu_memory_limit_bytes != 0
+    ):
+        raise ValueError("qualified worker profile hardening is not launchable")
+    return [
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        f"--pids-limit={execution_profile.pids_limit}",
+        f"--cpus={execution_profile.cpu_limit:g}",
+        f"--memory={execution_profile.memory_limit_bytes}",
+        f"--memory-swap={execution_profile.memory_limit_bytes}",
+        f"--storage-opt=size={execution_profile.disk_limit_bytes}",
+        "--user",
+        execution_profile.nonroot_user,
+    ]
+
+
+def _qualified_worker_required_mount(
+    execution_profile: WorkerContainerExecutionProfile,
+    *,
+    kind: str,
+    read_only: bool,
+) -> WorkerContainerExecutionMount:
+    """Return one exact signed mount class or fail before command creation."""
+
+    mount = execution_profile.mount_for_kind(kind)
+    if (
+        mount is None
+        or mount.read_only is not read_only
+        or not mount.target.startswith("/")
+        or ".." in Path(mount.target).parts
+    ):
+        raise ValueError(f"qualified worker {kind} mount is not admitted")
+    return mount
+
+
 def _docker_control_env(
     child_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
@@ -1806,6 +2378,49 @@ def _docker_control_env(
     environment.setdefault("PATH", "/usr/bin:/bin")
     environment.setdefault("HOME", "/nonexistent")
     return environment
+
+
+_GROK_POSITIVE_ENVIRONMENT_NAMES = frozenset(
+    {
+        "GROK_HOME",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "NO_COLOR",
+        "PATH",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
+        "TERM",
+        "TMPDIR",
+        "XAI_API_KEY",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+    }
+)
+
+
+def _sanitized_grok_cli_environment(
+    builder: Callable[..., dict[str, str]],
+    *,
+    base_env: Mapping[str, str],
+) -> dict[str, str]:
+    """Adapt older router pins to the exact positive Grok env contract."""
+
+    candidate = builder(base_env=base_env)
+    if not isinstance(candidate, dict) or any(
+        not isinstance(name, str)
+        or not isinstance(value, str)
+        or "\x00" in name
+        or "\x00" in value
+        for name, value in candidate.items()
+    ):
+        raise ValueError("Grok child environment is invalid")
+    return {
+        name: candidate[name]
+        for name in sorted(_GROK_POSITIVE_ENVIRONMENT_NAMES)
+        if name in candidate
+    }
 
 
 def _effect_receipt_identity(value: object) -> str:
@@ -1872,11 +2487,20 @@ def _docker_runtime_receipt(docker_bin: str) -> dict[str, object]:
     }
 
 
-def _select_grok_isolation_backend(*, require_container_boundary: bool = False) -> str:
+def _select_grok_isolation_backend(
+    *,
+    require_container_boundary: bool = False,
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> str:
     """Select an enforceable kernel boundary, never an unsandboxed route."""
 
     if require_container_boundary:
-        if _docker_isolation_binary():
+        docker = (
+            _docker_isolation_binary(execution_profile)
+            if execution_profile is not None
+            else _docker_isolation_binary()
+        )
+        if docker:
             return GROK_ISOLATION_DOCKER
         raise ValueError(
             "Default Grok quota route requires the pinned local Docker "
@@ -1884,7 +2508,12 @@ def _select_grok_isolation_backend(*, require_container_boundary: bool = False) 
         )
     if _grok_custom_sandbox_available():
         return GROK_ISOLATION_GROK_SANDBOX
-    if _docker_isolation_binary():
+    docker = (
+        _docker_isolation_binary(execution_profile)
+        if execution_profile is not None
+        else _docker_isolation_binary()
+    )
+    if docker:
         return GROK_ISOLATION_DOCKER
     raise ValueError(
         "Grok provider isolation unavailable: bubblewrap cannot create its "
@@ -1946,22 +2575,36 @@ def _docker_mount(
     return ["--mount", ",".join(fields)]
 
 
+def _validated_local_docker_engine_endpoint(value: object) -> str:
+    """Admit only the fixed legacy socket or this user's rootless socket."""
+
+    endpoint = str(value or "")
+    if endpoint not in {
+        _DOCKER_LOCAL_HOST,
+        f"unix:///run/user/{os.geteuid()}/docker.sock",
+    }:
+        raise ValueError("Docker engine endpoint is not locally admitted")
+    return endpoint
+
+
 def _remove_exact_docker_container(
     *,
     docker_bin: str,
     docker_config: Path,
     container_name: str,
     settle_for_creation: bool,
+    engine_endpoint: str = _DOCKER_LOCAL_HOST,
 ) -> None:
     """Boundedly force-remove one runner-owned container by an exact name."""
 
+    engine_endpoint = _validated_local_docker_engine_endpoint(engine_endpoint)
     deadline = time.monotonic() + _DOCKER_CLEANUP_TIMEOUT_SECONDS
     while True:
         try:
             completed = subprocess.run(
                 [
                     docker_bin,
-                    f"--host={_DOCKER_LOCAL_HOST}",
+                    f"--host={engine_endpoint}",
                     "--config",
                     str(docker_config),
                     "rm",
@@ -1987,7 +2630,7 @@ def _remove_exact_docker_container(
             observed = subprocess.run(
                 [
                     docker_bin,
-                    f"--host={_DOCKER_LOCAL_HOST}",
+                    f"--host={engine_endpoint}",
                     "--config",
                     str(docker_config),
                     "container",
@@ -2070,6 +2713,7 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
         choices=tuple(sorted(_DOCKER_ISOLATION_PROVIDERS)),
     )
     parser.add_argument("--docker-bin", required=True)
+    parser.add_argument("--engine-endpoint", default=_DOCKER_LOCAL_HOST)
     parser.add_argument("--container-name", required=True)
     parser.add_argument("--cidfile", type=Path, required=True)
     parser.add_argument("--lease-root", type=Path, required=True)
@@ -2080,7 +2724,10 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     try:
         docker_path = Path(args.docker_bin).resolve(strict=True)
         docker_stat = docker_path.stat()
-    except OSError:
+        engine_endpoint = _validated_local_docker_engine_endpoint(
+            args.engine_endpoint
+        )
+    except (OSError, ValueError):
         return 2
     lease_root = args.lease_root.absolute()
     docker_config = lease_root / "docker-config"
@@ -2160,6 +2807,7 @@ def _docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
                 docker_config=docker_config,
                 container_name=args.container_name,
                 settle_for_creation=settle_for_creation,
+                engine_endpoint=engine_endpoint,
             )
         except ValueError:
             cleanup_failed = True
@@ -2256,6 +2904,7 @@ class _DockerContainerLease:
         cidfile: Path,
         provider_home: Path,
         prompt_path: Path,
+        engine_endpoint: str,
         write_fd: int,
         watchdog: subprocess.Popen[bytes],
     ) -> None:
@@ -2266,6 +2915,7 @@ class _DockerContainerLease:
         self.cidfile = cidfile
         self.provider_home = provider_home
         self.prompt_path = prompt_path
+        self.engine_endpoint = engine_endpoint
         self._write_fd = write_fd
         self._watchdog = watchdog
         self._closed = False
@@ -2281,9 +2931,13 @@ class _DockerContainerLease:
         provider: str,
         provider_home: Path,
         prompt_path: Path,
-    ) -> "_DockerContainerLease":
+        authorized_container_name: str = "",
+        authorized_lease_root: Path | None = None,
+        engine_endpoint: str = _DOCKER_LOCAL_HOST,
+    ) -> _DockerContainerLease:
         if provider not in _DOCKER_ISOLATION_PROVIDERS:
             raise ValueError("Docker isolation provider is invalid")
+        engine_endpoint = _validated_local_docker_engine_endpoint(engine_endpoint)
         docker_path = Path(docker_bin).resolve(strict=True)
         docker_stat = docker_path.stat()
         if (
@@ -2293,15 +2947,32 @@ class _DockerContainerLease:
             or docker_stat.st_mode & 0o022
         ):
             raise ValueError("Docker isolation executable is not docker")
-        lease_root = Path(
-            tempfile.mkdtemp(prefix=f"asref-{provider}-container-")
-        ).resolve()
+        if bool(authorized_container_name) != (authorized_lease_root is not None):
+            raise ValueError("Docker lease authorization is incomplete")
+        if authorized_lease_root is None:
+            lease_root = Path(
+                tempfile.mkdtemp(prefix=f"asref-{provider}-container-")
+            ).resolve()
+        else:
+            lease_root = authorized_lease_root.resolve(strict=False)
+            temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+            if (
+                lease_root.parent != temporary_root
+                or not lease_root.name.startswith(f"asref-{provider}-container-")
+                or lease_root.name in {f"asref-{provider}-container-", ".", ".."}
+            ):
+                raise ValueError("signed Docker lease path is invalid")
+            lease_root.mkdir(mode=0o700)
         cidfile = lease_root / "container.cid"
         docker_config = lease_root / "docker-config"
         docker_config.mkdir(mode=0o700)
-        container_name = (
+        container_name = authorized_container_name or (
             f"ipfs-accelerate-{provider}-{os.getpid()}-{uuid.uuid4().hex}"
         )
+        if _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None:
+            docker_config.rmdir()
+            lease_root.rmdir()
+            raise ValueError("signed Docker container name is invalid")
         read_fd, write_fd = os.pipe()
         sealed_match = re.fullmatch(
             r"/proc/self/fd/([0-9]+)",
@@ -2328,6 +2999,8 @@ class _DockerContainerLease:
                     provider,
                     "--docker-bin",
                     str(docker_path),
+                    "--engine-endpoint",
+                    engine_endpoint,
                     "--container-name",
                     container_name,
                     "--cidfile",
@@ -2368,6 +3041,7 @@ class _DockerContainerLease:
             cidfile=cidfile,
             provider_home=provider_home,
             prompt_path=prompt_path,
+            engine_endpoint=engine_endpoint,
             write_fd=write_fd,
             watchdog=watchdog,
         )
@@ -2459,6 +3133,7 @@ class _DockerContainerLease:
                     docker_config=self.docker_config,
                     container_name=self.container_name,
                     settle_for_creation=False,
+                    engine_endpoint=self.engine_endpoint,
                 )
             except ValueError:
                 # Preserve the exact private cleanup inputs.  A later sealed
@@ -2481,6 +3156,7 @@ class _DockerContainerLease:
                     docker_config=self.docker_config,
                     container_name=self.container_name,
                     settle_for_creation=False,
+                    engine_endpoint=self.engine_endpoint,
                 )
             except ValueError:
                 self.preserve_for_recovery = True
@@ -2533,6 +3209,188 @@ def _restore_mask_permissions(mask_root: Path) -> None:
             continue
 
 
+def _signed_worker_network_profile(
+    *,
+    invocation_binding: object,
+    provider: str,
+    workspace: Path,
+    expected_artifact_cid: str = "",
+    expected_container_name: str = "",
+    expected_lease_root: Path | None = None,
+    expected_worker_principal_did: str = "",
+    expected_provider_principal_did: str = "",
+) -> WorkerNetworkProfile:
+    """Load fresh signed authority and bind it to one exact runtime lease."""
+
+    expected_worker_principal_did = (
+        expected_worker_principal_did
+        or str(
+            getattr(
+                invocation_binding,
+                "expected_worker_principal_did",
+                "",
+            )
+        )
+    )
+    expected_provider_principal_did = (
+        expected_provider_principal_did
+        or str(
+            getattr(
+                invocation_binding,
+                "expected_provider_principal_did",
+                "",
+            )
+        )
+    )
+    authorization = load_worker_network_authorization(
+        invocation_binding=invocation_binding,
+        provider=provider,
+        workspace=workspace,
+        expected_artifact_cid=expected_artifact_cid,
+        expected_container_name=expected_container_name,
+        expected_lease_root=expected_lease_root,
+        expected_worker_principal_did=expected_worker_principal_did,
+        expected_provider_principal_did=expected_provider_principal_did,
+    )
+    values = {
+        "provider": provider,
+        "docker_network": authorization.docker_network,
+        "proxy_endpoint": authorization.proxy_endpoint,
+        "approval_identity": "eaaef-network-approval:signed",
+        "effect_cid": authorization.effect_cid,
+        "workspace": authorization.workspace,
+        "container_name": authorization.container_name,
+        "lease_id": authorization.lease_id,
+        "lease_root": authorization.lease_root,
+    }
+    return WorkerNetworkProfile(
+        **values,
+        allowed_hostnames=PROVIDER_HOSTNAME_ALLOWLISTS[provider],
+        approval_cid=worker_network_approval_cid(**values),
+        authorization=authorization,
+    )
+
+
+def _verified_worker_network_attempt(
+    raw_authority: str,
+    *,
+    invocation_binding: object,
+    workspace: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Reverify one propagated attempt and return auths plus launch bounds."""
+
+    authorizations = verify_worker_network_attempt_authority(
+        raw_authority,
+        invocation_binding=invocation_binding,
+        workspace=workspace,
+        required_providers=("codex", "grok"),
+    )
+    # The verifier above rejects duplicate keys and binds the complete attempt
+    # CID before this projection is used.
+    payload = json.loads(raw_authority)
+    if not isinstance(payload, dict):
+        raise ValueError("worker-network attempt authority is not canonical")
+    launch = parse_worker_network_launch_authority(
+        payload.get("launch_authority"),
+        accepted_control_plane_pin=getattr(
+            invocation_binding,
+            "control_plane",
+            None,
+        ),
+        require_admitted=True,
+    )
+    return dict(authorizations), launch
+
+
+def _inspect_signed_worker_network(
+    *,
+    docker_bin: str,
+    docker_config: Path,
+    profile: WorkerNetworkProfile,
+    worker_container_id: str = "",
+    launch_authority: Mapping[str, object] | None = None,
+    execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> None:
+    """Boundedly inspect the exact signed network without creating resources."""
+
+    authorization = profile.authorization
+    if authorization is None:
+        raise ValueError("provider worker lacks signed network authority")
+    if launch_authority is None and execution_profile is not None:
+        raise ValueError("worker network engine profile lacks launch authority")
+    if launch_authority is not None:
+        execution_profile = _require_eaaef_container_execution_profile_launch(
+            launch_authority,
+            execution_profile,
+        )
+    engine_endpoint = (
+        execution_profile.engine_endpoint
+        if execution_profile is not None
+        else _DOCKER_LOCAL_HOST
+    )
+    try:
+        completed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={engine_endpoint}",
+                "--config",
+                str(docker_config),
+                "network",
+                "inspect",
+                authorization.docker_network_id,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=15.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("signed worker network inspection failed") from exc
+    if (
+        completed.returncode != 0
+        or len(completed.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(completed.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("signed worker network inspection failed")
+    try:
+        inspection = json.loads(completed.stdout.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("signed worker network inspection is invalid") from exc
+    validate_worker_network_inspection(
+        inspection,
+        authorization=authorization,
+        worker_container_id=worker_container_id,
+    )
+    try:
+        proxy = subprocess.run(
+            [
+                docker_bin,
+                f"--host={engine_endpoint}",
+                "--config",
+                str(docker_config),
+                "container",
+                "inspect",
+                "--format={{.Image}}",
+                authorization.proxy_container_id,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=15.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("signed worker proxy inspection failed") from exc
+    if (
+        proxy.returncode != 0
+        or len(proxy.stdout) > 256
+        or proxy.stdout.decode("ascii", errors="ignore").strip()
+        != authorization.proxy_image_id
+    ):
+        raise ValueError("signed worker proxy image identity drifted")
+
+
 def _docker_grok_command(
     *,
     grok_command: Sequence[str],
@@ -2549,6 +3407,9 @@ def _docker_grok_command(
     cidfile: Path,
     docker_bin: str = "",
     isolation_image: str = "",
+    network_profile: WorkerNetworkProfile | None = None,
+    qualified_worker_launch_authority: Mapping[str, object] | None = None,
+    qualified_worker_execution_profile: WorkerContainerExecutionProfile | None = None,
 ) -> list[str]:
     """Wrap Grok in a peer-provider capability boundary without shell tools.
 
@@ -2557,31 +3418,126 @@ def _docker_grok_command(
     confidentiality boundary against Grok's own in-process file tools.
     """
 
+    if qualified_worker_launch_authority is not None:
+        qualified_worker_execution_profile = (
+            _require_eaaef_grok_container_execution_profile_launch(
+                qualified_worker_launch_authority,
+                qualified_worker_execution_profile,
+                workspace=workspace,
+                prompt_path=prompt_path,
+                policy_path=grok_home / "sandbox.toml",
+                provider_home=grok_home,
+            )
+        )
     docker = str(docker_bin or _docker_isolation_binary())
     if not docker:
         raise ValueError("Docker Grok isolation became unavailable before launch")
     image = str(isolation_image).strip()
     if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
         raise ValueError("Docker Grok isolation image is not an immutable image ID")
-    container_grok = Path("/opt/ipfs-accelerate/grok")
+    qualified_labels: list[str] = []
+    worktree_mount: WorkerContainerExecutionMount | None = None
+    prompt_mount: WorkerContainerExecutionMount | None = None
+    policy_mount: WorkerContainerExecutionMount | None = None
+    provider_home_mount: WorkerContainerExecutionMount | None = None
+    provider_auth_mount: WorkerContainerExecutionMount | None = None
+    if qualified_worker_launch_authority is not None:
+        expected_image, _profile_cid = _qualified_worker_bounds(
+            qualified_worker_launch_authority
+        )
+        if image != expected_image:
+            raise ValueError("Grok image differs from capsule-qualified digest")
+        qualified_labels = _qualified_worker_container_label_arguments(
+            qualified_worker_launch_authority,
+            qualified_worker_execution_profile,
+        )
+        assert qualified_worker_execution_profile is not None
+        worktree_mount = _qualified_worker_required_mount(
+            qualified_worker_execution_profile,
+            kind="worktree",
+            read_only=False,
+        )
+        prompt_mount = _qualified_worker_required_mount(
+            qualified_worker_execution_profile,
+            kind="grok_prompt",
+            read_only=True,
+        )
+        policy_mount = _qualified_worker_required_mount(
+            qualified_worker_execution_profile,
+            kind="grok_policy",
+            read_only=True,
+        )
+        provider_home_mount = _qualified_worker_required_mount(
+            qualified_worker_execution_profile,
+            kind="grok_provider_home",
+            read_only=False,
+        )
+        provider_auth_mount = qualified_worker_execution_profile.mount_for_kind(
+            "provider_auth"
+        )
+        if provider_auth_mount is not None and not provider_auth_mount.read_only:
+            raise ValueError("qualified worker provider_auth mount is not admitted")
+    if network_profile is None:
+        raise ValueError("Grok provider task requires an approved worker network profile")
+    network_profile.validate_effect_binding(
+        provider="grok",
+        workspace=workspace,
+        container_name=container_name,
+        lease_root=docker_config.parent,
+    )
+    container_grok = Path(
+        "/opt/eaaef/bin/grok"
+        if qualified_worker_launch_authority is not None
+        else "/opt/ipfs-accelerate/grok"
+    )
+    container_workspace = (
+        Path(worktree_mount.target) if worktree_mount is not None else workspace
+    )
+    docker_host = (
+        qualified_worker_execution_profile.engine_endpoint
+        if qualified_worker_execution_profile is not None
+        else _DOCKER_LOCAL_HOST
+    )
+    profile_arguments = (
+        _qualified_worker_profile_arguments(qualified_worker_execution_profile)
+        if qualified_worker_execution_profile is not None
+        else [
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=1024",
+            "--cpus=4",
+            "--memory=16g",
+            "--memory-swap=16g",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+        ]
+    )
+    tmpfs_uid, tmpfs_gid = (
+        qualified_worker_execution_profile.nonroot_user.split(":", maxsplit=1)
+        if qualified_worker_execution_profile is not None
+        else (str(os.getuid()), str(os.getgid()))
+    )
     command = [
         docker,
-        f"--host={_DOCKER_LOCAL_HOST}",
+        f"--host={docker_host}",
         "--config",
         str(docker_config),
         "create",
         "--pull=never",
         "--interactive",
-        "--read-only",
+        *qualified_labels,
+        *network_profile.docker_arguments(),
+        *profile_arguments,
         "--tmpfs",
         (
             "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
+            f"uid={tmpfs_uid},gid={tmpfs_gid}"
         ),
         "--tmpfs",
         (
             "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
+            f"uid={tmpfs_uid},gid={tmpfs_gid}"
         ),
         "--name",
         container_name,
@@ -2589,35 +3545,19 @@ def _docker_grok_command(
         str(cidfile),
         "--label",
         "ipfs_accelerate.grok_isolation=true",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=1024",
-        "--user",
-        f"{os.getuid()}:{os.getgid()}",
         "--workdir",
-        str(workspace),
+        str(container_workspace),
     ]
     # Docker receives values through its already-sanitized process environment;
     # secrets are never serialized into argv or process listings.
     for name in sorted(child_env):
+        if is_proxy_variable(name):
+            continue
         command.extend(["--env", name])
-
-    # Host tools and libraries are readable for validation, while only the
-    # active implementation worktree and Grok's ephemeral state are writable.
-    host_usr = _existing_path(Path("/usr"))
-    if host_usr is not None:
-        command.extend(_docker_mount(host_usr, read_only=True))
-    for git_root in _git_metadata_roots(workspace):
-        command.extend(_docker_mount(git_root, read_only=True))
-    command.extend(_docker_mount(workspace, read_only=False))
-    git_control_path = _existing_path(workspace / ".git")
-    if git_control_path is not None:
-        command.extend(_docker_mount(git_control_path, read_only=True))
-    command.extend(_docker_mount(prompt_path, read_only=True))
-    command.extend(_docker_mount(grok_home, read_only=False))
-    command.extend(
-        _docker_mount(grok_bin, destination=container_grok, read_only=True)
-    )
+    for name, value in sorted(network_profile.proxy_environment().items()):
+        command.extend(["--env", f"{name}={value}"])
+    if provider_home_mount is not None:
+        command.extend(["--env", f"GROK_HOME={provider_home_mount.target}"])
 
     source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
     source_home = (
@@ -2626,15 +3566,81 @@ def _docker_grok_command(
         else user_home_from_env(base_env) / ".grok"
     )
     source_auth = _existing_path(source_home / "auth.json")
-    if source_auth is not None:
-        # The symlink in the ephemeral home resolves to this exact path.  No
-        # alternate-provider home or credential directory is mounted, and the
-        # isolated child cannot mutate the parent's Grok credential either.
-        command.extend(_docker_mount(source_auth, read_only=True))
+    git_control_path: Path | None = None
 
-    mask_root.mkdir(mode=0o700)
+    # Legacy isolation consumes the already-qualified host provider binary.
+    # The EAAEF route consumes only the in-image binary and the exact signed
+    # provider-specific @2 mount projection.
+    if qualified_worker_launch_authority is None:
+        host_usr = _existing_path(Path("/usr"))
+        if host_usr is not None:
+            command.extend(_docker_mount(host_usr, read_only=True))
+        for git_root in _git_metadata_roots(workspace):
+            command.extend(_docker_mount(git_root, read_only=True))
+        command.extend(_docker_mount(workspace, read_only=False))
+        git_control_path = _existing_path(workspace / ".git")
+        if git_control_path is not None:
+            command.extend(_docker_mount(git_control_path, read_only=True))
+        command.extend(_docker_mount(prompt_path, read_only=True))
+        command.extend(_docker_mount(grok_home, read_only=False))
+        command.extend(
+            _docker_mount(grok_bin, destination=container_grok, read_only=True)
+        )
+        if source_auth is not None:
+            command.extend(_docker_mount(source_auth, read_only=True))
+    else:
+        assert worktree_mount is not None
+        assert prompt_mount is not None
+        assert policy_mount is not None
+        assert provider_home_mount is not None
+        command.extend(
+            _docker_mount(
+                workspace,
+                destination=Path(worktree_mount.target),
+                read_only=worktree_mount.read_only,
+            )
+        )
+        command.extend(
+            _docker_mount(
+                grok_home,
+                destination=Path(provider_home_mount.target),
+                read_only=provider_home_mount.read_only,
+            )
+        )
+        command.extend(
+            _docker_mount(
+                grok_home / "sandbox.toml",
+                destination=Path(policy_mount.target),
+                read_only=policy_mount.read_only,
+            )
+        )
+        command.extend(
+            _docker_mount(
+                prompt_path,
+                destination=Path(prompt_mount.target),
+                read_only=prompt_mount.read_only,
+            )
+        )
+        if provider_auth_mount is not None:
+            if source_auth is None:
+                raise ValueError("qualified Grok provider auth source is unavailable")
+            expected_auth_source = (grok_home / "auth.json").resolve(strict=True)
+            if source_auth.resolve(strict=True) != expected_auth_source:
+                raise ValueError("qualified Grok provider auth source path drifted")
+            command.extend(
+                _docker_mount(
+                    source_auth,
+                    destination=Path(provider_auth_mount.target),
+                    read_only=provider_auth_mount.read_only,
+                )
+            )
+
+    if qualified_worker_launch_authority is None:
+        mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
     for index, denied in enumerate(denied_paths):
+        if qualified_worker_launch_authority is not None:
+            break
         if (
             denied in {
                 sentinel,
@@ -2660,8 +3666,105 @@ def _docker_grok_command(
 
     inner = list(grok_command)
     inner[0] = str(container_grok)
+    if qualified_worker_launch_authority is not None:
+        assert worktree_mount is not None
+        assert prompt_mount is not None
+        try:
+            cwd_index = inner.index("--cwd") + 1
+            prompt_index = inner.index("--prompt-file") + 1
+        except (ValueError, IndexError) as exc:
+            raise ValueError("qualified Grok command lacks signed path slots") from exc
+        if (
+            inner[cwd_index] != str(workspace)
+            or inner[prompt_index] != str(prompt_path)
+        ):
+            raise ValueError("qualified Grok command source path drifted")
+        inner[cwd_index] = worktree_mount.target
+        inner[prompt_index] = prompt_mount.target
     command.extend([image, *inner])
+    validate_provider_worker_command(
+        command,
+        profile=network_profile,
+        expected_image=image,
+        additional_labels=qualified_labels[1::2],
+        container_execution_profile=qualified_worker_execution_profile,
+    )
     return command
+
+
+def _reverify_qualified_grok_mount_boundary(
+    *,
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None,
+    create_command: Sequence[str],
+    workspace: Path,
+) -> WorkerContainerExecutionProfile:
+    """Reparse and reverify every signed Grok bind at an effect boundary."""
+
+    if execution_profile is None:
+        raise ValueError("qualified Grok execution profile is unavailable")
+    expected_mounts = execution_profile.mounts_for_provider("grok")
+    expected_by_target = {mount.target: mount for mount in expected_mounts}
+    observed: dict[str, tuple[Path, bool]] = {}
+    command = [str(item) for item in create_command]
+    for index, item in enumerate(command[:-1]):
+        if item != "--mount":
+            continue
+        fields = command[index + 1].split(",")
+        if (
+            len(fields) not in {3, 4}
+            or fields[0] != "type=bind"
+            or not fields[1].startswith("src=/")
+            or not fields[2].startswith("dst=/")
+            or (len(fields) == 4 and fields[3] != "readonly")
+        ):
+            raise ValueError("qualified Grok bind mount is invalid")
+        source = Path(fields[1].removeprefix("src="))
+        target = fields[2].removeprefix("dst=")
+        if target in observed:
+            raise ValueError("qualified Grok bind mount is duplicated")
+        observed[target] = (source, len(fields) == 4)
+    if set(observed) != set(expected_by_target) or any(
+        observed[target][1] is not mount.read_only
+        for target, mount in expected_by_target.items()
+    ):
+        raise ValueError("qualified Grok signed mount projection drifted")
+    worktree_mount = execution_profile.mount_for_kind("worktree")
+    prompt_mount = execution_profile.mount_for_kind("grok_prompt")
+    policy_mount = execution_profile.mount_for_kind("grok_policy")
+    provider_home_mount = execution_profile.mount_for_kind("grok_provider_home")
+    provider_auth_mount = execution_profile.mount_for_kind("provider_auth")
+    if any(
+        mount is None
+        for mount in (
+            worktree_mount,
+            prompt_mount,
+            policy_mount,
+            provider_home_mount,
+            provider_auth_mount,
+        )
+    ):
+        raise ValueError("qualified Grok signed mounts are incomplete")
+    assert worktree_mount is not None
+    assert prompt_mount is not None
+    assert policy_mount is not None
+    assert provider_home_mount is not None
+    assert provider_auth_mount is not None
+    if observed[worktree_mount.target][0] != workspace:
+        raise ValueError("qualified Grok worktree source path drifted")
+    signed_auth_source = (
+        observed[provider_home_mount.target][0] / "auth.json"
+    ).resolve(strict=True)
+    if observed[provider_auth_mount.target][0] != signed_auth_source:
+        raise ValueError("qualified Grok provider auth source path drifted")
+    return _require_eaaef_grok_container_execution_profile_launch(
+        launch_authority,
+        execution_profile,
+        workspace=workspace,
+        prompt_path=observed[prompt_mount.target][0],
+        policy_path=observed[policy_mount.target][0],
+        provider_home=observed[provider_home_mount.target][0],
+    )
 
 
 def _run_created_grok_container_with_typed_failure_capture(
@@ -2672,6 +3775,10 @@ def _run_created_grok_container_with_typed_failure_capture(
     cidfile: Path,
     workspace: Path,
     env: dict[str, str],
+    network_profile: WorkerNetworkProfile | None = None,
+    invocation_binding: object | None = None,
+    qualified_worker_launch_authority: Mapping[str, object] | None = None,
+    qualified_worker_execution_profile: WorkerContainerExecutionProfile | None = None,
 ) -> int:
     """Create the inert Grok container, then run that exact container.
 
@@ -2682,11 +3789,186 @@ def _run_created_grok_container_with_typed_failure_capture(
     the runner-owned cidfile before attaching to the exact created container.
     """
 
+    start_command = _create_grok_container_and_build_start_command(
+        create_command,
+        workspace=workspace,
+        sanitized_environment=env,
+        docker_lease=SimpleNamespace(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            cidfile=cidfile,
+            container_name=(
+                network_profile.container_name if network_profile is not None else ""
+            ),
+            lease_root=docker_config.parent,
+        ),
+        network_profile=network_profile,
+        invocation_binding=invocation_binding,
+        qualified_worker_launch_authority=qualified_worker_launch_authority,
+        qualified_worker_execution_profile=qualified_worker_execution_profile,
+    )
+    if qualified_worker_launch_authority is not None:
+        _reverify_qualified_grok_mount_boundary(
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+            create_command=create_command,
+            workspace=workspace,
+        )
+    return _run_grok_with_typed_failure_capture(start_command, env=env)
+
+
+def _create_grok_container_and_build_start_command(
+    create_command: Sequence[str],
+    *,
+    workspace: Path,
+    docker_lease: object,
+    network_profile: WorkerNetworkProfile | None = None,
+    invocation_binding: object | None = None,
+    docker_environment: Mapping[str, str] | None = None,
+    sanitized_environment: Mapping[str, str] | None = None,
+    qualified_worker_launch_authority: Mapping[str, object] | None = None,
+    qualified_worker_execution_profile: WorkerContainerExecutionProfile | None = None,
+) -> list[str]:
+    """Create one inert Grok container and return its exact start command.
+
+    ``sanitized_environment`` is the current name for the Docker CLI
+    environment.  ``docker_environment`` remains as a compatibility alias;
+    callers may not supply both.  A fresh signed network authorization is
+    mandatory before even the inert create and is revalidated after Docker
+    reports the immutable container identity.
+    """
+
+    if qualified_worker_launch_authority is not None:
+        qualified_worker_execution_profile = (
+            _reverify_qualified_grok_mount_boundary(
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+                create_command=create_command,
+                workspace=workspace,
+            )
+        )
+    if docker_environment is not None and sanitized_environment is not None:
+        raise ValueError("Grok Docker environment authority is ambiguous")
+    raw_environment = (
+        sanitized_environment
+        if sanitized_environment is not None
+        else docker_environment
+    )
+    if raw_environment is None:
+        raise ValueError("Grok Docker environment is missing")
+    environment = (
+        raw_environment
+        if isinstance(raw_environment, dict)
+        else dict(raw_environment)
+    )
+    if any(
+        not isinstance(name, str)
+        or not isinstance(value, str)
+        or not name
+        or "=" in name
+        or "\x00" in name
+        or "\x00" in value
+        or name.upper().startswith(
+            ("DOCKER_", "CONTAINER_", "PODMAN_", "BUILDAH_")
+        )
+        for name, value in environment.items()
+    ):
+        raise ValueError("Grok Docker environment is not sanitized")
+    docker_bin = str(getattr(docker_lease, "docker_bin", ""))
+    docker_config = Path(str(getattr(docker_lease, "docker_config", "")))
+    cidfile = Path(str(getattr(docker_lease, "cidfile", "")))
+    container_name = str(getattr(docker_lease, "container_name", ""))
+    lease_root = Path(str(getattr(docker_lease, "lease_root", "")))
+    if (
+        not docker_bin
+        or not docker_config.is_absolute()
+        or not cidfile.is_absolute()
+        or cidfile.parent != lease_root
+        or docker_config.parent != lease_root
+    ):
+        raise ValueError("Grok Docker lease binding is invalid")
+    if (
+        invocation_binding is None
+        or network_profile is None
+        or network_profile.authorization is None
+    ):
+        raise ValueError("Grok provider task lacks signed network authority")
+    network_profile.validate_effect_binding(
+        provider="grok",
+        workspace=workspace,
+        container_name=container_name,
+        lease_root=lease_root,
+    )
+    authorization = network_profile.authorization
+    expected_worker_did = authorization.worker_principal_did
+    expected_provider_did = authorization.provider_principal_did
+    if qualified_worker_launch_authority is not None:
+        qualified_worker_launch_authority = (
+            parse_worker_network_launch_authority(
+                qualified_worker_launch_authority,
+                accepted_control_plane_pin=getattr(
+                    invocation_binding,
+                    "control_plane",
+                    None,
+                ),
+                require_admitted=True,
+            )
+        )
+        expected_worker_did = str(
+            qualified_worker_launch_authority.get("worker_principal_did") or ""
+        )
+        expected_provider_did = str(
+            qualified_worker_launch_authority.get("provider_principal_did") or ""
+        )
+        _inspect_qualified_worker_image(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+        )
+    network_profile = _signed_worker_network_profile(
+        invocation_binding=invocation_binding,
+        provider="grok",
+        workspace=workspace,
+        expected_artifact_cid=authorization.artifact_cid,
+        expected_container_name=container_name,
+        expected_lease_root=lease_root,
+        expected_worker_principal_did=expected_worker_did,
+        expected_provider_principal_did=expected_provider_did,
+    )
+    _inspect_signed_worker_network(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        profile=network_profile,
+        launch_authority=qualified_worker_launch_authority,
+        execution_profile=qualified_worker_execution_profile,
+    )
+    if qualified_worker_launch_authority is not None:
+        qualified_worker_execution_profile = _inspect_qualified_worker_engine(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+        )
+        if (
+            len(create_command) < 2
+            or create_command[1]
+            != f"--host={qualified_worker_execution_profile.engine_endpoint}"
+        ):
+            raise ValueError("qualified Grok create endpoint drifted")
+        qualified_worker_execution_profile = (
+            _reverify_qualified_grok_mount_boundary(
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+                create_command=create_command,
+                workspace=workspace,
+            )
+        )
     try:
         created = subprocess.run(
             list(create_command),
             cwd=workspace,
-            env=env,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -2712,9 +3994,48 @@ def _run_created_grok_container_with_typed_failure_capture(
         or recorded_container_id != created_fields[0]
     ):
         raise ValueError("Grok container identity is invalid")
+    network_profile = _signed_worker_network_profile(
+        invocation_binding=invocation_binding,
+        provider="grok",
+        workspace=workspace,
+        expected_artifact_cid=authorization.artifact_cid,
+        expected_container_name=container_name,
+        expected_lease_root=lease_root,
+        expected_worker_principal_did=expected_worker_did,
+        expected_provider_principal_did=expected_provider_did,
+    )
+    _inspect_signed_worker_network(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        profile=network_profile,
+        worker_container_id=created_fields[0],
+        launch_authority=qualified_worker_launch_authority,
+        execution_profile=qualified_worker_execution_profile,
+    )
+    if qualified_worker_launch_authority is not None:
+        _inspect_qualified_worker_container(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            container_id=created_fields[0],
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+        )
+        qualified_worker_execution_profile = (
+            _reverify_qualified_grok_mount_boundary(
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+                create_command=create_command,
+                workspace=workspace,
+            )
+        )
+    docker_host = (
+        qualified_worker_execution_profile.engine_endpoint
+        if qualified_worker_execution_profile is not None
+        else _DOCKER_LOCAL_HOST
+    )
     start_command = [
         docker_bin,
-        f"--host={_DOCKER_LOCAL_HOST}",
+        f"--host={docker_host}",
         "--config",
         str(docker_config),
         "start",
@@ -2722,7 +4043,7 @@ def _run_created_grok_container_with_typed_failure_capture(
         "--interactive",
         created_fields[0],
     ]
-    return _run_grok_with_typed_failure_capture(start_command, env=env)
+    return start_command
 
 
 def _docker_codex_fallback_command(
@@ -2736,12 +4057,32 @@ def _docker_codex_fallback_command(
     cidfile: Path,
     docker_bin: str,
     isolation_image: str,
+    network_profile: WorkerNetworkProfile | None = None,
+    qualified_worker_launch_authority: Mapping[str, object] | None = None,
+    qualified_worker_execution_profile: WorkerContainerExecutionProfile | None = None,
 ) -> list[str]:
     """Wrap the pinned Codex fallback in a host-write-confined container."""
 
+    if qualified_worker_launch_authority is not None:
+        qualified_worker_execution_profile = (
+            _require_eaaef_container_execution_profile_launch(
+                qualified_worker_launch_authority,
+                qualified_worker_execution_profile,
+            )
+        )
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    if not docker or image != AGENT_IMPLEMENTATION_CODEX_IMAGE_ID:
+    expected_image = AGENT_IMPLEMENTATION_CODEX_IMAGE_ID
+    qualified_labels: list[str] = []
+    if qualified_worker_launch_authority is not None:
+        expected_image, _profile_cid = _qualified_worker_bounds(
+            qualified_worker_launch_authority
+        )
+        qualified_labels = _qualified_worker_container_label_arguments(
+            qualified_worker_launch_authority,
+            qualified_worker_execution_profile,
+        )
+    if not docker or image != expected_image:
         raise ValueError(
             "Codex fallback requires the exact pinned task-toolchain image"
         )
@@ -2750,58 +4091,119 @@ def _docker_codex_fallback_command(
         or not container_name.startswith("ipfs-accelerate-codex-")
     ):
         raise ValueError("Codex fallback container name is invalid")
+    if network_profile is None:
+        raise ValueError("Codex provider task requires an approved worker network profile")
+    network_profile.validate_effect_binding(
+        provider="codex",
+        workspace=workspace,
+        container_name=container_name,
+        lease_root=docker_config.parent,
+    )
     source_auth = _validated_codex_auth_path(
         source_auth=source_auth,
         workspace=workspace,
     )
-    host_python = _host_codex_task_toolchain_python()
-    expected_environment = _codex_task_container_environment()
+    qualified = qualified_worker_launch_authority is not None
+    host_python = (
+        None if qualified else _host_codex_task_toolchain_python()
+    )
+    expected_environment = (
+        qualified_worker_execution_profile.container_environment()
+        if qualified
+        else _codex_task_container_environment()
+    )
     if child_env != expected_environment:
         raise ValueError("Codex fallback container environment is not sealed")
 
     _validate_codex_quota_fallback_command(
         codex_command,
         workspace=workspace,
+        require_host_executable=not qualified,
     )
     inner = list(codex_command)
+    if qualified:
+        inner[0] = "/opt/eaaef/bin/codex"
+        assert qualified_worker_execution_profile is not None
+        worktree_mount = _qualified_worker_required_mount(
+            qualified_worker_execution_profile,
+            kind="worktree",
+            read_only=False,
+        )
+        provider_auth_mount = _qualified_worker_required_mount(
+            qualified_worker_execution_profile,
+            kind="provider_auth",
+            read_only=True,
+        )
+        container_workspace = Path(worktree_mount.target)
+    else:
+        worktree_mount = None
+        provider_auth_mount = None
+        container_workspace = workspace
     sandbox_index = inner.index("-s")
     if inner[sandbox_index : sandbox_index + 2] != ["-s", "workspace-write"]:
         raise ValueError("Codex fallback sandbox descriptor is invalid")
     # Danger-full-access is safe only because Docker is now the enforcing
-    # sandbox: the root filesystem and host /usr are read-only, only this
-    # disposable worktree is writable, and no Docker socket or host home is
-    # projected into the container. This avoids nested bwrap/userns failures
-    # without widening host write authority. The container must be used only
-    # for a trusted repository: API network access and exact Codex auth are
-    # necessarily available to commands inside this external boundary.
+    # sandbox: the root filesystem is read-only, only this disposable worktree
+    # is writable, and no Docker socket or host home is projected into the
+    # container.  The EAAEF variant additionally obtains its provider and
+    # toolchain exclusively from the exact capsule-qualified image.
     inner[sandbox_index + 1] = "danger-full-access"
+    if qualified:
+        workspace_index = inner.index("-C")
+        inner[workspace_index + 1] = str(container_workspace)
 
+    docker_host = (
+        qualified_worker_execution_profile.engine_endpoint
+        if qualified_worker_execution_profile is not None
+        else _DOCKER_LOCAL_HOST
+    )
+    profile_arguments = (
+        _qualified_worker_profile_arguments(qualified_worker_execution_profile)
+        if qualified_worker_execution_profile is not None
+        else [
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=1024",
+            "--cpus=4",
+            "--memory=16g",
+            "--memory-swap=16g",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+        ]
+    )
+    tmpfs_uid, tmpfs_gid = (
+        qualified_worker_execution_profile.nonroot_user.split(":", maxsplit=1)
+        if qualified_worker_execution_profile is not None
+        else (str(os.getuid()), str(os.getgid()))
+    )
     command = [
         docker,
-        f"--host={_DOCKER_LOCAL_HOST}",
+        f"--host={docker_host}",
         "--config",
         str(docker_config),
         "create",
         "--pull=never",
         "--interactive",
-        "--read-only",
-        "--network=bridge",
-        "--runtime=runc",
+        *qualified_labels,
+        *network_profile.docker_arguments(),
+        *profile_arguments,
+        *([] if qualified else ["--runtime=runc"]),
         "--entrypoint=/usr/bin/env",
         "--tmpfs",
         (
             "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
+            f"uid={tmpfs_uid},gid={tmpfs_gid}"
         ),
         "--tmpfs",
         (
             "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
+            f"uid={tmpfs_uid},gid={tmpfs_gid}"
         ),
         "--tmpfs",
         (
             f"{_CODEX_CONTAINER_HOME}:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
+            f"uid={tmpfs_uid},gid={tmpfs_gid}"
         ),
         "--name",
         container_name,
@@ -2809,43 +4211,61 @@ def _docker_codex_fallback_command(
         str(cidfile),
         "--label",
         "ipfs_accelerate.codex_fallback_isolation=true",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=1024",
-        "--user",
-        f"{os.getuid()}:{os.getgid()}",
         "--workdir",
-        str(workspace),
+        str(container_workspace),
     ]
     for override in _CODEX_DOCKER_IMAGE_ENV_OVERRIDES:
         command.extend(["--env", override])
+    for name, value in sorted(network_profile.proxy_environment().items()):
+        command.extend(["--env", f"{name}={value}"])
 
-    host_usr = _existing_path(Path("/usr"))
-    if host_usr is None:
-        raise ValueError("Codex fallback requires the pinned host /usr toolchain")
-    command.extend(_docker_mount(host_usr, read_only=True))
-    host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
-    if host_ca_certificates is None:
-        raise ValueError("Codex fallback requires pinned host CA certificates")
-    command.extend(_docker_mount(host_ca_certificates, read_only=True))
-    command.extend(
-        _docker_mount(
-            host_python,
-            destination=_CODEX_TASK_TOOLCHAIN_PYTHON,
-            read_only=True,
+    if not qualified:
+        host_usr = _existing_path(Path("/usr"))
+        if host_usr is None:
+            raise ValueError("Codex fallback requires the pinned host /usr toolchain")
+        command.extend(_docker_mount(host_usr, read_only=True))
+        host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
+        if host_ca_certificates is None:
+            raise ValueError("Codex fallback requires pinned host CA certificates")
+        command.extend(_docker_mount(host_ca_certificates, read_only=True))
+        if host_python is None:  # pragma: no cover - guarded by ``qualified``
+            raise ValueError("Codex fallback host Python identity is unavailable")
+        command.extend(
+            _docker_mount(
+                host_python,
+                destination=_CODEX_TASK_TOOLCHAIN_PYTHON,
+                read_only=True,
+            )
         )
-    )
-    for git_root in _git_metadata_roots(workspace):
-        command.extend(_docker_mount(git_root, read_only=True))
-    command.extend(_docker_mount(workspace, read_only=False))
-    git_control_path = _existing_path(workspace / ".git")
-    if git_control_path is not None:
-        command.extend(_docker_mount(git_control_path, read_only=True))
+    if not qualified:
+        for git_root in _git_metadata_roots(workspace):
+            command.extend(_docker_mount(git_root, read_only=True))
+        command.extend(_docker_mount(workspace, read_only=False))
+        git_control_path = _existing_path(workspace / ".git")
+        if git_control_path is not None:
+            command.extend(_docker_mount(git_control_path, read_only=True))
+    else:
+        assert worktree_mount is not None
+        command.extend(
+            _docker_mount(
+                workspace,
+                destination=Path(worktree_mount.target),
+                read_only=worktree_mount.read_only,
+            )
+        )
     command.extend(
         _docker_mount(
             source_auth,
-            destination=_CODEX_CONTAINER_AUTH_PATH,
-            read_only=True,
+            destination=(
+                Path(provider_auth_mount.target)
+                if provider_auth_mount is not None
+                else _CODEX_CONTAINER_AUTH_PATH
+            ),
+            read_only=(
+                provider_auth_mount.read_only
+                if provider_auth_mount is not None
+                else True
+            ),
         )
     )
     # The authority-validation image contains a large CUDA-oriented Config.Env.
@@ -2855,7 +4275,18 @@ def _docker_codex_fallback_command(
     environment_assignments = [
         f"{name}={value}" for name, value in sorted(expected_environment.items())
     ]
+    environment_assignments.extend(
+        f"{name}={value}"
+        for name, value in sorted(network_profile.proxy_environment().items())
+    )
     command.extend([image, "-i", *environment_assignments, *inner])
+    validate_provider_worker_command(
+        command,
+        profile=network_profile,
+        expected_image=image,
+        additional_labels=qualified_labels[1::2],
+        container_execution_profile=qualified_worker_execution_profile,
+    )
     return command
 
 
@@ -2869,16 +4300,58 @@ def _run_codex_quota_fallback_in_docker(
     pre_effect_validator: Callable[[], None] | None = None,
     effect_claim: Callable[[Mapping[str, object]], None] | None = None,
     effect_terminal: Callable[[int], None] | None = None,
+    network_profile: WorkerNetworkProfile | None = None,
+    invocation_binding: object | None = None,
+    qualified_worker_launch_authority: Mapping[str, object] | None = None,
 ) -> int:
     """Run Codex only inside the available pinned external sandbox."""
 
-    trusted_codex = resolve_codex_quota_fallback_executable(
-        workspace=workspace,
-        configured=str(codex_command[0] if codex_command else ""),
+    qualified_worker_execution_profile: WorkerContainerExecutionProfile | None = None
+    if qualified_worker_launch_authority is not None:
+        if invocation_binding is None:
+            raise ValueError("qualified Codex worker lacks an accepted control plane")
+        qualified_worker_launch_authority = parse_worker_network_launch_authority(
+            qualified_worker_launch_authority,
+            accepted_control_plane_pin=getattr(
+                invocation_binding,
+                "control_plane",
+                None,
+            ),
+            require_admitted=True,
+        )
+        qualified_worker_execution_profile = (
+            load_worker_container_execution_profile(
+                launch_authority=qualified_worker_launch_authority,
+                invocation_binding=invocation_binding,
+            )
+        )
+        _require_eaaef_container_execution_profile_launch(
+            qualified_worker_launch_authority,
+            qualified_worker_execution_profile,
+        )
+        if not codex_command:
+            raise ValueError("qualified Codex route lacks a provider command")
+        # Any host path resolved while choosing the provider is availability
+        # evidence, not execution authority.  The qualified worker consumes
+        # only the executable embedded in the exact admitted image.
+        codex_command = ["/opt/eaaef/bin/codex", *codex_command[1:]]
+        _validate_codex_quota_fallback_command(
+            codex_command,
+            workspace=workspace,
+            require_host_executable=False,
+        )
+    else:
+        trusted_codex = resolve_codex_quota_fallback_executable(
+            workspace=workspace,
+            configured=str(codex_command[0] if codex_command else ""),
+        )
+        if not trusted_codex or trusted_codex != str(codex_command[0]):
+            raise ValueError("Codex fallback executable lost its trusted identity")
+    docker_bin = (
+        _docker_isolation_binary(qualified_worker_execution_profile)
+        if qualified_worker_execution_profile is not None
+        else _docker_isolation_binary()
     )
-    if not trusted_codex or trusted_codex != str(codex_command[0]):
-        raise ValueError("Codex fallback executable lost its trusted identity")
-    docker_bin = _docker_isolation_binary()
     if not docker_bin:
         raise ValueError("Codex fallback requires local Docker isolation")
 
@@ -2892,16 +4365,77 @@ def _run_codex_quota_fallback_in_docker(
                 base_env=base_env,
             )
         )
+        if qualified_worker_launch_authority is not None:
+            if qualified_worker_execution_profile is None:
+                raise ValueError("qualified Codex worker profile is unavailable")
+            child_env = qualified_worker_execution_profile.container_environment()
         codex_home = Path(isolated_home.name)
+        expected_worker_did = ""
+        expected_provider_did = ""
+        if qualified_worker_launch_authority is not None:
+            expected_worker_did = str(
+                qualified_worker_launch_authority.get("worker_principal_did") or ""
+            )
+            expected_provider_did = str(
+                qualified_worker_launch_authority.get("provider_principal_did") or ""
+            )
+        if network_profile is None:
+            if invocation_binding is None:
+                raise ValueError("Codex provider task lacks signed network authority")
+            network_profile = _signed_worker_network_profile(
+                invocation_binding=invocation_binding,
+                provider="codex",
+                workspace=workspace,
+                expected_worker_principal_did=expected_worker_did,
+                expected_provider_principal_did=expected_provider_did,
+            )
         docker_lease = _DockerContainerLease.create(
             docker_bin,
             provider="codex",
             provider_home=codex_home,
             prompt_path=prompt_path,
+            authorized_container_name=network_profile.container_name,
+            authorized_lease_root=network_profile.lease_root,
+            **(
+                {
+                    "engine_endpoint": (
+                        qualified_worker_execution_profile.engine_endpoint
+                    )
+                }
+                if qualified_worker_execution_profile is not None
+                else {}
+            ),
         )
-        isolation_image = _docker_codex_task_toolchain_image_id(
-            docker_bin,
+        if invocation_binding is not None and network_profile.authorization is not None:
+            network_profile = _signed_worker_network_profile(
+                invocation_binding=invocation_binding,
+                provider="codex",
+                workspace=workspace,
+                expected_artifact_cid=network_profile.authorization.artifact_cid,
+                expected_container_name=docker_lease.container_name,
+                expected_lease_root=docker_lease.lease_root,
+                expected_worker_principal_did=expected_worker_did,
+                expected_provider_principal_did=expected_provider_did,
+            )
+        _inspect_signed_worker_network(
+            docker_bin=docker_bin,
             docker_config=docker_lease.docker_config,
+            profile=network_profile,
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+        )
+        isolation_image = (
+            _inspect_qualified_worker_image(
+                docker_bin=docker_bin,
+                docker_config=docker_lease.docker_config,
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+            )
+            if qualified_worker_launch_authority is not None
+            else _docker_codex_task_toolchain_image_id(
+                docker_bin,
+                docker_config=docker_lease.docker_config,
+            )
         )
         if not isolation_image:
             raise ValueError(
@@ -2917,6 +4451,13 @@ def _run_codex_quota_fallback_in_docker(
             cidfile=docker_lease.cidfile,
             docker_bin=docker_bin,
             isolation_image=isolation_image,
+            network_profile=network_profile,
+            qualified_worker_launch_authority=(
+                qualified_worker_launch_authority
+            ),
+            qualified_worker_execution_profile=(
+                qualified_worker_execution_profile
+            ),
         )
         if pre_effect_validator is not None:
             # Validate the route before the final auth check so an auth swap
@@ -2933,6 +4474,17 @@ def _run_codex_quota_fallback_in_docker(
             # available to the path-based Docker CLI handoff.
             pre_effect_validator()
         docker_environment = _docker_control_env(child_env)
+        if qualified_worker_launch_authority is not None:
+            qualified_worker_execution_profile = _inspect_qualified_worker_engine(
+                docker_bin=docker_bin,
+                docker_config=docker_lease.docker_config,
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+            )
+            if command[1] != (
+                f"--host={qualified_worker_execution_profile.engine_endpoint}"
+            ):
+                raise ValueError("qualified Codex create endpoint drifted")
         try:
             created = subprocess.run(
                 command,
@@ -2959,9 +4511,41 @@ def _run_codex_quota_fallback_in_docker(
         ):
             raise ValueError("Codex fallback container identity is invalid")
         container_id = "sha256:" + created_fields[0]
+        if invocation_binding is not None and network_profile.authorization is not None:
+            network_profile = _signed_worker_network_profile(
+                invocation_binding=invocation_binding,
+                provider="codex",
+                workspace=workspace,
+                expected_artifact_cid=network_profile.authorization.artifact_cid,
+                expected_container_name=docker_lease.container_name,
+                expected_lease_root=docker_lease.lease_root,
+                expected_worker_principal_did=expected_worker_did,
+                expected_provider_principal_did=expected_provider_did,
+            )
+        _inspect_signed_worker_network(
+            docker_bin=docker_bin,
+            docker_config=docker_lease.docker_config,
+            profile=network_profile,
+            worker_container_id=created_fields[0],
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+        )
+        if qualified_worker_launch_authority is not None:
+            _inspect_qualified_worker_container(
+                docker_bin=docker_bin,
+                docker_config=docker_lease.docker_config,
+                container_id=created_fields[0],
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+            )
+        start_host = (
+            qualified_worker_execution_profile.engine_endpoint
+            if qualified_worker_execution_profile is not None
+            else _DOCKER_LOCAL_HOST
+        )
         start_command = [
             docker_bin,
-            f"--host={_DOCKER_LOCAL_HOST}",
+            f"--host={start_host}",
             "--config",
             str(docker_lease.docker_config),
             "start",
@@ -2989,12 +4573,26 @@ def _run_codex_quota_fallback_in_docker(
             environment_receipt = {
                 "docker_cli": dict(sorted(docker_environment.items())),
                 "container": dict(
-                    sorted(_codex_task_container_environment().items())
+                    sorted(
+                        (
+                            qualified_worker_execution_profile.container_environment()
+                            if qualified_worker_execution_profile is not None
+                            else _codex_task_container_environment()
+                        ).items()
+                    )
                 ),
             }
             image_receipt = {
                 "image_id": isolation_image,
-                "image_label": AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
+                "image_label": (
+                    _eaaef_worker_effect_image_label(
+                        launch_authority=qualified_worker_launch_authority,
+                        network_profile=network_profile,
+                        execution_profile=qualified_worker_execution_profile,
+                    )
+                    if qualified_worker_launch_authority is not None
+                    else AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL
+                ),
             }
             cleanup_receipt: dict[str, object] = {
                 "schema": (
@@ -3048,6 +4646,44 @@ def _run_codex_quota_fallback_in_docker(
             # own container is removed.  Cleanup ownership transfers only
             # after this process has won the durable effect_started CAS.
             docker_lease.mark_cas_owned()
+        if qualified_worker_launch_authority is not None:
+            if invocation_binding is None or network_profile.authorization is None:
+                raise ValueError(
+                    "qualified Codex pre-start authority is incomplete"
+                )
+            network_profile = _signed_worker_network_profile(
+                invocation_binding=invocation_binding,
+                provider="codex",
+                workspace=workspace,
+                expected_artifact_cid=(
+                    network_profile.authorization.artifact_cid
+                ),
+                expected_container_name=docker_lease.container_name,
+                expected_lease_root=docker_lease.lease_root,
+                expected_worker_principal_did=expected_worker_did,
+                expected_provider_principal_did=expected_provider_did,
+            )
+            _inspect_qualified_worker_image(
+                docker_bin=docker_bin,
+                docker_config=docker_lease.docker_config,
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+            )
+            _inspect_signed_worker_network(
+                docker_bin=docker_bin,
+                docker_config=docker_lease.docker_config,
+                profile=network_profile,
+                worker_container_id=created_fields[0],
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+            )
+            _inspect_qualified_worker_container(
+                docker_bin=docker_bin,
+                docker_config=docker_lease.docker_config,
+                container_id=created_fields[0],
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+            )
         process = subprocess.Popen(
             start_command,
             cwd=workspace,
@@ -3551,10 +5187,34 @@ def _start_recorded_codex_effect(
     launch_receipt: Mapping[str, object],
     *,
     prompt: str,
+    invocation_binding: object | None = None,
+    workspace: Path | None = None,
+    worker_network_attempt_authority_json: str = "",
 ) -> int:
     """Start/attach exactly the inert container named in the CAS receipt."""
 
-    docker_bin = _docker_isolation_binary()
+    execution_profile: WorkerContainerExecutionProfile | None = None
+    if worker_network_attempt_authority_json:
+        if invocation_binding is None or workspace is None:
+            raise ValueError("recorded EAAEF restart authority is incomplete")
+        _authorizations, launch_authority = _verified_worker_network_attempt(
+            worker_network_attempt_authority_json,
+            invocation_binding=invocation_binding,
+            workspace=workspace,
+        )
+        execution_profile = load_worker_container_execution_profile(
+            launch_authority=launch_authority,
+            invocation_binding=invocation_binding,
+        )
+        _require_eaaef_container_execution_profile_launch(
+            launch_authority,
+            execution_profile,
+        )
+    docker_bin = (
+        _docker_isolation_binary(execution_profile)
+        if execution_profile is not None
+        else _docker_isolation_binary()
+    )
     if (
         not docker_bin
         or _docker_runtime_receipt_identity(docker_bin)
@@ -3568,11 +5228,91 @@ def _start_recorded_codex_effect(
         or re.fullmatch(r"sha256:[0-9a-f]{64}", container_id) is None
     ):
         raise ValueError("recorded Docker container name is invalid")
+    lease_root, docker_config, recorded_name = _recorded_codex_lease_root(
+        launch_receipt
+    )
+    if worker_network_attempt_authority_json:
+        if invocation_binding is None or workspace is None:
+            raise ValueError("recorded EAAEF restart authority is incomplete")
+        authorizations, launch_authority = _verified_worker_network_attempt(
+            worker_network_attempt_authority_json,
+            invocation_binding=invocation_binding,
+            workspace=workspace,
+        )
+        execution_profile = load_worker_container_execution_profile(
+            launch_authority=launch_authority,
+            invocation_binding=invocation_binding,
+            expected_artifact_cid=(
+                execution_profile.artifact_cid if execution_profile is not None else ""
+            ),
+        )
+        authorization = authorizations.get("codex")
+        if authorization is None:
+            raise ValueError("recorded EAAEF restart lacks Codex authority")
+        profile = _signed_worker_network_profile(
+            invocation_binding=invocation_binding,
+            provider="codex",
+            workspace=workspace,
+            expected_artifact_cid=authorization.artifact_cid,
+            expected_container_name=recorded_name,
+            expected_lease_root=lease_root,
+            expected_worker_principal_did=str(
+                launch_authority["worker_principal_did"]
+            ),
+            expected_provider_principal_did=str(
+                launch_authority["provider_principal_did"]
+            ),
+        )
+        image_receipt = launch_receipt.get("image_receipt")
+        expected_image_digest, _profile_cid = _qualified_worker_bounds(
+            launch_authority
+        )
+        if (
+            not isinstance(image_receipt, Mapping)
+            or set(image_receipt) != {"image_id", "image_label"}
+            or launch_receipt.get("image_id") != expected_image_digest
+            or image_receipt.get("image_id") != expected_image_digest
+            or image_receipt.get("image_label")
+            != _eaaef_worker_effect_image_label(
+                launch_authority=launch_authority,
+                network_profile=profile,
+                execution_profile=execution_profile,
+            )
+        ):
+            raise ValueError("recorded EAAEF image/network receipt drifted")
+        _inspect_qualified_worker_image(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            launch_authority=launch_authority,
+            execution_profile=execution_profile,
+        )
+        _inspect_signed_worker_network(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            profile=profile,
+            worker_container_id=container_id.removeprefix("sha256:"),
+            launch_authority=launch_authority,
+            execution_profile=execution_profile,
+        )
+        _inspect_qualified_worker_container(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            container_id=container_id,
+            launch_authority=launch_authority,
+            execution_profile=execution_profile,
+        )
+    elif invocation_binding is not None or workspace is not None:
+        raise ValueError("recorded EAAEF restart lacks worker-network authority")
     command_receipt = launch_receipt.get("command_receipt")
     command = (
         command_receipt.get("start_argv")
         if isinstance(command_receipt, Mapping)
         else None
+    )
+    engine_endpoint = (
+        execution_profile.engine_endpoint
+        if execution_profile is not None
+        else _DOCKER_LOCAL_HOST
     )
     if (
         not isinstance(command, list)
@@ -3580,9 +5320,9 @@ def _start_recorded_codex_effect(
         or command
         != [
             docker_bin,
-            f"--host={_DOCKER_LOCAL_HOST}",
+            f"--host={engine_endpoint}",
             "--config",
-            str(_recorded_codex_lease_root(launch_receipt)[1]),
+            str(docker_config),
             "start",
             "--attach",
             "--interactive",
@@ -3641,9 +5381,7 @@ def _validate_codex_quota_fallback_reasoning_effort(value: object) -> str:
 def _parse_codex_fallback_command(
     raw: str,
     *,
-    expected_fallback_reasoning_effort: str = (
-        DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT
-    ),
+    expected_fallback_reasoning_effort: str | None = None,
 ) -> list[str]:
     """Decode the daemon-authored Codex fallback without invoking a shell."""
 
@@ -3678,6 +5416,7 @@ def _parse_codex_fallback_command(
     _validate_codex_quota_fallback_command(
         command,
         expected_fallback_reasoning_effort=expected_fallback_reasoning_effort,
+        require_host_executable=None,
     )
     return command
 
@@ -3688,6 +5427,7 @@ def _validate_codex_quota_fallback_command(
     workspace: Path | None = None,
     required_reasoning_effort: str | None = None,
     expected_fallback_reasoning_effort: str | None = None,
+    require_host_executable: bool | None = True,
 ) -> None:
     """Require an authorized daemon-owned Terra fallback shape."""
 
@@ -3742,20 +5482,34 @@ def _validate_codex_quota_fallback_command(
     if workspace is not None and fallback_workspace != workspace:
         raise ValueError("Codex quota fallback workspace does not match Grok workspace")
     executable = Path(command[0])
-    try:
-        resolved_executable = executable.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError("Codex quota fallback executable does not exist") from exc
-    # ``os.access(..., X_OK)`` is false on a noexec test mount even for a
-    # correctly pinned executable.  The Docker boundary executes the pinned
-    # image command, so verify immutable executable mode here instead.
-    if not executable.is_file() or not (resolved_executable.stat().st_mode & 0o111):
-        raise ValueError("Codex quota fallback executable is not executable")
-    if workspace is not None and (
-        executable.is_relative_to(workspace)
-        or resolved_executable.is_relative_to(workspace)
+    if not executable.is_absolute():
+        raise ValueError("Codex quota fallback executable must be absolute")
+    if require_host_executable is True:
+        try:
+            resolved_executable = executable.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("Codex quota fallback executable does not exist") from exc
+        # ``os.access(..., X_OK)`` is false on a noexec test mount even for a
+        # correctly pinned executable.  The legacy Docker boundary executes
+        # this host-projected command, so verify immutable executable mode.
+        if not executable.is_file() or not (
+            resolved_executable.stat().st_mode & 0o111
+        ):
+            raise ValueError("Codex quota fallback executable is not executable")
+        if workspace is not None and (
+            executable.is_relative_to(workspace)
+            or resolved_executable.is_relative_to(workspace)
+        ):
+            raise ValueError(
+                "Codex quota fallback executable must be outside workspace"
+            )
+    elif (
+        require_host_executable is False
+        and executable != Path("/opt/eaaef/bin/codex")
     ):
-        raise ValueError("Codex quota fallback executable must be outside workspace")
+        raise ValueError(
+            "qualified Codex fallback must use the in-image provider binary"
+        )
 
     configs: dict[str, str] = {}
     for config in option_values["-c"]:
@@ -4155,7 +5909,7 @@ def _independently_verify_grok_quota(
     failure_receipt: Mapping[str, object],
     invocation_binding: object | None = None,
 ) -> object:
-    """Confirm quota with a fresh pinned, tool-free Grok-4.5 invocation."""
+    """Confirm quota with a fresh tool-free invocation of the receipt model."""
 
     from ipfs_accelerate_py.llm_router import build_grok_cli_command, build_grok_cli_env
 
@@ -4169,9 +5923,9 @@ def _independently_verify_grok_quota(
             "Reply with exactly the single word OK.",
             encoding="utf-8",
         )
-        child_env = build_grok_cli_env(
+        child_env = _sanitized_grok_cli_environment(
+            build_grok_cli_env,
             base_env=base_env,
-            isolate_alternate_providers=True,
         )
         isolated_home, verifier_env, _policy, _denied = _isolated_grok_home(
             base_env=base_env,
@@ -4190,10 +5944,13 @@ def _independently_verify_grok_quota(
             }
         )
         verifier_env.pop("OLDPWD", None)
+        verifier_model = str(failure_receipt.get("primary_model") or "")
+        if verifier_model not in {"grok-4.5", "grok-4.6"}:
+            return ""
         command = build_grok_cli_command(
             mode="chat",
             workspace=verifier_workspace,
-            model_name=DEFAULT_GROK_MODEL,
+            model_name=verifier_model,
             max_turns=1,
             grok_bin=grok_bin,
             prompt_file=prompt_path,
@@ -4260,6 +6017,7 @@ def _run_typed_grok_preflight_once(
     grok_bin: str,
     base_env: dict[str, str],
     nonce: str,
+    model: str = DEFAULT_GROK_MODEL,
 ) -> tuple[int, dict[str, object], bool, str]:
     """Run the fixed no-tools probe and return its runner-authored receipt.
 
@@ -4281,9 +6039,9 @@ def _run_typed_grok_preflight_once(
         probe_workspace.mkdir(mode=0o700)
         prompt_path = probe_root / "prompt.txt"
         prompt_path.write_text(GROK_QUOTA_PROBE_PROMPT, encoding="utf-8")
-        child_env = build_grok_cli_env(
+        child_env = _sanitized_grok_cli_environment(
+            build_grok_cli_env,
             base_env=base_env,
-            isolate_alternate_providers=True,
         )
         isolated_home, probe_env, _policy, _denied = _isolated_grok_home(
             base_env=base_env,
@@ -4305,7 +6063,7 @@ def _run_typed_grok_preflight_once(
         command = build_grok_cli_command(
             mode="chat",
             workspace=probe_workspace,
-            model_name=DEFAULT_GROK_MODEL,
+            model_name=model,
             max_turns=1,
             grok_bin=grok_bin,
             prompt_file=prompt_path,
@@ -4333,7 +6091,7 @@ def _run_typed_grok_preflight_once(
         receipt = build_grok_failure_receipt(
             probe_stderr_text=receipt_evidence,
             nonce=nonce,
-            model=DEFAULT_GROK_MODEL,
+            model=model,
             probe_returncode=returncode,
             primary_dispatched=False,
             evidence_size=stderr_size,
@@ -4342,7 +6100,7 @@ def _run_typed_grok_preflight_once(
         if not valid_grok_failure_receipt(
             receipt,
             nonce=nonce,
-            model=DEFAULT_GROK_MODEL,
+            model=model,
             returncode=returncode,
         ):
             return returncode, {}, stderr_overflow, receipt_evidence
@@ -4359,6 +6117,7 @@ def _run_typed_grok_preflight(
     grok_bin: str,
     base_env: dict[str, str],
     nonce: str,
+    model: str = DEFAULT_GROK_MODEL,
 ) -> tuple[int, dict[str, object], bool]:
     """Run the typed probe, retrying only its exact transient turn artifact."""
 
@@ -4370,6 +6129,7 @@ def _run_typed_grok_preflight(
         grok_bin=grok_bin,
         base_env=base_env,
         nonce=nonce,
+        model=model,
     )
     if returncode == 0 or not receipt:
         return returncode, receipt, overflow
@@ -4377,7 +6137,7 @@ def _run_typed_grok_preflight(
         evidence,
         receipt,
         nonce=nonce,
-        model=DEFAULT_GROK_MODEL,
+        model=model,
         probe_returncode=returncode,
     ):
         return returncode, receipt, overflow
@@ -4386,6 +6146,7 @@ def _run_typed_grok_preflight(
             grok_bin=grok_bin,
             base_env=base_env,
             nonce=nonce,
+            model=model,
         )
     )
     return retry_returncode, retry_receipt, retry_overflow
@@ -4574,6 +6335,7 @@ def _run_protected_effect_recovery(
     *,
     raw_locator: str,
     workspace: Path,
+    worker_network_attempt_authority_json: str = "",
 ) -> int:
     """Account one existing protected effect without dispatching a provider."""
 
@@ -4633,6 +6395,28 @@ def _run_protected_effect_recovery(
         if context is None or context.route.invocation_binding is None:
             raise ValueError("protected effect historical authority is invalid")
         invocation = context.route.invocation_binding
+        route_authorization = context.route.authorization
+        is_eaaef_route = bool(
+            route_authorization is not None
+            and route_authorization.board_namespace == EAAEF_BOARD_NAMESPACE
+        )
+        worker_network_launch_authority: dict[str, object] = {}
+        if reservation.state == "effect_started" and is_eaaef_route:
+            if not worker_network_attempt_authority_json:
+                raise ValueError(
+                    "protected EAAEF restart lacks worker-network authority"
+                )
+            _worker_authorizations, worker_network_launch_authority = (
+                _verified_worker_network_attempt(
+                    worker_network_attempt_authority_json,
+                    invocation_binding=invocation,
+                    workspace=workspace,
+                )
+            )
+        elif worker_network_attempt_authority_json:
+            raise ValueError(
+                "worker-network restart authority is not admitted for this recovery"
+            )
         exact_locator = {
             "task_id": invocation.task_id,
             "attempt": invocation.attempt,
@@ -4660,6 +6444,15 @@ def _run_protected_effect_recovery(
             int(sealed_match.group(1)),
         ) != str(sys.argv[0]):
             raise ValueError("protected effect recovery is not sealed")
+        if is_eaaef_route:
+            if worker_network_launch_authority:
+                _require_eaaef_container_execution_profile_launch(
+                    worker_network_launch_authority
+                )
+            raise ValueError(
+                "EAAEF container recovery is unavailable_fail_closed: "
+                + _eaaef_container_execution_profile_launch_blocker()
+            )
 
         if reservation.terminal:
             outcome = reservation.terminal_outcome
@@ -4729,6 +6522,13 @@ def _run_protected_effect_recovery(
             returncode = _start_recorded_codex_effect(
                 active.effect_launch_receipt,
                 prompt=prompt,
+                invocation_binding=(invocation if is_eaaef_route else None),
+                workspace=(workspace if is_eaaef_route else None),
+                worker_network_attempt_authority_json=(
+                    worker_network_attempt_authority_json
+                    if is_eaaef_route
+                    else ""
+                ),
             )
             outcome_decision = (
                 "fallback_succeeded" if returncode == 0 else "fallback_failed"
@@ -4824,6 +6624,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    route_plan = resolve_agent_implementation_route(default_route="legacy")
     if codex_fallback_command and validate_grok_runner_command_binding(
         args.outer_runner_command
     ):
@@ -4842,11 +6643,42 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         return 2
+    supplied_preflight_nonce = str(
+        args.grok_failure_receipt_nonce or ""
+    ).strip()
+    supplied_route_binding = str(
+        args.agent_implementation_route_json or ""
+    ).strip()
+    if internal_legacy_preflight and supplied_preflight_nonce:
+        print(
+            "canonical legacy preflight cannot be combined with an external nonce",
+            file=sys.stderr,
+        )
+        return 2
+    if internal_legacy_preflight and supplied_route_binding:
+        print(
+            "legacy quota route forbids an auth/high route binding",
+            file=sys.stderr,
+        )
+        return 2
 
     workspace = args.workspace.expanduser().resolve()
     if not workspace.is_dir():
         print(f"workspace is not a directory: {workspace}", file=sys.stderr)
         return 2
+    if args.receipt_fd_declared:
+        # A receipt pipe authenticates neither an OCI boundary nor its exact
+        # capsule-qualified image/profile.  Until a separately sealed parent
+        # container attestation is available, every receipt-FD route remains
+        # pre-effect fail-closed instead of executing Grok on the host.
+        print(
+            "receipt-FD Grok execution lacks a verified enclosing container",
+            file=sys.stderr,
+        )
+        return 2
+    worker_network_attempt_authority_json = str(
+        getattr(args, "worker_network_attempt_authority_json", "") or ""
+    ).strip()
     recovery_locator_raw = str(
         args.agent_implementation_recovery_json or ""
     ).strip()
@@ -4868,28 +6700,41 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         return _run_protected_effect_recovery(
             raw_locator=recovery_locator_raw,
             workspace=workspace,
+            worker_network_attempt_authority_json=(
+                worker_network_attempt_authority_json
+            ),
         )
     protected_recovery_reservation: ProviderAttemptReservation | None = None
     protected_recovery_context = None
-    if codex_fallback_command:
-        route_repository_head = ""
-        preflight_nonce = str(args.grok_failure_receipt_nonce or "").strip()
-        route_binding_raw = str(
-            args.agent_implementation_route_json or ""
-        ).strip()
+    worker_network_authorizations: dict[str, object] = {}
+    worker_network_launch_authority: dict[str, object] = {}
+    worker_container_execution_profile: WorkerContainerExecutionProfile | None = None
+    is_eaaef_route = False
+    route_repository_head = ""
+    preflight_nonce = supplied_preflight_nonce
+    route_binding_raw = supplied_route_binding
+    protected_route_requested = bool(
+        route_binding_raw or worker_network_attempt_authority_json
+    )
+    if preflight_nonce and not route_binding_raw and not internal_legacy_preflight:
+        print(
+            "typed Grok preflight requires a scoped canonical route binding",
+            file=sys.stderr,
+        )
+        return 2
+    if codex_fallback_command and route_binding_raw and not preflight_nonce:
+        print(
+            "scoped Grok/Codex fallback requires a typed preflight nonce",
+            file=sys.stderr,
+        )
+        return 2
+    if codex_fallback_command or protected_route_requested:
         route_plan = None
-        if preflight_nonce:
+        if route_binding_raw:
             if internal_legacy_preflight:
                 print(
                     "canonical legacy preflight cannot be combined with an "
                     "external nonce or route binding",
-                    file=sys.stderr,
-                )
-                return 2
-            if not route_binding_raw:
-                print(
-                    "typed Grok preflight requires a scoped canonical route "
-                    "binding",
                     file=sys.stderr,
                 )
                 return 2
@@ -5077,6 +6922,93 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     default_route="legacy"
                 )
 
+        route_authorization = getattr(route_plan, "authorization", None)
+        is_eaaef_route = bool(
+            route_authorization is not None
+            and route_authorization.board_namespace == EAAEF_BOARD_NAMESPACE
+        )
+        if is_eaaef_route:
+            invocation_binding = getattr(route_plan, "invocation_binding", None)
+            if (
+                invocation_binding is None
+                or not worker_network_attempt_authority_json
+            ):
+                print(
+                    "EAAEF provider dispatch lacks capsule-bound worker-network authority",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                (
+                    worker_network_authorizations,
+                    worker_network_launch_authority,
+                ) = _verified_worker_network_attempt(
+                    worker_network_attempt_authority_json,
+                    invocation_binding=invocation_binding,
+                    workspace=workspace,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                print(
+                    f"EAAEF worker-network authority is invalid: {exc}",
+                    file=sys.stderr,
+                )
+                return 2
+            configured_grok = str(args.grok_bin or "").strip()
+            if configured_grok not in {"", "/opt/eaaef/bin/grok"}:
+                print(
+                    "EAAEF Grok must use the exact in-image "
+                    "/opt/eaaef/bin/grok executable",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                worker_container_execution_profile = (
+                    load_worker_container_execution_profile(
+                        launch_authority=worker_network_launch_authority,
+                        invocation_binding=invocation_binding,
+                    )
+                )
+                _require_eaaef_container_execution_profile_launch(
+                    worker_network_launch_authority,
+                    worker_container_execution_profile,
+                )
+            except (OSError, ValueError) as exc:
+                print(
+                    "EAAEF container execution profile is unavailable_fail_closed: "
+                    f"{EAAEF_CONTAINER_EXECUTION_PROFILE_LAUNCH_CAPABILITY}="
+                    f"artifact_missing_or_invalid ({exc})",
+                    file=sys.stderr,
+                )
+                return 2
+            if (
+                not codex_fallback_command
+                and EAAEF_PRIMARY_GROK_EFFECT_CAS_STATUS != "admitted"
+            ):
+                print(
+                    "EAAEF primary Grok is unavailable_fail_closed: "
+                    f"{EAAEF_PRIMARY_GROK_EFFECT_CAS_CAPABILITY}="
+                    f"{EAAEF_PRIMARY_GROK_EFFECT_CAS_STATUS}",
+                    file=sys.stderr,
+                )
+                return 2
+            if (
+                codex_fallback_command
+                and EAAEF_CONTAINERIZED_GROK_PREFLIGHT_STATUS != "admitted"
+            ):
+                print(
+                    "EAAEF typed Grok preflight is unavailable_fail_closed: "
+                    f"{EAAEF_CONTAINERIZED_GROK_PREFLIGHT_CAPABILITY}="
+                    f"{EAAEF_CONTAINERIZED_GROK_PREFLIGHT_STATUS}",
+                    file=sys.stderr,
+                )
+                return 2
+        elif worker_network_attempt_authority_json:
+            print(
+                "worker-network attempt authority is forbidden outside EAAEF",
+                file=sys.stderr,
+            )
+            return 2
+
         def route_outcome_record(
             *,
             active_route,
@@ -5152,22 +7084,31 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             ):
                 return render_agent_implementation_route_outcome(outcome)
             return render_grok_route_outcome(outcome)
-        try:
-            _validate_codex_quota_fallback_command(
-                codex_fallback_command,
-                workspace=workspace,
-                required_reasoning_effort=(
-                    route_plan.fallback_reasoning_effort
-                ),
-            )
-            # The runner changes cwd before dispatch.  Store the already
-            # validated absolute workspace so a relative -C cannot be
-            # reinterpreted beneath itself or redirected through a new link.
-            workspace_index = codex_fallback_command.index("-C") + 1
-            codex_fallback_command[workspace_index] = str(workspace)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
+        if codex_fallback_command:
+            try:
+                if (
+                    is_eaaef_route
+                    and codex_fallback_command[0] != "/opt/eaaef/bin/codex"
+                ):
+                    raise ValueError(
+                        "EAAEF Codex fallback must use /opt/eaaef/bin/codex"
+                    )
+                _validate_codex_quota_fallback_command(
+                    codex_fallback_command,
+                    workspace=workspace,
+                    required_reasoning_effort=(
+                        route_plan.fallback_reasoning_effort
+                    ),
+                    require_host_executable=not is_eaaef_route,
+                )
+                # The runner changes cwd before dispatch.  Store the already
+                # validated absolute workspace so a relative -C cannot be
+                # reinterpreted beneath itself or redirected through a new link.
+                workspace_index = codex_fallback_command.index("-C") + 1
+                codex_fallback_command[workspace_index] = str(workspace)
+            except (IndexError, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
         executable_extensions = _grok_executable_extension_paths(workspace)
         if executable_extensions:
             print(
@@ -5181,12 +7122,20 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     grok_bin = (
         ""
         if protected_recovery_reservation is not None
-        else str(args.grok_bin).strip() or find_grok_cli() or ""
+        else (
+            "/opt/eaaef/bin/grok"
+            if is_eaaef_route
+            else str(args.grok_bin).strip() or find_grok_cli() or ""
+        )
     )
     if not grok_bin and protected_recovery_reservation is None:
         print("grok CLI not found on PATH", file=sys.stderr)
         return 127
-    if codex_fallback_command and protected_recovery_reservation is None:
+    if (
+        codex_fallback_command
+        and protected_recovery_reservation is None
+        and not is_eaaef_route
+    ):
         grok_bin = _resolve_trusted_grok_bin(
             configured=grok_bin,
             workspace=workspace,
@@ -5213,9 +7162,18 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
             or ""
         )
-    if codex_fallback_command and model != DEFAULT_GROK_MODEL:
+    required_route_model = (
+        str(route_plan.primary_model_id)
+        if internal_legacy_preflight or route_binding_raw
+        else DEFAULT_GROK_MODEL
+    )
+    if (
+        (codex_fallback_command or is_eaaef_route)
+        and model != required_route_model
+    ):
         print(
-            "Default Grok/Codex route requires primary model grok-4.6",
+            "Protected Grok route requires primary model "
+            + required_route_model,
             file=sys.stderr,
         )
         return 2
@@ -5231,7 +7189,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         max_turns = DEFAULT_GROK_MAX_TURNS
     permission_mode = (
         "bypassPermissions"
-        if codex_fallback_command
+        if codex_fallback_command or is_eaaef_route
         else (
             str(args.permission_mode).strip()
             or os.environ.get(
@@ -5245,10 +7203,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     )
 
     prompt: str | None = None
-    if (
-        codex_fallback_command
-        and route_plan.invocation_binding is not None
-    ):
+    if route_plan.invocation_binding is not None:
         # The scoped route signs the task prompt. Read and verify it before
         # even the supposedly tool-free primary preflight so no provider call
         # can be made under a prompt authority that the runner did not receive.
@@ -5300,6 +7255,18 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 print(str(exc), file=sys.stderr)
                 return 2
         if preflight_nonce and protected_recovery_context is None:
+            if is_eaaef_route:
+                # The legacy typed preflight and its independent quota probe
+                # execute a host-resolved Grok binary.  A receipt pipe is not
+                # an OCI attestation, and the EAAEF launch capsule authorizes
+                # only its exact qualified worker image.  Until this preflight
+                # has its own source-addressed container receipt, deny before
+                # either provider process can start.
+                print(
+                    "EAAEF typed Grok preflight lacks a qualified container receipt",
+                    file=sys.stderr,
+                )
+                return 2
             try:
                 (
                     preflight_returncode,
@@ -5310,6 +7277,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         grok_bin=grok_bin,
                         base_env=os.environ.copy(),
                         nonce=preflight_nonce,
+                        model=model,
                     )
                 )
             except (OSError, RuntimeError, ValueError) as exc:
@@ -5551,6 +7519,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     required_reasoning_effort=(
                         fresh_route.fallback_reasoning_effort
                     ),
+                    require_host_executable=not is_eaaef_route,
                 )
             except _AgentRouteEffectDenied:
                 raise
@@ -5679,6 +7648,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 fallback_returncode = _start_recorded_codex_effect(
                     attempt_reservation.effect_launch_receipt,
                     prompt=prompt,
+                    invocation_binding=(
+                        invocation_binding if is_eaaef_route else None
+                    ),
+                    workspace=(workspace if is_eaaef_route else None),
+                    worker_network_attempt_authority_json=(
+                        worker_network_attempt_authority_json
+                        if is_eaaef_route
+                        else ""
+                    ),
                 )
                 decision = (
                     "fallback_succeeded"
@@ -5866,6 +7844,25 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         try:
+            codex_network_profile: WorkerNetworkProfile | None = None
+            if is_eaaef_route:
+                codex_authorization = worker_network_authorizations.get("codex")
+                if codex_authorization is None or invocation_binding is None:
+                    raise ValueError(
+                        "EAAEF Codex fallback lacks exact network authority"
+                    )
+                codex_network_profile = _signed_worker_network_profile(
+                    invocation_binding=invocation_binding,
+                    provider="codex",
+                    workspace=workspace,
+                    expected_artifact_cid=codex_authorization.artifact_cid,
+                    expected_worker_principal_did=str(
+                        worker_network_launch_authority["worker_principal_did"]
+                    ),
+                    expected_provider_principal_did=str(
+                        worker_network_launch_authority["provider_principal_did"]
+                    ),
+                )
             fallback_returncode = _run_codex_quota_fallback_in_docker(
                 codex_fallback_command,
                 workspace=workspace,
@@ -5878,6 +7875,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     complete_provider_effect
                     if invocation_binding is not None
                     else None
+                ),
+                network_profile=codex_network_profile,
+                invocation_binding=invocation_binding,
+                qualified_worker_launch_authority=(
+                    worker_network_launch_authority if is_eaaef_route else None
                 ),
             )
             terminal_outcome = completed_terminal_outcome or route_outcome_record(
@@ -5987,6 +7989,17 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 else 127
             )
 
+    if (
+        worker_network_attempt_authority_json
+        and not codex_fallback_command
+        and not is_eaaef_route
+    ):
+        print(
+            "worker-network attempt authority requires an EAAEF protected route",
+            file=sys.stderr,
+        )
+        return 2
+
     if prompt is None:
         prompt = sys.stdin.read()
     if not prompt.strip():
@@ -5996,6 +8009,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     prompt_path = ""
     isolated_home: tempfile.TemporaryDirectory[str] | None = None
     docker_lease: _DockerContainerLease | None = None
+    worker_network_profile: WorkerNetworkProfile | None = None
     docker_run_finished = False
     grok_launch_env: dict[str, str] = {}
     command_environment_stack = ExitStack()
@@ -6117,7 +8131,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
 
             base_env = os.environ.copy()
             isolation_backend = _select_grok_isolation_backend(
-                require_container_boundary=bool(codex_fallback_command),
+                require_container_boundary=bool(
+                    codex_fallback_command or is_eaaef_route
+                ),
+                execution_profile=(
+                    worker_container_execution_profile
+                    if is_eaaef_route
+                    else None
+                ),
             )
             cmd = build_grok_cli_command(
                 mode=str(args.mode),
@@ -6128,13 +8149,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 prompt_file=prompt_path,
                 permission_mode=permission_mode,
                 tools=_SEALED_GROK_TOOLS,
-                sandbox_profile=(
-                    GROK_PRIMARY_SANDBOX_PROFILE
-                    if isolation_backend == GROK_ISOLATION_GROK_SANDBOX
-                    else None
-                ),
-                deny_rules=GROK_ISOLATION_DENY_RULES,
             )
+            if isolation_backend == GROK_ISOLATION_GROK_SANDBOX:
+                cmd.extend(["--sandbox", GROK_PRIMARY_SANDBOX_PROFILE])
+            for rule in GROK_ISOLATION_DENY_RULES:
+                cmd.extend(["--deny", rule])
             primary_session_id = str(uuid.uuid4())
             cmd.extend(
                 [
@@ -6147,7 +8166,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     _SEALED_GROK_DISALLOWED_TOOLS,
                 ]
             )
-            if codex_fallback_command:
+            if codex_fallback_command or is_eaaef_route:
                 try:
                     output_index = cmd.index("--output-format") + 1
                     cmd[output_index] = "streaming-json"
@@ -6155,9 +8174,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     raise LLMRouterError(
                         "Grok agent command has no output-format slot"
                     ) from exc
-            child_env = build_grok_cli_env(
+            child_env = _sanitized_grok_cli_environment(
+                build_grok_cli_env,
                 base_env=base_env,
-                isolate_alternate_providers=True,
             )
             isolated_home, env, _policy_path, _denied_paths = _isolated_grok_home(
                 base_env=base_env,
@@ -6175,9 +8194,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 command_environment.formal_toolchain_contract_sha256
             )
             env.pop(GROK_TERMINAL_RECEIPT_FD_ENV, None)
+            if is_eaaef_route:
+                if worker_container_execution_profile is None:
+                    raise ValueError(
+                        "EAAEF worker container execution profile is unavailable"
+                    )
+                env = worker_container_execution_profile.container_environment()
             for rule in _grok_filesystem_deny_rules(_denied_paths):
                 cmd.extend(["--deny", rule])
-            if codex_fallback_command:
+            if codex_fallback_command or is_eaaef_route:
                 symlink_violations = _workspace_symlinks_reach_denied_paths(
                     workspace=workspace,
                     denied_paths=_denied_paths,
@@ -6204,21 +8229,134 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
             grok_launch_env = env
             if isolation_backend == GROK_ISOLATION_DOCKER:
-                docker_bin = _docker_isolation_binary()
+                if is_eaaef_route:
+                    worker_container_execution_profile = (
+                        _require_eaaef_grok_container_execution_profile_launch(
+                            worker_network_launch_authority,
+                            worker_container_execution_profile,
+                            workspace=workspace,
+                            prompt_path=Path(prompt_path).resolve(strict=True),
+                            policy_path=_policy_path,
+                            provider_home=_policy_path.parent,
+                        )
+                    )
+                docker_bin = (
+                    _docker_isolation_binary(worker_container_execution_profile)
+                    if is_eaaef_route
+                    and worker_container_execution_profile is not None
+                    else _docker_isolation_binary()
+                )
                 if not docker_bin:
                     raise ValueError(
                         "Docker Grok isolation became unavailable before launch"
+                    )
+                invocation = route_plan.invocation_binding
+                if invocation is None:
+                    raise ValueError("Grok provider task lacks signed network authority")
+                if is_eaaef_route:
+                    grok_authorization = worker_network_authorizations.get("grok")
+                    if grok_authorization is None:
+                        raise ValueError(
+                            "EAAEF Grok task lacks exact network authority"
+                        )
+                    worker_network_profile = _signed_worker_network_profile(
+                        invocation_binding=invocation,
+                        provider="grok",
+                        workspace=workspace,
+                        expected_artifact_cid=grok_authorization.artifact_cid,
+                        expected_worker_principal_did=str(
+                            worker_network_launch_authority[
+                                "worker_principal_did"
+                            ]
+                        ),
+                        expected_provider_principal_did=str(
+                            worker_network_launch_authority[
+                                "provider_principal_did"
+                            ]
+                        ),
+                    )
+                else:
+                    worker_network_profile = _signed_worker_network_profile(
+                        invocation_binding=invocation,
+                        provider="grok",
+                        workspace=workspace,
                     )
                 docker_lease = _DockerContainerLease.create(
                     docker_bin,
                     provider="grok",
                     provider_home=_policy_path.parent,
                     prompt_path=Path(prompt_path).resolve(strict=True),
+                    authorized_container_name=worker_network_profile.container_name,
+                    authorized_lease_root=worker_network_profile.lease_root,
+                    **(
+                        {
+                            "engine_endpoint": (
+                                worker_container_execution_profile.engine_endpoint
+                            )
+                        }
+                        if is_eaaef_route
+                        and worker_container_execution_profile is not None
+                        else {}
+                    ),
                 )
-                isolation_image = _docker_isolation_image_id(
-                    docker_lease.docker_bin,
+                worker_network_profile = _signed_worker_network_profile(
+                    invocation_binding=invocation,
+                    provider="grok",
+                    workspace=workspace,
+                    expected_artifact_cid=(
+                        worker_network_profile.authorization.artifact_cid
+                        if worker_network_profile.authorization is not None
+                        else ""
+                    ),
+                    expected_container_name=docker_lease.container_name,
+                    expected_lease_root=docker_lease.lease_root,
+                    expected_worker_principal_did=(
+                        str(
+                            worker_network_launch_authority[
+                                "worker_principal_did"
+                            ]
+                        )
+                        if is_eaaef_route
+                        else ""
+                    ),
+                    expected_provider_principal_did=(
+                        str(
+                            worker_network_launch_authority[
+                                "provider_principal_did"
+                            ]
+                        )
+                        if is_eaaef_route
+                        else ""
+                    ),
+                )
+                _inspect_signed_worker_network(
+                    docker_bin=docker_lease.docker_bin,
                     docker_config=docker_lease.docker_config,
-                    base_env=base_env,
+                    profile=worker_network_profile,
+                    launch_authority=(
+                        worker_network_launch_authority
+                        if is_eaaef_route
+                        else None
+                    ),
+                    execution_profile=(
+                        worker_container_execution_profile
+                        if is_eaaef_route
+                        else None
+                    ),
+                )
+                isolation_image = (
+                    _inspect_qualified_worker_image(
+                        docker_bin=docker_lease.docker_bin,
+                        docker_config=docker_lease.docker_config,
+                        launch_authority=worker_network_launch_authority,
+                        execution_profile=worker_container_execution_profile,
+                    )
+                    if is_eaaef_route
+                    else _docker_isolation_image_id(
+                        docker_lease.docker_bin,
+                        docker_config=docker_lease.docker_config,
+                        base_env=base_env,
+                    )
                 )
                 if not isolation_image:
                     raise ValueError(
@@ -6226,7 +8364,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                 cmd = _docker_grok_command(
                     grok_command=cmd,
-                    grok_bin=Path(grok_bin).resolve(strict=True),
+                    grok_bin=(
+                        Path("/opt/eaaef/bin/grok")
+                        if is_eaaef_route
+                        else Path(grok_bin).resolve(strict=True)
+                    ),
                     workspace=workspace,
                     prompt_path=Path(prompt_path).resolve(strict=True),
                     grok_home=_policy_path.parent,
@@ -6239,17 +8381,22 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     cidfile=docker_lease.cidfile,
                     docker_bin=docker_lease.docker_bin,
                     isolation_image=isolation_image,
+                    network_profile=worker_network_profile,
+                    qualified_worker_launch_authority=(
+                        worker_network_launch_authority
+                        if is_eaaef_route
+                        else None
+                    ),
+                    qualified_worker_execution_profile=(
+                        worker_container_execution_profile
+                        if is_eaaef_route
+                        else None
+                    ),
                 )
                 # Docker is pinned to the validated local socket and empty
                 # runner-owned config. Only explicitly named sanitized
                 # variables cross into Grok via ``--env NAME`` arguments.
                 grok_launch_env = _docker_control_env(env)
-                cmd = _create_grok_container_and_build_start_command(
-                    cmd,
-                    workspace=workspace,
-                    docker_environment=grok_launch_env,
-                    docker_lease=docker_lease,
-                )
         except (
             LLMRouterError,
             ProviderCommandEnvironmentError,
@@ -6266,8 +8413,38 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         # exit. With a fallback, take the workspace-fenced + independent-verify
         # path so Terra may run only after verified typed provider evidence.
         if not codex_fallback_command:
+            bounded_command = cmd
+            if docker_lease is not None:
+                bounded_command = _create_grok_container_and_build_start_command(
+                    cmd,
+                    workspace=workspace,
+                    sanitized_environment=grok_launch_env,
+                    docker_lease=docker_lease,
+                    network_profile=worker_network_profile,
+                    invocation_binding=route_plan.invocation_binding,
+                    qualified_worker_launch_authority=(
+                        worker_network_launch_authority
+                        if is_eaaef_route
+                        else None
+                    ),
+                    qualified_worker_execution_profile=(
+                        worker_container_execution_profile
+                        if is_eaaef_route
+                        else None
+                    ),
+                )
+                if is_eaaef_route:
+                    _reverify_qualified_grok_mount_boundary(
+                        launch_authority=worker_network_launch_authority,
+                        execution_profile=worker_container_execution_profile,
+                        create_command=cmd,
+                        workspace=workspace,
+                    )
             child_returncode, error_bytes, error_size, error_overflow = (
-                _run_grok_with_bounded_stderr(cmd, env=grok_launch_env)
+                _run_grok_with_bounded_stderr(
+                    bounded_command,
+                    env=grok_launch_env,
+                )
             )
             docker_run_finished = True
             if error_bytes:
@@ -6322,6 +8499,18 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         cidfile=docker_lease.cidfile,
                         workspace=workspace,
                         env=grok_launch_env,
+                        network_profile=worker_network_profile,
+                        invocation_binding=route_plan.invocation_binding,
+                        qualified_worker_launch_authority=(
+                            worker_network_launch_authority
+                            if is_eaaef_route
+                            else None
+                        ),
+                        qualified_worker_execution_profile=(
+                            worker_container_execution_profile
+                            if is_eaaef_route
+                            else None
+                        ),
                     )
                 )
             else:
@@ -6437,6 +8626,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--agent-implementation-recovery-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        EAAEF_WORKER_NETWORK_ATTEMPT_AUTHORITY_FLAG,
+        dest="worker_network_attempt_authority_json",
         default="",
         help=argparse.SUPPRESS,
     )

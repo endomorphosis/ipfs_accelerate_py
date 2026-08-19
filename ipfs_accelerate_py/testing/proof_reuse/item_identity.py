@@ -976,7 +976,7 @@ class AutomaticItemIdentityAssembler:
         )
         if failed is not None:
             return failed
-        from ...agent_supervisor.repository_forest import (
+        from ...agent_supervisor.analysis.repository_forest import (
             RepositoryForest,
             descriptor_satisfies_repository_descriptor,
         )

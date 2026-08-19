@@ -9,22 +9,657 @@ import os
 import signal
 import sys
 import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
-from ..objectives.scan_receipts import RefillScanResult
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_repeated_default,
 )
+from ..objectives.scan_receipts import RefillScanResult
 from ..runtime.event_log import append_jsonl_event
-
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS = 300.0
+EAAEF_IMPLEMENTATION_DAEMON_BIRTH_PLAN_INTERFACE = (
+    "EAAEFImplementationDaemonBirthPlan@1"
+)
+
+
+class EAAEFImplementationDaemonBirthError(RuntimeError):
+    """A planned EAAEF daemon birth or its exact dependency join was rejected."""
+
+
+@dataclass(frozen=True)
+class EAAEFImplementationDaemonBirthPlan:
+    """Non-authoritative expectations for one fresh plan-bound child birth.
+
+    This object is deliberately not a launch credential.  Authority remains in
+    the independently signed, hash-pinned source artifacts that are re-opened
+    on both sides of the supervisor/daemon boundary.
+    """
+
+    board_namespace: str
+    source_head: str
+    source_tree: str
+    configuration_root: str
+    accepted_control_plane_capsule_id: str
+    accepted_control_plane_pin_cid: str
+    active_plan_root_cid: str
+    active_plan_revision: int
+    active_plan_revision_cid: str
+    slice_manifest_cid: str
+    slice_id: str
+    lane_id: str
+    task_ids: tuple[str, ...]
+    task_cids: tuple[str, ...]
+    lane_session_id: str
+    lane_generation: int
+    process_instance_id: str
+    process_birth_nonce: str
+    expected_process_uid: int
+    expected_parent_pid: int
+    expected_parent_process_start_time_ticks: int
+    expected_executable_sha256: str
+    launch_argv: tuple[str, ...]
+
+    INTERFACE = EAAEF_IMPLEMENTATION_DAEMON_BIRTH_PLAN_INTERFACE
+
+    def __post_init__(self) -> None:
+        text_fields = (
+            "board_namespace",
+            "source_head",
+            "source_tree",
+            "configuration_root",
+            "accepted_control_plane_capsule_id",
+            "accepted_control_plane_pin_cid",
+            "active_plan_root_cid",
+            "active_plan_revision_cid",
+            "slice_manifest_cid",
+            "slice_id",
+            "lane_id",
+            "lane_session_id",
+            "process_instance_id",
+            "process_birth_nonce",
+            "expected_executable_sha256",
+        )
+        for name in text_fields:
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value or value != value.strip():
+                raise EAAEFImplementationDaemonBirthError(
+                    f"planned EAAEF birth {name} is invalid"
+                )
+        integer_fields = (
+            "active_plan_revision",
+            "lane_generation",
+            "expected_parent_pid",
+            "expected_parent_process_start_time_ticks",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise EAAEFImplementationDaemonBirthError(
+                    f"planned EAAEF birth {name} is invalid"
+                )
+        if (
+            isinstance(self.expected_process_uid, bool)
+            or not isinstance(self.expected_process_uid, int)
+            or self.expected_process_uid < 0
+        ):
+            raise EAAEFImplementationDaemonBirthError(
+                "planned EAAEF birth expected_process_uid is invalid"
+            )
+        task_ids = tuple(self.task_ids)
+        task_cids = tuple(self.task_cids)
+        launch_argv = tuple(self.launch_argv)
+        if (
+            not task_ids
+            or len(task_ids) != len(task_cids)
+            or len(set(task_ids)) != len(task_ids)
+            or len(set(task_cids)) != len(task_cids)
+            or any(
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+                for value in (*task_ids, *task_cids)
+            )
+        ):
+            raise EAAEFImplementationDaemonBirthError(
+                "planned EAAEF birth task population is invalid"
+            )
+        if (
+            not launch_argv
+            or any(not isinstance(value, str) or "\x00" in value for value in launch_argv)
+        ):
+            raise EAAEFImplementationDaemonBirthError(
+                "planned EAAEF birth launch argv is invalid"
+            )
+        if len(
+            {
+                self.lane_session_id,
+                self.process_instance_id,
+                self.process_birth_nonce,
+            }
+        ) != 3:
+            raise EAAEFImplementationDaemonBirthError(
+                "planned EAAEF birth identities are not distinct"
+            )
+        object.__setattr__(self, "task_ids", task_ids)
+        object.__setattr__(self, "task_cids", task_cids)
+        object.__setattr__(self, "launch_argv", launch_argv)
+
+
+def require_eaaef_implementation_daemon_birth_plan(
+    *,
+    plan: EAAEFImplementationDaemonBirthPlan,
+    source_artifacts: object,
+    now_ms: int,
+) -> None:
+    """Re-open and exact-join every signed source to one planned birth.
+
+    The scalar plan is comparison input only.  It cannot authorize a lane,
+    native module, Quack client, dispatcher, token, path, or process launch.
+    """
+
+    from ..task_sources.eaaef_operational_schema import (
+        EAAEF_OPERATIONAL_PROFILE_ID,
+    )
+    from ..validation.agent_native_dependency_admission import (
+        VerifiedAgentSupervisorNativeDependencyAdmission,
+    )
+    from ..validation.eaaef_lane_gateway_admission import (
+        VerifiedEAAEFContainerDispatcherFactoryQualification,
+        VerifiedEAAEFLaneRuntimeAdmissionV2,
+        VerifiedEAAEFLaneRuntimeSourceArtifacts,
+        VerifiedEAAEFQuackClientFactoryQualification,
+        eaaef_launch_argv_cid,
+    )
+
+    if type(plan) is not EAAEFImplementationDaemonBirthPlan:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF birth requires the exact typed plan expectation"
+        )
+    if type(source_artifacts) is not VerifiedEAAEFLaneRuntimeSourceArtifacts:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF birth requires the exact signed source-artifact bundle"
+        )
+    if isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms < 1:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF birth verification time is invalid"
+        )
+    admission = source_artifacts.admission
+    native_admission = source_artifacts.native_admission
+    quack_qualification = source_artifacts.quack_qualification
+    dispatcher_qualification = source_artifacts.dispatcher_qualification
+    if (
+        type(admission) is not VerifiedEAAEFLaneRuntimeAdmissionV2
+        or type(native_admission)
+        is not VerifiedAgentSupervisorNativeDependencyAdmission
+        or type(quack_qualification)
+        is not VerifiedEAAEFQuackClientFactoryQualification
+        or type(dispatcher_qualification)
+        is not VerifiedEAAEFContainerDispatcherFactoryQualification
+    ):
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF birth source bundle contains a substitute dependency"
+        )
+    try:
+        checked_lane = admission.reverify(now_ms=now_ms)
+        checked_native = native_admission.reverify(now_ms=now_ms)
+        checked_quack = quack_qualification.reverify(now_ms=now_ms)
+        checked_dispatcher = dispatcher_qualification.reverify(now_ms=now_ms)
+    except Exception as exc:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF birth signed source re-verification failed"
+        ) from exc
+
+    launch_argv_cid = eaaef_launch_argv_cid(plan.launch_argv)
+    lane_expectations = {
+        "board_namespace": plan.board_namespace,
+        "source_head": plan.source_head,
+        "source_tree": plan.source_tree,
+        "active_plan_root_cid": plan.active_plan_root_cid,
+        "active_plan_revision": plan.active_plan_revision,
+        "active_plan_revision_cid": plan.active_plan_revision_cid,
+        "slice_manifest_cid": plan.slice_manifest_cid,
+        "slice_id": plan.slice_id,
+        "lane_id": plan.lane_id,
+        "task_ids": list(plan.task_ids),
+        "task_cids": list(plan.task_cids),
+        "lane_session_id": plan.lane_session_id,
+        "lane_generation": plan.lane_generation,
+        "process_instance_id": plan.process_instance_id,
+        "process_birth_nonce": plan.process_birth_nonce,
+        "expected_process_uid": plan.expected_process_uid,
+        "expected_parent_pid": plan.expected_parent_pid,
+        "expected_parent_process_start_time_ticks": (
+            plan.expected_parent_process_start_time_ticks
+        ),
+        "expected_executable_sha256": plan.expected_executable_sha256,
+        "launch_argv_cid": launch_argv_cid,
+    }
+    native_expectations = {
+        **{
+            name: lane_expectations[name]
+            for name in (
+                "board_namespace",
+                "source_head",
+                "source_tree",
+                "active_plan_root_cid",
+                "active_plan_revision",
+                "active_plan_revision_cid",
+                "slice_manifest_cid",
+                "slice_id",
+                "lane_id",
+                "lane_session_id",
+                "lane_generation",
+                "process_instance_id",
+                "process_birth_nonce",
+                "expected_process_uid",
+                "expected_parent_pid",
+                "expected_parent_process_start_time_ticks",
+                "expected_executable_sha256",
+                "launch_argv_cid",
+            )
+        },
+        "configuration_root": plan.configuration_root,
+        "accepted_control_plane_capsule_id": (
+            plan.accepted_control_plane_capsule_id
+        ),
+        "accepted_control_plane_pin_cid": plan.accepted_control_plane_pin_cid,
+    }
+    lane_mismatches = sorted(
+        name
+        for name, expected in lane_expectations.items()
+        if checked_lane[name] != expected
+    )
+    native_mismatches = sorted(
+        name
+        for name, expected in native_expectations.items()
+        if checked_native[name] != expected
+    )
+    capability = checked_lane.operational_capability
+    store_id = str(capability["store_id"] or "")
+    endpoint = str(capability["command_endpoint"] or "")
+    state_schema_revision = str(capability["state_schema_revision"] or "")
+    policy_invalid = (
+        checked_lane["owner_session_id"] == checked_lane["lane_session_id"]
+        # The V2 admission projection deliberately omits the lane-authority
+        # policy scalars after source verification.  Direct-database and SQL
+        # authority remain visible on the independently signed operational
+        # capability; callback/token constraints are reverified by the lane
+        # loader and the qualified factory records below.
+        or capability["direct_database_open"] is not False
+        or capability["arbitrary_sql_enabled"] is not False
+        or checked_native["sealed_descriptor_required"] is not True
+        or checked_native["ambient_loader_environment_allowed"] is not False
+        or checked_native["raw_path_authority"] is not False
+        or checked_native["launch_authority_granted"] is not False
+        or checked_native["admission_cid"]
+        != checked_lane["native_dependency_admission_cid"]
+        or checked_quack.qualification_cid
+        != checked_lane["quack_client_factory_qualification_cid"]
+        or checked_dispatcher.qualification_cid
+        != checked_lane["container_dispatcher_factory_qualification_cid"]
+        or checked_quack["raw_token_argv_enabled"] is not False
+        or checked_quack["raw_token_environment_enabled"] is not False
+        or checked_quack["raw_token_path_enabled"] is not False
+        or checked_dispatcher["caller_callbacks_allowed"] is not False
+        or checked_dispatcher["direct_container_launch_allowed"] is not False
+        or not store_id
+        or "/" in store_id
+        or "\\" in store_id
+        or store_id.endswith((".duckdb", ".ddb"))
+        or not endpoint.startswith("quack:")
+        or state_schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
+    )
+    if lane_mismatches or native_mismatches or policy_invalid:
+        details = ",".join(
+            (
+                *(f"lane.{name}" for name in lane_mismatches),
+                *(f"native.{name}" for name in native_mismatches),
+                *(("signed_policy",) if policy_invalid else ()),
+            )
+        )
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF signed artifacts differ from the planned birth: " + details
+        )
+
+
+_VERIFIED_EAAEF_IMPLEMENTATION_DAEMON_CHILD_BIRTH_TOKEN = object()
+
+
+class VerifiedEAAEFImplementationDaemonChildBirth:
+    """Child-side signed sources joined to the current OS process birth."""
+
+    __slots__ = ("plan", "source_artifacts", "process_birth")
+
+    def __init__(
+        self,
+        token: object,
+        *,
+        plan: EAAEFImplementationDaemonBirthPlan,
+        source_artifacts: object,
+        process_birth: object,
+    ) -> None:
+        if token is not _VERIFIED_EAAEF_IMPLEMENTATION_DAEMON_CHILD_BIRTH_TOKEN:
+            raise TypeError(
+                "verified EAAEF daemon child births come from the exact loader"
+            )
+        self.plan = plan
+        self.source_artifacts = source_artifacts
+        self.process_birth = process_birth
+
+
+def load_and_verify_eaaef_implementation_daemon_child_birth(
+    repo_root: Path | str,
+    *,
+    plan: EAAEFImplementationDaemonBirthPlan,
+    source_coordinates: object,
+    now_ms: int,
+) -> VerifiedEAAEFImplementationDaemonChildBirth:
+    """Re-open signed sources and join them to the actual child PID/argv birth."""
+
+    from ..validation.eaaef_lane_gateway_admission import (
+        EAAEFLaneRuntimeDependencySourceCoordinates,
+        VerifiedEAAEFLaneRuntimeSourceArtifacts,
+        VerifiedEAAEFProcessBirth,
+        load_and_verify_eaaef_lane_runtime_source_artifacts,
+        verify_eaaef_current_process_birth,
+    )
+
+    # Coordinates are transport-only and never grant authority.  Reject a raw
+    # mapping before any source access; callers must use the closed parser.
+    if type(plan) is not EAAEFImplementationDaemonBirthPlan:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child birth requires the exact typed plan expectation"
+        )
+    if type(source_coordinates) is not EAAEFLaneRuntimeDependencySourceCoordinates:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child birth requires exact parsed source coordinates"
+        )
+    try:
+        source_artifacts = load_and_verify_eaaef_lane_runtime_source_artifacts(
+            repo_root,
+            coordinates=source_coordinates,
+            now_ms=now_ms,
+        )
+    except Exception as exc:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child could not reopen its signed birth sources"
+        ) from exc
+    if type(source_artifacts) is not VerifiedEAAEFLaneRuntimeSourceArtifacts:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child source loader returned a substitute artifact bundle"
+        )
+    require_eaaef_implementation_daemon_birth_plan(
+        plan=plan,
+        source_artifacts=source_artifacts,
+        now_ms=now_ms,
+    )
+    try:
+        process_birth = verify_eaaef_current_process_birth(
+            source_artifacts.admission
+        )
+    except Exception as exc:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child OS process birth differs from signed parent/executable/argv"
+        ) from exc
+    if type(process_birth) is not VerifiedEAAEFProcessBirth:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child process verifier returned a substitute birth"
+        )
+    expected_birth = {
+        "lane_session_id": plan.lane_session_id,
+        "lane_generation": plan.lane_generation,
+        "process_instance_id": plan.process_instance_id,
+        "process_birth_nonce": plan.process_birth_nonce,
+        "process_uid": plan.expected_process_uid,
+        "parent_pid": plan.expected_parent_pid,
+        "parent_process_start_time_ticks": (
+            plan.expected_parent_process_start_time_ticks
+        ),
+        "executable_sha256": plan.expected_executable_sha256,
+    }
+    if any(
+        process_birth[name] != expected
+        for name, expected in expected_birth.items()
+    ):
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF child verified process does not exact-join its planned birth"
+        )
+    return VerifiedEAAEFImplementationDaemonChildBirth(
+        _VERIFIED_EAAEF_IMPLEMENTATION_DAEMON_CHILD_BIRTH_TOKEN,
+        plan=plan,
+        source_artifacts=source_artifacts,
+        process_birth=process_birth,
+    )
+
+
+def build_eaaef_implementation_daemon_runtime_bundle(
+    *,
+    child_birth: VerifiedEAAEFImplementationDaemonChildBirth,
+    native_launch: object,
+    native_module: object,
+    sealed_descriptors: object,
+    authorization_client: object,
+    journal_parent_directory: Path | str,
+    recovery_admissions: Sequence[object] = (),
+    maximum_wait_ms: int = 30_000,
+    poll_interval_ms: int = 10,
+) -> object:
+    """Build the sole exact gateway/dispatcher bundle through state factories."""
+
+    from ...llm_router import AgentSupervisorNativeDependencyLaunch
+    from ..runtime.eaaef_bootstrap_gateway import (
+        EAAEFBootstrapCommandGateway,
+        EAAEFLaneRuntimeDependencyBundle,
+        EAAEFLaneRuntimeDependencyFactory,
+        EAAEFSealedQuackClientDescriptors,
+        create_eaaef_lane_runtime_dependency_factory,
+    )
+    from ..validation.eaaef_bootstrap_gateway_launch import (
+        EAAEFCommandAuthorizationServiceClient,
+    )
+    from .external_agent_container_dispatcher import (
+        ExternalAgentContainerWorkerDispatcher,
+    )
+
+    if type(child_birth) is not VerifiedEAAEFImplementationDaemonChildBirth:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF runtime bundle requires an exact verified child birth"
+        )
+    if (
+        type(native_launch) is not AgentSupervisorNativeDependencyLaunch
+        or type(sealed_descriptors) is not EAAEFSealedQuackClientDescriptors
+        or type(authorization_client) is not EAAEFCommandAuthorizationServiceClient
+    ):
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF runtime bundle requires exact native, sealed, and signer seams"
+        )
+    artifacts = child_birth.source_artifacts
+    try:
+        factory = create_eaaef_lane_runtime_dependency_factory(
+            admission=artifacts.admission,
+            process_birth=child_birth.process_birth,
+            native_admission=artifacts.native_admission,
+            native_launch=native_launch,
+            native_module=native_module,
+            quack_qualification=artifacts.quack_qualification,
+            sealed_descriptors=sealed_descriptors,
+            dispatcher_qualification=artifacts.dispatcher_qualification,
+            authorization_client=authorization_client,
+            journal_parent_directory=journal_parent_directory,
+            recovery_admissions=recovery_admissions,
+            maximum_wait_ms=maximum_wait_ms,
+            poll_interval_ms=poll_interval_ms,
+        )
+        if type(factory) is not EAAEFLaneRuntimeDependencyFactory:
+            raise EAAEFImplementationDaemonBirthError(
+                "EAAEF state factory returned a substitute dependency factory"
+            )
+        bundle = factory.build()
+    except EAAEFImplementationDaemonBirthError:
+        raise
+    except Exception as exc:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF exact runtime dependency factory failed closed"
+        ) from exc
+    if (
+        type(bundle) is not EAAEFLaneRuntimeDependencyBundle
+        or type(bundle.gateway) is not EAAEFBootstrapCommandGateway
+        or type(bundle.container_dispatcher)
+        is not ExternalAgentContainerWorkerDispatcher
+        or bundle.process_birth is not child_birth.process_birth
+    ):
+        try:
+            bundle.close()
+        except Exception:
+            pass
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF state factory returned a substitute runtime dependency bundle"
+        )
+    try:
+        evidence = bundle.gateway.require_production_admission()
+    except Exception as exc:
+        bundle.close()
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF runtime bundle failed exact production re-verification"
+        ) from exc
+    admission = artifacts.admission
+    if (
+        evidence.get("process_birth_cid")
+        != child_birth.process_birth["birth_cid"]
+        or evidence.get("lane_merge_admission_cid")
+        != admission["merge_admission_cid"]
+        or evidence.get("gateway_binding_cid")
+        != admission["gateway_binding_cid"]
+        or evidence.get("plan_r2_enabled") is not False
+        or evidence.get("direct_database_open") is not False
+        or evidence.get("raw_token_available") is not False
+    ):
+        bundle.close()
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF runtime bundle evidence differs from its signed child birth"
+        )
+    return bundle
+
+
+def build_eaaef_database_implementation_daemon_from_runtime_bundle(
+    *,
+    child_birth: VerifiedEAAEFImplementationDaemonChildBirth,
+    runtime_bundle: object,
+    install_schema: bool = True,
+) -> object:
+    """Inject one exact EAAEF bundle into DatabaseImplementationDaemon.
+
+    No caller path, callback, Portal object, mapping, token, environment value,
+    or argv value can enter this constructor seam.  The nominal
+    ``database_path`` is the signed opaque store identity and is never opened
+    in Quack mode.
+    """
+
+    from ..runtime.eaaef_bootstrap_gateway import (
+        EAAEFBootstrapCommandGateway,
+        EAAEFLaneRuntimeDependencyBundle,
+    )
+    from ..task_sources.eaaef_operational_schema import (
+        EAAEF_OPERATIONAL_PROFILE_ID,
+    )
+    from .external_agent_container_dispatcher import (
+        ExternalAgentContainerWorkerDispatcher,
+    )
+    from .implementation_daemon import DatabaseImplementationDaemon
+
+    if type(child_birth) is not VerifiedEAAEFImplementationDaemonChildBirth:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF daemon construction requires an exact verified child birth"
+        )
+    if type(runtime_bundle) is not EAAEFLaneRuntimeDependencyBundle:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF daemon construction requires the exact state runtime bundle"
+        )
+    if type(install_schema) is not bool:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF daemon install_schema selection must be boolean"
+        )
+    gateway = runtime_bundle.gateway
+    dispatcher = runtime_bundle.container_dispatcher
+    artifacts = child_birth.source_artifacts
+    admission = artifacts.admission
+    capability = admission.operational_capability
+    signed_store_id = str(capability["store_id"] or "")
+    signed_endpoint = str(capability["command_endpoint"] or "")
+    signed_schema_revision = str(capability["state_schema_revision"] or "")
+    if (
+        type(gateway) is not EAAEFBootstrapCommandGateway
+        or type(dispatcher) is not ExternalAgentContainerWorkerDispatcher
+        or runtime_bundle.process_birth is not child_birth.process_birth
+        or gateway.capability.content_id != admission["gateway_binding_cid"]
+        or gateway.capability.operational_capability_cid
+        != admission["operational_capability_cid"]
+        or gateway.capability.command_endpoint != signed_endpoint
+        or gateway.capability.state_schema_revision != signed_schema_revision
+        or signed_schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
+        or not signed_store_id
+        or "/" in signed_store_id
+        or "\\" in signed_store_id
+        or signed_store_id.endswith((".duckdb", ".ddb"))
+    ):
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF daemon runtime bundle differs from signed store/schema authority"
+        )
+    try:
+        production = gateway.require_production_admission()
+    except Exception as exc:
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF daemon gateway failed pre-construction re-verification"
+        ) from exc
+    if (
+        production.get("process_birth_cid")
+        != child_birth.process_birth["birth_cid"]
+        or production.get("gateway_binding_cid")
+        != admission["gateway_binding_cid"]
+    ):
+        raise EAAEFImplementationDaemonBirthError(
+            "EAAEF daemon gateway no longer joins the exact process birth"
+        )
+    try:
+        return DatabaseImplementationDaemon(
+            # DatabaseImplementationDaemon currently names this logical
+            # identity `database_path`; under Quack it is never file authority.
+            database_path=signed_store_id,
+            coordination_path=None,
+            execution_path=None,
+            owner_session_id=str(admission["lane_session_id"]),
+            process_instance_id=str(admission["process_instance_id"]),
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=signed_endpoint,
+            state_schema_revision=signed_schema_revision,
+            markdown_path=None,
+            state_path=None,
+            strategy_path=None,
+            events_path=None,
+            pid_path=None,
+            queue_path=None,
+            provider_fn=dispatcher.run_provider,
+            effect_fn=dispatcher.apply_effect,
+            validation_fn=dispatcher.validate_effect,
+            require_real_execution=True,
+            task_source=None,
+            coordinator=None,
+            quack_command_gateway=gateway,
+            install_schema=install_schema,
+        )
+    except Exception:
+        # A failed constructor cannot own the qualified clients.
+        runtime_bundle.close()
+        raise
 
 
 def daemon_pass_is_idle(result: Mapping[str, Any]) -> bool:
@@ -105,7 +740,7 @@ class ImplementationDaemonRunContext:
     events_path: Path
     pass_index: int = 0
 
-    def for_pass(self, pass_index: int) -> "ImplementationDaemonRunContext":
+    def for_pass(self, pass_index: int) -> ImplementationDaemonRunContext:
         return ImplementationDaemonRunContext(
             parsed=self.parsed,
             state_path=self.state_path,
@@ -121,6 +756,7 @@ DaemonBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 DaemonBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence["DaemonLoopHook"]]
 DaemonBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 DaemonMergeResolverCommand = str | Callable[[], str]
+ExternalAgentContainerDispatcherFactory = Callable[..., Any]
 
 
 def _env_float(name: str, default: float) -> float:
@@ -1174,17 +1810,21 @@ def bind_database_portal_execution_from_args(
     default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
+    external_agent_container_dispatcher_factory: (
+        ExternalAgentContainerDispatcherFactory | None
+    ) = None,
 ) -> object | None:
-    """Bind real Portal execution to a database daemon in production mode.
+    """Bind one admitted database execution path in production mode.
 
     DuckDB remains the task/claim/completion authority.  The Portal daemon is
     given only a private one-task projection beneath this lane's state
-    directory, never the configured canonical Markdown board.
+    directory, never the configured canonical Markdown board.  EAAEF is a
+    categorical exception: it may use only the container worker dispatcher,
+    and cannot demote to Portal when that dispatcher is unavailable.
     """
 
     if not bool(getattr(parsed, "implement", False)):
         return None
-    from .database_portal_bridge import DatabasePortalExecutionBridge
 
     binder = getattr(daemon, "bind_execution_callbacks", None)
     task_source = getattr(daemon, "task_source", None)
@@ -1192,6 +1832,42 @@ def bind_database_portal_execution_from_args(
         raise RuntimeError(
             "production database daemon does not expose execution callback binding"
         )
+
+    worker_network_launch_authority_json = str(
+        getattr(parsed, "worker_network_launch_authority_json", "") or ""
+    ).strip()
+    if worker_network_launch_authority_json:
+        from .external_agent_container_dispatcher import (
+            EXTERNAL_AGENT_CONTAINER_DISPATCH_BLOCKERS,
+            ExternalAgentContainerWorkerDispatcher,
+        )
+
+        if external_agent_container_dispatcher_factory is None:
+            raise RuntimeError(
+                "EAAEF container worker dispatch is unavailable_fail_closed: "
+                + ",".join(EXTERNAL_AGENT_CONTAINER_DISPATCH_BLOCKERS)
+            )
+        dispatcher = external_agent_container_dispatcher_factory(
+            daemon=daemon,
+            parsed=parsed,
+            repo_root=repo_root,
+            worker_network_launch_authority_json=(
+                worker_network_launch_authority_json
+            ),
+        )
+        if type(dispatcher) is not ExternalAgentContainerWorkerDispatcher:
+            raise RuntimeError(
+                "EAAEF execution factory did not return the exact container "
+                "worker dispatcher"
+            )
+        binder(
+            provider_fn=dispatcher.run_provider,
+            effect_fn=dispatcher.apply_effect,
+            validation_fn=dispatcher.validate_effect,
+        )
+        return dispatcher
+
+    from .database_portal_bridge import DatabasePortalExecutionBridge
 
     state_dir = Path(parsed.state_dir).absolute()
     state_prefix = str(parsed.state_prefix or "database")
@@ -1265,6 +1941,14 @@ def bind_database_portal_execution_from_args(
             maintenance_interval_seconds=getattr(
                 parsed, "maintenance_interval_seconds", None
             ),
+            worker_network_launch_authority_json=str(
+                getattr(
+                    parsed,
+                    "worker_network_launch_authority_json",
+                    "",
+                )
+                or ""
+            ),
         )
 
     bridge = DatabasePortalExecutionBridge(
@@ -1289,6 +1973,9 @@ def build_portal_implementation_daemon_from_args(
     default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
+    external_agent_container_dispatcher_factory: (
+        ExternalAgentContainerDispatcherFactory | None
+    ) = None,
 ) -> tuple[object, ImplementationDaemonRunContext]:
     """Build a portal or database implementation daemon from parsed CLI args."""
 
@@ -1361,6 +2048,9 @@ def build_portal_implementation_daemon_from_args(
             ),
             default_objective_path=default_objective_path,
             default_objective_bundle_dir=default_objective_bundle_dir,
+            external_agent_container_dispatcher_factory=(
+                external_agent_container_dispatcher_factory
+            ),
         )
         return daemon, ImplementationDaemonRunContext(
             parsed=parsed,
@@ -1441,6 +2131,9 @@ def build_portal_implementation_daemon_from_args(
         task_shard_index=parsed.task_shard_index,
         strict_task_sharding=bool(getattr(parsed, "strict_task_sharding", False)),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
+        worker_network_launch_authority_json=str(
+            getattr(parsed, "worker_network_launch_authority_json", "") or ""
+        ),
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 

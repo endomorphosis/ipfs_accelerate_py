@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import io
 import json
 import os
 import re
 import shlex
 import subprocess
+import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from ipfs_accelerate_py import llm_router
-from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
-from ipfs_accelerate_py.agent_supervisor.entrypoints import provider_attempt_store
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from ipfs_accelerate_py.agent_supervisor.control import provider_attempt_store
+from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+    ed25519_did_key,
+)
 from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as merge_resolver_fallback,
 )
@@ -23,11 +29,22 @@ from ipfs_accelerate_py.agent_supervisor.runtime import provider_failure_policy
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
     GROK_NOT_SIGNED_IN_GUIDANCE,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.worker_network import (
+    PROVIDER_HOSTNAME_ALLOWLISTS,
+    WORKER_NETWORK_AUTHORIZATION_SCHEMA,
+    WorkerNetworkProfile,
+    derived_worker_network_name,
+    worker_network_approval_cid,
+    worker_network_authorization_relative_path,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoImplementationDaemon,
 )
+
+from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
 
 _NATIVE_SESSION_ID = "00000000-0000-4000-8000-000000000001"
 _SPENDING_LIMIT_MESSAGE = (
@@ -35,6 +52,120 @@ _SPENDING_LIMIT_MESSAGE = (
     "You have run out of credits or need a Grok subscription. Add credits at "
     "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
 )
+
+
+def _signed_network_fixture(
+    tmp_path: Path,
+    *,
+    provider: str,
+    workspace: Path,
+    container_name: str,
+    lease_root: Path,
+    prompt: str = "implement",
+) -> tuple[SimpleNamespace, WorkerNetworkProfile]:
+    """Create a real, fresh, reviewer-signed worker-network fixture."""
+
+    profile_dir = tmp_path / f"signed-network-profile-{provider}"
+    profile_dir.mkdir(mode=0o700, exist_ok=True)
+    reviewer_key = Ed25519PrivateKey.generate()
+    reviewer_did = ed25519_did_key(reviewer_key.public_key())
+    worker_did = ed25519_did_key(Ed25519PrivateKey.generate().public_key())
+    provider_did = ed25519_did_key(Ed25519PrivateKey.generate().public_key())
+    now_ms = int(time.time() * 1000)
+
+    def cid(label: str) -> str:
+        return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+    invocation = SimpleNamespace(
+        invocation_id=cid(f"invocation-{provider}-{container_name}"),
+        content_id=cid(f"binding-{provider}-{container_name}"),
+        logical_attempt_id=cid(f"attempt-{provider}-{container_name}"),
+        task_id="EAAEF-NETWORK-BOUNDARY-TEST",
+        worktree_id=cid(f"worktree-{workspace}"),
+        route_id=cid(f"route-{provider}"),
+        profile_dir=str(profile_dir),
+        reviewer_identity=reviewer_did,
+        profile_identity_did=reviewer_did,
+        expected_worker_principal_did=worker_did,
+        expected_provider_principal_did=provider_did,
+        primary_provider_id="grok_cli",
+        fallback_provider_id="codex",
+        expires_at_ms=now_ms + 120_000,
+        control_plane=SimpleNamespace(capsule_id=cid("capsule")),
+        prompt_cid=grok_cli_runner._agent_prompt_cid(prompt),
+        workspace_path=str(workspace),
+    )
+    unsigned = {
+        "schema": WORKER_NETWORK_AUTHORIZATION_SCHEMA,
+        "invocation_binding_id": invocation.content_id,
+        "logical_attempt_id": invocation.logical_attempt_id,
+        "task_id": invocation.task_id,
+        "worktree_id": invocation.worktree_id,
+        "control_plane_capsule_id": invocation.control_plane.capsule_id,
+        "effect_cid": invocation.content_id,
+        "provider": provider,
+        "route_id": invocation.route_id,
+        "workspace": str(workspace),
+        "container_name": container_name,
+        "lease_id": lease_root.name,
+        "lease_root": str(lease_root),
+        "docker_network": derived_worker_network_name(invocation.worktree_id),
+        "docker_network_id": "b" * 64,
+        "docker_network_internal": True,
+        "proxy_endpoint": "http://172.28.0.2:3128",
+        "proxy_container_id": "c" * 64,
+        "proxy_image_id": "sha256:" + "d" * 64,
+        "allowed_hostnames": list(PROVIDER_HOSTNAME_ALLOWLISTS[provider]),
+        "issued_at_ms": now_ms - 1_000,
+        "expires_at_ms": now_ms + 60_000,
+        "one_use_nonce": "network-nonce:0123456789abcdef",
+        "signer_did": reviewer_did,
+        "worker_principal_did": worker_did,
+        "provider_principal_did": provider_did,
+    }
+    authorization_id = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("ascii")
+    ).hexdigest()
+    signed = {**unsigned, "authorization_id": authorization_id}
+    record = {
+        **signed,
+        "signature": base64.b64encode(
+            reviewer_key.sign(
+                json.dumps(
+                    signed,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            )
+        ).decode("ascii"),
+    }
+    authorization_path = (
+        profile_dir
+        / worker_network_authorization_relative_path(
+            invocation.invocation_id,
+            provider,
+        )
+    )
+    authorization_path.parent.mkdir(parents=True)
+    authorization_path.parent.parent.chmod(0o700)
+    authorization_path.parent.chmod(0o700)
+    authorization_path.write_text(
+        json.dumps(record, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    authorization_path.chmod(0o600)
+    profile = grok_cli_runner._signed_worker_network_profile(
+        invocation_binding=invocation,
+        provider=provider,
+        workspace=workspace,
+    )
+    return invocation, profile
 
 
 def _native_update(
@@ -56,6 +187,7 @@ def _write_native_session_home(
     updates: list[dict[str, object]],
     *,
     session_id: str = _NATIVE_SESSION_ID,
+    model: str = "grok-4.6",
 ) -> Path:
     session = grok_home / "sessions" / session_id
     session.mkdir(parents=True)
@@ -67,7 +199,7 @@ def _write_native_session_home(
         json.dumps(
             {
                 "info": {"id": session_id},
-                "current_model_id": "grok-4.6",
+                "current_model_id": model,
                 "grok_home": str(grok_home),
             },
             sort_keys=True,
@@ -80,8 +212,14 @@ def _write_native_session_home(
 def _write_native_session(
     root: Path,
     updates: list[dict[str, object]],
+    *,
+    model: str = "grok-4.6",
 ) -> Path:
-    return _write_native_session_home(root / "grok-home", updates)
+    return _write_native_session_home(
+        root / "grok-home",
+        updates,
+        model=model,
+    )
 
 
 def _spending_limit_retry(
@@ -166,7 +304,9 @@ def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         implementation_daemon,
         "_configured_agent_implementation_route_plan",
-        lambda _repo_root: llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
+        lambda _repo_root: (
+            llm_router._EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+        ),
     )
 
 
@@ -223,9 +363,18 @@ def _install_fake_grok_docker_primary(
     FakeLease.docker_config = docker_config
     FakeLease.cidfile = lease_root / "container.cid"
     FakeLease.lease_root = lease_root
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name=FakeLease.container_name,
+        lease_root=lease_root,
+    )
 
     def fake_create_run(command, **kwargs):
         create_calls.append((list(command), dict(kwargs)))
+        if create_returncode == 0:
+            FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             create_returncode,
@@ -272,6 +421,24 @@ def _install_fake_grok_docker_primary(
         "create",
         lambda *_args, **_kwargs: FakeLease(),
     )
+    original_resolve_route = llm_router.resolve_agent_implementation_route
+    monkeypatch.setattr(
+        llm_router,
+        "resolve_agent_implementation_route",
+        lambda **kwargs: replace(
+            original_resolve_route(**kwargs),
+            invocation_binding=invocation,
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_inspect_signed_worker_network",
+        lambda **kwargs: (
+            None
+            if kwargs["profile"].authorization is not None
+            else pytest.fail("network inspection accepted unsigned profile")
+        ),
+    )
     monkeypatch.setattr(
         grok_cli_runner,
         "_docker_isolation_image_id",
@@ -296,6 +463,8 @@ def _install_fake_grok_docker_primary(
         "container_id": container_id,
         "close_calls": close_calls,
         "create_calls": create_calls,
+        "invocation": invocation,
+        "network_profile": network_profile,
     }
 
 
@@ -344,8 +513,9 @@ def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
     nonce = command[command.index("--grok-failure-receipt-nonce") + 1]
     assert len(nonce) == 64
     assert set(nonce) <= set("0123456789abcdef")
-    head = " ".join(command[: command.index("--codex-fallback-command-json")])
-    assert "codex" not in head
+    head = command[: command.index("--codex-fallback-command-json")]
+    assert fallback[0] not in head
+    assert json.dumps(fallback, separators=(",", ":")) not in head
 
 
 @pytest.mark.parametrize("override_source", ("constructor", "environment"))
@@ -542,6 +712,64 @@ def _typed_preflight_attempt(
     return returncode, receipt, False, stderr_text
 
 
+def test_typed_preflight_receipts_are_bound_to_the_exact_route_model() -> None:
+    nonce = "9" * 64
+    receipts = {
+        model: grok_cli_runner.build_grok_failure_receipt(
+            probe_stderr_text="Error: Not signed in",
+            nonce=nonce,
+            model=model,
+            probe_returncode=41,
+            primary_dispatched=False,
+        )
+        for model in ("grok-4.5", "grok-4.6")
+    }
+
+    assert receipts["grok-4.5"]["probe_contract_id"] != receipts["grok-4.6"][
+        "probe_contract_id"
+    ]
+    for model, receipt in receipts.items():
+        assert provider_failure_policy.valid_grok_failure_receipt(
+            receipt,
+            nonce=nonce,
+            model=model,
+            returncode=41,
+        )
+        other_model = "grok-4.6" if model == "grok-4.5" else "grok-4.5"
+        assert not provider_failure_policy.valid_grok_failure_receipt(
+            receipt,
+            nonce=nonce,
+            model=other_model,
+            returncode=41,
+        )
+
+
+def test_legacy_route_rejects_an_eaaef_model_receipt() -> None:
+    nonce = "8" * 64
+    route = llm_router.resolve_agent_implementation_route(
+        default_route="legacy"
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Error: Not signed in",
+        nonce=nonce,
+        model="grok-4.6",
+        probe_returncode=41,
+        primary_dispatched=False,
+    )
+
+    decision = llm_router.decide_agent_implementation_fallback(
+        route,
+        repo_root=Path.cwd(),
+        failure_receipt=receipt,
+        expected_nonce=nonce,
+        expected_model="grok-4.6",
+        expected_probe_returncode=41,
+    )
+
+    assert decision.authorized is False
+    assert decision.reason_code == "route_primary_model_mismatch"
+
+
 def test_typed_preflight_retries_exact_max_turns_artifact_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -675,9 +903,14 @@ def test_repeated_exact_max_turns_is_one_unknown_denial_without_terra(
         "_select_grok_isolation_backend",
         lambda **_kwargs: pytest.fail("task Grok must not run after denial"),
     )
-    route_plan = llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+    route_plan = llm_router._EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
     monkeypatch.setattr(
         llm_router,
+        "resolve_agent_implementation_route_binding",
+        lambda *_args, **_kwargs: route_plan,
+    )
+    monkeypatch.setattr(
+        llm_router._agent_implementation_route,
         "resolve_agent_implementation_route_binding",
         lambda *_args, **_kwargs: route_plan,
     )
@@ -692,6 +925,8 @@ def test_repeated_exact_max_turns_is_one_unknown_denial_without_terra(
             "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(_terra_fallback_command(str(codex), workspace)),
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--grok-failure-receipt-nonce",
             nonce,
             "--agent-implementation-route-json",
@@ -731,6 +966,7 @@ def test_scoped_route_rejects_prompt_cid_before_grok_preflight(
     )
     route_plan = SimpleNamespace(
         invocation_binding=invocation,
+        primary_model_id="grok-4.6",
         fallback_reasoning_effort="high",
     )
 
@@ -791,6 +1027,8 @@ def test_scoped_route_rejects_prompt_cid_before_grok_preflight(
             "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(_terra_fallback_command(str(codex), workspace)),
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--grok-failure-receipt-nonce",
             "a" * 64,
             "--agent-implementation-route-json",
@@ -1085,11 +1323,12 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
 
     def fake_preflight(**kwargs):
         nonce = str(kwargs["nonce"])
+        model = str(kwargs["model"])
         preflight_nonces.append(nonce)
         receipt = grok_cli_runner.build_grok_failure_receipt(
             probe_stderr_text="Grok Build usage balance exhausted",
             nonce=nonce,
-            model="grok-4.6",
+            model=model,
             probe_returncode=41,
             primary_dispatched=False,
         )
@@ -1099,6 +1338,7 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
         verifier_home = _write_native_session(
             tmp_path / "legacy-independent-verifier",
             [_spending_limit_retry(), _spending_limit_terminal()],
+            model="grok-4.5",
         )
         return llm_router.validate_agent_implementation_quota_evidence(
             grok_home=verifier_home,
@@ -1319,7 +1559,7 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     verifier_calls: list[dict[str, object]] = []
     preflight_calls: list[dict[str, object]] = []
     fingerprint_values = iter(fingerprints)
-    route_plan = llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+    route_plan = llm_router._EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
 
     class PreflightOrderedStdin(io.StringIO):
         def read(self, *args, **kwargs) -> str:
@@ -1402,6 +1642,11 @@ def test_typed_preflight_requires_independent_quota_confirmation(
         lambda *_args, **_kwargs: route_plan,
     )
     monkeypatch.setattr(
+        llm_router._agent_implementation_route,
+        "resolve_agent_implementation_route_binding",
+        lambda *_args, **_kwargs: route_plan,
+    )
+    monkeypatch.setattr(
         grok_cli_runner,
         "_repository_head",
         lambda _workspace: "b" * 40,
@@ -1417,6 +1662,8 @@ def test_typed_preflight_requires_independent_quota_confirmation(
             "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(fallback),
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--grok-failure-receipt-nonce",
             nonce,
             "--agent-implementation-route-json",
@@ -1446,7 +1693,7 @@ def test_terminal_route_outcome_is_bound_to_receipt_route_and_runner_exit() -> N
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text="Grok Build usage balance exhausted",
         nonce=nonce,
-        model="grok-4.6",
+        model="grok-4.5",
         probe_returncode=41,
         primary_dispatched=False,
     )
@@ -1542,7 +1789,7 @@ def test_nonce_route_nonzero_never_restores_provider_attempt(
         lambda *args, **_kwargs: classifier_calls.append(args),
     )
     nonce = "e" * 64
-    route_plan = llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+    route_plan = llm_router._EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text="Error: Not signed in",
         nonce=nonce,
@@ -1636,10 +1883,11 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
 ) -> None:
     workspace = tmp_path / "workspace"
     provider_bin = tmp_path / "provider-bin"
-    docker_config = tmp_path / "docker-config"
+    lease_root = tmp_path / "asref-codex-container-test"
+    docker_config = lease_root / "docker-config"
     workspace.mkdir()
     provider_bin.mkdir()
-    docker_config.mkdir()
+    docker_config.mkdir(parents=True)
     codex = provider_bin / "codex"
     codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     codex.chmod(0o700)
@@ -1650,6 +1898,22 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     image = grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
     container_name = "ipfs-accelerate-codex-1-" + "b" * 32
     child_env = grok_cli_runner._codex_task_container_environment()
+    network_values = {
+        "provider": "codex",
+        "docker_network": "eaaef-worker-test",
+        "proxy_endpoint": "http://172.30.0.2:3128",
+        "approval_identity": "eaaef-network-approval:test",
+        "effect_cid": "sha256:" + hashlib.sha256(b"test-effect").hexdigest(),
+        "workspace": workspace,
+        "container_name": container_name,
+        "lease_id": lease_root.name,
+        "lease_root": lease_root,
+    }
+    network_profile = WorkerNetworkProfile(
+        **network_values,
+        allowed_hostnames=PROVIDER_HOSTNAME_ALLOWLISTS["codex"],
+        approval_cid=worker_network_approval_cid(**network_values),
+    )
 
     command = grok_cli_runner._docker_codex_fallback_command(
         codex_command=fallback,
@@ -1658,9 +1922,10 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         child_env=child_env,
         docker_config=docker_config,
         container_name=container_name,
-        cidfile=tmp_path / "container.cid",
+        cidfile=lease_root / "container.cid",
         docker_bin="/usr/bin/docker",
         isolation_image=image,
+        network_profile=network_profile,
     )
 
     assert fallback[fallback.index("-s") + 1] == "workspace-write"
@@ -1668,7 +1933,8 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert f"--host={grok_cli_runner._DOCKER_LOCAL_HOST}" in command
     assert "--pull=never" in command
     assert "--read-only" in command
-    assert "--network=bridge" in command
+    assert "--network=eaaef-worker-test" in command
+    assert "--network=bridge" not in command
     assert "--runtime=runc" in command
     assert "--entrypoint=/usr/bin/env" in command
     assert "--cap-drop=ALL" in command
@@ -1681,7 +1947,13 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         for index, value in enumerate(command[:-1])
         if value == "--env"
     ]
-    assert docker_env == list(grok_cli_runner._CODEX_DOCKER_IMAGE_ENV_OVERRIDES)
+    assert docker_env == [
+        *grok_cli_runner._CODEX_DOCKER_IMAGE_ENV_OVERRIDES,
+        *(
+            f"{name}={value}"
+            for name, value in sorted(network_profile.proxy_environment().items())
+        ),
+    ]
     assert "NVIDIA_VISIBLE_DEVICES=void" in docker_env
     assert "BASH_ENV=" in docker_env
     assert "ENV=" in docker_env
@@ -1718,6 +1990,10 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     expected_environment = [
         f"{name}={value}" for name, value in sorted(child_env.items())
     ]
+    expected_environment.extend(
+        f"{name}={value}"
+        for name, value in sorted(network_profile.proxy_environment().items())
+    )
     assert inner == ["-i", *expected_environment, *expected_inner]
     assert not any("/home/barberb" in item for item in command)
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
@@ -1729,9 +2005,18 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    docker_config = tmp_path / "docker-config"
-    docker_config.mkdir()
-    cidfile = tmp_path / "container.cid"
+    lease_root = tmp_path / "asref-grok-container-direct"
+    docker_config = lease_root / "docker-config"
+    docker_config.mkdir(parents=True)
+    cidfile = lease_root / "container.cid"
+    container_name = "ipfs-accelerate-grok-1-" + "c" * 32
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name=container_name,
+        lease_root=lease_root,
+    )
     container_id = "d" * 64
     create_command = ["/usr/bin/docker", "create", "fixture-image"]
     observed: dict[str, object] = {}
@@ -1758,6 +2043,11 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
         "_run_grok_with_typed_failure_capture",
         fake_start,
     )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_inspect_signed_worker_network",
+        lambda **_kwargs: None,
+    )
 
     returncode = (
         grok_cli_runner._run_created_grok_container_with_typed_failure_capture(
@@ -1767,6 +2057,8 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
             cidfile=cidfile,
             workspace=workspace,
             env={"PATH": "/usr/bin"},
+            network_profile=network_profile,
+            invocation_binding=invocation,
         )
     )
 
@@ -1798,10 +2090,18 @@ def test_docker_grok_create_rejects_untrusted_container_identity(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    docker_config = tmp_path / "docker-config"
-    docker_config.mkdir()
-    cidfile = tmp_path / "container.cid"
+    lease_root = tmp_path / "asref-grok-container-direct-invalid"
+    docker_config = lease_root / "docker-config"
+    docker_config.mkdir(parents=True)
+    cidfile = lease_root / "container.cid"
     container_id = "d" * 64
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name="ipfs-accelerate-grok-1-" + "c" * 32,
+        lease_root=lease_root,
+    )
     start_called = False
 
     def fake_create(command, **_kwargs):
@@ -1831,6 +2131,11 @@ def test_docker_grok_create_rejects_untrusted_container_identity(
         "_run_grok_with_typed_failure_capture",
         fail_if_started,
     )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_inspect_signed_worker_network",
+        lambda **_kwargs: None,
+    )
 
     with pytest.raises(ValueError):
         grok_cli_runner._run_created_grok_container_with_typed_failure_capture(
@@ -1838,9 +2143,11 @@ def test_docker_grok_create_rejects_untrusted_container_identity(
             docker_bin="/usr/bin/docker",
             docker_config=docker_config,
             cidfile=cidfile,
-            workspace=workspace,
-            env={"PATH": "/usr/bin"},
-        )
+                workspace=workspace,
+                env={"PATH": "/usr/bin"},
+                network_profile=network_profile,
+                invocation_binding=invocation,
+            )
 
     assert start_called is False
 
@@ -1971,6 +2278,8 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     container_id = "d" * 64
     docker_environment = {"PATH": "/usr/bin"}
     create_command = ["/usr/bin/docker", "create", "sealed-grok"]
@@ -1978,10 +2287,23 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
 
     class FakeLease:
         docker_bin = "/usr/bin/docker"
-        docker_config = tmp_path / "docker-config"
+        lease_root = tmp_path / "asref-grok-container-compat"
+        docker_config = lease_root / "docker-config"
+        cidfile = lease_root / "container.cid"
+        container_name = "ipfs-accelerate-grok-1-" + "c" * 32
+
+    FakeLease.docker_config.mkdir(parents=True)
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name=FakeLease.container_name,
+        lease_root=FakeLease.lease_root,
+    )
 
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs)))
+        FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             0,
@@ -1990,13 +2312,20 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
         )
 
     monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_inspect_signed_worker_network",
+        lambda **_kwargs: None,
+    )
 
     start_command = (
         grok_cli_runner._create_grok_container_and_build_start_command(
             create_command,
-            workspace=tmp_path,
+            workspace=workspace,
             docker_environment=docker_environment,
             docker_lease=FakeLease(),
+            network_profile=network_profile,
+            invocation_binding=invocation,
         )
     )
 
@@ -2011,6 +2340,7 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
         container_id,
     ]
     assert calls[0][0] == create_command
+    assert calls[0][1]["cwd"] == workspace
     assert calls[0][1]["env"] is docker_environment
     assert calls[0][1]["stdin"] is subprocess.DEVNULL
     assert calls[0][1]["stdout"] is subprocess.PIPE
@@ -2030,9 +2360,24 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
     monkeypatch: pytest.MonkeyPatch,
     create_stdout: bytes,
 ) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     class FakeLease:
         docker_bin = "/usr/bin/docker"
-        docker_config = tmp_path / "docker-config"
+        lease_root = tmp_path / "asref-grok-container-compat-invalid"
+        docker_config = lease_root / "docker-config"
+        cidfile = lease_root / "container.cid"
+        container_name = "ipfs-accelerate-grok-1-" + "c" * 32
+
+    FakeLease.docker_config.mkdir(parents=True)
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name=FakeLease.container_name,
+        lease_root=FakeLease.lease_root,
+    )
+    FakeLease.cidfile.write_text("d" * 64 + "\n", encoding="ascii")
 
     monkeypatch.setattr(
         grok_cli_runner.subprocess,
@@ -2044,13 +2389,20 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
             stderr=b"",
         ),
     )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_inspect_signed_worker_network",
+        lambda **_kwargs: None,
+    )
 
     with pytest.raises(ValueError, match="container identity is invalid"):
         grok_cli_runner._create_grok_container_and_build_start_command(
             ["/usr/bin/docker", "create", "sealed-grok"],
-            workspace=tmp_path,
+            workspace=workspace,
             docker_environment={},
             docker_lease=FakeLease(),
+            network_profile=network_profile,
+            invocation_binding=invocation,
         )
 
 
@@ -2176,7 +2528,7 @@ def test_grok_docker_create_failure_cleans_without_provider_or_fallback(
         ]
     )
 
-    assert result == 2
+    assert result == 127
     assert harness["close_calls"] == [False]
 
 
@@ -2329,14 +2681,23 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
             return None
 
     class FakeLease:
-        docker_config = tmp_path / "docker-config"
+        lease_root = tmp_path / "asref-codex-container-test"
+        docker_config = lease_root / "docker-config"
         container_name = "ipfs-accelerate-codex-1-" + "c" * 32
         cidfile = tmp_path / "container.cid"
 
         def close(self, *, docker_run_finished: bool) -> None:
             close_calls.append(docker_run_finished)
 
-    FakeLease.docker_config.mkdir()
+    FakeLease.docker_config.mkdir(parents=True)
+    _invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="codex",
+        workspace=workspace,
+        container_name=FakeLease.container_name,
+        lease_root=FakeLease.lease_root,
+        prompt="repair",
+    )
 
     def fake_create(*_args, **kwargs):
         create_kwargs.append(dict(kwargs))
@@ -2416,6 +2777,15 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         "_docker_codex_fallback_command",
         lambda **_kwargs: ["docker", "create"],
     )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_inspect_signed_worker_network",
+        lambda **kwargs: (
+            None
+            if kwargs["profile"].authorization is not None
+            else pytest.fail("Codex cleanup fixture lost signed authority")
+        ),
+    )
     validate_auth = grok_cli_runner._validated_codex_auth_path
 
     def record_and_validate_auth(**kwargs):
@@ -2456,6 +2826,7 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
             pre_effect_validator=(
                 swap_auth if outcome == "auth_swap" else validate_route
             ),
+            network_profile=network_profile,
         )
     if outcome in {"error", "auth_swap"}:
         with pytest.raises((OSError, ValueError)):
@@ -2484,8 +2855,84 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
             "provider": "codex",
             "provider_home": provider_home,
             "prompt_path": prompt_path,
+            "authorized_container_name": FakeLease.container_name,
+            "authorized_lease_root": FakeLease.lease_root,
         }
     ]
+
+
+def test_codex_fallback_without_signed_network_authority_is_pre_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o700)
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    prompt_path = tmp_path / "asref-grok-prompt-test.txt"
+    prompt_path.write_text("repair", encoding="utf-8")
+    isolated = tmp_path / "asref-codex-home-test"
+    isolated.mkdir()
+
+    class FakeHome:
+        name = str(isolated)
+
+        def cleanup(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: str(codex),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_docker_isolation_binary",
+        lambda: "/usr/bin/docker",
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_isolated_codex_quota_fallback_home",
+        lambda **_kwargs: (
+            FakeHome(),
+            grok_cli_runner._codex_task_container_environment(),
+            source_auth,
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner._DockerContainerLease,
+        "create",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsigned authority must not allocate a Docker lease"
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsigned authority must not create a container"
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsigned authority must not start a container"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="lacks signed network authority"):
+        grok_cli_runner._run_codex_quota_fallback_in_docker(
+            _terra_fallback_command(str(codex), workspace),
+            workspace=workspace,
+            prompt="repair",
+            prompt_path=prompt_path,
+            base_env={},
+        )
 
 
 def test_real_disposable_codex_container_and_board_toolchain_probe(
@@ -2776,10 +3223,20 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
 def test_quota_grok_command_authorizes_canonical_legacy_preflight(
     tmp_path: Path, monkeypatch
 ) -> None:
+    def unexpected_secret_store_access(*_args, **_kwargs):
+        pytest.fail("Grok route construction requested an unrelated secret fingerprint")
+
     monkeypatch.setattr(
         implementation_daemon,
         "_grok_binary",
         lambda: "/usr/bin/grok",
+    )
+    monkeypatch.setattr(llm_router, "_grok_cli_auth_available", lambda: True)
+    monkeypatch.setattr(llm_router, "_get_grok_cli_provider", lambda: object())
+    monkeypatch.setattr(
+        llm_router,
+        "meta_model_api_key_fingerprint",
+        unexpected_secret_store_access,
     )
     monkeypatch.setattr(
         grok_cli_runner,
@@ -2789,6 +3246,7 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
     command = implementation_daemon._grok_cli_command(workspace_path=tmp_path)
     assert "--codex-fallback-command-json" in command
     assert "--canonical-legacy-preflight-route" in command
+    assert command[command.index("--model") + 1] == "grok-4.5"
 
     nonce_bound = implementation_daemon._grok_cli_command(
         workspace_path=tmp_path,

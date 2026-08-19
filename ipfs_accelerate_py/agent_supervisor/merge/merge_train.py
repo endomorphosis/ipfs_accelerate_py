@@ -4060,7 +4060,7 @@ class MergeTrain:
     def _gate_receipt_type() -> Any:
         # Kept lazy so older installations which only use the ungated train
         # can still import this module during a rolling deployment.
-        from . import formal_verification_policy as policy_module
+        from ..proof import formal_verification_policy as policy_module
 
         receipt_type = getattr(policy_module, "MergeProofGateReceipt", None)
         if receipt_type is None:

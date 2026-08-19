@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import stat
 import subprocess
 import sys
 import threading
@@ -1119,6 +1120,56 @@ def test_worktree_pool_reclamation_preserves_live_and_recoverable_owners(
     assert live_owner.release(reusable=False)["released"] is True
 
 
+def test_worktree_pool_never_warm_borrows_a_dead_leased_checkout(
+    tmp_path: Path,
+) -> None:
+    """Dead leased state remains reserved for exact recovery or discard."""
+
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    owner = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    stale = owner.acquire(
+        cache_key="shared-cache",
+        base_ref="main",
+        branch_name="implementation/recoverable",
+    )
+    state_path = worktree_root / ".pool-state" / f"{stale.entry_id}.json"
+    lock_path = worktree_root / ".pool-state" / f"{stale.entry_id}.lock"
+    dead_pid = 2_147_483_642
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["lease_pid"] = dead_pid
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    state_path.chmod(0o600)
+    lock_path.write_text(
+        json.dumps({"pid": dead_pid, "created_at_epoch": time.time()}),
+        encoding="utf-8",
+    )
+    lock_path.chmod(0o600)
+
+    contender = WorktreePool(
+        repo_root=repo,
+        worktree_root=worktree_root,
+    ).acquire(
+        cache_key="shared-cache",
+        base_ref="main",
+        branch_name="implementation/contender",
+    )
+
+    assert contender.reused is False
+    assert contender.path != stale.path
+    assert "non_idle_entry_reserved" in contender.invalidation_reasons
+    assert stale.path.is_dir()
+    assert json.loads(state_path.read_text(encoding="utf-8")) == state
+    assert json.loads(lock_path.read_text(encoding="utf-8"))["pid"] == dead_pid
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+    assert contender.release(reusable=False)["released"] is True
+    assert stale.release(reusable=False)["released"] is True
+
+
 def test_worktree_pool_serializes_dead_lock_replacement_between_claimants(
     tmp_path: Path,
 ) -> None:
@@ -1256,15 +1307,38 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(
         worktree_root=worktree_root,
     )
     daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
-    monkeypatch.setattr(
-        daemon,
-        "_run_validation_with_candidate_binding",
-        lambda *_args, **_kwargs: {
+
+    def accept_current_candidate(
+        workspace_path,
+        task,
+        _log_path,
+        *,
+        baseline_ref,
+        **_kwargs,
+    ):
+        result = {
             "attempted": True,
             "passed": True,
             "returncode": 0,
             "results": [],
-        },
+        }
+        binding, _entries = daemon._inspect_post_validation_candidate_binding(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            proposal_validation=None,
+        )
+        result["candidate_binding"] = {
+            **binding,
+            "verified": True,
+            "expected_fingerprint": binding["current_fingerprint"],
+        }
+        return result
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        accept_current_candidate,
     )
     task = daemon._load_tasks()[0]
 

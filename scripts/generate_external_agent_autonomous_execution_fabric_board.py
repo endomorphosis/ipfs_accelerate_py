@@ -14,8 +14,9 @@ import argparse
 import hashlib
 import json
 import shlex
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CAMPAIGN_DIR = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
@@ -41,6 +42,82 @@ BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
 PLAN_REVISION = "EAAEF-PLAN-R1"
 CONTROL_SCHEMA = "datasets-authoritative-operational-v1"
 ROOT_GOAL = "EAAEF-G000"
+OVERLAP_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "external-agent-owned-path-overlap-contract@1"
+)
+OVERLAP_STRATEGY = "serialized_forward_extension"
+OVERLAP_MERGE_LANE = "single_admitted_merge_lane"
+CONTROL_ARTIFACT_OWNERSHIP_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "external-agent-control-artifact-ownership@1"
+)
+CONTROL_ARTIFACT_OWNERSHIP: tuple[dict[str, Any], ...] = (
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/OBJECTIVES.md",
+        "ownership_class": "generator_owned_projection",
+        "owner": "scripts/generate_external_agent_autonomous_execution_fabric_board.py",
+        "mutation_policy": "regenerate_from_reviewed_inputs_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/PLAN.md",
+        "ownership_class": "reviewed_source_owned_control_document",
+        "owner": "campaign_source_review",
+        "mutation_policy": "reviewed_source_change_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/TASK_BOARD.md",
+        "ownership_class": "generator_owned_projection",
+        "owner": "scripts/generate_external_agent_autonomous_execution_fabric_board.py",
+        "mutation_policy": "regenerate_from_reviewed_inputs_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/task_board.json",
+        "ownership_class": "generator_owned_canonical_board",
+        "owner": "scripts/generate_external_agent_autonomous_execution_fabric_board.py",
+        "mutation_policy": "regenerate_from_reviewed_inputs_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/stack_compatibility_manifest.json",
+        "ownership_class": "reviewed_source_owned_board_input",
+        "owner": "campaign_source_review",
+        "mutation_policy": "superseding_reviewed_revision_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/source_reconciliation_manifest.json",
+        "ownership_class": "reviewed_source_owned_board_input",
+        "owner": "campaign_source_review",
+        "mutation_policy": "reviewed_source_change_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md",
+        "ownership_class": "reviewed_source_owned_human_projection",
+        "owner": "campaign_source_review",
+        "mutation_policy": "reviewed_source_change_only",
+        "worker_mutation_admitted": False,
+    },
+    {
+        "schema": CONTROL_ARTIFACT_OWNERSHIP_SCHEMA,
+        "path": "docs/architecture/external_agent_autonomous_execution_fabric/bootstrap_materialization_attempts.json",
+        "ownership_class": "reviewed_source_owned_evidence_ledger",
+        "owner": "campaign_source_review",
+        "mutation_policy": "reviewed_append_only_attempt_evidence",
+        "worker_mutation_admitted": False,
+    },
+)
 
 
 def _cid(value: Any) -> str:
@@ -67,7 +144,7 @@ EPICS: tuple[tuple[str, str, str, str, str], ...] = (
     ("EAAEF-G030", "C", "Complete Git repository transfer", "EAAEF-G020", "Every admitted repository state is reconstructed in quarantine and verified across Git objects, dirty overlays, submodules, LFS, modes, symlinks and transfer bounds."),
     ("EAAEF-G040", "D", "Caller identity, capability and disclosure policy", "EAAEF-G030", "Effect-bound authenticated authority is distinct from prompts, CIDs, transport identity and imported history; disclosure and approvals bind exact inputs."),
     ("EAAEF-G050", "E", "Project onboarding and codebase classification", "EAAEF-G040", "Every ordinary Git repository receives a typed assessment; autonomous mutation is admitted only through a qualified ProjectAdapter and known validation profile."),
-    ("EAAEF-G060", "F", "OCI container execution fabric", "EAAEF-G050", "Workers execute only leased tasks in isolated rootless containers with bounded resources, no Docker socket, default-deny network and restart-safe checkpoints."),
+    ("EAAEF-G060", "F", "OCI container execution fabric", "EAAEF-G050", "Workers execute only leased tasks in isolated containers with bounded resources, no Docker socket, default-deny network and restart-safe checkpoints; the engine is rootless where supported, otherwise an independently approved rootful-host-daemon/nonroot-worker fallback is required."),
     ("EAAEF-G070", "G", "Handoff context and federated retrieval", "EAAEF-G060", "Repository truth, imported claims, receipts, legal corpora and hypotheses remain distinct while AST, capsules, BM25, vector, GraphRAG and knowledge graphs compose through one provenance-preserving retrieval plan."),
     ("EAAEF-G080", "H", "Logic-governed goal and task compilation", "EAAEF-G070", "The existing logic platform admits only covered, acyclic, bounded, feasible goal/task plans with explicit conflicts, proof obligations and completion contracts."),
     ("EAAEF-G090", "I", "Conflict-free multi-agent parallel execution", "EAAEF-G080", "The existing semantic work fabric selects fenced conflict-free frontiers; multiple attempts are allowed but one logical result alone may be accepted."),
@@ -130,16 +207,162 @@ def _structured_execution_validation(
 TASK_ROWS: tuple[
     tuple[str, str, str, str, tuple[str, ...], tuple[str, ...], str, str], ...
 ] = (
-    ("000", "EAAEF-G010", "Admit the fail-closed bootstrap runtime", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py", "test/api/test_external_agent_fabric_bootstrap_preflight.py", "config/external_agent_autonomous_execution_fabric_bootstrap.json", "containers/external-agent/bootstrap-reconciliation.Containerfile", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_admission.json"), (), "Independently bind signed EAAEF provider authorization, independently signed bootstrap image and SBOM identities, rootless/network/resource policy, the immutable materialization receipt and the explicit Quack authority decision; absent or invalid evidence emits a typed no-go and starts no supervisor.", "python3 -m pytest -q test/api/test_external_agent_fabric_bootstrap_preflight.py"),
-    ("001", "EAAEF-G010", "Verify the complete source-reconciliation manifest", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json", "test/api/test_external_agent_source_reconciliation.py"), ("EAAEF-000",), "Reproduce the frozen manifest's branch, worktree, changed-path, schema/API, test, dependency, supersession, dirty-overlay and conflict classifications for all four repositories without mutating that board input or any preserved ref.", "python3 -m pytest -q test/api/test_external_agent_source_reconciliation.py; python3 scripts/validate_external_agent_autonomous_execution_fabric_board.py --source-only"),
-    ("002", "EAAEF-G010", "Reconcile accelerator residual lineages and source hygiene", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json", "test/api/test_external_agent_source_hygiene.py"), ("EAAEF-000",), "Forward-audit DCR Git authority/replay, self-hosting recovery, task-contract residuals and committed runtime/private-key-shaped artifacts; port only behavior missing from the reviewed baseline.", "python3 -m pytest -q test/api/test_external_agent_source_hygiene.py test/api/test_agent_supervisor_checkout_lock.py"),
+    (
+        "000",
+        "EAAEF-G010",
+        "Admit the fail-closed bootstrap runtime",
+        "ipfs_accelerate_py",
+        _paths(
+            "ipfs_accelerate_py/agent_implementation_route.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/contract_mismatch_analyzer.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/contract_vulnerability_rules.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/parser_failure_triage.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/polyglot_ast_health.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/polyglot_ast_provider.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/python_mcp_surface_extractor.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/runtime_component_catalog.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/runtime_contract_evidence_compiler.py",
+            "ipfs_accelerate_py/agent_supervisor/analysis/swissknife_contract_extractor.py",
+            "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py",
+            "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+            "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+            "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py",
+            "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+            "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+            "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/connect_allowlist_proxy.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/eaaef_bootstrap_gateway.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/worker_container_execution_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/worker_network.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/worker_network_dispatch.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_borrowed_transaction.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_operational_schema.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/quack_command_authorization.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/quack_command_fabric.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_bootstrap_daemon_gateway.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/quack_daemon_gateway.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/external_agent_container_dispatcher.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/agent_native_dependency_admission.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/eaaef_bootstrap_gateway_launch.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/eaaef_lane_gateway_admission.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/external_agent_bootstrap_admission.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/external_agent_configured_board_capsule.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/proof_cached_test_validation.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+            "ipfs_accelerate_py/testing/proof_reuse/default_identity_services.py",
+            "ipfs_accelerate_py/testing/proof_reuse/item_identity.py",
+            "containers/external-agent/bootstrap-reconciliation.Containerfile",
+            "containers/external-agent/implementation-worker.Containerfile",
+            "containers/external-agent/implementation-worker-minimal.Containerfile",
+            "config/external_agent_autonomous_execution_fabric_bootstrap.json",
+            "config/external_agent_autonomous_execution_fabric_scheduler.json",
+            "scripts/generate_external_agent_autonomous_execution_fabric_board.py",
+            "scripts/extract_typescript_ast.mjs",
+            "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py",
+            "scripts/materialize_external_agent_autonomous_execution_fabric_control_plane.py",
+            "scripts/qualify_external_agent_bootstrap_container.py",
+            "scripts/qualify_external_agent_implementation_worker_image.py",
+            "scripts/qualify_external_agent_implementation_worker_minimal_image.py",
+            "scripts/validate_external_agent_autonomous_execution_fabric_board.py",
+            "test/api/test_agent_supervisor_configured_board_scheduler.py",
+            "test/api/test_agent_supervisor_contract_mismatch_analyzer.py",
+            "test/api/test_agent_supervisor_contract_vulnerability_rules.py",
+            "test/api/test_agent_supervisor_database_implementation_daemon.py",
+            "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+            "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+            "test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py",
+            "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+            "test/api/test_agent_supervisor_incremental_runtime.py",
+            "test/api/test_agent_supervisor_inference_runtime.py",
+            "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py",
+            "test/api/test_agent_supervisor_mcp_contract_catalog.py",
+            "test/api/test_agent_supervisor_mcp_contract_proof_cache.py",
+            "test/api/test_agent_supervisor_mcp_invocation_trace.py",
+            "test/api/test_agent_supervisor_native_dependency_admission.py",
+            "test/api/test_agent_supervisor_parser_failure_triage.py",
+            "test/api/test_agent_supervisor_polyglot_ast_health.py",
+            "test/api/test_agent_supervisor_polyglot_ast_provider.py",
+            "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+            "test/api/test_agent_supervisor_proof_merge_gate.py",
+            "test/api/test_agent_supervisor_proof_cached_test_validation.py",
+            "test/api/test_agent_supervisor_python_mcp_surface_extractor.py",
+            "test/api/test_agent_supervisor_quack_command_fabric.py",
+            "test/api/test_agent_supervisor_quack_daemon_gateway.py",
+            "test/api/test_agent_supervisor_quack_state_client.py",
+            "test/api/test_agent_supervisor_quack_state_server.py",
+            "test/api/test_agent_supervisor_runtime_component_catalog.py",
+            "test/api/test_agent_supervisor_runtime_contract_evidence_compiler.py",
+            "test/api/test_agent_supervisor_router_owned_provider_decision.py",
+            "test/api/test_agent_supervisor_swissknife_contract_extractor.py",
+            "test/api/test_agent_supervisor_todo_daemon_port.py",
+            "test/api/test_agent_supervisor_validation_scheduler.py",
+            "test/api/test_agent_supervisor_worktree_lifecycle.py",
+            "test/api/test_eaaef_bootstrap_daemon_gateway.py",
+            "test/api/test_eaaef_bootstrap_gateway_launch.py",
+            "test/api/test_eaaef_bootstrap_runtime_gateway.py",
+            "test/api/test_eaaef_borrowed_transaction.py",
+            "test/api/test_eaaef_lane_gateway_runtime.py",
+            "test/api/test_eaaef_operational_schema.py",
+            "test/api/test_eaaef_quack_command_fabric.py",
+            "test/api/test_eaaef_supervisor_daemon_birth_wiring.py",
+            "test/api/test_external_agent_autonomous_execution_fabric_board.py",
+            "test/api/test_external_agent_autonomous_execution_fabric_materializer.py",
+            "test/api/test_external_agent_bootstrap_admission.py",
+            "test/api/test_external_agent_configured_board_capsule.py",
+            "test/api/test_external_agent_configured_board_runner_gate.py",
+            "test/api/test_external_agent_control_plane_promotion.py",
+            "test/api/test_external_agent_container_worker_dispatch.py",
+            "test/api/test_external_agent_fabric_bootstrap_preflight.py",
+            "test/api/test_external_agent_fabric_container_qualification.py",
+            "test/api/test_external_agent_fabric_provider_authorization.py",
+            "test/api/test_external_agent_implementation_worker_image_qualification.py",
+            "test/api/test_external_agent_implementation_worker_minimal_image_qualification.py",
+            "test/api/test_external_agent_state_repository.py",
+            "test/api/test_external_agent_worker_authority_propagation.py",
+            "test/api/test_external_agent_worker_network.py",
+            "test/api/test_llm_router_agent_implementation_route.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+            "test/api/test_llm_router_exact_provider_fallback.py",
+            "test/api/test_proof_reuse_default_identity_services.py",
+            "test/api/test_pytest_proof_reuse_item_identity.py",
+            "test/api/test_plan_r2_remote_owner.py",
+        ),
+        (),
+        "Independently bind signed EAAEF provider authorization, an exact task-capable worker image and SBOM, effect-bound per-attempt network approval, an explicitly identified rootless engine or independently approved rootful-host-daemon/nonroot-worker fallback, bounded internal proxy egress, the immutable materialization receipt, and an exact DuckDB 1.5.5/Quack 1.5.5 command-ingress qualification. The Quack owner must verify signed principal/authority/lease/deadline/fence envelopes before its private DuckDB mutation; a bare StateCommand or shared token is never authority. Reviewed source implements the native-dependency admission, V2 lane/verifier/merge chain, exact-envelope journals, lazy Quack/dispatcher factories, per-birth supervisor wiring and the distinct three-operation process-remote Plan-R2 owner seam, but those source seams confer no live authority. Before EAAEF-001 may run, the manual host gate must qualify the exact 31-operation task/claim/lease/provider/effect/validation/completion bootstrap vocabulary used by EAAEF-001 through EAAEF-009; the existing task.get/task.ready handlers and unrelated task.list read are explicitly insufficient. The capability excludes task materialization, host merge admission and the three Plan-R2 operations. Host merge remains independently reviewed, while EAAEF-009 uses a separately promoted prepare/apply/observe Plan-R2 gateway after EAAEF-008. Quack-mode daemons must use that complete bootstrap gateway and may not open local execution or coordination sidecars. Missing actual independently signed native, lane, Quack, dispatcher and Plan-R2 artifacts, deployed signed endpoints, a qualified extension, or admitted container/provider/network authority must emit a typed no-go and start no supervisor.",
+        "python3 -m pytest -q test/api/test_agent_supervisor_configured_board_scheduler.py test/api/test_agent_supervisor_contract_mismatch_analyzer.py test/api/test_agent_supervisor_contract_vulnerability_rules.py test/api/test_agent_supervisor_database_implementation_daemon.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_daemon_runner.py test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py test/api/test_agent_supervisor_implementation_supervisor_runner.py test/api/test_agent_supervisor_incremental_runtime.py test/api/test_agent_supervisor_inference_runtime.py test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py test/api/test_agent_supervisor_mcp_contract_catalog.py test/api/test_agent_supervisor_mcp_contract_proof_cache.py test/api/test_agent_supervisor_mcp_invocation_trace.py test/api/test_agent_supervisor_native_dependency_admission.py test/api/test_agent_supervisor_parser_failure_triage.py test/api/test_agent_supervisor_polyglot_ast_health.py test/api/test_agent_supervisor_polyglot_ast_provider.py test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py test/api/test_agent_supervisor_proof_merge_gate.py test/api/test_agent_supervisor_proof_cached_test_validation.py test/api/test_agent_supervisor_python_mcp_surface_extractor.py test/api/test_agent_supervisor_quack_command_fabric.py test/api/test_agent_supervisor_quack_daemon_gateway.py test/api/test_agent_supervisor_quack_state_client.py test/api/test_agent_supervisor_quack_state_server.py test/api/test_agent_supervisor_runtime_component_catalog.py test/api/test_agent_supervisor_runtime_contract_evidence_compiler.py test/api/test_agent_supervisor_router_owned_provider_decision.py test/api/test_agent_supervisor_swissknife_contract_extractor.py test/api/test_agent_supervisor_todo_daemon_port.py test/api/test_agent_supervisor_validation_scheduler.py test/api/test_agent_supervisor_worktree_lifecycle.py test/api/test_eaaef_bootstrap_daemon_gateway.py test/api/test_eaaef_bootstrap_gateway_launch.py test/api/test_eaaef_bootstrap_runtime_gateway.py test/api/test_eaaef_borrowed_transaction.py test/api/test_eaaef_lane_gateway_runtime.py test/api/test_eaaef_operational_schema.py test/api/test_eaaef_quack_command_fabric.py test/api/test_eaaef_supervisor_daemon_birth_wiring.py test/api/test_external_agent_fabric_bootstrap_preflight.py test/api/test_external_agent_fabric_container_qualification.py test/api/test_external_agent_fabric_provider_authorization.py test/api/test_external_agent_implementation_worker_image_qualification.py test/api/test_external_agent_implementation_worker_minimal_image_qualification.py test/api/test_external_agent_state_repository.py test/api/test_external_agent_worker_network.py test/api/test_external_agent_worker_authority_propagation.py test/api/test_external_agent_container_worker_dispatch.py test/api/test_external_agent_bootstrap_admission.py test/api/test_external_agent_control_plane_promotion.py test/api/test_external_agent_configured_board_capsule.py test/api/test_external_agent_configured_board_runner_gate.py test/api/test_external_agent_autonomous_execution_fabric_materializer.py test/api/test_llm_router_agent_implementation_route.py test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_llm_router_exact_provider_fallback.py test/api/test_plan_r2_remote_owner.py test/api/test_proof_reuse_default_identity_services.py test/api/test_pytest_proof_reuse_item_identity.py test/api/test_external_agent_autonomous_execution_fabric_board.py",
+    ),
+    ("001", "EAAEF-G010", "Verify the complete source-reconciliation manifest", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json", "test/api/test_external_agent_source_reconciliation.py"), ("EAAEF-000",), "Reproduce the frozen manifest and human report's branch, worktree, changed-path, schema/API, test, dependency, supersession, dirty-overlay and conflict classifications for all four repositories without mutating either board input or any preserved ref.", "python3 -m pytest -q test/api/test_external_agent_source_reconciliation.py; python3 scripts/validate_external_agent_autonomous_execution_fabric_board.py --source-only"),
+    ("002", "EAAEF-G010", "Reconcile accelerator residual lineages and source hygiene", "ipfs_accelerate_py", _paths(".gitignore", "dashboard.pid", "data/model_manager.duckdb.wal", "state/p2p_gpt2_2peer/peer1_queue.duckdb.wal", "state/p2p_gpt2_2peer/peer2_queue.duckdb.wal", "state/smoketest_logs/driver.out", "state/tls/mcpplusplus.crt", "state/tls/mcpplusplus.key", "test/kitchen_sink_models.db.wal", "scripts/systemd/generate_self_signed_cert.py", "docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json", "test/api/test_external_agent_source_hygiene.py"), ("EAAEF-000",), "Forward-audit DCR Git authority/replay, self-hosting recovery and task-contract residuals; verify that committed runtime and private-key-shaped artifacts were forward-removed while their provenance remains in history, require fail-closed 0600 permissions for replacement private keys, and port only behavior missing from the reviewed baseline.", "python3 -m pytest -q test/api/test_external_agent_source_hygiene.py test/api/test_agent_supervisor_checkout_lock.py"),
     ("003", "EAAEF-G010", "Reconcile datasets UI IR and proof-reuse residuals", "ipfs_datasets_py", _paths("docs/architecture/external_agent_fabric_reconciliation.json", "tests/integration/test_external_agent_reconciliation.py"), ("EAAEF-000",), "Verify the provenance-preserving UI/UX-IR merge, retain current LPC API semantics, classify proof-reuse and semantic-contract residuals, and reject wholesale stale snapshots.", "python -m pytest -q tests/integration/test_external_agent_reconciliation.py"),
     ("004", "EAAEF-G010", "Freeze the ipfs_kit_py reusable authority surface", "ipfs_kit_py", _paths("docs/external_agent_fabric_kit_contracts.md", "tests/test_external_agent_fabric_kit_contracts.py"), ("EAAEF-000",), "Bind existing artifact, semantic-root, proof-sealer and MCP++ adapter surfaces while excluding the in-process Profile-G coordinator from production authority.", "python -m pytest -q tests/test_external_agent_fabric_kit_contracts.py"),
     ("005", "EAAEF-G010", "Clarify existing MCP++ state-backend roles", "Mcp-Plus-Plus", _paths("docs/architecture/decisions/0004-state-modes.md", "docs/architecture/decisions/0005-durable-executor.md", "docs/architecture/durable-execution.md", "docs/architecture/state-model.md", "docs/spec/state-ref.md"), ("EAAEF-000",), "Preserve existing wire schemas while stating that DuckDB is transactional storage, Quack is the sole fenced multi-reader/multi-writer owner boundary, and DuckLake is non-authoritative history.", "python -m pytest -q tests/test_state_ref.py tests/test_durable_executor.py"),
     ("006", "EAAEF-G010", "Propose reviewed integration roots and stack compatibility", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json", "test/api/test_external_agent_stack_compatibility.py"), ("EAAEF-001", "EAAEF-002", "EAAEF-003", "EAAEF-004", "EAAEF-005"), "Bind post-reconciliation commits, trees, schemas, package/protocol versions, the admitted bootstrap OCI identity and compatible ranges in a proposal plus verification receipt; never overwrite the R1 compatibility input in place.", "python3 -m pytest -q test/api/test_external_agent_stack_compatibility.py"),
     ("007", "EAAEF-G010", "Build the canonical multi-repository semantic root", "ipfs_datasets_py", _paths("ipfs_datasets_py/analysis/external_agent_source_state.py", "tests/unit/analysis/test_external_agent_source_state.py"), ("EAAEF-006",), "Build and independently verify the post-reconciliation AST, semantic-state and provenance root for the exact four-repository forest, preserving a content-addressed delta and invalidation receipt.", "python -m pytest -q tests/unit/analysis/test_external_agent_source_state.py"),
-    ("008", "EAAEF-G010", "Qualify Quack ownership and the accepted bootstrap capsule", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py", "test/api/test_external_agent_control_plane_promotion.py", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/bootstrap_control_plane_promotion.json"), ("EAAEF-007",), "Admit or reject the exact immutable control-plane capsule and existing DuckDB/Quack owner profile; live multi-reader/multi-writer execution requires one authenticated fenced owner, typed clients, a current epoch and no direct-file fallback.", "python3 -m pytest -q test/api/test_external_agent_control_plane_promotion.py"),
-    ("009", "EAAEF-G010", "Admit Plan R2 and transition the next population", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py", "test/api/test_external_agent_plan_r2.py", "docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"), ("EAAEF-007", "EAAEF-008"), "Consume the verified semantic root and promotion receipt, create an immutable Plan R2 with bounded add/supersede repairs, replace every future-task sentinel, CAS the active plan revision, materialize only the B frontier, and emit an admission or typed no-go receipt without editing completed R1 tasks.", "python3 -m pytest -q test/api/test_external_agent_plan_r2.py"),
+    ("008", "EAAEF-G010", "Renew Quack ownership and the accepted bootstrap capsule", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py", "ipfs_accelerate_py/agent_supervisor/validation/external_agent_configured_board_capsule.py", "test/api/test_external_agent_configured_board_capsule.py", "test/api/test_external_agent_configured_board_runner_gate.py", "test/api/test_external_agent_control_plane_promotion.py"), ("EAAEF-007",), "Reverify the bootstrap DuckDB/Quack owner and issue or reject a fresh immutable configured-board capsule against the reconciled source forest and semantic root. The capsule binds one private file-opening owner, authenticated signed-command ingress, read-only projections, the current epoch/fence, exact conflict-free frontier and no direct-file fallback; it cannot authorize Plan R2 before its distinct independently reviewed Promotion@2 transition capability and receipt exist.", "python3 -m pytest -q test/api/test_external_agent_configured_board_capsule.py test/api/test_external_agent_configured_board_runner_gate.py test/api/test_external_agent_control_plane_promotion.py"),
+    ("009", "EAAEF-G010", "Admit Plan R2 and transition the next population", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py", "ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py", "ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py", "ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py", "test/api/test_external_agent_plan_r2.py", "test/api/test_external_agent_state_repository.py", "test/api/test_plan_r2_remote_owner.py", "docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"), ("EAAEF-007", "EAAEF-008", "EAAEF-000"), "Consume the verified semantic root and promotion receipt through the distinct process-remote three-operation Plan-R2 owner seam, create an immutable Plan R2 with bounded add/supersede repairs, replace every future-task sentinel, CAS the active plan revision, materialize only the B frontier, and emit an admission or typed no-go receipt without editing completed R1 tasks. Source implementation is not live admission; the independently signed remote-owner capability, qualified wire-channel factory and supervisor repository wiring remain external requirements.", "python3 -m pytest -q test/api/test_external_agent_plan_r2.py test/api/test_external_agent_state_repository.py test/api/test_plan_r2_remote_owner.py"),
 
     ("010", "EAAEF-G020", "Define the transport-neutral handoff contract family", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/handoff/contracts.py", "test/api/test_external_agent_handoff_contracts.py"), (), "Implement content-addressed ExternalAgentHandoffRequest, Session, event, checkpoint, context, normalization and admission schemas with strict versioning and bounds.", "python3 -m pytest -q test/api/test_external_agent_handoff_contracts.py"),
     ("011", "EAAEF-G020", "Preserve encrypted raw exports and normalized projections", "ipfs_kit_py", _paths("ipfs_kit_py/external_agent_handoff/storage.py", "tests/test_external_agent_handoff_storage.py"), ("EAAEF-010",), "Store exact exported bytes through managed encrypted references and emit a separate ordered normalized projection without transcript bodies in public receipts.", "python -m pytest -q tests/test_external_agent_handoff_storage.py"),
@@ -167,10 +390,10 @@ TASK_ROWS: tuple[
     ("044", "EAAEF-G050", "Qualify onboarding against representative repositories", "ipfs_accelerate_py", _paths("test/integration/test_external_agent_project_onboarding.py", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/project_onboarding.json"), ("EAAEF-043",), "Show safe classification for supported, unsupported and malicious fixtures and admit mutation only for the qualified Python profile.", "python3 -m pytest -q test/integration/test_external_agent_project_onboarding.py"),
 
     ("050", "EAAEF-G060", "Define container execution and worker-lease contracts", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/containers/contracts.py", "test/api/test_container_execution_contracts.py"), (), "Bind image, worktree, task, authority, resources, policy, artifact manifest, checkpoint and receipt while keeping host acceptance authority out of workers.", "python3 -m pytest -q test/api/test_container_execution_contracts.py"),
-    ("051", "EAAEF-G060", "Implement rootless default-deny container launching", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py", "test/security/test_container_default_deny.py"), ("EAAEF-050",), "Launch nonroot, read-only-base, capability-dropped, no-new-privileges workers with PID/CPU/RAM/GPU/disk/time bounds, no Docker socket and network deny by default.", "python3 -m pytest -q test/security/test_container_default_deny.py"),
+    ("051", "EAAEF-G060", "Implement default-deny OCI launching with rootless preference", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/containers/oci_runner.py", "test/security/test_container_default_deny.py"), ("EAAEF-050",), "Launch nonroot, read-only-base, capability-dropped, no-new-privileges workers with PID/CPU/RAM/GPU/disk/time bounds, no Docker socket and network deny by default; use a rootless engine where supported and require independent policy admission for any rootful-host-daemon fallback.", "python3 -m pytest -q test/security/test_container_default_deny.py"),
     ("052", "EAAEF-G060", "Build digest-pinned toolchain and prover images", "ipfs_accelerate_py", _paths("containers/external-agent/supervisor.Containerfile", "containers/external-agent/python-worker.Containerfile", "containers/external-agent/prover.Containerfile", "test/containers/test_external_agent_images.py"), ("EAAEF-050",), "Produce image digests, SBOMs, architectures, toolchain/verifier versions and supported adapter versions without mutable tags as authority.", "python3 -m pytest -q test/containers/test_external_agent_images.py"),
     ("053", "EAAEF-G060", "Implement tenant-safe dependency and analysis caches", "ipfs_kit_py", _paths("ipfs_kit_py/execution_cache/profile.py", "tests/test_execution_cache_profile.py"), ("EAAEF-050",), "Key caches by lock, toolchain, architecture, environment and network policy; never share untrusted writable cache authority across tenants.", "python -m pytest -q tests/test_execution_cache_profile.py"),
-    ("054", "EAAEF-G060", "Implement fenced container checkpoints and restart", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py", "test/api/test_container_checkpoint_restart.py"), ("EAAEF-050", "EAAEF-051"), "Preserve attempt/worktree/semantic delta/stages/tests/proofs/model calls/artifacts/resources/obligations/effects and require a later fence on restart.", "python3 -m pytest -q test/api/test_container_checkpoint_restart.py"),
+    ("054", "EAAEF-G060", "Implement fenced container checkpoints and restart", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/containers/checkpoint.py", "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py", "test/api/test_agent_supervisor_worktree_lifecycle.py", "test/api/test_container_checkpoint_restart.py"), ("EAAEF-050", "EAAEF-051"), "Preserve attempt/worktree/semantic delta/stages/tests/proofs/model calls/artifacts/resources/obligations/effects, recover only provably dead same-lane owners during controlled restart, and require a later fence on restart.", "python3 -m pytest -q test/api/test_agent_supervisor_worktree_lifecycle.py test/api/test_container_checkpoint_restart.py"),
     ("055", "EAAEF-G060", "Qualify container isolation and cleanup", "ipfs_accelerate_py", _paths("test/security/test_external_agent_container_isolation.py", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/container.json"), ("EAAEF-051", "EAAEF-052", "EAAEF-053", "EAAEF-054"), "Verify no host source/credential/socket/device/cross-volume access, bounded resources, default-deny network, checkpoint recovery and terminal cleanup on a real admitted runtime.", "python3 -m pytest -q test/security/test_external_agent_container_isolation.py"),
 
     ("060", "EAAEF-G070", "Define federated retrieval request, plan and result", "ipfs_datasets_py", _paths("ipfs_datasets_py/retrieval/agent_work_contracts.py", "tests/unit/retrieval/test_agent_work_contracts.py"), (), "Specify objectives, symbols, evidence classes, source domains, per-engine budgets, graph/AST depth, proof policy, bytes, trust, recency and effective dates.", "python -m pytest -q tests/unit/retrieval/test_agent_work_contracts.py"),
@@ -189,13 +412,13 @@ TASK_ROWS: tuple[
     ("081", "EAAEF-G090", "Derive conservative semantic conflict sets", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/planning/external_conflict_graph.py", "test/api/test_external_conflict_graph.py"), ("EAAEF-080",), "Serialize overlapping symbols/files/interfaces/schemas/authorities/resources/effects unless an explicit merge contract proves compatibility; unknown scope conflicts.", "python3 -m pytest -q test/api/test_external_conflict_graph.py"),
     ("082", "EAAEF-G090", "Select resource-aware conflict-free frontiers", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/planning/external_frontier.py", "test/api/test_external_frontier.py"), ("EAAEF-080", "EAAEF-081"), "Maximize useful ready antichains under dependencies, leases, quotas, containers, worktrees, merge capacity, confidence and proofs with deterministic receipts.", "python3 -m pytest -q test/api/test_external_frontier.py"),
     ("083", "EAAEF-G090", "Prevent duplicate logical acceptance", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/runtime/external_logical_claim.py", "test/api/test_external_logical_claim.py"), ("EAAEF-080",), "Bind task, plan revision, base tree, semantic root, task-spec CID and idempotency key so many attempts can run but one result alone is accepted.", "python3 -m pytest -q test/api/test_external_logical_claim.py"),
-    ("084", "EAAEF-G090", "Emit bounded subagent work packets", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py", "test/api/test_external_work_packet.py"), ("EAAEF-082", "EAAEF-083"), "Bind exact goal/task/repo/semantic/context/scope/effects/container/resources/model/contracts/tests/proofs/completion/lease/fence/checkpoint; workers cannot self-approve.", "python3 -m pytest -q test/api/test_external_work_packet.py"),
+    ("084", "EAAEF-G090", "Emit bounded subagent work packets", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/todo_daemon/external_agent_container_dispatcher.py", "ipfs_accelerate_py/agent_supervisor/todo_daemon/external_work_packet.py", "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py", "test/api/test_external_agent_container_worker_dispatch.py", "test/api/test_external_work_packet.py"), ("EAAEF-082", "EAAEF-083"), "Bind exact goal/task/repo/semantic/context/scope/effects/container/resources/model/contracts/tests/proofs/completion/lease/fence/checkpoint; reserve provider/effect authority before container launch, accept only content-addressed patch/evidence proposals, and require separate independent host merge admission; workers cannot self-approve.", "python3 -m pytest -q test/api/test_external_agent_container_worker_dispatch.py test/api/test_external_work_packet.py"),
     ("085", "EAAEF-G090", "Qualify parallel frontier safety", "ipfs_accelerate_py", _paths("test/integration/test_external_agent_parallel_frontier.py", "docs/architecture/external_agent_autonomous_execution_fabric/receipts/parallel_frontier.json"), ("EAAEF-082", "EAAEF-083", "EAAEF-084"), "Run conflicting and compatible tasks and prove safe concurrency, one accepted logical result, stale-fence rejection and resource enforcement.", "python3 -m pytest -q test/integration/test_external_agent_parallel_frontier.py"),
 
     ("090", "EAAEF-G100", "Version the complete mutable control-plane schema", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_control_schema.py", "test/api/test_external_agent_control_schema.py"), (), "Normalize repositories, handoffs, sessions, runs, goal/plan/task revisions, conflicts, processes, containers, claims, leases, reservations, approvals, events, checkpoints, validation/proofs, merge, artifacts, migrations and cursors.", "python3 -m pytest -q test/api/test_external_agent_control_schema.py"),
-    ("091", "EAAEF-G100", "Define authenticated typed Quack commands", "ipfs_datasets_py", _paths("ipfs_datasets_py/duckdb/quack/external_agent_commands.py", "tests/unit/duckdb/test_external_agent_quack_commands.py"), ("EAAEF-090",), "Require request/principal/authority/shard/epoch/lease/fence/idempotency/deadline/CAS/typed operation, bounded messages, correlation, cancellation, retry classes and no untrusted SQL.", "python -m pytest -q tests/unit/duckdb/test_external_agent_quack_commands.py"),
-    ("092", "EAAEF-G100", "Route all mutable repositories through the Quack owner", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py", "test/api/test_external_agent_state_repository.py"), ("EAAEF-090", "EAAEF-091"), "Consolidate handoff/run/goal/plan/task/attempt/provider/effect/validation/proof/merge operations behind one authenticated gateway; remote workers never open DuckDB files.", "python3 -m pytest -q test/api/test_external_agent_state_repository.py"),
-    ("093", "EAAEF-G100", "Qualify one fenced Quack owner and failover", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py", "test/api/test_external_quack_owner_failover.py"), ("EAAEF-090", "EAAEF-091", "EAAEF-092"), "Make DuckDB plus Quack the joint orchestrator: one file-opening owner serializes authenticated multi-reader/multi-writer clients, advances epoch on failover and rejects stale owners.", "python3 -m pytest -q test/api/test_external_quack_owner_failover.py"),
+    ("091", "EAAEF-G100", "Complete authenticated typed Quack command envelopes", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py", "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py", "ipfs_accelerate_py/agent_supervisor/task_sources/quack_command_authorization.py", "ipfs_accelerate_py/agent_supervisor/task_sources/quack_command_fabric.py", "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py", "test/api/test_agent_supervisor_quack_command_fabric.py", "test/api/test_agent_supervisor_quack_state_client.py"), ("EAAEF-090",), "Extend the bootstrap command ingress into the complete canonical operation set. Require request, authenticated principal, independent effect-bound authority, shard, epoch, live lease, fence, idempotency, deadline, expected version/CAS, typed arguments, correlation, cancellation and retry class on every bounded envelope; exact Quack SQL templates are transport only and never authority.", "python3 -m pytest -q test/api/test_agent_supervisor_quack_command_fabric.py test/api/test_agent_supervisor_quack_state_client.py"),
+    ("092", "EAAEF-G100", "Route all mutable repositories through the Quack owner", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py", "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py", "ipfs_accelerate_py/agent_supervisor/task_sources/quack_daemon_gateway.py", "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py", "test/api/test_external_agent_state_repository.py", "test/api/test_agent_supervisor_quack_daemon_gateway.py", "test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py"), ("EAAEF-090", "EAAEF-091"), "Consolidate handoff/run/goal/plan/task/attempt/provider/effect/validation/proof/merge operations behind one signed-command gateway whose sole local owner applies transactions to its private DuckDB. Remote clients receive Quack append/read capabilities only and never open or ATTACH the operational database; implementation daemons receive closed task, coordination and execution proxies rather than private sidecars.", "python3 -m pytest -q test/api/test_external_agent_state_repository.py test/api/test_agent_supervisor_quack_daemon_gateway.py test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py"),
+    ("093", "EAAEF-G100", "Qualify one fenced DuckDB/Quack owner and failover", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py", "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py", "test/api/test_agent_supervisor_quack_state_server.py", "test/api/test_external_quack_owner_failover.py"), ("EAAEF-090", "EAAEF-091", "EAAEF-092"), "Make DuckDB plus Quack the joint orchestrator: Quack supplies bounded authenticated multi-reader/multi-writer transport while exactly one local owner validates signed envelopes and serializes private DuckDB transactions, advances epoch on failover, rejects stale owners and never exposes an operational table for remote UPDATE or arbitrary SQL.", "python3 -m pytest -q test/api/test_agent_supervisor_quack_state_server.py test/api/test_external_quack_owner_failover.py"),
     ("094", "EAAEF-G100", "Project immutable history into DuckLake", "ipfs_datasets_py", _paths("ipfs_datasets_py/ducklake/external_agent_history.py", "tests/integration/test_external_agent_ducklake_history.py"), ("EAAEF-090", "EAAEF-092"), "Publish immutable epochs, task/event/audit history, snapshots, lineage, benchmarks and recovery manifests from an authoritative DuckDB outbox cursor; DuckLake never grants current authority.", "python -m pytest -q tests/integration/test_external_agent_ducklake_history.py"),
     ("095", "EAAEF-G100", "Publish immutable Parquet, IPLD, CAR and IPFS artifacts", "ipfs_kit_py", _paths("ipfs_kit_py/external_agent_history/publication.py", "tests/test_external_agent_history_publication.py"), ("EAAEF-094",), "Content-address committed events/snapshots with privacy-safe manifests and optional CAR/IPFS publication; replication lag cannot grant or revoke authority.", "python -m pytest -q tests/test_external_agent_history_publication.py"),
     ("096", "EAAEF-G100", "Implement backup, restore and ambiguity recovery", "ipfs_accelerate_py", _paths("ipfs_accelerate_py/agent_supervisor/runtime/external_control_recovery.py", "test/api/test_external_control_recovery.py"), ("EAAEF-093", "EAAEF-094"), "Recover owner crash/restart, duplicate/ambiguous transactions, network partitions, DuckLake outage/delay, corrupted snapshots and backups without accepting stale writes.", "python3 -m pytest -q test/api/test_external_control_recovery.py"),
@@ -295,7 +518,7 @@ def _resource_request(task_id: str, repository: str) -> dict[str, Any]:
                 "ram_mib": 2048,
                 "disk_mib": 4096,
                 "supervisor_processes": 0,
-                "container_slots": 0,
+                "container_slots": 1,
                 "merge_slots": 0,
                 "provider_concurrency": 0,
                 "model_input_token_ceiling": 0,
@@ -337,8 +560,9 @@ def _external_effect_scope(task_id: str) -> list[str]:
     if task_id == "EAAEF-000":
         return [
             "host-controlled read-only verification of signed bootstrap evidence",
+            "offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot",
             "reviewed task-owned policy/test writes and create-once receipt publication",
-            "no supervisor, worker, model, network, secret, merge, push or mutable control-plane effect before admission",
+            "no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission",
         ]
     effects = [
         "isolated task worktree writes",
@@ -460,6 +684,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
         "EAAEF-G180": "EAAEF-164",
     }
     seen: set[str] = set()
+    last_owner_by_path: dict[tuple[str, str], str] = {}
     tasks: list[dict[str, Any]] = []
     all_revisions = {
         name: {
@@ -481,6 +706,28 @@ def _build() -> tuple[dict[str, Any], str, str]:
         predecessor = previous_gate[goal_id]
         if predecessor and predecessor not in deps:
             deps.insert(0, predecessor)
+        path_values = _as_list(paths)
+        if len(path_values) != len(set(path_values)):
+            raise ValueError(f"{task_id} declares a duplicate owned path")
+        overlap_merge_contracts: list[dict[str, str]] = []
+        for path in path_values:
+            prior_owner = last_owner_by_path.get((repository, path))
+            if prior_owner is None:
+                continue
+            if prior_owner not in deps:
+                deps.append(prior_owner)
+            overlap_merge_contracts.append(
+                {
+                    "schema": OVERLAP_CONTRACT_SCHEMA,
+                    "repository": repository,
+                    "path": path,
+                    "predecessor_task_id": prior_owner,
+                    "successor_task_id": task_id,
+                    "dependency_type": "direct",
+                    "strategy": OVERLAP_STRATEGY,
+                    "merge_lane": OVERLAP_MERGE_LANE,
+                }
+            )
         numeric = int(number)
         initial_population = numeric < 10
         semantic_root = (
@@ -511,6 +758,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
             "source_semantic_state_root": semantic_root,
             "source_control_plane_schema_version": CONTROL_SCHEMA,
             "dependencies": deps,
+            "overlap_merge_contracts": overlap_merge_contracts,
             "read_scope": [
                 "exact files named by the current ContextPack",
                 "source-reconciliation and compatibility manifests",
@@ -533,7 +781,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
                 "ContainerExecutionProfile@1:host-controlled-bootstrap-admission"
                 if task_id == "EAAEF-000"
                 else (
-                    "ContainerExecutionProfile@1:rootless-git-reconciliation"
+                    "ContainerExecutionProfile@1:isolated-git-reconciliation"
                     if initial_population
                     else "ContainerExecutionProfile@1:qualified-project-worker"
                 )
@@ -574,7 +822,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
                 "task_claim": "one current claim with monotonically later fencing token on restart",
                 "worktree_lease": "exclusive isolated worktree",
                 "write_effect_leases": "exclusive for every overlapping file/symbol/schema/external effect",
-                "coordination": "initial population materialization permits one offline embedded writer; every live multi-reader/multi-writer request uses the EAAEF-008-admitted fenced Quack owner",
+                "coordination": "initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root",
             },
             "idempotency_key": _cid(
                 {
@@ -684,6 +932,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
             ),
             "conflict_and_merge_contract": (
                 "No independently executing task may mutate an identical repository-local or projected execution file. "
+                "Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. "
                 "Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. "
                 + (
                     f"Promotion of {REPOSITORY_EXECUTION_PREFIXES[repository]} is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink."
@@ -710,10 +959,11 @@ def _build() -> tuple[dict[str, Any], str, str]:
             task["required_evidence"] = [
                 "authenticated one-use operator admission request",
                 "signed EAAEF-scoped provider authorization",
-                "independently signed OCI image and SBOM digests",
-                "rootless, no-socket, default-deny network and bounded-resource policy",
+                "independently signed task-capable OCI worker image and SBOM digests with at least five admitted worker slots",
+                "effect-bound signed per-attempt internal-network/proxy authorizations for five collision-free lanes",
+                "explicit rootless-engine or independently approved rootful-host-daemon/nonroot-worker mode, no-socket, bounded allowlisted proxy egress and bounded-resource policy",
                 "immutable materialization identity and receipt",
-                "explicit Quack authority admission or typed no-go decision",
+                "exact DuckDB 1.5.5 and locked Quack 1.5.5 command-ingress qualification proving signed envelope authorization, one private file owner, multi-client append/read and no operational-table exposure",
                 "independent operator and security-review signatures",
             ]
             task["permitted_effects"] = [
@@ -724,11 +974,13 @@ def _build() -> tuple[dict[str, Any], str, str]:
             task["prohibited_effects"] = [
                 "starting a supervisor, worker or model before admission",
                 "self-approval by the task, worker, model or prospective supervisor",
-                "mutable DuckDB/Quack writes or direct coordination-file access",
+                "unsigned or bare StateCommand mutation, shared direct DuckDB access, or operational-table exposure through Quack",
                 "unapproved network, secret, dependency, merge, push or publication effects",
             ]
         task["task_spec_cid"] = _cid(task)
         tasks.append(task)
+        for path in path_values:
+            last_owner_by_path[(repository, path)] = task_id
 
     task_ids = {task["stable_task_id"] for task in tasks}
     for task in tasks:
@@ -780,9 +1032,12 @@ def _build() -> tuple[dict[str, Any], str, str]:
         "source_forest_root": source_forest_root,
         "control_plane": {
             "bootstrap": "one embedded DuckDB writer for the initial reconciliation population",
-            "continuous": "DuckDB transactional authority plus one fenced authenticated Quack owner serving all multi-reader/multi-writer clients",
+            "continuous": "Quack provides bounded authenticated append/read transport; one fenced local owner independently verifies signed effect envelopes and alone applies transactional mutations to its private DuckDB",
             "history": "DuckLake plus immutable Parquet/IPLD/CAR/IPFS projections; never current coordination authority",
         },
+        "control_artifact_ownership": [
+            dict(item) for item in CONTROL_ARTIFACT_OWNERSHIP
+        ],
         "implementation_order": [epic for _goal, epic, _title, _pred, _contract in EPICS],
         "initial_population_task_ids": [
             task["stable_task_id"] for task in tasks if task["initial_population"]
@@ -808,9 +1063,18 @@ def _render_board(board: dict[str, Any]) -> str:
         f"Board namespace: `{board['board_namespace']}`. Plan revision: `{board['plan_revision']}`.",
         f"Canonical board identity: `{board['board_cid']}`.",
         "",
-        "DuckDB is the transactional mutable database. Quack is the mandatory fenced state-owner service and typed multi-reader/multi-writer access path for continuous execution. DuckLake is downstream immutable history and analytics only.",
+        "DuckDB is the private transactional mutable database. Quack is the mandatory bounded multi-reader/multi-writer command and projection transport; one fenced local owner verifies every signed effect envelope and is the only process that opens the operational DuckDB. DuckLake is downstream immutable history and analytics only.",
         "",
         "Only the A tasks are in the bootstrap population. EAAEF-009 must bind a current datasets-built semantic root and admit Plan R2 before later tasks are materialized.",
+        "",
+        "## Generator/source-owned control artifacts",
+        "",
+        "These campaign-control artifacts are not worker task outputs and may be changed only by their declared generator or reviewed source owner:",
+        "",
+        *[
+            f"- `{item['path']}`: `{item['ownership_class']}`; mutation policy `{item['mutation_policy']}`."
+            for item in board["control_artifact_ownership"]
+        ],
         "",
         "## Parallel waves",
         "",
@@ -838,6 +1102,7 @@ def _render_board(board: dict[str, Any]) -> str:
         ("source_control_plane_schema_version", "Source control-plane schema version"),
         ("objective", "Objective"),
         ("dependencies", "Depends on"),
+        ("overlap_merge_contracts", "Owned-path overlap merge contracts"),
         ("read_scope", "Read scope"),
         ("write_scope", "Write scope"),
         ("external_effect_scope", "External-effect scope"),

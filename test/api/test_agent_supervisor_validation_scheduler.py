@@ -179,6 +179,13 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
         "test -f artifact"
     )
+    python_code = validation_shell_command(
+        "python3 -c 'import sys; sys.stdin.read()'"
+    )
+    assert python_code[4].endswith(
+        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
+        "python3 -c 'import sys; sys.stdin.read()'"
+    )
     for nested_shell in (
         "bash -lc 'python -c \"raise SystemExit(0)\"'",
         "true && bash -lc 'python -V'",
@@ -2199,11 +2206,11 @@ def test_daemon_binds_sibling_repositories_for_sealed_validation(
 
     assert report["passed"] is True
     assert report["results"][0]["command"].startswith(
-        'export PYTHONPATH="$PWD"/external/ipfs_datasets; '
+        "export PYTHONPATH=external/ipfs_datasets && "
     )
     assert (
-        "[validation normalized] bound configured worktree submodule roots "
-        "to validation PYTHONPATH"
+        "[validation normalized] added configured worktree package roots "
+        "to PYTHONPATH"
     ) in log_path.read_text(encoding="utf-8")
 
 
@@ -2374,7 +2381,7 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     assert len(commands) == 1
     assert commands[0].validation_id.startswith("declared:")
     assert commands[0].command.startswith(
-        'export PYTHONPATH="$PWD"/external/ipfs_accelerate; '
+        "export PYTHONPATH=external/ipfs_accelerate && "
     )
     assert graph.graph_version == "declared-validation-plan-v1"
     assert graph.required_validations(

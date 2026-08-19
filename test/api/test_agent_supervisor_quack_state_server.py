@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
     FakeQuackTransport,
+    InProcessQuackTransport,
     OwnerMarker,
     QuackStateServer,
     QuackStateServerBindError,
@@ -234,6 +235,34 @@ def test_interface_identities() -> None:
     assert STATE_SERVER_IDENTITY_INTERFACE == "StateServerIdentity@1"
     assert QuackStateServer.INTERFACE == QUACK_STATE_SERVER_INTERFACE
     assert StateServerIdentity.INTERFACE == STATE_SERVER_IDENTITY_INTERFACE
+
+
+def test_in_process_transport_rejects_broad_sql_authorization() -> None:
+    class BroadAuthorizationConnection:
+        def execute(self, sql: str, _parameters: object = None):
+            del sql, _parameters
+            return type(
+                "Result",
+                (),
+                {
+                    "fetchone": staticmethod(
+                        lambda: (
+                            "regexp_matches(upper(query), '^(SELECT|UPDATE)')",
+                        )
+                    )
+                },
+            )()
+
+    transport = InProcessQuackTransport(
+        authorization_function="broad_authorization"
+    )
+    with pytest.raises(
+        QuackStateServerCapabilityError,
+        match="exact-match finite SQL strings",
+    ):
+        transport._install_authorization_callback(  # noqa: SLF001
+            BroadAuthorizationConnection()
+        )
 
 
 # ---------------------------------------------------------------------------

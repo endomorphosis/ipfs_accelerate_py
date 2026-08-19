@@ -22,7 +22,6 @@ Transaction, CAS, fence, generation, and idempotency semantics live in
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import threading
 import time
@@ -707,6 +706,7 @@ class QuackStateClient:
         process_birth_id: str | None = None,
         clock: Callable[[], str] | None = None,
         connection_factory: Callable[[QuackEndpoint], Any] | None = None,
+        secret_resolver: Callable[[str], str] | None = None,
     ) -> None:
         owner = str(owner_id or "").strip()
         if not owner:
@@ -720,6 +720,7 @@ class QuackStateClient:
         self.process_birth_id = process_birth_id or _new_birth_id()
         self._clock = clock or _utc_now
         self._connection_factory = connection_factory
+        self._secret_resolver = secret_resolver
         self._templates: dict[str, StatementTemplate] = dict(
             templates or DEFAULT_STATEMENT_TEMPLATES
         )
@@ -1109,6 +1110,51 @@ class QuackStateClient:
 
         return run_with_retry(_operation, policy=self.retry_policy)
 
+    def apply_command_in_transaction(
+        self,
+        transaction: StateTransaction,
+        command: StateCommand,
+        live: StoreGeneration,
+    ) -> Mapping[str, Any]:
+        """Apply the built-in mutation inside a caller-owned transaction.
+
+        This narrow seam lets the command fabric atomically couple authority
+        consumption and its private receipt to the existing domain CAS and
+        idempotency record.  It exposes no caller-supplied SQL or mutation
+        callback.
+        """
+
+        if not isinstance(transaction, StateTransaction):
+            raise QuackClientError("transaction must be StateTransaction@1")
+        if not isinstance(command, StateCommand):
+            raise QuackClientError("command must be StateCommand@1")
+        if not isinstance(live, StoreGeneration):
+            raise QuackClientError("live generation must be StoreGeneration@1")
+        # This compatibility seam is one exact operation, not a generic
+        # ``StateCommand`` interpreter.  In particular, an independently
+        # authorized OBSERVE/MIGRATE effect must never become a task mutation
+        # merely because its signed parameters happen to contain ``status``.
+        # Broader lifecycle transitions belong to their dedicated owner
+        # operations and contracts.
+        parameters = dict(command.parameters)
+        if command.command_kind is not CommandKind.CLAIM:
+            raise QuackClientError(
+                "built-in owner task mutation requires command_kind=claim"
+            )
+        if set(parameters) != {
+            "task_cid",
+            "expected_task_revision",
+            "status",
+        }:
+            raise QuackClientError(
+                "built-in owner task claim requires the exact closed parameter set"
+            )
+        if parameters.get("status") != "claimed":
+            raise QuackClientError(
+                "command_kind=claim authorizes only status=claimed"
+            )
+        return self._default_task_status_apply(transaction, command, live)
+
     def cas_task_status(
         self,
         *,
@@ -1195,7 +1241,31 @@ class QuackStateClient:
             # only when the engine supports it. DuckDB ATTACH takes a literal,
             # so we validate the URI strictly before interpolation.
             safe_uri = self._validated_quack_uri_literal(uri)
-            connection.execute(f"ATTACH '{safe_uri}' AS control_plane (READ_WRITE)")
+            handle = str(endpoint.secret_handle or "").strip()
+            if not handle:
+                raise QuackClientTransportError(
+                    "authenticated Quack transport requires an opaque secret handle"
+                )
+            if self._secret_resolver is None:
+                raise QuackClientTransportError(
+                    "authenticated Quack transport requires a secret resolver"
+                )
+            try:
+                token = str(self._secret_resolver(handle) or "")
+            except Exception as exc:
+                raise QuackClientTransportError(
+                    "Quack credential handle could not be resolved"
+                ) from exc
+            if len(token) < 4 or "\x00" in token:
+                raise QuackClientTransportError(
+                    "resolved Quack credential is invalid"
+                )
+            # The raw token is a bound value and is never interpolated into SQL,
+            # argv, endpoint identity, logs, or the cached ClientSession.
+            connection.execute(
+                f"ATTACH '{safe_uri}' AS control_plane (TYPE QUACK, TOKEN ?)",
+                [token],
+            )
             # Subsequent statements run against the attached alias by setting path.
             connection.execute("USE control_plane")
             return _ConnectionAdapter(connection)

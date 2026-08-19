@@ -2546,16 +2546,28 @@ def validation_shell_command(command: str) -> list[str]:
         # keeps that as one token, and Bash then treats the whole string as
         # a missing executable.  Flatten those nested command tokens.
         flattened: list[str] = []
+        command_word_expected = True
         for token in leading:
-            if any(character.isspace() for character in token):
+            if _SHELL_CONTROL_TOKEN.fullmatch(token):
+                flattened.append(token)
+                command_word_expected = True
+                continue
+            if command_word_expected and _SHELL_ASSIGNMENT.fullmatch(token):
+                flattened.append(token)
+                continue
+            if command_word_expected and any(
+                character.isspace() for character in token
+            ):
                 try:
                     nested = shlex.split(token, posix=True)
                 except ValueError:
                     nested = [token]
                 if len(nested) > 1:
                     flattened.extend(nested)
+                    command_word_expected = False
                     continue
             flattened.append(token)
+            command_word_expected = False
         if flattened != leading:
             rebuilt: list[str] = []
             for token in flattened:

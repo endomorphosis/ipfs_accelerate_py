@@ -15,8 +15,8 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
-    install_datasets_authoritative_operational_schema,
+from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+    install_eaaef_operational_schema,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,8 +32,26 @@ SPEC.loader.exec_module(materializer)
 
 def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
     control = f"{prefix}/control.duckdb"
+    runtime_binding = json.loads(
+        materializer.CONFIG_PATH.read_text(encoding="utf-8")
+    )["bootstrap_runtime_binding"]
+    runtime_binding["launcher"]["allowed_commands"] = [
+        "build",
+        "runtime-check",
+        "materialize",
+        "verify",
+        "launch-plan",
+        "configured-board-launch",
+    ]
+    runtime_binding["launcher"]["sha256"] = (
+        "sha256:"
+        + hashlib.sha256(
+            Path(runtime_binding["launcher"]["resolved_path"]).read_bytes()
+        ).hexdigest()
+    )
     return {
         "schema": materializer.SCHEDULER_CONFIG_SCHEMA,
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
         "taskboard_path": "docs/architecture/external_agent_autonomous_execution_fabric/TASK_BOARD.md",
         "task_prefix": "EAAEF-",
         "merge_target_branch": "integration/external-agent-autonomous-execution-fabric-v1",
@@ -45,17 +63,17 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
             "ipfs_kit_py",
             "ipfs_accelerate_py/mcplusplus",
         ],
-        "bootstrap_runtime_binding": json.loads(
-            materializer.CONFIG_PATH.read_text(encoding="utf-8")
-        )["bootstrap_runtime_binding"],
-        "database_program": {
+        "bootstrap_runtime_binding": runtime_binding,
+        "bootstrap_database_program": {
             "authority_mode": "embedded",
             "task_source_kind": "duckdb",
             "store_id": control,
             "coordination_store_id": f"{prefix}/control.coordination.duckdb",
             "execution_store_id": f"{prefix}/control.execution.duckdb",
             "store_generation": "eaaef-test-run-v1",
-            "schema_revision": "datasets-authoritative-operational-v1",
+            "schema_revision": (
+                "datasets-authoritative-eaaef-operational-control-plane@2"
+            ),
             "event_store_path": f"{prefix}/events",
             "runtime_registry_path": f"{prefix}/registry",
             "worktree_root": f"{prefix}/worktrees",
@@ -64,6 +82,61 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
             "export_profile": "eaaef-test-run-v1",
             "failover_policy": "fail_closed",
             "maximum_writer_processes": 1,
+        },
+        "database_program": {
+            "authority_mode": "quack",
+            "task_source_kind": "duckdb",
+            "endpoint_secret_handle": "secret-handle:eaaef-test-quack",
+            "quack_endpoint": "quack:127.0.0.1:19494",
+            "store_id": "eaaef-test-control",
+            "store_generation": "eaaef-test-run-v1",
+            "schema_revision": (
+                "datasets-authoritative-eaaef-operational-control-plane@2"
+            ),
+            "event_store_path": f"{prefix}/events",
+            "runtime_registry_path": f"{prefix}/registry",
+            "worktree_root": f"{prefix}/worktrees",
+            "export_profile": "eaaef-test-run-v1",
+            "failover_policy": "fail_closed",
+            "explicit_legacy": False,
+        },
+        "operational_command_fabric": {
+            "schema": materializer.SIGNED_COMMAND_FABRIC_PROFILE_SCHEMA,
+            "transport_kind": "signed_command_fabric",
+            "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+            "shard_id": "control-shard-0",
+            "ingress_endpoint": "quack:127.0.0.1:19494",
+            "ingress_secret_handle": "secret-handle:eaaef-test-ingress",
+            "projection_endpoint": "quack:127.0.0.1:19495",
+            "projection_secret_handle": "secret-handle:eaaef-test-projection",
+            "store_id": "eaaef-test-control",
+            "store_generation": "eaaef-test-run-v1",
+            "schema_revision": (
+                "datasets-authoritative-eaaef-operational-control-plane@2"
+            ),
+            "owner_qualification_schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "eaaef-quack-owner-qualification@1"
+            ),
+            "command_envelope_schema": (
+                "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
+            ),
+            "state_command_schema": (
+                "ipfs_accelerate_py/agent-supervisor/state-command@1"
+            ),
+            "ingress_relation": "command_inbox",
+            "ingress_append_only": True,
+            "ingress_accepts_signed_envelopes_only": True,
+            "operational_database_private": True,
+            "operational_tables_remotely_exposed": False,
+            "one_mutable_owner": True,
+            "owner_verifies_signed_envelopes": True,
+            "projection_read_only": True,
+            "projection_append_allowed": False,
+            "atomic_plan_r2_required": True,
+            "direct_file_fallback": False,
+            "failover_policy": "fail_closed",
+            "child_adapter_status": "implemented_unqualified_fail_closed",
         },
         "container_policy": {
             "live_dispatch_allowed": False,
@@ -115,6 +188,7 @@ def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> N
 
     interpreter = binding["interpreter"]
     assert isinstance(interpreter, dict)
+
     program = """
 import importlib.util
 import json
@@ -176,6 +250,46 @@ print(json.dumps(module._validated_runtime_invocation(runtime, "runtime-check"),
     )
     assert rejected_extra_root.returncode != 0
     assert "closed repository/stdlib/import-root projection" in rejected_extra_root.stderr
+
+
+def test_board_validation_reopens_only_the_admitted_import_root(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+
+    report = materializer._validate_board(binding)
+
+    assert report["valid"] is True
+    assert report["live_launch_allowed"] is False
+
+    forged = json.loads(json.dumps(binding, sort_keys=True))
+    forged["approved_import_root"] = str(tmp_path / "missing-import-root")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="approved import root is unavailable",
+    ):
+        materializer._validate_board(forged)
+
+
+def test_board_validation_fails_closed_on_a_wedged_sealed_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+
+    def timeout(*args: object, **kwargs: object) -> object:
+        assert kwargs["timeout"] == 30
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(materializer.subprocess, "run", timeout)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="30-second sealed child deadline",
+    ):
+        materializer._validate_board(binding)
 
 
 def test_runtime_binding_rejects_tamper_and_noncanonical_paths() -> None:
@@ -243,7 +357,7 @@ def test_paths_match_supported_database_daemon_sidecars() -> None:
 
 def test_paths_reject_an_invented_sidecar_contract() -> None:
     config = _config()
-    config["database_program"]["coordination_store_id"] = (  # type: ignore[index]
+    config["bootstrap_database_program"]["coordination_store_id"] = (  # type: ignore[index]
         "data/eaaef-test/run-v1/coordination.duckdb"
     )
     with pytest.raises(materializer.MaterializationError, match="deterministic"):
@@ -271,7 +385,7 @@ def test_namespace_freshness_includes_every_runtime_subtree(
 ) -> None:
     monkeypatch.setattr(materializer, "ROOT", tmp_path)
     config = _config("state/run-v1")
-    config["database_program"]["state_dir"] = "legacy/state"  # type: ignore[index]
+    config["bootstrap_database_program"]["state_dir"] = "legacy/state"  # type: ignore[index]
     stale_pid = tmp_path / "legacy/state/eaaef.pid"
     stale_pid.parent.mkdir(parents=True)
     stale_pid.write_text("123\n", encoding="utf-8")
@@ -306,6 +420,129 @@ def test_launch_plan_uses_database_program_cli_and_remains_no_go(
     assert result["candidate_argv_cid"].startswith("sha256:")
     assert result["execution_prohibited"] is True
     assert result["process_started"] is False
+    assert "signed_command_fabric_child_adapter_unavailable" in result["blockers"]
+    assert (
+        "worker_network_authorization_propagation_unavailable"
+        in result["blockers"]
+    )
+
+
+def test_configured_board_launcher_cannot_bypass_launch_plan() -> None:
+    config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+    launcher = binding["launcher"]
+    assert isinstance(launcher, dict)
+    argv_prefix = launcher["argv_prefix"]
+    assert isinstance(argv_prefix, list)
+
+    result = subprocess.run(
+        [*argv_prefix, "configured-board-launch"],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "configured-board launch is not admitted" in result.stderr
+
+
+def test_bootstrap_and_operational_database_programs_are_non_conflated() -> None:
+    config = _config()
+    bindings = materializer._database_program_bindings(config)
+    assert bindings["bootstrap"]["authority_mode"] == "embedded"
+    assert bindings["operational"]["authority_mode"] == "quack"
+    assert bindings["materializer_opens_operational_profile"] is False
+    assert bindings["direct_file_fallback"] is False
+    assert bindings["bootstrap_profile_cid"] != bindings["operational_profile_cid"]
+    assert bindings["operational_command_fabric"]["transport_kind"] == (
+        "signed_command_fabric"
+    )
+    assert bindings["operational_command_fabric"]["board_namespace"] == (
+        "external-agent-autonomous-execution-fabric-v1"
+    )
+    assert bindings["operational_command_fabric"]["shard_id"] == (
+        "control-shard-0"
+    )
+    assert bindings["operational_child_adapter_status"] == (
+        "implemented_unqualified_fail_closed"
+    )
+    assert "/" not in bindings["operational"]["store_id"]
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "bootstrap_database_program",
+        "database_program",
+        "operational_command_fabric",
+    ],
+)
+def test_database_program_role_absence_fails_closed(missing: str) -> None:
+    config = _config()
+    config.pop(missing)
+    with pytest.raises(materializer.MaterializationError, match="required|missing"):
+        materializer._database_program_bindings(config)
+
+
+def test_database_program_role_inversion_and_direct_file_fallback_fail_closed() -> None:
+    config = _config()
+    for name in (
+        "bootstrap_database_program",
+        "database_program",
+        "operational_command_fabric",
+    ):
+        profile = config[name]
+        assert isinstance(profile, dict)
+        profile["schema_revision"] = "datasets-authoritative-operational-v1"
+    with pytest.raises(materializer.MaterializationError, match="profile @2"):
+        materializer._database_program_bindings(config)
+
+    config = _config()
+    config["bootstrap_database_program"], config["database_program"] = (  # type: ignore[misc]
+        config["database_program"],
+        config["bootstrap_database_program"],
+    )
+    with pytest.raises(materializer.MaterializationError, match="bootstrap"):
+        materializer._database_program_bindings(config)
+
+    config = _config()
+    operational = config["database_program"]
+    assert isinstance(operational, dict)
+    operational["store_id"] = "data/eaaef-test/control.duckdb"
+    with pytest.raises(materializer.MaterializationError, match="direct-file fallback"):
+        materializer._database_program_bindings(config)
+
+
+def test_launch_plan_emits_typed_no_go_when_verify_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+
+    def rejected(_config, *, invocation_command="verify"):
+        assert invocation_command == "launch-plan"
+        raise materializer.MaterializationError(
+            "ipfs_accelerate_py nested checkout is dirty"
+        )
+
+    monkeypatch.setattr(materializer, "verify", rejected)
+    result = materializer.launch_plan(config)
+    assert result["schema"].endswith("eaaef-launch-plan@2")
+    assert result["allowed"] is False
+    assert result["argv"] == []
+    assert result["candidate_executable_withheld"] is True
+    assert result["execution_prohibited"] is True
+    assert result["process_started"] is False
+    assert result["materialization_receipt_cid"] == ""
+    assert "ipfs_accelerate_py nested checkout is dirty" in result["blockers"]
+    assert "signed_command_fabric_child_adapter_unavailable" in result["blockers"]
+    assert (
+        "worker_network_authorization_propagation_unavailable"
+        in result["blockers"]
+    )
+    assert "board validation has not admitted live launch" in result["blockers"]
+    assert "container_policy.live_dispatch_allowed is not true" in result["blockers"]
 
 
 def test_launch_plan_cannot_be_enabled_while_container_is_unadmitted(
@@ -477,7 +714,7 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
     monkeypatch.setattr(
         materializer,
         "_validate_board",
-        lambda: {"valid": True, "schema": "test-validation@1"},
+        lambda _runtime_binding: {"valid": True, "schema": "test-validation@1"},
     )
     monkeypatch.setattr(materializer, "build_population", lambda _config: population)
     runtime_binding = json.loads(
@@ -540,6 +777,18 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
     receipt = materializer.materialize(config)
     assert receipt["process_started"] is False
     assert receipt["schema_install"]["changed"] is True
+    assert {
+        item["tool_version"] for item in receipt["schema_install"]["receipts"]
+    } == {runtime_binding["duckdb"]["module_version"]}
+    assert receipt["operational_profile_verification"]["valid"] is True
+    assert (
+        receipt["operation_vocabulary_cid"]
+        == receipt["operational_profile_verification"]["operation_vocabulary_cid"]
+    )
+    handler_evidence = receipt["borrowed_transaction_handler_source_evidence"]
+    assert handler_evidence["operation_count"] == 31
+    assert handler_evidence["production_admitted"] is False
+    assert "command_principal_did" in handler_evidence["runtime_authority_fields"]
     assert receipt["control_schema_projection"]["connection_mode"] == "read_only"
     assert receipt["runtime_binding"] == runtime_binding
     assert receipt["runtime_binding_cid"] == materializer._cid(runtime_binding)
@@ -592,7 +841,16 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         }
 
     before_verify = namespace_snapshot()
-    assert materializer.verify(config)["verification_mode"] == "read_only"
+    verification = materializer.verify(config)
+    assert verification["verification_mode"] == "read_only"
+    assert (
+        verification["operational_profile_verification_cid"]
+        == receipt["operational_profile_verification"]["verification_cid"]
+    )
+    assert (
+        verification["borrowed_transaction_handler_source_evidence_cid"]
+        == handler_evidence["handler_source_evidence_cid"]
+    )
     assert namespace_snapshot() == before_verify
 
     receipt_path = materializer._receipt_path(config)
@@ -606,6 +864,40 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         encoding="utf-8",
     )
     with pytest.raises(materializer.MaterializationError, match="runtime_binding"):
+        materializer.verify(config)
+    receipt_path.write_bytes(receipt_bytes)
+
+    forged_receipt = json.loads(receipt_bytes)
+    forged_receipt["operational_profile_verification"]["schema_fingerprint"] = (
+        "sha256:" + "0" * 64
+    )
+    forged_receipt.pop("receipt_cid")
+    forged_receipt["receipt_cid"] = materializer._cid(forged_receipt)
+    receipt_path.write_text(
+        json.dumps(forged_receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="operational profile .* differs",
+    ):
+        materializer.verify(config)
+    receipt_path.write_bytes(receipt_bytes)
+
+    forged_receipt = json.loads(receipt_bytes)
+    forged_receipt["borrowed_transaction_handler_source_evidence"][
+        "handler_source_evidence_cid"
+    ] = "sha256:" + "1" * 64
+    forged_receipt.pop("receipt_cid")
+    forged_receipt["receipt_cid"] = materializer._cid(forged_receipt)
+    receipt_path.write_text(
+        json.dumps(forged_receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="handler source differs",
+    ):
         materializer.verify(config)
     receipt_path.write_bytes(receipt_bytes)
 
@@ -672,7 +964,7 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
 def test_control_schema_projection_is_byte_stable_and_read_only(tmp_path: Path) -> None:
     database = tmp_path / "control.duckdb"
-    install_datasets_authoritative_operational_schema(
+    install_eaaef_operational_schema(
         database,
         application_version="test",
         tool_version="test",

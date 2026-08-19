@@ -95,6 +95,7 @@ def _open_daemon(
     provider_fn: Callable[[DatabaseTaskAttempt], dict[str, object]] | None = None,
     lease_ms: int = 60_000,
     clock_ms: Callable[[], int] | None = None,
+    process_instance_id: str | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
@@ -121,6 +122,7 @@ def _open_daemon(
         coordination_path=coordination_path,
         execution_path=execution_path,
         owner_session_id=session,
+        process_instance_id=process_instance_id,
         authority_mode="embedded",
         task_source_kind="duckdb",
         markdown_path=markdown_path,
@@ -151,6 +153,102 @@ def test_interface_identities() -> None:
     assert not is_database_authority_mode(
         authority_mode="legacy_markdown", task_source_kind="legacy-markdown"
     )
+
+
+def test_injected_process_birth_identity_is_exact_in_open_metadata(
+    tmp_path: Path,
+) -> None:
+    process_instance_id = "process:eaaef-lane-7-birth-3"
+    owner_session_id = "owner:eaaef-lane-7-birth-3"
+    daemon = _open_daemon(
+        tmp_path,
+        session=owner_session_id,
+        process_instance_id=process_instance_id,
+    )
+    try:
+        rows = daemon._connection.execute(  # noqa: SLF001 - authority assertion
+            "SELECT key, value FROM daemon_execution_metadata"
+        ).fetchall()
+        metadata = {str(row[0]): str(row[1]) for row in rows}
+        assert daemon.process_instance_id == process_instance_id
+        assert daemon.owner_session_id == owner_session_id
+        assert metadata["process_instance_id"] == process_instance_id
+        assert metadata["logical_owner_session_id"] == owner_session_id
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "process_instance_id",
+    ["", " process:birth", "process birth", "process:" + "x" * 505],
+)
+def test_injected_process_birth_identity_rejects_inexact_or_unbounded_values(
+    tmp_path: Path,
+    process_instance_id: str,
+) -> None:
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact bounded identifier",
+    ):
+        _open_daemon(
+            tmp_path,
+            session="owner:fresh-birth",
+            process_instance_id=process_instance_id,
+        )
+    assert not (tmp_path / "execution.duckdb").exists()
+
+
+def test_injected_process_birth_requires_explicit_owner_session(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="per-birth owner_session_id",
+    ):
+        _open_daemon(
+            tmp_path,
+            process_instance_id="process:eaaef-lane-7-birth-3",
+        )
+    assert not (tmp_path / "execution.duckdb").exists()
+
+
+def test_legacy_process_birth_generation_remains_fresh(tmp_path: Path) -> None:
+    common = {
+        "database_path": tmp_path / "control.duckdb",
+        "coordination_path": tmp_path / "coordination.duckdb",
+        "execution_path": tmp_path / "execution.duckdb",
+        "authority_mode": "embedded",
+        "task_source_kind": "duckdb",
+        "install_schema": False,
+    }
+    first = DatabaseImplementationDaemon(**common)
+    second = DatabaseImplementationDaemon(**common)
+
+    assert first.process_instance_id.startswith("process:")
+    assert second.process_instance_id.startswith("process:")
+    assert len(first.process_instance_id) == len("process:") + 24
+    assert first.process_instance_id != second.process_instance_id
+
+
+def test_explicit_state_schema_revision_bypasses_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+        "poisoned-environment-revision",
+    )
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        state_schema_revision="  signed-state-schema@2  ",
+        install_schema=False,
+    )
+
+    assert daemon.state_schema_revision == "signed-state-schema@2"
 
 
 def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:

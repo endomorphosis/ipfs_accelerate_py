@@ -107,8 +107,8 @@
 - Status: active
 - Parent: EAAEF-G000
 - Depends on: EAAEF-G050
-- Completion contract: Workers execute only leased tasks in isolated rootless containers with bounded resources, no Docker socket, default-deny network and restart-safe checkpoints.
-- Desired postconditions: ["Workers execute only leased tasks in isolated rootless containers with bounded resources, no Docker socket, default-deny network and restart-safe checkpoints."]
+- Completion contract: Workers execute only leased tasks in isolated containers with bounded resources, no Docker socket, default-deny network and restart-safe checkpoints; the engine is rootless where supported, otherwise an independently approved rootful-host-daemon/nonroot-worker fallback is required.
+- Desired postconditions: ["Workers execute only leased tasks in isolated containers with bounded resources, no Docker socket, default-deny network and restart-safe checkpoints; the engine is rootless where supported, otherwise an independently approved rootful-host-daemon/nonroot-worker fallback is required."]
 - Prohibited outcomes: ["universal autonomous-mutation support claim","duplicate accepted work or overlapping accepted effects","stale-fence acceptance","authority, disclosure, resource or mutation scope wider than the admitted parent policy","worker or model self-acceptance","stale source, semantic, plan, lease, fence, test or proof evidence","unverified imported history satisfying completion","DuckLake or a replica granting current coordination authority"]
 - Scope: {"epic":"F","mutation":"only task-owned files/effects in admitted isolated worktrees and containers","repositories":["ipfs_accelerate_py","ipfs_datasets_py","ipfs_kit_py","Mcp-Plus-Plus only for an existing shared protocol contract"]}
 - Resource budget: {"network":"deny unless an exact effect-bound approval names the action and inputs","policy":"bounded by the sum of admitted child-task reservations and the parent run ceiling","unbounded_refill":false}

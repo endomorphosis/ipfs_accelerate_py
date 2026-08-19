@@ -82,6 +82,68 @@
       "authority_mutated": false,
       "process_started": false,
       "recovery": "Commit the exact no-site launcher and cryptographic interpreter/DuckDB wheel binding, advance every runtime path and store generation to run-v4, invoke only the bound launcher, and never retry run-v3."
+    },
+    {
+      "attempt_id": "sha256:8b41d01dd5f55c5d28edb8346a08bc5c78d68cf378b46bb8893c7ac5aa52402a",
+      "attempted_at_utc": "2026-08-18T06:14:15.670266781Z",
+      "store_generation": "eaaef-run-v4",
+      "source_head": "c840fd50843c358fd2c89d4914cb6183ecf933b6",
+      "source_tree": "28d6a1a2f61a4f7ad1b79f292f5b6d170e90a217",
+      "population_cid": "sha256:1f002ad66a44e1df22b532d9ca336ef97004277aeb89e8e2df89068fda8e0715",
+      "plan_root_cid": "sha256:716a9569122ce53a4b5bbdcdc7bc734e6e23c9fb38aa374ed2d38bc43fb7ceb2",
+      "outcome": "materialized_verified_historical_not_live_admitted",
+      "failure_class": "SupersededPreAdmissionCheckpoint",
+      "failure_summary": "The immutable embedded one-writer bootstrap was materialized without starting a process; a subsequent read-only verification command reported valid and left the namespace byte-for-byte unchanged, but that observation was not separately sealed. It is historical @1 evidence, not a Quack operational authority or live-launch admission, and is superseded by the @2 database-role split and current source revision.",
+      "partial_effects": [
+        {
+          "path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/registry/bootstrap-materialization.json",
+          "sha256": "6903efe6c0493a2c8ca718391d3b170cfc0d75be65eaf93d8d7b81d56039738d",
+          "byte_count": 755425,
+          "receipt_cid": "sha256:6ac1ace500bc1e280970c76a3a8cb0a4cde2237c950c5f31cb4086e108f3afe2",
+          "disposition": "preserved_immutable_historical_do_not_launch_or_reuse"
+        },
+        {
+          "path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/registry/bootstrap-materialization-claim.json",
+          "sha256": "907596320936a5169e647a652ce516ec25686e296808f03b8ccdccf622d03469",
+          "byte_count": 4786,
+          "claim_cid": "sha256:28c2cd20ccdd2fad492a60cc8f1ec1b775cb7ac35cec724a852cc1e9a46ee54c",
+          "disposition": "preserved_immutable_historical_do_not_reuse"
+        },
+        {
+          "paths": [
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/control.duckdb",
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/control.coordination.duckdb",
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v4/control.execution.duckdb"
+          ],
+          "byte_counts": [
+            26226688,
+            2633728,
+            798720
+          ],
+          "sha256": [
+            "65709e6d12099b0715761ee91aefcb4eff2169cc24e77b8a1401f6519b1e17a6",
+            "5fd6e6a1698f01628f6bf6bc78387c790750690c96c11cb66791ecf9eae5cbd6",
+            "2ecb693948b8c749ad8c0e031b91567d235ba0747cc16d7ac779c301327bd44f"
+          ],
+          "disposition": "preserved_read_only_historical_namespace_do_not_reuse"
+        },
+        {
+          "paths": [
+            ".control.coordination.duckdb.lock",
+            ".control.duckdb.intent.lock",
+            ".control.duckdb.lock",
+            ".control.duckdb.migration.lock",
+            ".control.execution.duckdb.lock",
+            ".control.execution.duckdb.writer.lock"
+          ],
+          "byte_count_each": 0,
+          "disposition": "preserved_with_run-v4_namespace"
+        }
+      ],
+      "database_created": true,
+      "authority_mutated": true,
+      "process_started": false,
+      "recovery": "Preserve run-v4 exactly as read-only historical @1 evidence, advance every configured runtime path and store generation to run-v5 after committing the @2 database-role and authority contracts, and never retry, launch, or mutate run-v4."
     }
   ]
 }
