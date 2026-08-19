@@ -138,7 +138,10 @@ def test_engine_mode_receipt_contract() -> None:
     evidence = payload["evidence"]
     assert evidence["docker_socket_mounted"] is False
     assert evidence["supervisor_started"] is False
-    if evidence["rootless"] is not True:
+    if evidence.get("rootless") is True and payload["decision"] == "admitted":
+        assert evidence.get("host_docker_socket_used") is not True
+        assert str(evidence.get("docker_host") or "") != "unix:///var/run/docker.sock"
+    else:
         fallback = evidence["fallback_package"]
         assert fallback["signed"] is False
         assert fallback["docker_socket_mount"] == "prohibited"
@@ -200,7 +203,7 @@ def test_admission_bundle_receipt_contract() -> None:
         child = _receipt(filename)
         assert child_cids[task_id] == child["receipt_cid"]
     assert _tasks()["EAAEF-191"]["completion_mode"] == "manual"
-    assert _tasks()["EAAEF-183"]["completion_mode"] == "manual"
+    assert _tasks()["EAAEF-183"]["completion_mode"] == "auto"
     assert _tasks()["EAAEF-184"]["completion_mode"] == "manual"
 
 

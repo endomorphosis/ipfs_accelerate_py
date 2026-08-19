@@ -1,5 +1,5 @@
 {
-  "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
+  "board_cid": "sha256:7e270aca4c6cd8011625bdd849e1e120588a217ed7b4b983f0419adc919a1f53",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
   "control_artifact_ownership": [
     {
@@ -27185,7 +27185,7 @@
       "blocked_reason": "",
       "board_namespace": "external-agent-autonomous-execution-fabric-v1",
       "completion_contract": "Record whether a verified rootless engine is present or emit the exact rootful-host-daemon/nonroot-worker fallback package that an independent security reviewer must sign; do not start a supervisor or mount the Docker socket. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.",
-      "completion_mode": "manual",
+      "completion_mode": "auto",
       "conflict_and_merge_contract": "No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.",
       "container_profile": "ContainerExecutionProfile@1:host-controlled-bootstrap-admission",
       "context_artifacts": [
@@ -27363,7 +27363,7 @@
       "stable_task_id": "EAAEF-183",
       "status": "todo",
       "subgoal_id": "EAAEF-G190",
-      "task_spec_cid": "sha256:ab0371ed9ccf9420427dc74063b9647866526315c9f49c5105c8d18eea0e5a25",
+      "task_spec_cid": "sha256:70761ad9c45ac025036cbd452c66c8192d17dc009c3bcd62736917055b562a43",
       "terminal_status": "not_terminal",
       "test_requirements": {
         "affected_integration": "select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv",

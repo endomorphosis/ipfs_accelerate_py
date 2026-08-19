@@ -1,7 +1,7 @@
 # ExternalAgentAutonomousExecutionFabric task board
 
 Board namespace: `external-agent-autonomous-execution-fabric-v1`. Plan revision: `EAAEF-PLAN-R1`.
-Canonical board identity: `sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b`.
+Canonical board identity: `sha256:7e270aca4c6cd8011625bdd849e1e120588a217ed7b4b983f0419adc919a1f53`.
 
 DuckDB is the private transactional mutable database. Quack is the mandatory bounded multi-reader/multi-writer command and projection transport; one fenced local owner verifies every signed effect envelope and is the only process that opens the operational DuckDB. DuckLake is downstream immutable history and analytics only.
 
@@ -6128,7 +6128,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Stable task ID: EAAEF-183
 - Status: todo
 - Blocked reason:
-- Completion: manual
+- Completion: auto
 - Is schedulable: true
 - Initial population: true
 - Population state: materialized_bootstrap
@@ -6178,7 +6178,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:ab0371ed9ccf9420427dc74063b9647866526315c9f49c5105c8d18eea0e5a25
+- Task specification CID: sha256:70761ad9c45ac025036cbd452c66c8192d17dc009c3bcd62736917055b562a43
 
 ## EAAEF-184 Obtain independently signed EAAEF-scoped provider authorization
 

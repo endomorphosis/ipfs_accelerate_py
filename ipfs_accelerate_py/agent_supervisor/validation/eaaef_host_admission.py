@@ -323,11 +323,13 @@ def probe_duckdb_quack() -> dict[str, Any]:
     }
 
 
-def probe_engine_mode() -> dict[str, Any]:
-    """Record rootless presence or an unsigned rootful fallback package."""
-
+def _docker_info(host: str = "") -> tuple[int, dict[str, Any]]:
+    command = ["docker"]
+    if host:
+        command.extend(["-H", host])
+    command.extend(["info", "--format", "{{json .}}"])
     completed = subprocess.run(
-        ["docker", "info", "--format", "{{json .}}"],
+        command,
         capture_output=True,
         text=True,
         timeout=30,
@@ -336,13 +338,78 @@ def probe_engine_mode() -> dict[str, Any]:
     info: dict[str, Any] = {}
     if completed.returncode == 0 and completed.stdout.strip():
         try:
-            info = json.loads(completed.stdout)
+            parsed = json.loads(completed.stdout)
         except json.JSONDecodeError:
-            info = {}
+            parsed = {}
+        if isinstance(parsed, dict):
+            info = parsed
+    return completed.returncode, info
+
+
+def _is_rootless_info(info: Mapping[str, Any]) -> bool:
     security = [str(item) for item in info.get("SecurityOptions") or ()]
-    rootless = any("rootless" in item.casefold() for item in security)
+    if any("rootless" in item.casefold() for item in security):
+        return True
     root_dir = str(info.get("DockerRootDir") or "")
-    server_version = str(info.get("ServerVersion") or "")
+    return "/.local/share/docker" in root_dir or root_dir.endswith("/docker-rootless")
+
+
+def _rootless_docker_hosts() -> list[str]:
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    candidates = [
+        str(os.environ.get("EAAEF_DOCKER_HOST") or "").strip(),
+        f"unix://{runtime_dir}/docker.sock",
+        f"unix://{Path.home()}/.docker/run/docker.sock",
+    ]
+    seen: list[str] = []
+    for item in candidates:
+        if item and item not in seen and item != "unix:///var/run/docker.sock":
+            seen.append(item)
+    return seen
+
+
+def probe_engine_mode() -> dict[str, Any]:
+    """Prefer a verified rootless engine; never mount the host Docker socket."""
+
+    probes: list[dict[str, Any]] = []
+    selected_host = ""
+    selected_info: dict[str, Any] = {}
+    selected_returncode = 1
+    for host in _rootless_docker_hosts():
+        returncode, info = _docker_info(host)
+        probes.append(
+            {
+                "docker_host": host,
+                "returncode": returncode,
+                "rootless": _is_rootless_info(info),
+                "root_dir": str(info.get("DockerRootDir") or ""),
+                "security_options": [str(item) for item in info.get("SecurityOptions") or ()],
+            }
+        )
+        if returncode == 0 and _is_rootless_info(info):
+            selected_host = host
+            selected_info = info
+            selected_returncode = returncode
+            break
+    if not selected_info:
+        returncode, info = _docker_info("")
+        selected_returncode = returncode
+        selected_info = info
+        selected_host = str(os.environ.get("DOCKER_HOST") or "unix:///var/run/docker.sock")
+        probes.append(
+            {
+                "docker_host": selected_host,
+                "returncode": returncode,
+                "rootless": _is_rootless_info(info),
+                "root_dir": str(info.get("DockerRootDir") or ""),
+                "security_options": [str(item) for item in info.get("SecurityOptions") or ()],
+            }
+        )
+    security = [str(item) for item in selected_info.get("SecurityOptions") or ()]
+    rootless = _is_rootless_info(selected_info)
+    root_dir = str(selected_info.get("DockerRootDir") or "")
+    server_version = str(selected_info.get("ServerVersion") or "")
+    uses_host_socket = selected_host in {"", "unix:///var/run/docker.sock"}
     fallback = {
         "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-rootful-fallback-package@1",
         "engine": "docker",
@@ -359,10 +426,10 @@ def probe_engine_mode() -> dict[str, Any]:
         "observed_server_version": server_version,
         "observed_security_options": security,
     }
-    if rootless:
+    if rootless and not uses_host_socket:
         decision = "admitted"
         mode = "verified_rootless"
-    elif info:
+    elif selected_info:
         decision = "typed_missing"
         mode = "rootful_host_daemon_unsigned_fallback"
     else:
@@ -372,10 +439,13 @@ def probe_engine_mode() -> dict[str, Any]:
         "decision": decision,
         "mode": mode,
         "rootless": rootless,
+        "docker_host": selected_host,
         "docker_socket_mounted": False,
+        "host_docker_socket_used": uses_host_socket and not rootless,
         "supervisor_started": False,
         "fallback_package": fallback if not rootless else None,
-        "docker_info_returncode": completed.returncode,
+        "docker_info_returncode": selected_returncode,
+        "probes": probes,
     }
 
 
