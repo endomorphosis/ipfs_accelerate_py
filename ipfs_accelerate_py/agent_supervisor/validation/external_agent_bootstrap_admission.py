@@ -399,14 +399,13 @@ def prepare_external_agent_bootstrap_admission(
         or issued_at_ms >= expires_at_ms
     ):
         raise ExternalAgentBootstrapAdmissionError("admission_time_or_nonce_invalid")
+    principal_blockers: list[str] = []
     if (
         not expected_worker_principal_did.startswith("did:key:z")
         or not expected_provider_principal_did.startswith("did:key:z")
         or expected_worker_principal_did == expected_provider_principal_did
     ):
-        raise ExternalAgentBootstrapAdmissionError(
-            "worker_network_runtime_principals_unavailable"
-        )
+        principal_blockers.append("worker_network_runtime_principals_unavailable")
 
     # Lazy imports keep statement preparation free of provider/Quack side
     # effects and make this module consume, rather than reimplement, those
@@ -449,7 +448,8 @@ def prepare_external_agent_bootstrap_admission(
     )
     provider_valid = provider.get("valid") is True
     quack_valid = quack.get("allowed") is True
-    blockers = [str(item) for item in provider.get("blockers") or () if str(item)]
+    blockers = list(principal_blockers)
+    blockers.extend(str(item) for item in provider.get("blockers") or () if str(item))
     blockers.extend(str(item) for item in quack.get("blockers") or () if str(item))
     if not provider_valid and not blockers:
         blockers.append("provider_container_qualification_not_admitted")

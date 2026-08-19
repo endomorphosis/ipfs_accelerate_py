@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -2826,6 +2827,52 @@ def _configured_board_launch_admission(
     }
 
 
+def _unsigned_bootstrap_admission_statement(
+    config: Mapping[str, Any],
+    *,
+    now_ms: int,
+) -> dict[str, Any]:
+    """Prepare a host-only unsigned EAAEF-000 statement. Never publishes."""
+
+    from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
+        ExternalAgentBootstrapAdmissionError,
+        prepare_external_agent_bootstrap_admission,
+    )
+
+    board = _load_object(
+        _relative_path(
+            config.get("taskboard_json_path"),
+            field="taskboard_json_path",
+        )
+    )
+    receipt = _load_object(_receipt_path(config))
+    try:
+        return prepare_external_agent_bootstrap_admission(
+            board=board,
+            materialization_receipt=receipt,
+            provider_container_qualification=None,
+            route_plan=None,
+            image_qualification=None,
+            container_profile=None,
+            quack_owner_qualification=None,
+            trusted_provider_signer_dids=(),
+            trusted_image_reviewer_dids=(),
+            trusted_container_profile_reviewer_dids=(),
+            trusted_quack_reviewer_dids=(),
+            expected_worker_principal_did="",
+            expected_provider_principal_did="",
+            expected_source_commit=str(receipt.get("source_head") or ""),
+            expected_source_tree=str(receipt.get("source_tree") or ""),
+            one_use_nonce=secrets.token_urlsafe(32),
+            issued_at_ms=now_ms,
+            expires_at_ms=now_ms + 3_600_000,
+        )
+    except ExternalAgentBootstrapAdmissionError as exc:
+        raise MaterializationError(
+            f"bootstrap admission statement unavailable: {exc}"
+        ) from exc
+
+
 def launch_plan(
     config: Mapping[str, Any],
     *,
@@ -2886,6 +2933,20 @@ def launch_plan(
         live_admission = _configured_board_launch_admission(config)
     except MaterializationError as exc:
         blockers.append(str(exc))
+    admission_statement: dict[str, Any] | None = None
+    if isinstance(report, Mapping):
+        try:
+            admission_statement = _unsigned_bootstrap_admission_statement(
+                config,
+                now_ms=int(time.time() * 1000),
+            )
+            blockers.extend(
+                str(item)
+                for item in admission_statement.get("blockers") or ()
+                if str(item)
+            )
+        except MaterializationError as exc:
+            blockers.append(str(exc))
     blockers = list(dict.fromkeys(blockers))
     requested = policy.get("live_multi_supervisor_allowed") is True
     allowed = bool(requested and live_admission is not None and not blockers)
@@ -2907,6 +2968,8 @@ def launch_plan(
         ),
         "database_program_bindings": database_program_bindings,
         "configured_board_launch_admission": live_admission,
+        "bootstrap_admission_statement": admission_statement,
+        "bootstrap_admission_published": False,
         "container_policy": container,
         "process_started": False,
     }

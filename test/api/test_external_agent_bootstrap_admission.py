@@ -233,6 +233,40 @@ def _receipt(*, admitted: bool = True):
     return receipt, operator_did, security_did
 
 
+def test_prepare_emits_no_go_when_runtime_principals_are_absent() -> None:
+    receipt = _materialization_receipt()
+    board = {
+        "board_namespace": admission.EAAEF_BOARD_NAMESPACE,
+        "board_cid": receipt["board_validation"]["board_cid"],
+    }
+
+    statement = admission.prepare_external_agent_bootstrap_admission(
+        board=board,
+        materialization_receipt=receipt,
+        provider_container_qualification=None,
+        route_plan=None,
+        image_qualification=None,
+        container_profile=None,
+        quack_owner_qualification=None,
+        trusted_provider_signer_dids=(),
+        trusted_image_reviewer_dids=(),
+        trusted_container_profile_reviewer_dids=(),
+        trusted_quack_reviewer_dids=(),
+        expected_worker_principal_did="",
+        expected_provider_principal_did="",
+        expected_source_commit=str(receipt["source_head"]),
+        expected_source_tree=str(receipt["source_tree"]),
+        one_use_nonce="nonce-missing-principals",
+        issued_at_ms=NOW_MS,
+        expires_at_ms=NOW_MS + 60_000,
+    )
+
+    assert statement["decision"] == "no_go"
+    assert statement["outcome"] == "mutation_not_admitted"
+    assert "worker_network_runtime_principals_unavailable" in statement["blockers"]
+    assert statement["provider_task_dispatch_admitted"] is False
+
+
 def test_two_independent_approvals_bind_exact_admission_statement() -> None:
     receipt, operator, security = _receipt()
 

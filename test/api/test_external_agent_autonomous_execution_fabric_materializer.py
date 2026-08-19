@@ -515,6 +515,34 @@ def test_database_program_role_inversion_and_direct_file_fallback_fail_closed() 
         materializer._database_program_bindings(config)
 
 
+def test_launch_plan_attaches_unsigned_no_go_admission_statement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+    statement = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-admission-statement@1",
+        "decision": "no_go",
+        "blockers": ["worker_network_runtime_principals_unavailable"],
+    }
+
+    monkeypatch.setattr(
+        materializer,
+        "verify",
+        lambda _config, **_kwargs: {"receipt_cid": "sha256:" + "3" * 64},
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_unsigned_bootstrap_admission_statement",
+        lambda _config, **_kwargs: statement,
+    )
+    result = materializer.launch_plan(config)
+    assert result["allowed"] is False
+    assert result["process_started"] is False
+    assert result["bootstrap_admission_published"] is False
+    assert result["bootstrap_admission_statement"] == statement
+    assert "worker_network_runtime_principals_unavailable" in result["blockers"]
+
+
 def test_launch_plan_emits_typed_no_go_when_verify_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
