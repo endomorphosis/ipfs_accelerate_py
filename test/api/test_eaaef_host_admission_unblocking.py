@@ -127,6 +127,10 @@ def test_duckdb_quack_receipt_contract() -> None:
     if evidence["observed_duckdb"] != "1.5.5":
         assert evidence["silent_substitution_refused"] is True
         assert payload["decision"] == "typed_missing"
+    elif payload["decision"] == "admitted":
+        assert evidence["under_approved_import_root"] is True
+        assert evidence["quack_probe"]["passes_health_check"] is True
+        assert evidence["quack_probe"]["extension"]["installed_from"] == "core"
 
 
 def test_engine_mode_receipt_contract() -> None:

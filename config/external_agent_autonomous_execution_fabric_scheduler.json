@@ -100,19 +100,19 @@
     "approved_import_root": "/home/barberb/.local/lib/python3.12/site-packages",
     "duckdb": {
       "distribution_name": "duckdb",
-      "distribution_version": "1.5.2",
-      "module_version": "1.5.2",
-      "engine_version": "v1.5.2",
+      "distribution_version": "1.5.5",
+      "module_version": "1.5.5",
+      "engine_version": "v1.5.5",
       "module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
       "module_sha256": "sha256:c5b4efa32761b6ff6eed37cda365fd371743c062ffabd9125aa24b5f13b662e7",
       "extension_path": "/home/barberb/.local/lib/python3.12/site-packages/_duckdb.cpython-312-aarch64-linux-gnu.so",
-      "extension_sha256": "sha256:c378b8f61040764fdc904cf7c0643a005d547f491ab9303e6bd13c33aa353f2a",
-      "record_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb-1.5.2.dist-info/RECORD",
-      "record_sha256": "sha256:ca4b760eaa99c9c518ac654147fa43c784d83a471d88f68c74c4706ce1007ae9",
+      "extension_sha256": "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",
+      "record_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb-1.5.5.dist-info/RECORD",
+      "record_sha256": "sha256:6633bd8aa3ee63542661754c917e5c0ec480587aa84c6bfca2a55d3a753809e9",
       "record_entry_count": 97,
       "record_verified_file_count": 55,
       "record_unhashed_pyc_count": 41,
-      "record_payload_cid": "sha256:4a3c6c30f76097cdd433d021e8372ff165e2335268dd5ad921af0f9111c2bd51"
+      "record_payload_cid": "sha256:cd77875ce118d1ad15899d1f8e23f6452301a8856fe8a0eddefcde293468b7ed"
     }
   },
   "initial_projection": {

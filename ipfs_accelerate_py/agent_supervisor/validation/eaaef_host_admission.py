@@ -298,9 +298,13 @@ def probe_duckdb_quack() -> dict[str, Any]:
         use_cache=False,
     )
     exact_duckdb = observed == REQUIRED_DUCKDB
+    installed_from = ""
+    if report.extension is not None:
+        installed_from = str(report.extension.installed_from or "")
     exact_quack = (
         report.passes_health_check
-        and "1.5.5" in str(report.extension_fingerprint or report.duckdb_version or "")
+        and exact_duckdb
+        and installed_from == "core"
     )
     if exact_duckdb and exact_quack and under_approved_root:
         decision = "admitted"

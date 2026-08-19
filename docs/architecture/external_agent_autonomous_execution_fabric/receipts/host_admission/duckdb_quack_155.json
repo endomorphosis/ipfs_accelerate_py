@@ -1,11 +1,11 @@
 {
   "board_cid": "sha256:6f86168ffe21b83945184e6b87e68cc7247ad69293ee61d3fe88d7e75224f70b",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
-  "decision": "typed_missing",
+  "decision": "admitted",
   "evidence": {
-    "decision": "typed_missing",
+    "decision": "admitted",
     "network_install_attempted": false,
-    "observed_duckdb": "1.5.2",
+    "observed_duckdb": "1.5.5",
     "observed_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
     "quack_probe": {
       "available": true,
@@ -20,12 +20,12 @@
         "unsigned_or_community_extension_path_is_not_attested_integrity"
       ],
       "details": {
-        "duckdb_version_raw": "1.5.2",
+        "duckdb_version_raw": "1.5.5",
         "extension": {
-          "description": "",
-          "extension_version": "be9c9bb",
+          "description": "The DuckDB 'Quack' Client/Server Protocol",
+          "extension_version": "c154811",
           "install_mode": "REPOSITORY",
-          "install_path": "/home/barberb/.duckdb/extensions/v1.5.2/linux_arm64/quack.duckdb_extension",
+          "install_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
           "installed": true,
           "installed_from": "core",
           "loaded": false,
@@ -53,29 +53,29 @@
         }
       ],
       "duckdb_importable": true,
-      "duckdb_version": "1.5.2",
+      "duckdb_version": "1.5.5",
       "duckdb_version_parsed": {
         "label": "",
         "major": 1,
         "minor": 5,
-        "patch": 2,
-        "raw": "1.5.2",
-        "text": "1.5.2"
+        "patch": 5,
+        "raw": "1.5.5",
+        "text": "1.5.5"
       },
-      "duration_seconds": 0.04726951100747101,
+      "duration_seconds": 0.037867007005843334,
       "experimental_usable": false,
       "extension": {
         "description": "The DuckDB 'Quack' Client/Server Protocol",
-        "extension_version": "be9c9bb",
+        "extension_version": "c154811",
         "install_mode": "REPOSITORY",
-        "install_path": "/home/barberb/.duckdb/extensions/v1.5.2/linux_arm64/quack.duckdb_extension",
+        "install_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
         "installed": true,
         "installed_from": "core",
         "loaded": true,
         "name": "quack"
       },
-      "extension_fingerprint": "sha256:b897d3af9e0cc1b32ab826aa5ab117e5357f4c0b9a7be210d52c637122e4973f",
-      "generated_at_monotonic": 105009.418155112,
+      "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+      "generated_at_monotonic": 106965.056331755,
       "local_load_allowed": true,
       "local_load_attempted": true,
       "missing_functions": [],
@@ -145,17 +145,17 @@
     },
     "required_duckdb": "1.5.5",
     "required_quack": "1.5.5+core",
-    "silent_substitution_refused": true,
+    "silent_substitution_refused": false,
     "under_approved_import_root": true
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:b4f13bfb6a5c6c926a62c24328516f668e11751e7d5d5de35640cc363a4c2a40",
+  "receipt_cid": "sha256:01e6e6a660207839e58601443edbdf5cb3b5b1d9935ca9fedbdf3cd0ffdec42c",
   "receipt_name": "duckdb_quack_155.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "89888a05338d2f17d019a719931e8491b02ac496",
-  "source_tree": "fa3115a2bfabdbbbc92b174912aa3a34afb22ac1",
+  "source_head": "ec2dbfcb3983d8d8bf25dd3161c27d3d06211835",
+  "source_tree": "4dfd3329a24377a7a5bf797650dad4d79aa9efe9",
   "supervisor_process_started": false,
   "task_id": "EAAEF-182"
 }
