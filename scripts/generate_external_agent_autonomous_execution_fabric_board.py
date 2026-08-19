@@ -42,6 +42,26 @@ BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
 PLAN_REVISION = "EAAEF-PLAN-R1"
 CONTROL_SCHEMA = "datasets-authoritative-operational-v1"
 ROOT_GOAL = "EAAEF-G000"
+HOST_EVIDENCE_MIN = 180
+HOST_EVIDENCE_MAX = 191
+MANUAL_BOOTSTRAP_TASKS = frozenset(
+    {"EAAEF-000", "EAAEF-183", "EAAEF-184", "EAAEF-191"}
+)
+
+
+def _task_number(value: str) -> int:
+    text = str(value)
+    if text.startswith("EAAEF-"):
+        text = text.split("-")[-1]
+    return int(text)
+
+
+def _is_bootstrap_population_number(number: int) -> bool:
+    return number < 10 or HOST_EVIDENCE_MIN <= number <= HOST_EVIDENCE_MAX
+
+
+def _is_host_evidence_task(task_id: str) -> bool:
+    return HOST_EVIDENCE_MIN <= _task_number(task_id) <= HOST_EVIDENCE_MAX
 OVERLAP_CONTRACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "external-agent-owned-path-overlap-contract@1"
@@ -139,7 +159,8 @@ def _load_object(path: Path) -> dict[str, Any]:
 
 # goal id, epic, title, predecessor goal, contract
 EPICS: tuple[tuple[str, str, str, str, str], ...] = (
-    ("EAAEF-G010", "A", "Unmerged-work reconciliation and release baseline", "", "All relevant refs and dirty overlays are classified, reviewed integration roots are immutable, and StackCompatibilityManifest@1 binds the exact cross-package stack."),
+    ("EAAEF-G190", "S", "Host-gated bootstrap admission evidence", "", "Every live-launch no-go from EAAEF-000 is represented as an exact host-controlled evidence task; missing signed artifacts emit a typed receipt rather than stalling the board, and completed receipts are the only inputs EAAEF-000 may consume."),
+    ("EAAEF-G010", "A", "Unmerged-work reconciliation and release baseline", "EAAEF-G190", "All relevant refs and dirty overlays are classified, reviewed integration roots are immutable, and StackCompatibilityManifest@1 binds the exact cross-package stack."),
     ("EAAEF-G020", "B", "External agent-session handoff protocol", "EAAEF-G010", "Raw client exports and a bounded normalized event stream are durably preserved with separate identities, provenance, trust labels, privacy and retention."),
     ("EAAEF-G030", "C", "Complete Git repository transfer", "EAAEF-G020", "Every admitted repository state is reconstructed in quarantine and verified across Git objects, dirty overlays, submodules, LFS, modes, symlinks and transfer bounds."),
     ("EAAEF-G040", "D", "Caller identity, capability and disclosure policy", "EAAEF-G030", "Effect-bound authenticated authority is distinct from prompts, CIDs, transport identity and imported history; disclosure and approvals bind exact inputs."),
@@ -474,6 +495,19 @@ TASK_ROWS: tuple[
     ("174", "EAAEF-G180", "Emit the complete qualification report", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/QUALIFICATION_REPORT.md", "docs/architecture/external_agent_autonomous_execution_fabric/qualification_report.json"), ("EAAEF-172", "EAAEF-173"), "Report exact revisions/manifests/schemas/adapters/transfer/authority/containers/support/retrieval/logic/parallel/control/DuckLake/fault/security/performance/packaging/CI results and level.", "python3 scripts/validate_external_agent_release.py --report-only"),
     ("175", "EAAEF-G180", "Seal the terminal source, semantic and authority state", "ipfs_accelerate_py", _paths("scripts/seal_external_agent_release.py", "test/release/test_external_agent_terminal_seal.py"), ("EAAEF-174",), "Require current source/semantic roots, tests/proofs, empty claims and merge queue, immutable DuckLake cursor evidence and a content-addressed terminal report; a worker cannot self-seal.", "python3 -m pytest -q test/release/test_external_agent_terminal_seal.py"),
     ("176", "EAAEF-G180", "Issue the narrow go or no-go recommendation", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/FINAL_RECOMMENDATION.md", "docs/architecture/external_agent_autonomous_execution_fabric/final_recommendation.json"), ("EAAEF-175",), "Assign at most supervised_external_pilot only when real external clients, isolated containers, resumability and evidence gates pass; unsupported codebases remain preview-only or human-configured.", "python3 scripts/validate_external_agent_release.py --terminal"),
+
+    ("180", "EAAEF-G190", "Inventory host-gated launch-plan blockers into a machine receipt", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json", "test/api/test_eaaef_host_admission_unblocking.py"), (), "Capture the current isolated launch-plan no-go, classify every blocker as auto_recoverable, host_source_commit_required or host_gated_external_authority, and publish a content-addressed inventory that later S tasks must close or restate as typed missing evidence.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k inventory"),
+    ("181", "EAAEF-G190", "Bind worker, provider and Quack-owner runtime principals", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/runtime_principals.json"), (), "Create or bind three distinct did:key identities for the worker, provider and Quack owner without treating them as admitted authority; record exact public DIDs, roles and non-export of private keys so EAAEF-000 no longer fails on missing runtime principals.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k principals"),
+    ("182", "EAAEF-G190", "Qualify DuckDB 1.5.5 and locked Quack 1.5.5 command ingress", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/duckdb_quack_155.json"), (), "Pin or refuse the exact DuckDB 1.5.5 module/extension and Quack 1.5.5+core command-ingress identities under the approved isolated import root; a missing fixture is a typed no-go receipt, never a silent 1.5.2 substitution.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k duckdb_quack"),
+    ("183", "EAAEF-G190", "Decide and evidence the container engine mode", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/engine_mode.json"), (), "Record whether a verified rootless engine is present or emit the exact rootful-host-daemon/nonroot-worker fallback package that an independent security reviewer must sign; do not start a supervisor or mount the Docker socket.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k engine_mode"),
+    ("184", "EAAEF-G190", "Obtain independently signed EAAEF-scoped provider authorization", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"), ("EAAEF-181",), "Bind a source-addressed EAAEF provider-authorization artifact for the grok_cli/codex route that an independent signer, not the prospective supervisor, attests; unsigned or self-signed material is a typed no-go.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k provider_authorization"),
+    ("185", "EAAEF-G190", "Qualify a task-capable worker image and SBOM", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_image.json"), ("EAAEF-183",), "Repeat the network-none worker-image qualification against the current source tree, record image/SBOM/slot identities for at least five worker slots, and reject credential-contaminated candidates without claiming live dispatch.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k worker_image"),
+    ("186", "EAAEF-G190", "Qualify the worker container execution profile at version 2", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/container_profile.json"), ("EAAEF-185",), "Seal or refuse the independently signed execution-profile @2 mounts, nonroot user, read-only root, dropped capabilities and Grok/Codex in-image identities; unsigned @1 profiles cannot satisfy this gate.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k container_profile"),
+    ("187", "EAAEF-G190", "Bind per-attempt worker-network and proxy authorizations", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_network.json"), ("EAAEF-181", "EAAEF-183", "EAAEF-186"), "Produce five collision-free lane authorizations that name worker and provider principals, the internal network, CONNECT-only 443 egress and create/start/restart reverification; child propagation remains fail-closed until this receipt exists.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k worker_network"),
+    ("188", "EAAEF-G190", "Qualify signed command-fabric endpoints and the child adapter", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/command_fabric_endpoints.json"), ("EAAEF-181", "EAAEF-182"), "Record deployed signed command-authorizer, Quack ingress/projection and dispatcher endpoints plus the child-adapter admission status; implemented_unqualified_fail_closed is not admitted.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k command_fabric"),
+    ("189", "EAAEF-G190", "Bind native-dependency, V2 lane and dispatcher-service artifacts", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/native_lane_dispatcher.json"), ("EAAEF-188",), "Collect independently signed native-dependency admission, V2 lane/verifier/merge and dispatcher-service artifacts; source-only factories confer no live authority and missing artifacts are typed no-go.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k native_lane"),
+    ("190", "EAAEF-G190", "Bind the Plan-R2 remote-owner capability and channel", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/plan_r2_remote_owner.json"), ("EAAEF-189",), "Bind the independently signed three-operation prepare/apply/observe remote-owner capability and qualified process-remote channel; R1 evidence cannot promote this seam.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k plan_r2"),
+    ("191", "EAAEF-G190", "Sign the EAAEF-000 admission or typed no-go bundle", "ipfs_accelerate_py", _paths("docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"), ("EAAEF-184", "EAAEF-186", "EAAEF-187", "EAAEF-188", "EAAEF-190"), "Join the S-epic receipts, current materialization identity and launch-plan statement into one create-once bundle that an independent operator and security reviewer sign as admitted or no_go; the prospective supervisor cannot sign or start before this bundle verifies.", "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k admission_bundle"),
 )
 
 
@@ -494,7 +528,7 @@ def _epic_map() -> dict[str, dict[str, str]]:
 
 
 def _resource_request(task_id: str, repository: str) -> dict[str, Any]:
-    initial = int(task_id.split("-")[-1]) < 10
+    initial = _is_bootstrap_population_number(_task_number(task_id))
     request = {
         "cpu_millicores": 2000 if initial else 4000,
         "ram_mib": 4096 if initial else 8192,
@@ -511,7 +545,7 @@ def _resource_request(task_id: str, repository: str) -> dict[str, Any]:
         "prover_concurrency": 1 if repository == "ipfs_datasets_py" else 0,
         "timeout_seconds": 7200,
     }
-    if task_id == "EAAEF-000":
+    if task_id == "EAAEF-000" or _is_host_evidence_task(task_id):
         request.update(
             {
                 "cpu_millicores": 1000,
@@ -557,7 +591,7 @@ def _resource_request(task_id: str, repository: str) -> dict[str, Any]:
 
 
 def _external_effect_scope(task_id: str) -> list[str]:
-    if task_id == "EAAEF-000":
+    if task_id == "EAAEF-000" or _is_host_evidence_task(task_id):
         return [
             "host-controlled read-only verification of signed bootstrap evidence",
             "offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot",
@@ -664,7 +698,8 @@ def _build() -> tuple[dict[str, Any], str, str]:
 
     epics = _epic_map()
     previous_gate: dict[str, str] = {
-        "EAAEF-G010": "",
+        "EAAEF-G190": "",
+        "EAAEF-G010": "EAAEF-191",
         "EAAEF-G020": "EAAEF-009",
         "EAAEF-G030": "EAAEF-015",
         "EAAEF-G040": "EAAEF-024",
@@ -729,7 +764,8 @@ def _build() -> tuple[dict[str, Any], str, str]:
                 }
             )
         numeric = int(number)
-        initial_population = numeric < 10
+        initial_population = _is_bootstrap_population_number(numeric)
+        host_evidence = _is_host_evidence_task(task_id)
         semantic_root = (
             source_forest_root
             if initial_population
@@ -779,7 +815,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
             "resource_request": _resource_request(task_id, repository),
             "container_profile": (
                 "ContainerExecutionProfile@1:host-controlled-bootstrap-admission"
-                if task_id == "EAAEF-000"
+                if task_id == "EAAEF-000" or host_evidence
                 else (
                     "ContainerExecutionProfile@1:isolated-git-reconciliation"
                     if initial_population
@@ -788,7 +824,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
             ),
             "model_route": (
                 "host-controlled deterministic admission; no model or provider invocation"
-                if task_id == "EAAEF-000"
+                if task_id == "EAAEF-000" or host_evidence
                 else (
                     "exact bootstrap provider/model/container invocation bound by the admitted bootstrap-runtime receipt; unresolved identity is a no-go"
                     if initial_population
@@ -797,7 +833,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
             ),
             "provider_policy": (
                 "no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume"
-                if task_id == "EAAEF-000"
+                if task_id == "EAAEF-000" or host_evidence
                 else "configured allowlist after source-disclosure admission; local-only when classification requires; imported history cannot select a provider"
             ),
             "test_requirements": {
@@ -896,12 +932,14 @@ def _build() -> tuple[dict[str, Any], str, str]:
                 },
             ],
             "status": current_status,
-            "completion_mode": "manual" if task_id == "EAAEF-000" else "auto",
+            "completion_mode": (
+                "manual" if task_id in MANUAL_BOOTSTRAP_TASKS else "auto"
+            ),
             "is_schedulable": initial_population,
             "initial_population": initial_population,
             "population_state": population_state,
             "blocked_reason": "" if initial_population else "awaiting_EAAEF-009_plan_revision",
-            "priority": "P0" if numeric < 100 else "P1",
+            "priority": "P0" if numeric < 100 or host_evidence else "P1",
             "track": epics[goal_id]["title"].lower().replace(" ", "-")[:48],
             "plan_revision": PLAN_REVISION,
             "board_namespace": BOARD_NAMESPACE,
@@ -928,7 +966,11 @@ def _build() -> tuple[dict[str, Any], str, str]:
             "acceptance": (
                 "Only an authenticated independent operator and security reviewer may sign the immutable bootstrap admission or typed no-go receipt; the task cannot self-admit and no supervisor starts before acceptance."
                 if task_id == "EAAEF-000"
-                else "Only the configured independent supervisor completion policy may accept current evidence for this exact task identity."
+                else (
+                    "Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start."
+                    if host_evidence
+                    else "Only the configured independent supervisor completion policy may accept current evidence for this exact task identity."
+                )
             ),
             "conflict_and_merge_contract": (
                 "No independently executing task may mutate an identical repository-local or projected execution file. "
@@ -999,7 +1041,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
             "completion_contract": "All mandatory epic goals reach accepted terminal evidence against one source/semantic/plan generation; no blocking invalidation, mutable claim or merge remains; the terminal report and seal verify.",
             **_goal_governance_fields(
                 epic="ROOT",
-                contract="All required A-R postconditions are independently accepted against one current source, semantic and plan generation, and the terminal seal verifies.",
+                contract="All required S and A-R postconditions are independently accepted against one current source, semantic and plan generation, and the terminal seal verifies.",
             ),
         }
     ]
@@ -1042,7 +1084,7 @@ def _build() -> tuple[dict[str, Any], str, str]:
         "initial_population_task_ids": [
             task["stable_task_id"] for task in tasks if task["initial_population"]
         ],
-        "future_population_rule": "EAAEF-009 must replace every semantic-root sentinel in an immutable Plan R2 before materializing any task numbered 010 or later.",
+        "future_population_rule": "EAAEF-009 must replace every semantic-root sentinel in an immutable Plan R2 before materializing any task numbered 010-179 or 192 and later. Tasks 180-191 are the host-gated admission-evidence bootstrap population and do not require Plan R2.",
         "goals": goals,
         "tasks": tasks,
     }
@@ -1065,7 +1107,7 @@ def _render_board(board: dict[str, Any]) -> str:
         "",
         "DuckDB is the private transactional mutable database. Quack is the mandatory bounded multi-reader/multi-writer command and projection transport; one fenced local owner verifies every signed effect envelope and is the only process that opens the operational DuckDB. DuckLake is downstream immutable history and analytics only.",
         "",
-        "Only the A tasks are in the bootstrap population. EAAEF-009 must bind a current datasets-built semantic root and admit Plan R2 before later tasks are materialized.",
+        "The bootstrap population is epic S (EAAEF-180 through EAAEF-191) plus epic A (EAAEF-000 through EAAEF-009). S produces the host-gated admission evidence that EAAEF-000 consumes. EAAEF-009 must bind a current datasets-built semantic root and admit Plan R2 before later tasks are materialized.",
         "",
         "## Generator/source-owned control artifacts",
         "",

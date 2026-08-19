@@ -78,12 +78,13 @@ fence, write owner, resume right, merge authority or finalization decision.
 
 ## Goal graph and execution order
 
-The root goal `EAAEF-G000` owns eighteen ordered epic subgoals. Contracts are
+The root goal `EAAEF-G000` owns nineteen ordered epic subgoals. Contracts are
 frozen before consumers, while tasks with disjoint files/symbols/effects run in
 parallel inside each admitted epic:
 
 ```text
-A reconciliation and compatibility
+S host-gated bootstrap admission evidence
+  -> A reconciliation and compatibility
   -> B handoff protocol
   -> C repository transfer
   -> D principal, authority and disclosure
@@ -103,7 +104,7 @@ A reconciliation and compatibility
   -> R blocking CI, terminal seal and go/no-go
 ```
 
-The machine board contains 104 stable tasks. Its content-addressed validation
+The machine board contains 116 stable tasks. Its content-addressed validation
 report records the exact current dependency, owned-path and overlap-contract
 counts; repeated ownership is permitted only through an explicit serialized
 forward-extension contract and direct predecessor dependency. Every task
@@ -116,13 +117,15 @@ identities.
 
 ## Bootstrap and rebind
 
-Tasks `EAAEF-000` through `EAAEF-009` are the bounded initial population, but
-the sole initial ready frontier is manual host-controlled task `EAAEF-000`.
-That task independently verifies signed EAAEF provider authorization, a signed
-task-capable worker image and SBOM, at least five exact worker slots, signed
-per-attempt internal-network/proxy authorizations, the exact engine mode,
-bounded resources, the immutable materialization receipt and the exact
-DuckDB 1.5.5/Quack 1.5.5 command-ingress decision. Rootless execution is
+Tasks `EAAEF-180` through `EAAEF-191` plus `EAAEF-000` through `EAAEF-009`
+are the bounded initial population. Epic S is the host-controlled evidence
+frontier that closes every current live-launch no-go; its ready tasks are
+`EAAEF-180` through `EAAEF-183`. Manual host-controlled task `EAAEF-000`
+depends on `EAAEF-191` and independently verifies signed EAAEF provider
+authorization, a signed task-capable worker image and SBOM, at least five
+exact worker slots, signed per-attempt internal-network/proxy authorizations,
+the exact engine mode, bounded resources, the immutable materialization
+receipt and the exact DuckDB 1.5.5/Quack 1.5.5 command-ingress decision. Rootless execution is
 preferred and required
 where the host supports it. An unsupported host may use only an independently
 approved rootful host daemon with a nonroot worker, no mounted engine socket,

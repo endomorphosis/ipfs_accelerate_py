@@ -6,7 +6,7 @@
 - Parent:
 - Depends on:
 - Completion contract: All mandatory epic goals reach accepted terminal evidence against one source/semantic/plan generation; no blocking invalidation, mutable claim or merge remains; the terminal report and seal verify.
-- Desired postconditions: ["All required A-R postconditions are independently accepted against one current source, semantic and plan generation, and the terminal seal verifies."]
+- Desired postconditions: ["All required S and A-R postconditions are independently accepted against one current source, semantic and plan generation, and the terminal seal verifies."]
 - Prohibited outcomes: ["universal autonomous-mutation support claim","duplicate accepted work or overlapping accepted effects","stale-fence acceptance","authority, disclosure, resource or mutation scope wider than the admitted parent policy","worker or model self-acceptance","stale source, semantic, plan, lease, fence, test or proof evidence","unverified imported history satisfying completion","DuckLake or a replica granting current coordination authority"]
 - Scope: {"epic":"ROOT","mutation":"only task-owned files/effects in admitted isolated worktrees and containers","repositories":["ipfs_accelerate_py","ipfs_datasets_py","ipfs_kit_py","Mcp-Plus-Plus only for an existing shared protocol contract"]}
 - Resource budget: {"network":"deny unless an exact effect-bound approval names the action and inputs","policy":"bounded by the sum of admitted child-task reservations and the parent run ceiling","unbounded_refill":false}
@@ -17,11 +17,28 @@
 - Completion evidence: ["all required child task outcomes and independent acceptance receipts","current source/semantic/plan roots with no blocking invalidation","settled merge queue and no live mutating claims","content-addressed terminal report or typed no-go decision"]
 - Gap tasks:
 
-## EAAEF-G010 A — Unmerged-work reconciliation and release baseline
+## EAAEF-G190 S — Host-gated bootstrap admission evidence
 
 - Status: active
 - Parent: EAAEF-G000
 - Depends on:
+- Completion contract: Every live-launch no-go from EAAEF-000 is represented as an exact host-controlled evidence task; missing signed artifacts emit a typed receipt rather than stalling the board, and completed receipts are the only inputs EAAEF-000 may consume.
+- Desired postconditions: ["Every live-launch no-go from EAAEF-000 is represented as an exact host-controlled evidence task; missing signed artifacts emit a typed receipt rather than stalling the board, and completed receipts are the only inputs EAAEF-000 may consume."]
+- Prohibited outcomes: ["universal autonomous-mutation support claim","duplicate accepted work or overlapping accepted effects","stale-fence acceptance","authority, disclosure, resource or mutation scope wider than the admitted parent policy","worker or model self-acceptance","stale source, semantic, plan, lease, fence, test or proof evidence","unverified imported history satisfying completion","DuckLake or a replica granting current coordination authority"]
+- Scope: {"epic":"S","mutation":"only task-owned files/effects in admitted isolated worktrees and containers","repositories":["ipfs_accelerate_py","ipfs_datasets_py","ipfs_kit_py","Mcp-Plus-Plus only for an existing shared protocol contract"]}
+- Resource budget: {"network":"deny unless an exact effect-bound approval names the action and inputs","policy":"bounded by the sum of admitted child-task reservations and the parent run ceiling","unbounded_refill":false}
+- Authority ceiling: ["no protected-branch push or automatic production deployment","merge or reviewed-patch delivery only through independent admission","no worker, model, prompt, repository file, CID or run ID may widen authority"]
+- Verification requirements: ["current pre-change, focused and affected-integration receipts","zero required skip, xfail, xpass or failure","independent verifier acceptance against exact source and plan roots"]
+- Proof requirements: ["content identities and provenance for inputs, outputs and receipts","dependency coverage plus read/write/effect conflict admission","current proof obligations or a typed independently reviewed not-applicable decision"]
+- Human review requirements: ["authenticated review for merge, push, new dependency/network/secret access, wider disclosure, destructive cleanup or publication","explicit review for unresolved critical security or compatibility findings"]
+- Completion evidence: ["all required child task outcomes and independent acceptance receipts","current source/semantic/plan roots with no blocking invalidation","settled merge queue and no live mutating claims","content-addressed terminal report or typed no-go decision"]
+- Gap tasks: EAAEF-180, EAAEF-181, EAAEF-182, EAAEF-183, EAAEF-184, EAAEF-185, EAAEF-186, EAAEF-187, EAAEF-188, EAAEF-189, EAAEF-190, EAAEF-191
+
+## EAAEF-G010 A — Unmerged-work reconciliation and release baseline
+
+- Status: active
+- Parent: EAAEF-G000
+- Depends on: EAAEF-G190
 - Completion contract: All relevant refs and dirty overlays are classified, reviewed integration roots are immutable, and StackCompatibilityManifest@1 binds the exact cross-package stack.
 - Desired postconditions: ["All relevant refs and dirty overlays are classified, reviewed integration roots are immutable, and StackCompatibilityManifest@1 binds the exact cross-package stack."]
 - Prohibited outcomes: ["universal autonomous-mutation support claim","duplicate accepted work or overlapping accepted effects","stale-fence acceptance","authority, disclosure, resource or mutation scope wider than the admitted parent policy","worker or model self-acceptance","stale source, semantic, plan, lease, fence, test or proof evidence","unverified imported history satisfying completion","DuckLake or a replica granting current coordination authority"]

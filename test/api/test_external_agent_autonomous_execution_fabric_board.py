@@ -30,13 +30,13 @@ def test_generated_board_passes_fail_closed_validator() -> None:
     report = _load_validator().validate()
     assert report["valid"] is True, report["errors"]
     assert report["counts"] == {
-        "goal_count": 19,
-        "task_count": 104,
-        "initial_population_count": 10,
-        "owned_path_count": 362,
+        "goal_count": 20,
+        "task_count": 116,
+        "initial_population_count": 22,
+        "owned_path_count": 375,
         "owned_path_overlap_count": 29,
         "overlap_merge_contract_count": 31,
-        "dependency_edge_count": 245,
+        "dependency_edge_count": 270,
     }
 
 
@@ -50,15 +50,17 @@ def test_bootstrap_is_the_only_initial_ready_task() -> None:
         and task["is_schedulable"]
         and not task["dependencies"]
     ]
-    assert ready == ["EAAEF-000"]
+    assert ready == ["EAAEF-180", "EAAEF-181", "EAAEF-182", "EAAEF-183"]
     assert tasks["EAAEF-000"]["completion_mode"] == "manual"
+    assert "EAAEF-191" in tasks["EAAEF-000"]["dependencies"]
     for number in range(1, 6):
         assert "EAAEF-000" in tasks[f"EAAEF-{number:03d}"]["dependencies"]
 
 
 def test_future_population_is_held_until_plan_r2() -> None:
     for task in _board()["tasks"]:
-        if int(task["stable_task_id"].split("-")[-1]) < 10:
+        number = int(task["stable_task_id"].split("-")[-1])
+        if number < 10 or 180 <= number <= 191:
             continue
         assert task["status"] == "blocked"
         assert task["is_schedulable"] is False

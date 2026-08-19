@@ -1,11 +1,11 @@
 # ExternalAgentAutonomousExecutionFabric task board
 
 Board namespace: `external-agent-autonomous-execution-fabric-v1`. Plan revision: `EAAEF-PLAN-R1`.
-Canonical board identity: `sha256:078a909b7094152a12060fb48a87a52bd38febb0fce26e9a4b747c0d197b66bb`.
+Canonical board identity: `sha256:a3f65f77235198441c9c144b6e3ca1bebf55fbf5abbdf3cfab0a05fd80a6603c`.
 
 DuckDB is the private transactional mutable database. Quack is the mandatory bounded multi-reader/multi-writer command and projection transport; one fenced local owner verifies every signed effect envelope and is the only process that opens the operational DuckDB. DuckLake is downstream immutable history and analytics only.
 
-Only the A tasks are in the bootstrap population. EAAEF-009 must bind a current datasets-built semantic root and admit Plan R2 before later tasks are materialized.
+The bootstrap population is epic S (EAAEF-180 through EAAEF-191) plus epic A (EAAEF-000 through EAAEF-009). S produces the host-gated admission evidence that EAAEF-000 consumes. EAAEF-009 must bind a current datasets-built semantic root and admit Plan R2 before later tasks are materialized.
 
 ## Generator/source-owned control artifacts
 
@@ -45,7 +45,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Independently bind signed EAAEF provider authorization, an exact task-capable worker image and SBOM, effect-bound per-attempt network approval, an explicitly identified rootless engine or independently approved rootful-host-daemon/nonroot-worker fallback, bounded internal proxy egress, the immutable materialization receipt, and an exact DuckDB 1.5.5/Quack 1.5.5 command-ingress qualification. The Quack owner must verify signed principal/authority/lease/deadline/fence envelopes before its private DuckDB mutation; a bare StateCommand or shared token is never authority. Reviewed source implements the native-dependency admission, V2 lane/verifier/merge chain, exact-envelope journals, lazy Quack/dispatcher factories, per-birth supervisor wiring and the distinct three-operation process-remote Plan-R2 owner seam, but those source seams confer no live authority. Before EAAEF-001 may run, the manual host gate must qualify the exact 31-operation task/claim/lease/provider/effect/validation/completion bootstrap vocabulary used by EAAEF-001 through EAAEF-009; the existing task.get/task.ready handlers and unrelated task.list read are explicitly insufficient. The capability excludes task materialization, host merge admission and the three Plan-R2 operations. Host merge remains independently reviewed, while EAAEF-009 uses a separately promoted prepare/apply/observe Plan-R2 gateway after EAAEF-008. Quack-mode daemons must use that complete bootstrap gateway and may not open local execution or coordination sidecars. Missing actual independently signed native, lane, Quack, dispatcher and Plan-R2 artifacts, deployed signed endpoints, a qualified extension, or admitted container/provider/network authority must emit a typed no-go and start no supervisor.
-- Depends on:
+- Depends on: EAAEF-191
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["ipfs_accelerate_py/agent_implementation_route.py","ipfs_accelerate_py/llm_router.py","ipfs_accelerate_py/agent_supervisor/analysis/contract_mismatch_analyzer.py","ipfs_accelerate_py/agent_supervisor/analysis/contract_vulnerability_rules.py","ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py","ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py","ipfs_accelerate_py/agent_supervisor/analysis/parser_failure_triage.py","ipfs_accelerate_py/agent_supervisor/analysis/polyglot_ast_health.py","ipfs_accelerate_py/agent_supervisor/analysis/polyglot_ast_provider.py","ipfs_accelerate_py/agent_supervisor/analysis/python_mcp_surface_extractor.py","ipfs_accelerate_py/agent_supervisor/analysis/runtime_component_catalog.py","ipfs_accelerate_py/agent_supervisor/analysis/runtime_contract_evidence_compiler.py","ipfs_accelerate_py/agent_supervisor/analysis/swissknife_contract_extractor.py","ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py","ipfs_accelerate_py/agent_supervisor/control/profile_authority.py","ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py","ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py","ipfs_accelerate_py/agent_supervisor/merge/merge_train.py","ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py","ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py","ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py","ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py","ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py","ipfs_accelerate_py/agent_supervisor/runtime/connect_allowlist_proxy.py","ipfs_accelerate_py/agent_supervisor/runtime/eaaef_bootstrap_gateway.py","ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py","ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py","ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py","ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py","ipfs_accelerate_py/agent_supervisor/runtime/worker_container_execution_profile.py","ipfs_accelerate_py/agent_supervisor/runtime/worker_network.py","ipfs_accelerate_py/agent_supervisor/runtime/worker_network_dispatch.py","ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py","ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py","ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_borrowed_transaction.py","ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_operational_schema.py","ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py","ipfs_accelerate_py/agent_supervisor/task_sources/quack_command_authorization.py","ipfs_accelerate_py/agent_supervisor/task_sources/quack_command_fabric.py","ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_bootstrap_daemon_gateway.py","ipfs_accelerate_py/agent_supervisor/task_sources/quack_daemon_gateway.py","ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/external_agent_container_dispatcher.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py","ipfs_accelerate_py/agent_supervisor/validation/agent_native_dependency_admission.py","ipfs_accelerate_py/agent_supervisor/validation/eaaef_bootstrap_gateway_launch.py","ipfs_accelerate_py/agent_supervisor/validation/eaaef_lane_gateway_admission.py","ipfs_accelerate_py/agent_supervisor/validation/external_agent_fabric_bootstrap.py","ipfs_accelerate_py/agent_supervisor/validation/external_agent_bootstrap_admission.py","ipfs_accelerate_py/agent_supervisor/validation/external_agent_configured_board_capsule.py","ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py","ipfs_accelerate_py/agent_supervisor/validation/proof_cached_test_validation.py","ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py","ipfs_accelerate_py/testing/proof_reuse/default_identity_services.py","ipfs_accelerate_py/testing/proof_reuse/item_identity.py","containers/external-agent/bootstrap-reconciliation.Containerfile","containers/external-agent/implementation-worker.Containerfile","containers/external-agent/implementation-worker-minimal.Containerfile","config/external_agent_autonomous_execution_fabric_bootstrap.json","config/external_agent_autonomous_execution_fabric_scheduler.json","scripts/generate_external_agent_autonomous_execution_fabric_board.py","scripts/extract_typescript_ast.mjs","scripts/launch_external_agent_autonomous_execution_fabric_materializer.py","scripts/materialize_external_agent_autonomous_execution_fabric_control_plane.py","scripts/qualify_external_agent_bootstrap_container.py","scripts/qualify_external_agent_implementation_worker_image.py","scripts/qualify_external_agent_implementation_worker_minimal_image.py","scripts/validate_external_agent_autonomous_execution_fabric_board.py","test/api/test_agent_supervisor_configured_board_scheduler.py","test/api/test_agent_supervisor_contract_mismatch_analyzer.py","test/api/test_agent_supervisor_contract_vulnerability_rules.py","test/api/test_agent_supervisor_database_implementation_daemon.py","test/api/test_agent_supervisor_grok_quota_terra_gate.py","test/api/test_agent_supervisor_implementation_daemon_runner.py","test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py","test/api/test_agent_supervisor_implementation_supervisor_runner.py","test/api/test_agent_supervisor_incremental_runtime.py","test/api/test_agent_supervisor_inference_runtime.py","test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py","test/api/test_agent_supervisor_mcp_contract_catalog.py","test/api/test_agent_supervisor_mcp_contract_proof_cache.py","test/api/test_agent_supervisor_mcp_invocation_trace.py","test/api/test_agent_supervisor_native_dependency_admission.py","test/api/test_agent_supervisor_parser_failure_triage.py","test/api/test_agent_supervisor_polyglot_ast_health.py","test/api/test_agent_supervisor_polyglot_ast_provider.py","test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py","test/api/test_agent_supervisor_proof_merge_gate.py","test/api/test_agent_supervisor_proof_cached_test_validation.py","test/api/test_agent_supervisor_python_mcp_surface_extractor.py","test/api/test_agent_supervisor_quack_command_fabric.py","test/api/test_agent_supervisor_quack_daemon_gateway.py","test/api/test_agent_supervisor_quack_state_client.py","test/api/test_agent_supervisor_quack_state_server.py","test/api/test_agent_supervisor_runtime_component_catalog.py","test/api/test_agent_supervisor_runtime_contract_evidence_compiler.py","test/api/test_agent_supervisor_router_owned_provider_decision.py","test/api/test_agent_supervisor_swissknife_contract_extractor.py","test/api/test_agent_supervisor_todo_daemon_port.py","test/api/test_agent_supervisor_validation_scheduler.py","test/api/test_agent_supervisor_worktree_lifecycle.py","test/api/test_eaaef_bootstrap_daemon_gateway.py","test/api/test_eaaef_bootstrap_gateway_launch.py","test/api/test_eaaef_bootstrap_runtime_gateway.py","test/api/test_eaaef_borrowed_transaction.py","test/api/test_eaaef_lane_gateway_runtime.py","test/api/test_eaaef_operational_schema.py","test/api/test_eaaef_quack_command_fabric.py","test/api/test_eaaef_supervisor_daemon_birth_wiring.py","test/api/test_external_agent_autonomous_execution_fabric_board.py","test/api/test_external_agent_autonomous_execution_fabric_materializer.py","test/api/test_external_agent_bootstrap_admission.py","test/api/test_external_agent_configured_board_capsule.py","test/api/test_external_agent_configured_board_runner_gate.py","test/api/test_external_agent_control_plane_promotion.py","test/api/test_external_agent_container_worker_dispatch.py","test/api/test_external_agent_fabric_bootstrap_preflight.py","test/api/test_external_agent_fabric_container_qualification.py","test/api/test_external_agent_fabric_provider_authorization.py","test/api/test_external_agent_implementation_worker_image_qualification.py","test/api/test_external_agent_implementation_worker_minimal_image_qualification.py","test/api/test_external_agent_state_repository.py","test/api/test_external_agent_worker_authority_propagation.py","test/api/test_external_agent_worker_network.py","test/api/test_llm_router_agent_implementation_route.py","test/api/test_llm_router_agent_supervisor_fallback_route.py","test/api/test_llm_router_exact_provider_fallback.py","test/api/test_proof_reuse_default_identity_services.py","test/api/test_pytest_proof_reuse_item_identity.py","test/api/test_plan_r2_remote_owner.py"]
@@ -79,7 +79,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:74a5fc35ee880b938aa8b7ec2919273a6f596eb791ad3d2b6e8f1f7b08687f2f
+- Task specification CID: sha256:aef154a3dc51ed04dfd3ccf15208f1cf699dadcde1c66560d5238940d39f9ef3
 
 ## EAAEF-001 Verify the complete source-reconciliation manifest
 
@@ -102,7 +102,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Reproduce the frozen manifest and human report's branch, worktree, changed-path, schema/API, test, dependency, supersession, dirty-overlay and conflict classifications for all four repositories without mutating either board input or any preserved ref.
-- Depends on: EAAEF-000
+- Depends on: EAAEF-191, EAAEF-000
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/source_reconciliation_verification.json","test/api/test_external_agent_source_reconciliation.py"]
@@ -136,7 +136,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:101216deaf73e70f12fd056052e6c46830c071d2114438941b7241d8e08f1f1b
+- Task specification CID: sha256:a33798f22096b81f741af17c4d57f7d4afdc8de001b65ac859b213cbeeb94d2e
 
 ## EAAEF-002 Reconcile accelerator residual lineages and source hygiene
 
@@ -159,7 +159,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Forward-audit DCR Git authority/replay, self-hosting recovery and task-contract residuals; verify that committed runtime and private-key-shaped artifacts were forward-removed while their provenance remains in history, require fail-closed 0600 permissions for replacement private keys, and port only behavior missing from the reviewed baseline.
-- Depends on: EAAEF-000
+- Depends on: EAAEF-191, EAAEF-000
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: [".gitignore","dashboard.pid","data/model_manager.duckdb.wal","state/p2p_gpt2_2peer/peer1_queue.duckdb.wal","state/p2p_gpt2_2peer/peer2_queue.duckdb.wal","state/smoketest_logs/driver.out","state/tls/mcpplusplus.crt","state/tls/mcpplusplus.key","test/kitchen_sink_models.db.wal","scripts/systemd/generate_self_signed_cert.py","docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json","test/api/test_external_agent_source_hygiene.py"]
@@ -193,7 +193,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:e900f85b12397514573f58863aea5cbe35b7dabcae75115ab8d03cf5cb87d775
+- Task specification CID: sha256:98f4c180c70171053ab2cb978593499470ab51df5534af168e8cf662a4d3e906
 
 ## EAAEF-003 Reconcile datasets UI IR and proof-reuse residuals
 
@@ -216,7 +216,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Verify the provenance-preserving UI/UX-IR merge, retain current LPC API semantics, classify proof-reuse and semantic-contract residuals, and reject wholesale stale snapshots.
-- Depends on: EAAEF-000
+- Depends on: EAAEF-191, EAAEF-000
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["docs/architecture/external_agent_fabric_reconciliation.json","tests/integration/test_external_agent_reconciliation.py"]
@@ -250,7 +250,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
-- Task specification CID: sha256:5cd2878643b9b93d485e10bedbed8b5c0f36833bf9049e085de4f89916807b64
+- Task specification CID: sha256:2d87a1f8848d32aa23923e47e51894acc7c2892c7a4529dbb0f4d086f874c1c1
 
 ## EAAEF-004 Freeze the ipfs_kit_py reusable authority surface
 
@@ -273,7 +273,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Bind existing artifact, semantic-root, proof-sealer and MCP++ adapter surfaces while excluding the in-process Profile-G coordinator from production authority.
-- Depends on: EAAEF-000
+- Depends on: EAAEF-191, EAAEF-000
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["docs/external_agent_fabric_kit_contracts.md","tests/test_external_agent_fabric_kit_contracts.py"]
@@ -307,7 +307,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_kit_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
-- Task specification CID: sha256:bb4e8a1d180084ba6b5a31f5b7155dd975fb15a0f44c7dcb4769fa3870052705
+- Task specification CID: sha256:9c925936516ec794ac3821465ae85764cdf51c66fdfed3f7241a2b99c7ea1f2b
 
 ## EAAEF-005 Clarify existing MCP++ state-backend roles
 
@@ -330,7 +330,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Preserve existing wire schemas while stating that DuckDB is transactional storage, Quack is the sole fenced multi-reader/multi-writer owner boundary, and DuckLake is non-authoritative history.
-- Depends on: EAAEF-000
+- Depends on: EAAEF-191, EAAEF-000
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["docs/architecture/decisions/0004-state-modes.md","docs/architecture/decisions/0005-durable-executor.md","docs/architecture/durable-execution.md","docs/architecture/state-model.md","docs/spec/state-ref.md"]
@@ -364,7 +364,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_accelerate_py/mcplusplus is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
-- Task specification CID: sha256:41eaec86f940afee300164d075f37b09ba635dc63bd42e4bf9f7de37bc35d88a
+- Task specification CID: sha256:5966c014bf621ddd27341316f6070a9808e8c0c7a4f27fc274f33ae7768c6e37
 
 ## EAAEF-006 Propose reviewed integration roots and stack compatibility
 
@@ -387,7 +387,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Bind post-reconciliation commits, trees, schemas, package/protocol versions, the admitted bootstrap OCI identity and compatible ranges in a proposal plus verification receipt; never overwrite the R1 compatibility input in place.
-- Depends on: EAAEF-001, EAAEF-002, EAAEF-003, EAAEF-004, EAAEF-005
+- Depends on: EAAEF-191, EAAEF-001, EAAEF-002, EAAEF-003, EAAEF-004, EAAEF-005
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json","docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json","test/api/test_external_agent_stack_compatibility.py"]
@@ -421,7 +421,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:3ad0682469e7d31437eda0eea641dcc36917d6171416aa1af880f7077538a452
+- Task specification CID: sha256:4b8359bed356d80b4bc9e874f307ebc2cc60fc3366750aee608c03e0a11d5904
 
 ## EAAEF-007 Build the canonical multi-repository semantic root
 
@@ -444,7 +444,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Build and independently verify the post-reconciliation AST, semantic-state and provenance root for the exact four-repository forest, preserving a content-addressed delta and invalidation receipt.
-- Depends on: EAAEF-006
+- Depends on: EAAEF-191, EAAEF-006
 - Owned-path overlap merge contracts: []
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["ipfs_datasets_py/analysis/external_agent_source_state.py","tests/unit/analysis/test_external_agent_source_state.py"]
@@ -478,7 +478,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Promotion of ipfs_datasets_py is a serialized superproject-gitlink merge effect and never occurs concurrently with another promotion of that gitlink.
-- Task specification CID: sha256:9ba0307ef71190d64e6e6328fd6fe00b7786c116c655308727aea018ad5a0fb1
+- Task specification CID: sha256:4399e59e91ccf01f50e66afa9f830e8c5326f95ba619c91c16801f8c67aa21a0
 
 ## EAAEF-008 Renew Quack ownership and the accepted bootstrap capsule
 
@@ -501,7 +501,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Reverify the bootstrap DuckDB/Quack owner and issue or reject a fresh immutable configured-board capsule against the reconciled source forest and semantic root. The capsule binds one private file-opening owner, authenticated signed-command ingress, read-only projections, the current epoch/fence, exact conflict-free frontier and no direct-file fallback; it cannot authorize Plan R2 before its distinct independently reviewed Promotion@2 transition capability and receipt exist.
-- Depends on: EAAEF-007, EAAEF-000
+- Depends on: EAAEF-191, EAAEF-007, EAAEF-000
 - Owned-path overlap merge contracts: [{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-008"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"ipfs_accelerate_py/agent_supervisor/validation/external_agent_configured_board_capsule.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-008"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"test/api/test_external_agent_configured_board_capsule.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-008"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"test/api/test_external_agent_configured_board_runner_gate.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-008"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"test/api/test_external_agent_control_plane_promotion.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-008"}]
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["ipfs_accelerate_py/agent_supervisor/runtime/external_agent_control_plane_promotion.py","ipfs_accelerate_py/agent_supervisor/validation/external_agent_configured_board_capsule.py","test/api/test_external_agent_configured_board_capsule.py","test/api/test_external_agent_configured_board_runner_gate.py","test/api/test_external_agent_control_plane_promotion.py"]
@@ -535,7 +535,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:0e441b69fd2a22ad42f6066c113ffbbbc506e37849df97ca1fb027b80190f935
+- Task specification CID: sha256:29af61819c0d3b002c9b273ae987b2c6204763af2e77435da458077c6093f09d
 
 ## EAAEF-009 Admit Plan R2 and transition the next population
 
@@ -558,7 +558,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
 - Source control-plane schema version: datasets-authoritative-operational-v1
 - Objective: Consume the verified semantic root and promotion receipt through the distinct process-remote three-operation Plan-R2 owner seam, create an immutable Plan R2 with bounded add/supersede repairs, replace every future-task sentinel, CAS the active plan revision, materialize only the B frontier, and emit an admission or typed no-go receipt without editing completed R1 tasks. Source implementation is not live admission; the independently signed remote-owner capability, qualified wire-channel factory and supervisor repository wiring remain external requirements.
-- Depends on: EAAEF-007, EAAEF-008, EAAEF-000
+- Depends on: EAAEF-191, EAAEF-007, EAAEF-008, EAAEF-000
 - Owned-path overlap merge contracts: [{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-009"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-009"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-009"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"test/api/test_external_agent_state_repository.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-009"},{"dependency_type":"direct","merge_lane":"single_admitted_merge_lane","path":"test/api/test_plan_r2_remote_owner.py","predecessor_task_id":"EAAEF-000","repository":"ipfs_accelerate_py","schema":"ipfs_accelerate_py/agent-supervisor/external-agent-owned-path-overlap-contract@1","strategy":"serialized_forward_extension","successor_task_id":"EAAEF-009"}]
 - Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
 - Write scope: ["ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py","ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py","ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py","ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py","test/api/test_external_agent_plan_r2.py","test/api/test_external_agent_state_repository.py","test/api/test_plan_r2_remote_owner.py","docs/architecture/external_agent_autonomous_execution_fabric/plan_revisions/README.md"]
@@ -592,7 +592,7 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Board namespace: external-agent-autonomous-execution-fabric-v1
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
-- Task specification CID: sha256:37891fb89882cd9c19bdf2d4731cc3e55cb637c826370c7f831cc3541172d212
+- Task specification CID: sha256:52de1b9d159bb3d13e5ac04670adcec6f21db68ad188e419dd79310100d9e57b
 
 ## EAAEF-010 Define the transport-neutral handoff contract family
 
@@ -5951,3 +5951,687 @@ Within each epic, tasks whose dependencies and read/write/effect conflicts permi
 - Plan revision: EAAEF-PLAN-R1
 - Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
 - Task specification CID: sha256:2b6c045ffee3ae8c11aa8a88ce9b6f98569ab69b82e2f349db7250f6ba37f6e3
+
+## EAAEF-180 Inventory host-gated launch-plan blockers into a machine receipt
+
+- Stable task ID: EAAEF-180
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Capture the current isolated launch-plan no-go, classify every blocker as auto_recoverable, host_source_commit_required or host_gated_external_authority, and publish a content-addressed inventory that later S tasks must close or restate as typed missing evidence.
+- Depends on:
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k inventory"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Capture the current isolated launch-plan no-go, classify every blocker as auto_recoverable, host_source_commit_required or host_gated_external_authority, and publish a content-addressed inventory that later S tasks must close or restate as typed missing evidence. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:bb54b9acc7388c955cffa8d6d082d02fa985452735516e44f3e137b6fab8990b
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json, test/api/test_eaaef_host_admission_unblocking.py
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json","test/api/test_eaaef_host_admission_unblocking.py"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k inventory
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","inventory"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:0c3c708672d65ea25d2d9996a1adc072740088078b5a4577121a62f05280da94
+
+## EAAEF-181 Bind worker, provider and Quack-owner runtime principals
+
+- Stable task ID: EAAEF-181
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/runtime_principals.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/runtime_principals.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Create or bind three distinct did:key identities for the worker, provider and Quack owner without treating them as admitted authority; record exact public DIDs, roles and non-export of private keys so EAAEF-000 no longer fails on missing runtime principals.
+- Depends on:
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/runtime_principals.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k principals"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Create or bind three distinct did:key identities for the worker, provider and Quack owner without treating them as admitted authority; record exact public DIDs, roles and non-export of private keys so EAAEF-000 no longer fails on missing runtime principals. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:34c075a9544a2395f44f5c9b1c1205a4f56e9f6d943326e78356bc22b6a51d5b
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/runtime_principals.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/runtime_principals.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k principals
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","principals"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:bace38947ef92faff831c2b3ca7cd8a9397269d0a8511dc1c799f0ebd5131ca2
+
+## EAAEF-182 Qualify DuckDB 1.5.5 and locked Quack 1.5.5 command ingress
+
+- Stable task ID: EAAEF-182
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/duckdb_quack_155.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/duckdb_quack_155.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Pin or refuse the exact DuckDB 1.5.5 module/extension and Quack 1.5.5+core command-ingress identities under the approved isolated import root; a missing fixture is a typed no-go receipt, never a silent 1.5.2 substitution.
+- Depends on:
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/duckdb_quack_155.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k duckdb_quack"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Pin or refuse the exact DuckDB 1.5.5 module/extension and Quack 1.5.5+core command-ingress identities under the approved isolated import root; a missing fixture is a typed no-go receipt, never a silent 1.5.2 substitution. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:6bc312cbff9ede97232acef42b1ff4aaf64af268de64135b0f03f0f21dc61ea8
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/duckdb_quack_155.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/duckdb_quack_155.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k duckdb_quack
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","duckdb_quack"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:d07a6a5c4be6e5fbe77f3d6f552c3808048a918e74895dc7f5b67de7736aac94
+
+## EAAEF-183 Decide and evidence the container engine mode
+
+- Stable task ID: EAAEF-183
+- Status: todo
+- Blocked reason:
+- Completion: manual
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/engine_mode.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/engine_mode.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Record whether a verified rootless engine is present or emit the exact rootful-host-daemon/nonroot-worker fallback package that an independent security reviewer must sign; do not start a supervisor or mount the Docker socket.
+- Depends on:
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/engine_mode.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k engine_mode"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Record whether a verified rootless engine is present or emit the exact rootful-host-daemon/nonroot-worker fallback package that an independent security reviewer must sign; do not start a supervisor or mount the Docker socket. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:59b41da371263f794b8b639fa2932571e31c47384b2695c07de82c2eddedd369
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/engine_mode.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/engine_mode.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k engine_mode
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","engine_mode"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:ab0371ed9ccf9420427dc74063b9647866526315c9f49c5105c8d18eea0e5a25
+
+## EAAEF-184 Obtain independently signed EAAEF-scoped provider authorization
+
+- Stable task ID: EAAEF-184
+- Status: todo
+- Blocked reason:
+- Completion: manual
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind a source-addressed EAAEF provider-authorization artifact for the grok_cli/codex route that an independent signer, not the prospective supervisor, attests; unsigned or self-signed material is a typed no-go.
+- Depends on: EAAEF-181
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k provider_authorization"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind a source-addressed EAAEF provider-authorization artifact for the grok_cli/codex route that an independent signer, not the prospective supervisor, attests; unsigned or self-signed material is a typed no-go. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:097e11a09cc04a9d3373ae47c0b6fc4f834268cb013443352e66045243809e8b
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/provider_authorization.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k provider_authorization
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","provider_authorization"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:ddae3792500f054f5be3674d9516d8e246550958fbae49abce3841f3861390c7
+
+## EAAEF-185 Qualify a task-capable worker image and SBOM
+
+- Stable task ID: EAAEF-185
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_image.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_image.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Repeat the network-none worker-image qualification against the current source tree, record image/SBOM/slot identities for at least five worker slots, and reject credential-contaminated candidates without claiming live dispatch.
+- Depends on: EAAEF-183
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_image.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k worker_image"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Repeat the network-none worker-image qualification against the current source tree, record image/SBOM/slot identities for at least five worker slots, and reject credential-contaminated candidates without claiming live dispatch. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:b623fdafd1b234106ac1fae52b6da905ee441d153c7391f05245f38df3c47e64
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_image.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_image.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k worker_image
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","worker_image"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:7c156afa2c5e0f9236227f0b82720e57b9d750d9a97e1661b78fdc4f18cc3bbe
+
+## EAAEF-186 Qualify the worker container execution profile at version 2
+
+- Stable task ID: EAAEF-186
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/container_profile.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/container_profile.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Seal or refuse the independently signed execution-profile @2 mounts, nonroot user, read-only root, dropped capabilities and Grok/Codex in-image identities; unsigned @1 profiles cannot satisfy this gate.
+- Depends on: EAAEF-185
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/container_profile.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k container_profile"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Seal or refuse the independently signed execution-profile @2 mounts, nonroot user, read-only root, dropped capabilities and Grok/Codex in-image identities; unsigned @1 profiles cannot satisfy this gate. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:1cb4e0ee47864a91afa53634e439bff01c12180ca31fb005b08ab72887c9d9ee
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/container_profile.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/container_profile.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k container_profile
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","container_profile"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:e3d56c2e3cb113fabc8979d9c1fb7d9beb8e97ac3a05e42b1252481fbea78663
+
+## EAAEF-187 Bind per-attempt worker-network and proxy authorizations
+
+- Stable task ID: EAAEF-187
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_network.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_network.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Produce five collision-free lane authorizations that name worker and provider principals, the internal network, CONNECT-only 443 egress and create/start/restart reverification; child propagation remains fail-closed until this receipt exists.
+- Depends on: EAAEF-181, EAAEF-183, EAAEF-186
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_network.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k worker_network"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Produce five collision-free lane authorizations that name worker and provider principals, the internal network, CONNECT-only 443 egress and create/start/restart reverification; child propagation remains fail-closed until this receipt exists. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:bb8ae8e9f55cd3614db47f1dea209b15ffca13a1643a70414f59e1b38aae25c9
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_network.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/worker_network.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k worker_network
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","worker_network"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:19c221b29aab29aa071234921816cdefd076269a07846fbccab54c9ef2aecade
+
+## EAAEF-188 Qualify signed command-fabric endpoints and the child adapter
+
+- Stable task ID: EAAEF-188
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/command_fabric_endpoints.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/command_fabric_endpoints.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Record deployed signed command-authorizer, Quack ingress/projection and dispatcher endpoints plus the child-adapter admission status; implemented_unqualified_fail_closed is not admitted.
+- Depends on: EAAEF-181, EAAEF-182
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/command_fabric_endpoints.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k command_fabric"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Record deployed signed command-authorizer, Quack ingress/projection and dispatcher endpoints plus the child-adapter admission status; implemented_unqualified_fail_closed is not admitted. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:1e2e798b238baa0596be772d5bacb21650c057d7ed5fbb369c33c011599b8b34
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/command_fabric_endpoints.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/command_fabric_endpoints.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k command_fabric
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","command_fabric"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:3c1b5ec972926484111ec6aeba9879c8ba02dd44d7d0a1cf0d872080b1934a19
+
+## EAAEF-189 Bind native-dependency, V2 lane and dispatcher-service artifacts
+
+- Stable task ID: EAAEF-189
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/native_lane_dispatcher.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/native_lane_dispatcher.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Collect independently signed native-dependency admission, V2 lane/verifier/merge and dispatcher-service artifacts; source-only factories confer no live authority and missing artifacts are typed no-go.
+- Depends on: EAAEF-188
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/native_lane_dispatcher.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k native_lane"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Collect independently signed native-dependency admission, V2 lane/verifier/merge and dispatcher-service artifacts; source-only factories confer no live authority and missing artifacts are typed no-go. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:9cad04b9148be3b41dbea38adf2fb7442959b03acfc4f50e38debe77cfcd1613
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/native_lane_dispatcher.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/native_lane_dispatcher.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k native_lane
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","native_lane"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:42db5973188b65e115fc24fa17e8a71fba35a1da012bef2d958734cce7d38f0b
+
+## EAAEF-190 Bind the Plan-R2 remote-owner capability and channel
+
+- Stable task ID: EAAEF-190
+- Status: todo
+- Blocked reason:
+- Completion: auto
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/plan_r2_remote_owner.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/plan_r2_remote_owner.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Bind the independently signed three-operation prepare/apply/observe remote-owner capability and qualified process-remote channel; R1 evidence cannot promote this seam.
+- Depends on: EAAEF-189
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/plan_r2_remote_owner.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k plan_r2"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Bind the independently signed three-operation prepare/apply/observe remote-owner capability and qualified process-remote channel; R1 evidence cannot promote this seam. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:4ed8580454f13b3bad7601d646ebcc789ba08e7b03f2918e267dc49c4e4acc33
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/plan_r2_remote_owner.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/plan_r2_remote_owner.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k plan_r2
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","plan_r2"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:56c6dc7fb5bedd7026ea6f6e190acc55a1f099a27a1f4fa2857265d7be8507c1
+
+## EAAEF-191 Sign the EAAEF-000 admission or typed no-go bundle
+
+- Stable task ID: EAAEF-191
+- Status: todo
+- Blocked reason:
+- Completion: manual
+- Is schedulable: true
+- Initial population: true
+- Population state: materialized_bootstrap
+- Priority: P0
+- Track: host-gated-bootstrap-admission-evidence
+- Parent goal ID: EAAEF-G000
+- Subgoal ID: EAAEF-G190
+- Owning repository: ipfs_accelerate_py
+- Owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"]
+- Execution owned files: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"]
+- Integration conflict keys: []
+- Source revisions: {"Mcp-Plus-Plus":{"commit":"5bf87beba3acf18d705c5c8ee3174e5e16ab5e04","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"9459e5a6695771e284142577da00aac07370fde8"},"ipfs_accelerate_py":{"commit":"0085dc719686bf4cd077c8099170bdd55fa2cf99","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"4298f4b06fa753a60ff8f95ffead39be9a83092c"},"ipfs_datasets_py":{"commit":"41533721c5559ad68cecfe226fa6ba5f76f8a15d","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"d88b10b706d91c37e4be346366ff06bb58d1e8a3"},"ipfs_kit_py":{"commit":"2564aea1ae35061f2165872aff91e8a40801ab7e","integration_branch":"integration/external-agent-autonomous-execution-fabric-v1","tree":"98ab8d00f79ec542032dbbb21a1ea416b983a845"}}
+- Source semantic-state root: sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa
+- Source control-plane schema version: datasets-authoritative-operational-v1
+- Objective: Join the S-epic receipts, current materialization identity and launch-plan statement into one create-once bundle that an independent operator and security reviewer sign as admitted or no_go; the prospective supervisor cannot sign or start before this bundle verifies.
+- Depends on: EAAEF-184, EAAEF-186, EAAEF-187, EAAEF-188, EAAEF-190
+- Owned-path overlap merge contracts: []
+- Read scope: ["exact files named by the current ContextPack","source-reconciliation and compatibility manifests","declared dependency receipts"]
+- Write scope: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"]
+- External-effect scope: ["host-controlled read-only verification of signed bootstrap evidence","offline network-none OCI image build and non-provider qualification probes in one bounded diagnostic container slot","reviewed task-owned policy/test writes and create-once receipt publication","no implementation supervisor, provider invocation, external network, secret, merge, push or mutable control-plane effect before admission"]
+- Required capsules: ["current task-owned symbol capsules when available","raw source for opaque or edit-critical code"]
+- Context artifacts: ["SourceReconciliationManifest@1","StackCompatibilityManifest@1","current FormalWorkPlan task specification","current trust-filtered ContextPack"]
+- Resource request: {"container_slots":1,"cpu_millicores":1000,"disk_mib":4096,"gpu_count":0,"merge_slots":0,"model_input_token_ceiling":0,"model_output_token_ceiling":0,"network":"deny","prover_concurrency":0,"provider_concurrency":0,"ram_mib":2048,"supervisor_processes":0,"timeout_seconds":1800,"worktree_slots":1}
+- Container profile: ContainerExecutionProfile@1:host-controlled-bootstrap-admission
+- Model route: host-controlled deterministic admission; no model or provider invocation
+- Provider policy: no provider invocation; independently verify the signed EAAEF provider authorization that later tasks may consume
+- Test requirements: {"affected_integration":"select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv","focused":["python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k admission_bundle"],"pre_change":"run the admitted existing affected baseline before mutation; record a typed absent-new-test observation rather than fabricating a command","required_result":"zero required skips, xfails, xpasses or failures"}
+- Proof requirements: ["content identity for inputs, outputs and receipts","dependency and write/effect conflict admission","current fence and source/semantic roots","independent verifier acceptance"]
+- Completion contract: Join the S-epic receipts, current materialization identity and launch-plan statement into one create-once bundle that an independent operator and security reviewer sign as admitted or no_go; the prospective supervisor cannot sign or start before this bundle verifies. The focused command must collect and pass its declared population; the task result must bind exact source, semantic, plan, worktree, container, tests, proofs and effects; an independent supervisor verifier, never the worker, accepts it.
+- Lease and fencing requirements: {"coordination":"initial population materialization permits one offline embedded writer; every live request uses the EAAEF-000-admitted signed-command Quack transport and sole private DuckDB owner; EAAEF-008 renews that admission against the reconciled semantic root","logical_claim_key":"task_id + plan_revision + repository_base_tree + semantic_state_root + task_spec_cid + idempotency_key","task_claim":"one current claim with monotonically later fencing token on restart","worktree_lease":"exclusive isolated worktree","write_effect_leases":"exclusive for every overlapping file/symbol/schema/external effect"}
+- Idempotency key: sha256:3e468f5ed94856fd54fc4e92287974a994b1e5c97feede80c59d356b40bd5be5
+- Rollback or compensation: Preserve failed attempts and receipts; do not overwrite another worktree or authority; abandon the isolated worktree or submit an explicit inverse patch; advance fences before retry; never force-push or delete preserved refs.
+- Required evidence: ["task claim and fencing receipt","container and ContextPack identities","before/after Git tree and patch identity","focused and affected-integration test receipts with collected/passed/skipped/failed counts","proof/contract receipts or typed not-applicable decision","independent review and merge-queue receipt","resource use and partial-effect record"]
+- Terminal status: not_terminal
+- Allowed terminal statuses: ["completed","cancelled","failed","quarantined"]
+- Outcome: pending
+- Allowed outcomes: ["accepted","preview_only","unsupported_language","unsupported_build_system","unsafe_repository","insufficient_validation_profile","human_configuration_required","mutation_not_admitted","blocked_external_dependency","budget_exhausted","cancelled","failed"]
+- Outcome status mapping: {"accepted":"completed","blocked_external_dependency":"quarantined","budget_exhausted":"quarantined","cancelled":"cancelled","failed":"failed","human_configuration_required":"quarantined","insufficient_validation_profile":"completed","mutation_not_admitted":"completed","preview_only":"completed","unsafe_repository":"quarantined","unsupported_build_system":"completed","unsupported_language":"completed"}
+- Final artifact identities: [{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"task_result_receipt","schema":"ExternalAgentTaskResultReceipt@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"accepted_git_or_reviewed_patch","schema":"GitTreeOrPatchIdentity@1"},{"identity":"BOUND_AT_TERMINAL_TASK_REVISION","role":"verification_bundle","schema":"VerificationBundle@1"}]
+- Permitted effects: ["read declared inputs","write only owned files in the leased worktree","run admitted structured argv inside the leased container","submit a merge proposal and receipts"]
+- Prohibited effects: ["worker self-approval","direct protected-branch mutation or push","unapproved network, dependency, secret or publication access","direct remote DuckDB file access","DuckLake-derived claim, lease, fence or merge authority","hidden chain-of-thought collection or representation"]
+- Outputs: docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json
+- Execution outputs: ["docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"]
+- Validation: python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k admission_bundle
+- Execution validation: [{"argv":["python3","-m","pytest","-q","test/api/test_eaaef_host_admission_unblocking.py","-k","admission_bundle"],"working_directory":"."}]
+- Acceptance: Host-controlled evidence is accepted only as a content-addressed receipt or typed missing/no-go; the prospective supervisor cannot self-sign or start.
+- Board namespace: external-agent-autonomous-execution-fabric-v1
+- Plan revision: EAAEF-PLAN-R1
+- Conflict and merge contract: No independently executing task may mutate an identical repository-local or projected execution file. Repeated path ownership is admitted only through the exact overlap_merge_contracts chain: the later owner directly depends on the immediate prior owner, uses serialized_forward_extension, and enters the single_admitted_merge_lane. Broader symbol/schema/effect overlap requires a declared conflict edge and serialized merge task; unknown scope serializes. Accelerator central registries and merge-queue effects are changed only by their declared owner and the single admitted merge lane.
+- Task specification CID: sha256:5fbfbbc98c1c0598bd70c989e2d239b42a7918b9fc311e1563de5cba9de19992

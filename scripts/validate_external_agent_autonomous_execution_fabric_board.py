@@ -33,6 +33,25 @@ EXPECTED_REPOSITORIES = {
     "ipfs_kit_py",
     "Mcp-Plus-Plus",
 }
+HOST_EVIDENCE_MIN = 180
+HOST_EVIDENCE_MAX = 191
+MANUAL_BOOTSTRAP_TASKS = frozenset(
+    {"EAAEF-000", "EAAEF-183", "EAAEF-184", "EAAEF-191"}
+)
+EXPECTED_READY_FRONTIER = [
+    "EAAEF-180",
+    "EAAEF-181",
+    "EAAEF-182",
+    "EAAEF-183",
+]
+
+
+def _task_number(task_id: str) -> int:
+    return int(str(task_id).split("-")[-1])
+
+
+def _is_bootstrap_population_number(number: int) -> bool:
+    return number < 10 or HOST_EVIDENCE_MIN <= number <= HOST_EVIDENCE_MAX
 REQUIRED_TASK_FIELDS = {
     "schema",
     "stable_task_id",
@@ -400,11 +419,11 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
 
     goals = board.get("goals")
     tasks = board.get("tasks")
-    if not isinstance(goals, list) or len(goals) != 19:
-        errors.append("board must contain root plus 18 epic goals")
+    if not isinstance(goals, list) or len(goals) != 20:
+        errors.append("board must contain root plus 19 epic goals")
         goals = []
-    if not isinstance(tasks, list) or len(tasks) != 104:
-        errors.append("board must contain the frozen 104-task population")
+    if not isinstance(tasks, list) or len(tasks) != 116:
+        errors.append("board must contain the frozen 116-task population")
         tasks = []
     goal_ids = [str(goal.get("goal_id") or "") for goal in goals if isinstance(goal, dict)]
     if len(goal_ids) != len(set(goal_ids)):
@@ -507,7 +526,7 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
             path_owners[(repository, str(path))].append(task_id)
         initial = bool(task.get("initial_population"))
         number = int(task_id.split("-")[-1]) if task_id.startswith("EAAEF-") else 9999
-        if initial != (number < 10):
+        if initial != _is_bootstrap_population_number(number):
             errors.append(f"{task_id}: initial population marker mismatch")
         expected_status = "todo" if initial else "blocked"
         if task.get("status") != expected_status:
@@ -522,7 +541,9 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
         expected_reason = "" if initial else "awaiting_EAAEF-009_plan_revision"
         if task.get("blocked_reason") != expected_reason:
             errors.append(f"{task_id}: held-task blocked reason mismatch")
-        expected_completion_mode = "manual" if task_id == "EAAEF-000" else "auto"
+        expected_completion_mode = (
+            "manual" if task_id in MANUAL_BOOTSTRAP_TASKS else "auto"
+        )
         if task.get("completion_mode") != expected_completion_mode:
             errors.append(f"{task_id}: completion mode must be {expected_completion_mode}")
         if task_id == "EAAEF-000":
@@ -688,7 +709,11 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
                     f"{task_id}: overlap predecessor {predecessor_task_id} is not "
                     "a direct dependency"
                 )
-    initial_ids = [task_id for task_id in task_ids if int(task_id.split("-")[-1]) < 10]
+    initial_ids = [
+        task_id
+        for task_id in task_ids
+        if _is_bootstrap_population_number(_task_number(task_id))
+    ]
     if board.get("initial_population_task_ids") != initial_ids:
         errors.append("initial population list differs from task order")
     ready_ids = [
@@ -699,8 +724,10 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
         and task.get("is_schedulable") is True
         and not task.get("dependencies")
     ]
-    if ready_ids != ["EAAEF-000"]:
-        errors.append(f"initial ready frontier must contain only EAAEF-000, got {ready_ids}")
+    if ready_ids != EXPECTED_READY_FRONTIER:
+        errors.append(
+            f"initial ready frontier must be {EXPECTED_READY_FRONTIER}, got {ready_ids}"
+        )
     return {
         "goal_count": len(goals),
         "task_count": len(tasks),

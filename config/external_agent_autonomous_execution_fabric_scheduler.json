@@ -116,10 +116,10 @@
     }
   },
   "initial_projection": {
-    "task_count": 10,
-    "goal_count": 19,
+    "task_count": 22,
+    "goal_count": 20,
     "completed_task_ids": [],
-    "ready_task_ids": ["EAAEF-000"],
+    "ready_task_ids": ["EAAEF-180", "EAAEF-181", "EAAEF-182", "EAAEF-183"],
     "terminal_bootstrap_task_id": "EAAEF-009",
     "future_task_count": 94,
     "future_tasks_materialized": false
