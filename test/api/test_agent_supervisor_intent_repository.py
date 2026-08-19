@@ -675,6 +675,44 @@ def test_database_task_source_public_api_and_completion_gate(tmp_path: Path) -> 
         source.close()
 
 
+def test_database_task_source_resolves_forward_alias_dependencies(
+    tmp_path: Path,
+) -> None:
+    """A later population alias must remap even when listed after its consumer."""
+
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:eaaef-s",
+                "objectives": [
+                    {
+                        "goal_cid": "goal:s",
+                        "goal_id": "EAAEF-G190",
+                        "title": "Host-gated bootstrap admission evidence",
+                    }
+                ],
+                "taskboard": [
+                    {
+                        "task_id": "EAAEF-000",
+                        "task_cid": "task:cid:000",
+                        "goal_cid": "goal:s",
+                        "depends_on": ["EAAEF-191"],
+                    },
+                    {
+                        "task_id": "EAAEF-191",
+                        "task_cid": "task:cid:191",
+                        "goal_cid": "goal:s",
+                    },
+                ],
+            }
+        )
+        consumer = source.get_task("EAAEF-000")
+        gate = source.get_task("EAAEF-191")
+        assert consumer is not None and gate is not None
+        assert consumer.dependencies == ("task:cid:191",)
+        assert [item.task_alias for item in source.ready_tasks().tasks] == ["EAAEF-191"]
+
+
 def test_database_task_source_stale_cursor_and_cas_conflict(tmp_path: Path) -> None:
     with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
         source.materialize(
