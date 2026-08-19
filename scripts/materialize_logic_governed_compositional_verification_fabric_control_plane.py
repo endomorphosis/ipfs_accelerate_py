@@ -63,6 +63,10 @@ from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    task_authority_spec_cid,
+    task_projection_spec_cid,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     parse_todo_blocks,
     split_csv,
@@ -646,6 +650,60 @@ def _task_lifecycle(status: Any) -> LifecycleState:
     raise MaterializationError(f"task status {normalized!r} has no revision lifecycle")
 
 
+def _assert_receipt_bound_task_spec(
+    task: Mapping[str, Any],
+    *,
+    expected_legacy_spec_cid: str,
+    revision_history: Mapping[str, Any],
+) -> None:
+    """Admit lifecycle receipt evolution without weakening plan-spec CAS.
+
+    Revision-2 receipts predate the authority-only task projection and bind
+    the legacy spec CID, which includes ``body.completion_receipt``.  Locate
+    that exact receipt-bound body in the append-only task revision history,
+    then compare its authority projection with the current task.  Thus an
+    admitted status receipt may advance while title, authority, identity,
+    relations, validation, and acceptance fields remain immutable.
+    """
+
+    task_cid = str(task.get("task_cid") or "")
+    if revision_history.get("task_cid") != task_cid:
+        raise MaterializationError(f"{task_cid}: task revision history differs")
+    revisions = revision_history.get("revisions")
+    if not isinstance(revisions, list) or not revisions:
+        raise MaterializationError(f"{task_cid}: task revision history is absent")
+    current_revision = int(task.get("revision") or 0)
+    current_status = str(task.get("status") or "")
+    current_body = _plain_json(task.get("body") or {})
+    current_rows = [
+        row
+        for row in revisions
+        if isinstance(row, Mapping)
+        and int(row.get("revision") or 0) == current_revision
+        and str(row.get("status") or "") == current_status
+        and _plain_json(row.get("body") or {}) == current_body
+    ]
+    if len(current_rows) != 1:
+        raise MaterializationError(
+            f"{task_cid}: current lifecycle state is not revision-bound"
+        )
+    if str(task.get("spec_cid") or "") == expected_legacy_spec_cid:
+        return
+
+    baseline_authority_cids: set[str] = set()
+    for row in revisions:
+        if not isinstance(row, Mapping):
+            raise MaterializationError(f"{task_cid}: task revision is malformed")
+        candidate = _plain_json(task)
+        candidate["body"] = _plain_json(row.get("body") or {})
+        if task_projection_spec_cid(candidate) == expected_legacy_spec_cid:
+            baseline_authority_cids.add(task_authority_spec_cid(candidate))
+    if not baseline_authority_cids:
+        raise MaterializationError(f"{task_cid}: receipt-bound task spec is absent")
+    if baseline_authority_cids != {task_authority_spec_cid(task)}:
+        raise MaterializationError(f"{task_cid}: authority-bearing task spec drifted")
+
+
 def _raw_task_from_projection(task: Mapping[str, Any]) -> dict[str, Any]:
     """Losslessly adapt an IntentRepository task back to materializer input."""
 
@@ -757,6 +815,15 @@ def _read_successor_state(
     try:
         plan_projection = _plain_json(source.plan_projection())
         completion_projection = _plain_json(source.completion_evidence_projection())
+        revision_histories = {
+            str(task.get("task_cid") or ""): _plain_json(
+                source.task_revision_history_projection(
+                    str(task.get("task_cid") or "")
+                )
+            )
+            for task in plan_projection.get("tasks") or ()
+            if isinstance(task, Mapping)
+        }
     finally:
         source.close()
     try:
@@ -782,6 +849,7 @@ def _read_successor_state(
     composite["projection_cid"] = content_identity(composite)
     return {
         "plan_projection": plan_projection,
+        "task_revision_histories": revision_histories,
         "completion_projection": completion_projection,
         "coordination_projection": coordination,
         "execution_projection": execution,
@@ -2437,9 +2505,22 @@ def verify_successor_read_only(
     expected_specs = receipt.get("candidate_task_spec_cids")
     if not isinstance(expected_specs, Mapping) or set(expected_specs) != set(live_by_alias):
         raise MaterializationError("successor receipt task spec population differs")
+    revision_histories = state.get("task_revision_histories")
+    if not isinstance(revision_histories, Mapping) or set(revision_histories) != set(
+        live_by_cid
+    ):
+        raise MaterializationError("successor task revision history population differs")
     for alias, task in live_by_alias.items():
-        if task.get("spec_cid") != expected_specs.get(alias):
-            raise MaterializationError(f"{alias}: current task specification is stale")
+        try:
+            _assert_receipt_bound_task_spec(
+                task,
+                expected_legacy_spec_cid=str(expected_specs.get(alias) or ""),
+                revision_history=revision_histories[str(task.get("task_cid") or "")],
+            )
+        except MaterializationError as exc:
+            raise MaterializationError(
+                f"{alias}: current task specification is stale ({exc})"
+            ) from exc
 
     registered = {
         str(item.get("task_cid") or ""): str(item.get("task_id") or "")

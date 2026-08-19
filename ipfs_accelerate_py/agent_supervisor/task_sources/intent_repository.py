@@ -89,6 +89,12 @@ INTENT_COMPLETION_PROJECTION_SCHEMA: Final[str] = (
 TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"
 )
+TASK_AUTHORITY_SPEC_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-authority-spec@1"
+)
+TASK_REVISION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
+)
 PLAN_HEAD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-plan-head@1"
 )
@@ -566,6 +572,34 @@ def task_projection_spec_cid(record: Mapping[str, Any]) -> str:
     encoded = canonical_json_bytes(material)
     if len(encoded) > MAX_TASK_PROJECTION_BYTES:
         raise IntentRepositoryBoundsError("task projection spec exceeds byte bound")
+    return content_identity(material)
+
+
+def task_authority_spec_cid(record: Mapping[str, Any]) -> str:
+    """Return the CID of the immutable, authority-bearing task specification.
+
+    ``IntentRepository@1`` historically stores the latest status-transition
+    receipt in ``body.completion_receipt`` so retry workers can recover an
+    exact seed.  That receipt is operational lifecycle evidence: replacing it
+    through an admitted status CAS must not look like a plan amendment.  Every
+    other body field remains authority-bearing.  The legacy
+    :func:`task_projection_spec_cid` is intentionally unchanged because its
+    CIDs are already persisted in plan-revision receipts.
+    """
+
+    normalized = _task_projection_spec(record)
+    body = normalized.get("body")
+    if isinstance(body, dict):
+        body = dict(body)
+        body.pop("completion_receipt", None)
+        normalized["body"] = body
+    material = {
+        "schema": TASK_AUTHORITY_SPEC_SCHEMA,
+        "task": normalized,
+    }
+    encoded = canonical_json_bytes(material)
+    if len(encoded) > MAX_TASK_PROJECTION_BYTES:
+        raise IntentRepositoryBoundsError("task authority spec exceeds byte bound")
     return content_identity(material)
 
 
@@ -4276,6 +4310,64 @@ class IntentRepository:
             recorded_at=_utc_iso(),
         )
 
+    def task_revision_history_projection(
+        self, task_cid_or_alias: str
+    ) -> Mapping[str, Any]:
+        """Return bounded task-body revisions for legacy spec-CID replay.
+
+        Task relations are current plan specification and are deliberately not
+        duplicated in this lifecycle history.  Callers combine one historical
+        body with a separately read full plan projection, then require the
+        receipt-bound legacy spec CID before treating that body as a baseline.
+        """
+
+        key = _identifier(task_cid_or_alias, noun="task_cid")
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                "SELECT task_cid FROM tasks "
+                "WHERE task_cid = ? OR task_alias = ? "
+                "ORDER BY task_cid LIMIT 2",
+                [key, key],
+            ).fetchall()
+            if not rows:
+                raise KeyError(key)
+            if len(rows) > 1:
+                raise IntentRepositoryIntegrityError(
+                    "task CID/alias lookup is ambiguous"
+                )
+            task_cid = str(rows[0][0])
+            count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM task_revisions WHERE task_cid = ?",
+                    [task_cid],
+                ).fetchone()[0]
+            )
+            if count > MAX_PROJECTION_RECORDS:
+                raise IntentRepositoryBoundsError(
+                    "task revision history exceeds projection bound"
+                )
+            revision_rows = connection.execute(
+                "SELECT revision, status, body_json FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision",
+                [task_cid],
+            ).fetchall()
+        return _content_addressed_projection(
+            {
+                "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                "task_cid": task_cid,
+                "revisions": [
+                    {
+                        "revision": int(row[0]),
+                        "status": str(row[1]),
+                        "body": _decode_json(row[2], noun="task revision body"),
+                    }
+                    for row in revision_rows
+                ],
+            },
+            maximum_bytes=MAX_PLAN_PROJECTION_BYTES,
+            noun="task revision history projection",
+        )
+
     def plan_projection(
         self, *, task_cids: Sequence[str] = ()
     ) -> Mapping[str, Any]:
@@ -4872,6 +4964,8 @@ __all__ = (
     "INTENT_PLAN_PROJECTION_SCHEMA",
     "INTENT_COMPLETION_PROJECTION_SCHEMA",
     "TASK_PROJECTION_SPEC_SCHEMA",
+    "TASK_AUTHORITY_SPEC_SCHEMA",
+    "TASK_REVISION_HISTORY_PROJECTION_SCHEMA",
     "MAX_PROJECTION_RECORDS",
     "MAX_TASK_PROJECTION_BYTES",
     "MAX_PLAN_PROJECTION_BYTES",
@@ -4892,6 +4986,7 @@ __all__ = (
     "PlanHead",
     "PlanRevisionRepository",
     "task_projection_spec_cid",
+    "task_authority_spec_cid",
     "open_intent_repository",
     "duckdb_available",
 )

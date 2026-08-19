@@ -24,6 +24,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler impo
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    open_intent_repository,
+)
 
 from scripts import (
     materialize_logic_governed_compositional_verification_fabric_control_plane as materializer,
@@ -544,6 +547,134 @@ def test_successor_steer_preserves_history_registers_only_113_and_replays(
         after_tasks["LGCVF-113"]["task_cid"]
         in after_tasks["LGCVF-120"]["dependencies"]
     )
+
+
+def test_successor_verify_allows_status_receipt_but_rejects_plan_spec_drift(
+    tmp_path: Path,
+) -> None:
+    config, successor = _revision_one_runtime(tmp_path)
+    paths = _runtime_paths(config, tmp_path)
+    materializer.steer_successor(config, successor, root=tmp_path)
+
+    source = DatabaseTaskSource(paths["control"], install_schema=False)
+    try:
+        task = source.get_task("LGCVF-080")
+        assert task is not None
+        source.compare_and_set_status(
+            task,
+            task.revision,
+            "retrying",
+            {
+                "operation": "typed_portal_validation_retry_recovery",
+                "receipt_id": "sha256:" + ("42" * 32),
+                "authority": "database-implementation-daemon",
+            },
+        )
+        tasks_by_alias = {
+            str(item["task_alias"]): item for item in source.plan_projection()["tasks"]
+        }
+    finally:
+        source.close()
+
+    assert materializer.verify_successor_read_only(
+        config, successor, root=tmp_path
+    )["valid"] is True
+    baseline = copy.deepcopy(tasks_by_alias["LGCVF-080"])
+
+    def write_projection(task_projection: dict[str, Any]) -> None:
+        with open_intent_repository(
+            paths["control"],
+            owner_id="lgcvf-spec-drift-test",
+            install_schema=False,
+        ) as repository:
+            current = repository.get_task(str(task_projection["task_cid"]))
+            assert current is not None
+            repository.upsert_task(
+                task_cid=str(task_projection["task_cid"]),
+                task_alias=str(task_projection["task_alias"]),
+                goal_cid=str(task_projection["goal_cid"]),
+                plan_cid=str(task_projection["plan_cid"]),
+                objective_id=str(task_projection["objective_id"]),
+                ordinal=int(task_projection["ordinal"]),
+                status=str(task_projection["status"]),
+                priority=str(task_projection["priority"]),
+                body=copy.deepcopy(task_projection["body"]),
+                identity=copy.deepcopy(task_projection["identity"]),
+                expected_revision=int(current["revision"]),
+                dependencies=[
+                    str(item["dependency_task_cid"])
+                    for item in task_projection["dependencies"]
+                ],
+                outputs=[copy.deepcopy(item["effect"]) for item in task_projection["outputs"]],
+                acceptance=[
+                    {
+                        **copy.deepcopy(item["evidence_policy"]),
+                        "criterion": str(item["criterion"]),
+                    }
+                    for item in task_projection["acceptance"]
+                ],
+                validations=[
+                    {
+                        "argv": list(item["argv"]),
+                        **copy.deepcopy(item["policy"]),
+                    }
+                    for item in task_projection["validations"]
+                ],
+            )
+
+    dependency_candidate = next(
+        item["task_cid"]
+        for alias, item in sorted(tasks_by_alias.items())
+        if alias != "LGCVF-080"
+        and item["task_cid"]
+        not in {
+            dependency["dependency_task_cid"]
+            for dependency in baseline["dependencies"]
+        }
+    )
+
+    def drift_title(value: dict[str, Any]) -> None:
+        value["body"]["title"] = "forged title"
+
+    def drift_authority(value: dict[str, Any]) -> None:
+        value["body"]["authority"] = "forged authority"
+
+    def drift_output(value: dict[str, Any]) -> None:
+        value["outputs"][0]["effect"]["effect"] = "forged-effect"
+
+    def drift_dependency(value: dict[str, Any]) -> None:
+        value["dependencies"].append(
+            {"dependency_task_cid": dependency_candidate, "kind": "depends_on"}
+        )
+
+    def drift_acceptance(value: dict[str, Any]) -> None:
+        value["acceptance"][0]["criterion"] += " (forged)"
+
+    def drift_validation(value: dict[str, Any]) -> None:
+        value["validations"][0]["argv"].append("--forged")
+
+    for drift in (
+        drift_title,
+        drift_output,
+        drift_dependency,
+        drift_acceptance,
+        drift_validation,
+        drift_authority,
+    ):
+        forged = copy.deepcopy(baseline)
+        drift(forged)
+        write_projection(forged)
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="current task specification is stale",
+        ):
+            materializer.verify_successor_read_only(
+                config, successor, root=tmp_path
+            )
+        write_projection(baseline)
+        assert materializer.verify_successor_read_only(
+            config, successor, root=tmp_path
+        )["valid"] is True
 
 
 def test_successor_preview_rejects_active_claim_authority(tmp_path: Path) -> None:

@@ -759,6 +759,13 @@ class DatabaseTaskSource:
 
         return self._intent.plan_projection(task_cids=task_cids)
 
+    def task_revision_history_projection(
+        self, task_cid_or_alias: str
+    ) -> Mapping[str, Any]:
+        """Forward bounded lifecycle bodies used for legacy spec-CID replay."""
+
+        return self._intent.task_revision_history_projection(task_cid_or_alias)
+
     def completion_evidence_projection(
         self, *, task_cids: Sequence[str] = ()
     ) -> Mapping[str, Any]:

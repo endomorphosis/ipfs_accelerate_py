@@ -70192,6 +70192,161 @@ class DatabaseImplementationDaemon:
             )
         self._protect_attempt_claim(attempt, claim)
 
+    def _verified_validation_retry_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_retry_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the exact control projection that supersedes a legacy failure.
+
+        The failed execution attempt remains immutable and therefore still
+        carries ``portal_terminal_failure=true``.  Only the checked
+        blocked-to-retrying recovery receipt produced by
+        :meth:`recover_blocked_portal_validation_retry` may supersede that
+        projection.  A bare ``retrying`` status is deliberately insufficient.
+        """
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "validation_retry_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery control receipt has unknown or "
+                "missing fields"
+            )
+        retry_seed = self._verified_validation_retry_receipt(
+            attempt,
+            receipt.get("validation_retry_seed"),
+        )
+        if (
+            expected_retry_evidence is not None
+            and dict(expected_retry_evidence) != retry_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task has no exact revision"
+            )
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:"
+            "declared_validation_failed"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_validation_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != "declared_validation_failed"
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_validation_retry_recovery:"
+                + str(retry_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery control receipt does not match its "
+                "source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify validation retry recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery queue state does not match its receipt"
+            )
+        if self._terminal_portal_failure_reason(attempt) != "portal_provider_failed":
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery does not supersede this terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "validation_retry_evidence": retry_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _persist_task_retry_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -70229,6 +70384,12 @@ class DatabaseImplementationDaemon:
             )
 
         if task_status == "retrying":
+            if validation_retry_evidence is not None:
+                self._verified_validation_retry_recovery_state(
+                    attempt,
+                    task,
+                    expected_retry_evidence=validation_retry_evidence,
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 validation_retry_evidence is not None
@@ -71616,6 +71777,13 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
+                continue
+            if status == "retrying":
+                # The immutable legacy attempt still says terminal failure.
+                # Suppress that old projection only when the exact typed
+                # blocked-to-retrying recovery and its latest fence reproduce.
+                self._verified_validation_retry_recovery_state(attempt, task)
+                self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "in_progress":
                 raise DatabaseImplementationConflictError(

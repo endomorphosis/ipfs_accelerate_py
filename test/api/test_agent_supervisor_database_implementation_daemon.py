@@ -45,6 +45,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     is_database_authority_mode,
@@ -930,8 +931,172 @@ def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
         assert repeated["changed"] is False
         assert repeated["status"] == "retrying"
         assert repeated["validation_retry_evidence"] == receipt
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_type"),
+    [
+        ("foreign_operation", DatabaseImplementationConflictError),
+        ("missing_seed", DatabaseImplementationAuthorityError),
+        ("wrong_seed_receipt", DatabaseImplementationAuthorityError),
+    ],
+)
+def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    error_type: type[Exception],
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-forgery",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        retry_evidence = _validation_retry_receipt(daemon, attempt)
+        daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=retry_evidence,
+        )
+        persisted = daemon.task_source.get(attempt.task_cid)
+        assert persisted is not None
+        receipt = dict(persisted.body["completion_receipt"])
+        if mutation == "foreign_operation":
+            receipt["operation"] = "database_portal_retry"
+        elif mutation == "missing_seed":
+            receipt.pop("validation_retry_seed")
+        else:
+            seed = dict(receipt["validation_retry_seed"])
+            seed["receipt_id"] = "sha256:" + "0" * 64
+            receipt["validation_retry_seed"] = seed
+
+        original_get = daemon.task_source.get
+
+        def projected_get(task_cid: str) -> object:
+            task = original_get(task_cid)
+            if task_cid != attempt.task_cid or task is None:
+                return task
+            return SimpleNamespace(
+                status=task.status,
+                revision=task.revision,
+                body={**dict(task.body), "completion_receipt": receipt},
+            )
+
+        monkeypatch.setattr(daemon.task_source, "get", projected_get)
+        with pytest.raises(error_type):
+            daemon.reconcile_terminal_portal_failures()
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_recovery_projection_rejects_newer_fence(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-newer-fence",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=_validation_retry_receipt(daemon, attempt),
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+
+        source_claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert source_claim is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(source_claim, now_ms=now["ms"])
+        newer = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:newer-validation-retry-fence",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert newer is not None
+        assert newer.fencing_token > attempt.fencing_token
+
+        with pytest.raises(DatabaseCoordinationError):
+            daemon.reconcile_terminal_portal_failures()
+        unchanged = daemon.task_source.get(attempt.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_restart_accepts_exact_validation_retry_recovery_projection(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-before-restart",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        failed_result = first.run_once()
+        source = first.get_attempt(failed_result["attempt_id"])
+        assert source is not None
+        first.recover_blocked_portal_validation_retry(
+            source,
+            retry_evidence=_validation_retry_receipt(first, source),
+        )
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-after-restart",
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        result = restarted.run_once()
+        assert result["terminal_portal_reconciliations"] == []
+        assert result["implementation_result"] is not None
+        assert result["implementation_result"]["status"] == "succeeded"
+        successor = restarted.get_attempt(result["attempt_id"])
+        assert successor is not None
+        assert successor.attempt_number > source.attempt_number
+    finally:
+        restarted.close()
 
 
 def test_restart_finishes_terminal_portal_failure_control_cas(

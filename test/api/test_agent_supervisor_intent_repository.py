@@ -40,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     INTENT_PLAN_PROJECTION_SCHEMA,
     INTENT_REPOSITORY_INTERFACE,
     PLAN_REVISION_REPOSITORY_INTERFACE,
+    TASK_AUTHORITY_SPEC_SCHEMA,
     TASK_PROJECTION_SPEC_SCHEMA,
     IntentCompletionError,
     IntentEventType,
@@ -48,6 +49,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepositoryConflictError,
     PlanRevisionRepository,
     open_intent_repository,
+    task_authority_spec_cid,
     task_projection_spec_cid,
 )
 
@@ -245,6 +247,28 @@ def test_full_plan_projection_binds_complete_task_specs_and_is_stable(
         ]
         assert task_a["spec_cid"] == task_projection_spec_cid(task_a)
         assert task_b["spec_cid"] == task_projection_spec_cid(task_b)
+        authority_spec = task_authority_spec_cid(task_a)
+        assert TASK_AUTHORITY_SPEC_SCHEMA.endswith("/task-authority-spec@1")
+
+        # Status/CAS evidence is lifecycle state, not plan authority.
+        operational = deepcopy(dict(task_a))
+        operational["status"] = "retrying"
+        operational["revision"] = 7
+        operational["body"] = {
+            **dict(operational["body"]),
+            "completion_receipt": {
+                "operation": "typed_validation_retry",
+                "receipt_id": "sha256:" + ("42" * 32),
+            },
+        }
+        assert task_projection_spec_cid(operational) != task_a["spec_cid"]
+        assert task_authority_spec_cid(operational) == authority_spec
+
+        # Actual plan authority remains bound even when a receipt is present.
+        for key in ("title", "authority"):
+            drifted = deepcopy(operational)
+            drifted["body"][key] = "forged"
+            assert task_authority_spec_cid(drifted) != authority_spec
 
         # Each relational part is specification identity, not advisory text.
         task_a_spec = task_a["spec_cid"]
@@ -349,6 +373,13 @@ def test_completion_evidence_projection_binds_exact_receipts(tmp_path: Path) -> 
             "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1"
         )
         assert receipt["body"]["receipt"] == {
+            "validation": "passed",
+            "authority": "independent",
+        }
+        history = repo.task_revision_history_projection(ids["task_a"])
+        assert history["task_cid"] == ids["task_a"]
+        assert [item["revision"] for item in history["revisions"]] == [1, 2]
+        assert history["revisions"][-1]["body"]["completion_receipt"] == {
             "validation": "passed",
             "authority": "independent",
         }
