@@ -62,7 +62,7 @@
         "raw": "1.5.5",
         "text": "1.5.5"
       },
-      "duration_seconds": 0.04976447400986217,
+      "duration_seconds": 0.03326636500423774,
       "experimental_usable": false,
       "extension": {
         "description": "The DuckDB 'Quack' Client/Server Protocol",
@@ -75,7 +75,7 @@
         "name": "quack"
       },
       "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
-      "generated_at_monotonic": 160811.231360259,
+      "generated_at_monotonic": 160942.080463792,
       "local_load_allowed": true,
       "local_load_attempted": true,
       "missing_functions": [],
@@ -150,12 +150,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:5134e78cc973fff39affa08934e52fbf65c7630f868141e7fb4de3862ad6025f",
+  "receipt_cid": "sha256:44f1129efb00a51f132d9b3a306e93440ab9d3fe4936b7bb45c48027de9c22de",
   "receipt_name": "duckdb_quack_155.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "8ea6ead2cdf5f522779208433751e5e1300b5d45",
-  "source_tree": "febff3495850754f4f227bcdc7057ec9100c83a1",
+  "source_head": "5361f18ff89da6d40a81a02a2f87f5d84d292455",
+  "source_tree": "085d176a38e4a040d38ef4a7ca23de09f387afbb",
   "supervisor_process_started": false,
   "task_id": "EAAEF-182"
 }

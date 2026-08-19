@@ -12,12 +12,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:4d15b32d6b8e456163d10f4fd61bb7663f58d23c934e681a3b1cb50d69f28536",
+  "receipt_cid": "sha256:5fc57a5da51e98b4bdd4e828c7bbf03ca9702f26b351df7eddd74ab2bfda5d7f",
   "receipt_name": "plan_r2_remote_owner.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "8ea6ead2cdf5f522779208433751e5e1300b5d45",
-  "source_tree": "febff3495850754f4f227bcdc7057ec9100c83a1",
+  "source_head": "5361f18ff89da6d40a81a02a2f87f5d84d292455",
+  "source_tree": "085d176a38e4a040d38ef4a7ca23de09f387afbb",
   "supervisor_process_started": false,
   "task_id": "EAAEF-190"
 }
