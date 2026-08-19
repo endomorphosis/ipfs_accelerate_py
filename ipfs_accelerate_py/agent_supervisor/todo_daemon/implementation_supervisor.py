@@ -6439,6 +6439,7 @@ class PortalSupervisorConfig:
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
+    process_reload_argv: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.plan_bound_dispatch:
@@ -6664,6 +6665,17 @@ class PortalImplementationSupervisor:
     def _reload_for_control_plane_update(self) -> None:
         """Replace this process image so parent and child import one generation."""
 
+        # ``main(argv)`` is also a public embedding boundary.  In that mode
+        # ``sys.argv`` belongs to the embedding launcher and may contain none
+        # of the accepted supervisor policy.  Replaying it silently restores
+        # argparse defaults (including ``--no-implement`` and the legacy
+        # PORTAL board) while the inherited database environment can still
+        # point at the live store.  Preserve the exact argv parsed for this
+        # supervisor generation; only directly constructed legacy configs
+        # fall back to the process argv.
+        reload_argv = self.config.process_reload_argv
+        if reload_argv is None:
+            reload_argv = tuple(sys.argv[1:])
         supervisor_script_path = self.config.supervisor_script_path
         if supervisor_script_path is not None:
             script_path = Path(supervisor_script_path)
@@ -6672,7 +6684,7 @@ class PortalImplementationSupervisor:
             arguments = [
                 sys.executable,
                 str(script_path.resolve()),
-                *sys.argv[1:],
+                *reload_argv,
             ]
         else:
             module_name = (
@@ -6687,7 +6699,7 @@ class PortalImplementationSupervisor:
                 sys.executable,
                 "-m",
                 module_name,
-                *sys.argv[1:],
+                *reload_argv,
             ]
         os.execv(
             sys.executable,
@@ -19955,6 +19967,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error(str(exc))
     parsed = parser.parse_args(expanded_argv)
     parsed.scheduler_config = scheduler_config_path
+    # Keep the unexpanded invocation as the process-reload authority.  In
+    # particular, retain ``--scheduler-config`` so a configured launch remains
+    # a configured launch after an image replacement.  This attribute is not
+    # a user-settable parser option; it records the actual parse boundary.
+    parsed.process_reload_argv = tuple(str(item) for item in raw_argv)
     return parsed
 
 
@@ -20171,6 +20188,11 @@ def supervisor_config_from_args(
         supervisor_script_path=supervisor_script_path
         if supervisor_script_path is not None
         else args.supervisor_script_path,
+        process_reload_argv=(
+            tuple(args.process_reload_argv)
+            if getattr(args, "process_reload_argv", None) is not None
+            else None
+        ),
     )
 
 

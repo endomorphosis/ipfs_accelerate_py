@@ -294,6 +294,148 @@ def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     assert TASK_SOURCE_KIND_ENV not in provider_env
 
 
+def test_source_change_reload_preserves_embedded_programmatic_launch_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An embedded ``main(argv)`` reload must never fall back to CLI defaults."""
+
+    repo = tmp_path.resolve()
+    todo_path = repo / "docs" / "lgcvf.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text("# LGCVF tasks\n", encoding="utf-8")
+    for relative in ("policy/operator-seal.json", "policy/benchmark.json"):
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+
+    original_argv = [
+        "--todo-path",
+        str(todo_path),
+        "--state-dir",
+        str(repo / "run-v16" / "state"),
+        "--state-prefix",
+        "portal",
+        "--task-prefix",
+        "## LGCVF-",
+        "--stale-seconds",
+        "1800",
+        "--check-interval",
+        "17",
+        "--max-restarts",
+        "10",
+        "--max-task-attempts",
+        "3",
+        "--daemon-interval",
+        "23",
+        "--implement",
+        "--implementation-command",
+        "python -m deterministic_provider",
+        "--implementation-timeout",
+        "901",
+        "--implementation-max-timeout",
+        "1201",
+        "--validation-max-workers",
+        "4",
+        "--worktree-root",
+        str(repo / "run-v16" / "worktrees"),
+        "--worktree-submodule-path",
+        "ipfs_datasets_py",
+        "--implementation-protected-path",
+        "policy/operator-seal.json",
+        "--implementation-protected-path",
+        "policy/benchmark.json",
+        "--task-source-kind",
+        "duckdb",
+        "--authority-mode",
+        "embedded",
+        "--state-store-id",
+        "run-v16/control.duckdb",
+        "--state-store-generation",
+        "lgcvf-run-v16",
+        "--state-schema-revision",
+        "datasets-authoritative-operational-v1",
+        "--state-failover-policy",
+        "fail_closed",
+        "--task-shard-count",
+        "1",
+        "--task-shard-index",
+        "0",
+        "--strict-task-sharding",
+    ]
+    parsed = supervisor_module.parse_args(original_argv)
+    config = supervisor_module.supervisor_config_from_args(
+        parsed,
+        repo_root=repo,
+    )
+    supervisor = supervisor_module.PortalImplementationSupervisor(config)
+    original_child_command = supervisor._build_daemon_command()
+
+    class ExecRequested(Exception):
+        pass
+
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_execv(executable: str, arguments: list[str]) -> None:
+        calls.append((executable, arguments))
+        raise ExecRequested
+
+    # Reproduce the failed production shape: the accepted arguments were
+    # passed to main(argv), while sys.argv belonged to an embedding launcher.
+    monkeypatch.setattr(supervisor_module.sys, "argv", ["embedded-launcher"])
+    monkeypatch.setattr(supervisor_module.os, "execv", fake_execv)
+
+    with pytest.raises(ExecRequested):
+        supervisor._reload_for_control_plane_update()
+
+    assert len(calls) == 1
+    executable, reload_command = calls[0]
+    assert executable == supervisor_module.sys.executable
+    assert reload_command[:3] == [
+        supervisor_module.sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+    ]
+    assert reload_command[3:] == original_argv
+
+    reloaded_args = supervisor_module.parse_args(reload_command[3:])
+    reloaded_config = supervisor_module.supervisor_config_from_args(
+        reloaded_args,
+        repo_root=repo,
+    )
+    reloaded_child_command = supervisor_module.PortalImplementationSupervisor(
+        reloaded_config
+    )._build_daemon_command()
+
+    # Exact command equality covers every forwarded policy field and repeated
+    # protected path.  The focused assertions make the safety-critical values
+    # visible if this regression ever fails.
+    assert reloaded_child_command == original_child_command
+    assert "--implement" in reloaded_child_command
+    assert reloaded_child_command[
+        reloaded_child_command.index("--task-prefix") + 1
+    ] == "## LGCVF-"
+    assert reloaded_child_command[
+        reloaded_child_command.index("--max-task-attempts") + 1
+    ] == "3"
+    assert reloaded_child_command[
+        reloaded_child_command.index("--validation-max-workers") + 1
+    ] == "4"
+    protected = [
+        reloaded_child_command[index + 1]
+        for index, token in enumerate(reloaded_child_command[:-1])
+        if token == "--implementation-protected-path"
+    ]
+    assert protected == [
+        "policy/operator-seal.json",
+        "policy/benchmark.json",
+    ]
+    assert str(todo_path) in reloaded_child_command
+    assert "docs/211_SERVICE_NAVIGATION_PORTAL_TODO.md" not in (
+        reloaded_child_command
+    )
+
+
 def test_supervisor_rejects_inconsistent_authority_selection(
     tmp_path: Path,
 ) -> None:
