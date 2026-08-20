@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
 import importlib.util
 import inspect
 import json
@@ -658,9 +660,213 @@ def test_recovery_source_binding_requires_clean_exact_gitlink(tmp_path: Path) ->
     assert binding["accelerator_clean"] is True
     assert binding["datasets_clean"] is True
 
+    probe = """
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+script, repository = map(Path, sys.argv[1:])
+specification = importlib.util.spec_from_file_location("lgcvf_isolated_binding", script)
+module = importlib.util.module_from_spec(specification)
+sys.modules[specification.name] = module
+specification.loader.exec_module(module)
+before = "pytest" in sys.modules
+binding = module._recovery_source_binding(root=repository)
+print(json.dumps({
+    "before": before,
+    "after": "pytest" in sys.modules,
+    "binding": binding,
+}, sort_keys=True))
+"""
+    isolated = subprocess.run(
+        (sys.executable, "-I", "-c", probe, str(SCRIPT), str(repository)),
+        cwd=ROOT,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "LANG": "C",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert isolated.returncode == 0, isolated.stderr
+    isolated_result = json.loads(isolated.stdout)
+    assert isolated_result["before"] is False
+    assert isolated_result["after"] is False
+    assert isolated_result["binding"] == binding
+
     (datasets / "semantic.py").write_text("VALUE = 2\n", encoding="utf-8")
     with pytest.raises(module.QualificationError, match="clean .* overlays"):
         module._recovery_source_binding(root=repository)
+
+
+def test_pytest_distribution_resolution_uses_exact_record_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    package = tmp_path / "pytest"
+    package.mkdir()
+    package_bytes = b'__version__ = "9.1.1"\n'
+    (package / "__init__.py").write_bytes(package_bytes)
+
+    def add_distribution(version: str, recorded: bytes) -> None:
+        distribution = tmp_path / f"pytest-{version}.dist-info"
+        distribution.mkdir()
+        metadata_bytes = (
+            "Metadata-Version: 2.1\n"
+            "Name: pytest\n"
+            f"Version: {version}\n\n"
+        ).encode()
+        (distribution / "METADATA").write_bytes(metadata_bytes)
+        digest = base64.urlsafe_b64encode(
+            hashlib.sha256(recorded).digest()
+        ).decode("ascii").rstrip("=")
+        metadata_digest = base64.urlsafe_b64encode(
+            hashlib.sha256(metadata_bytes).digest()
+        ).decode("ascii").rstrip("=")
+        (distribution / "RECORD").write_text(
+            f"../../../bin/py.test,sha256={digest},{len(recorded)}\n"
+            f"../../../bin/pytest,sha256={digest},{len(recorded)}\n"
+            f"pytest/__init__.py,sha256={digest},{len(recorded)}\n"
+            f"pytest-{version}.dist-info/METADATA,"
+            f"sha256={metadata_digest},{len(metadata_bytes)}\n"
+            f"pytest-{version}.dist-info/RECORD,,\n",
+            encoding="utf-8",
+        )
+
+    add_distribution("9.0.3", b"stale package bytes")
+    add_distribution("9.1.1", package_bytes)
+    monkeypatch.setattr(module, "_pytest_site_roots", lambda: (tmp_path,))
+
+    assert module._pytest_distribution_version() == "9.1.1"
+
+    add_distribution("9.1.2", package_bytes)
+    with pytest.raises(
+        module.QualificationError,
+        match="one exact RECORD-matched installation",
+    ):
+        module._pytest_distribution_version()
+
+
+@pytest.mark.parametrize(
+    "alias",
+    (
+        "pytest/../pytest/__init__.py",
+        "other/../pytest/__init__.py",
+        r"pytest\__init__.py",
+        "/pytest/__init__.py",
+        "pytest/\x00/__init__.py",
+        "C:/pytest/__init__.py",
+        "pytest//__init__.py",
+        "pytest/./__init__.py",
+    ),
+)
+def test_pytest_record_rejects_noncanonical_aliases(alias: str) -> None:
+    module = _load()
+    metadata_bytes = b"Metadata-Version: 2.1\nName: pytest\nVersion: 1\n\n"
+    digest = base64.urlsafe_b64encode(hashlib.sha256(b"package").digest()).decode(
+        "ascii"
+    ).rstrip("=")
+    metadata_digest = base64.urlsafe_b64encode(
+        hashlib.sha256(metadata_bytes).digest()
+    ).decode("ascii").rstrip("=")
+    record = (
+        f"pytest/__init__.py,sha256={digest},7\n"
+        "pytest-1.dist-info/METADATA,"
+        f"sha256={metadata_digest},{len(metadata_bytes)}\n"
+        f"{alias},sha256={digest},7\n"
+    ).encode()
+
+    with pytest.raises(module.QualificationError, match="unsafe RECORD path"):
+        module._pytest_record_identity(
+            record,
+            noun="pytest alias RECORD",
+            distribution_name="pytest-1.dist-info",
+            metadata_bytes=metadata_bytes,
+        )
+
+
+@pytest.mark.parametrize("mutation", ("missing", "tampered", "duplicate"))
+def test_pytest_record_requires_exact_metadata_identity(mutation: str) -> None:
+    module = _load()
+    metadata_bytes = b"Metadata-Version: 2.1\nName: pytest\nVersion: 1\n\n"
+    package_digest = base64.urlsafe_b64encode(
+        hashlib.sha256(b"package").digest()
+    ).decode("ascii").rstrip("=")
+    recorded_metadata = metadata_bytes if mutation != "tampered" else b"tampered"
+    metadata_digest = base64.urlsafe_b64encode(
+        hashlib.sha256(recorded_metadata).digest()
+    ).decode("ascii").rstrip("=")
+    metadata_row = (
+        "pytest-1.dist-info/METADATA,"
+        f"sha256={metadata_digest},{len(recorded_metadata)}\n"
+    )
+    if mutation == "missing":
+        metadata_rows = ""
+    elif mutation == "duplicate":
+        metadata_rows = metadata_row + metadata_row
+    else:
+        metadata_rows = metadata_row
+    record = (
+        f"pytest/__init__.py,sha256={package_digest},7\n" + metadata_rows
+    ).encode()
+
+    with pytest.raises(module.QualificationError, match="METADATA|duplicate"):
+        module._pytest_record_identity(
+            record,
+            noun="pytest metadata RECORD",
+            distribution_name="pytest-1.dist-info",
+            metadata_bytes=metadata_bytes,
+        )
+
+
+def test_pytest_distribution_candidate_enumeration_is_bounded_and_streaming(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    for ordinal in range(module._MAX_PYTEST_DISTRIBUTION_CANDIDATES + 1):
+        (tmp_path / f"pytest-{ordinal}.dist-info").mkdir()
+    monkeypatch.setattr(module, "_pytest_site_roots", lambda: (tmp_path,))
+
+    with pytest.raises(module.QualificationError, match="population exceeds"):
+        module._pytest_distribution_version()
+
+
+def test_pytest_distribution_resolution_rejects_unsafe_distribution_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    package = tmp_path / "pytest"
+    package.mkdir()
+    package_bytes = b'__version__ = "1"\n'
+    (package / "__init__.py").write_bytes(package_bytes)
+    distribution = tmp_path / "pytest-1.dist-info"
+    distribution.mkdir()
+    outside = tmp_path / "outside-metadata"
+    outside.write_text(
+        "Metadata-Version: 2.1\nName: pytest\nVersion: 1\n\n",
+        encoding="utf-8",
+    )
+    (distribution / "METADATA").symlink_to(outside)
+    digest = base64.urlsafe_b64encode(
+        hashlib.sha256(package_bytes).digest()
+    ).decode("ascii").rstrip("=")
+    (distribution / "RECORD").write_text(
+        f"pytest/__init__.py,sha256={digest},{len(package_bytes)}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "_pytest_site_roots", lambda: (tmp_path,))
+
+    with pytest.raises(module.QualificationError, match="METADATA is unavailable"):
+        module._pytest_distribution_version()
 
 
 def test_recovery_unavailable_is_typed_and_cannot_be_admitted(

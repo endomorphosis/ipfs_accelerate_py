@@ -10,9 +10,14 @@ and never grants release or production authority.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import contextlib
+import csv
 import ctypes
 import ctypes.util
+import email.parser
+import email.policy
 import errno
 import hashlib
 import importlib.abc
@@ -24,9 +29,11 @@ import re
 import resource
 import shutil
 import signal
+import site
 import stat
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -73,6 +80,12 @@ _MAX_UNTRACKED_PROTECTED_FILES: Final[int] = 4_096
 _MAX_UNTRACKED_PROTECTED_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_WORKER_TRANSCRIPT_BYTES: Final[int] = 4 * 1024 * 1024
 _MAX_WORKER_RECEIPT_BYTES: Final[int] = 32 * 1024
+_MAX_PYTEST_METADATA_BYTES: Final[int] = 1024 * 1024
+_MAX_PYTEST_RECORD_BYTES: Final[int] = 16 * 1024 * 1024
+_MAX_PYTEST_DISTRIBUTION_CANDIDATES: Final[int] = 32
+_PYTEST_EXTERNAL_RECORD_PATHS: Final[frozenset[str]] = frozenset(
+    {"../../../bin/py.test", "../../../bin/pytest"}
+)
 DECLARED_GENERATED_EVIDENCE_PATHS: Final[tuple[str, ...]] = (
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json",
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json",
@@ -943,6 +956,347 @@ def _sha256_file(path: Path) -> tuple[str, int]:
     return "sha256:" + digest.hexdigest(), size
 
 
+def _read_owned_regular_at(
+    directory_fd: int,
+    name: str,
+    *,
+    noun: str,
+    limit: int,
+) -> bytes:
+    """Read one bounded regular file without following a pathname link."""
+
+    if not name or "/" in name or name in {".", ".."}:
+        raise QualificationError(f"{noun} has an unsafe file name")
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise QualificationError(f"{noun} is unavailable") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid not in {0, os.geteuid()}
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > limit
+        ):
+            raise QualificationError(f"{noun} is not a bounded owned regular file")
+        chunks: list[bytes] = []
+        observed = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, limit + 1 - observed))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed += len(chunk)
+            if observed > limit:
+                raise QualificationError(f"{noun} exceeds its byte bound")
+        after = os.fstat(descriptor)
+        if (
+            (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+            or observed != before.st_size
+        ):
+            raise QualificationError(f"{noun} changed while it was read")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _open_owned_directory_at(
+    directory_fd: int,
+    name: str,
+    *,
+    noun: str,
+) -> int:
+    """Open one owned directory component without following a symlink."""
+
+    if not name or "/" in name or name in {".", ".."}:
+        raise QualificationError(f"{noun} has an unsafe directory name")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise QualificationError(f"{noun} is unavailable") from exc
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid not in {
+        0,
+        os.geteuid(),
+    }:
+        os.close(descriptor)
+        raise QualificationError(f"{noun} is not an owned directory")
+    return descriptor
+
+
+def _pytest_site_roots() -> tuple[Path, ...]:
+    """Return only interpreter-derived package roots, never ambient sys.path."""
+
+    raw_roots: list[str] = []
+    user_site = site.getusersitepackages()
+    if isinstance(user_site, str):
+        raw_roots.append(user_site)
+    elif isinstance(user_site, Sequence):
+        raw_roots.extend(str(item) for item in user_site)
+    try:
+        raw_roots.extend(site.getsitepackages())
+    except AttributeError:
+        pass
+    for key in ("purelib", "platlib"):
+        candidate = sysconfig.get_path(key)
+        if candidate:
+            raw_roots.append(candidate)
+
+    roots: list[Path] = []
+    for raw_root in raw_roots:
+        lexical = Path(raw_root)
+        if not lexical.is_absolute():
+            raise QualificationError("pytest distribution root is not absolute")
+        try:
+            metadata = lexical.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise QualificationError("pytest distribution root is unreadable") from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise QualificationError("pytest distribution root is not a real directory")
+        try:
+            resolved = lexical.resolve(strict=True)
+        except OSError as exc:
+            raise QualificationError("pytest distribution root cannot be resolved") from exc
+        if resolved != lexical or resolved in roots:
+            if resolved != lexical:
+                raise QualificationError("pytest distribution root contains a symlink")
+            continue
+        roots.append(resolved)
+    return tuple(roots)
+
+
+def _record_sha256_size(
+    encoded_digest: str,
+    encoded_size: str,
+    *,
+    noun: str,
+) -> tuple[bytes, int]:
+    """Decode one canonical sha256/size RECORD identity."""
+
+    try:
+        algorithm, payload = encoded_digest.split("=", 1)
+        if algorithm != "sha256" or not payload or "=" in payload:
+            raise ValueError
+        padding = "=" * ((4 - len(payload) % 4) % 4)
+        digest = base64.b64decode(
+            payload + padding,
+            altchars=b"-_",
+            validate=True,
+        )
+        if (
+            len(digest) != hashlib.sha256().digest_size
+            or base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+            != payload
+            or not encoded_size.isascii()
+            or not encoded_size.isdecimal()
+            or str(int(encoded_size)) != encoded_size
+        ):
+            raise ValueError
+    except (ValueError, binascii.Error) as exc:
+        raise QualificationError(f"{noun} has a malformed identity") from exc
+    return digest, int(encoded_size)
+
+
+def _pytest_record_identity(
+    record: bytes,
+    *,
+    noun: str,
+    distribution_name: str,
+    metadata_bytes: bytes,
+) -> tuple[bytes, int]:
+    """Extract package identity and bind the exact dist-info METADATA bytes."""
+
+    try:
+        rows = csv.reader(io.StringIO(record.decode("utf-8", errors="strict")))
+        package_matches: list[tuple[str, str]] = []
+        metadata_matches: list[tuple[str, str]] = []
+        observed_paths: set[str] = set()
+        metadata_path = f"{distribution_name}/METADATA"
+        for row in rows:
+            if len(row) != 3:
+                raise QualificationError(f"{noun} contains a malformed RECORD row")
+            relative, digest, size = row
+            if relative in observed_paths:
+                raise QualificationError(f"{noun} contains a duplicate RECORD path")
+            observed_paths.add(relative)
+            components = relative.split("/")
+            if relative not in _PYTEST_EXTERNAL_RECORD_PATHS and (
+                not relative
+                or relative.startswith("/")
+                or "\\" in relative
+                or any(
+                    ord(character) < 32 or ord(character) == 127
+                    for character in relative
+                )
+                or re.match(r"^[A-Za-z]:", relative) is not None
+                or any(component in {"", ".", ".."} for component in components)
+            ):
+                raise QualificationError(f"{noun} contains an unsafe RECORD path")
+            if relative == "pytest/__init__.py":
+                package_matches.append((digest, size))
+            if relative == metadata_path:
+                metadata_matches.append((digest, size))
+    except (csv.Error, UnicodeDecodeError) as exc:
+        raise QualificationError(f"{noun} is not a valid UTF-8 RECORD") from exc
+    if len(package_matches) != 1:
+        raise QualificationError(f"{noun} does not bind exactly one pytest package")
+    if len(metadata_matches) != 1:
+        raise QualificationError(f"{noun} does not bind exactly one METADATA file")
+    package_identity = _record_sha256_size(
+        *package_matches[0], noun=f"{noun} pytest package"
+    )
+    metadata_identity = _record_sha256_size(
+        *metadata_matches[0], noun=f"{noun} METADATA"
+    )
+    if metadata_identity != (hashlib.sha256(metadata_bytes).digest(), len(metadata_bytes)):
+        raise QualificationError(f"{noun} METADATA identity differs")
+    return package_identity
+
+
+def _pytest_distribution_version() -> str:
+    """Resolve pytest from RECORD-bound bytes without importing its code.
+
+    Isolated launch admission deliberately excludes the user site from
+    ``sys.path``.  Qualification execution may nevertheless have used a
+    user-site pytest.  This resolver treats distribution metadata and package
+    bytes strictly as bounded data, and selects the sole distribution whose
+    RECORD identity matches the installed package at the same interpreter-
+    derived site root.  Stale dist-info directories therefore cannot win by
+    name or search order, and no user-site Python is executed.
+    """
+
+    matches: list[str] = []
+    candidate_count = 0
+    directory_pattern = re.compile(
+        r"pytest-([0-9A-Za-z][0-9A-Za-z.!+_-]{0,127})\.dist-info"
+    )
+    for root in _pytest_site_roots():
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            root_fd = os.open(root, flags)
+        except OSError as exc:
+            raise QualificationError("pytest distribution root cannot be opened") from exc
+        try:
+            root_status = os.fstat(root_fd)
+            if not stat.S_ISDIR(root_status.st_mode) or root_status.st_uid not in {
+                0,
+                os.geteuid(),
+            }:
+                raise QualificationError("pytest distribution root is not owned")
+            names: list[str] = []
+            with os.scandir(root_fd) as entries:
+                for entry in entries:
+                    if not directory_pattern.fullmatch(entry.name):
+                        continue
+                    names.append(entry.name)
+                    candidate_count += 1
+                    if candidate_count > _MAX_PYTEST_DISTRIBUTION_CANDIDATES:
+                        raise QualificationError(
+                            "pytest distribution population exceeds its bound"
+                        )
+            names.sort()
+            if not names:
+                continue
+            package_fd = _open_owned_directory_at(
+                root_fd,
+                "pytest",
+                noun="pytest package directory",
+            )
+            try:
+                package = _read_owned_regular_at(
+                    package_fd,
+                    "__init__.py",
+                    noun="pytest package entry point",
+                    limit=_MAX_PYTEST_METADATA_BYTES,
+                )
+            finally:
+                os.close(package_fd)
+            package_digest = hashlib.sha256(package).digest()
+            package_size = len(package)
+
+            for name in names:
+                candidate_fd = _open_owned_directory_at(
+                    root_fd,
+                    name,
+                    noun="pytest distribution directory",
+                )
+                try:
+                    metadata_bytes = _read_owned_regular_at(
+                        candidate_fd,
+                        "METADATA",
+                        noun="pytest distribution METADATA",
+                        limit=_MAX_PYTEST_METADATA_BYTES,
+                    )
+                    record_bytes = _read_owned_regular_at(
+                        candidate_fd,
+                        "RECORD",
+                        noun="pytest distribution RECORD",
+                        limit=_MAX_PYTEST_RECORD_BYTES,
+                    )
+                finally:
+                    os.close(candidate_fd)
+                try:
+                    metadata = email.parser.BytesParser(
+                        policy=email.policy.compat32
+                    ).parsebytes(metadata_bytes, headersonly=True)
+                except (TypeError, ValueError) as exc:
+                    raise QualificationError(
+                        "pytest distribution METADATA is malformed"
+                    ) from exc
+                names_found = metadata.get_all("Name", [])
+                versions_found = metadata.get_all("Version", [])
+                if (
+                    metadata.defects
+                    or len(names_found) != 1
+                    or len(versions_found) != 1
+                    or re.sub(r"[-_.]+", "-", str(names_found[0])).casefold()
+                    != "pytest"
+                ):
+                    raise QualificationError(
+                        "pytest distribution METADATA identity differs"
+                    )
+                version = str(versions_found[0]).strip()
+                directory_match = directory_pattern.fullmatch(name)
+                if (
+                    directory_match is None
+                    or version != directory_match.group(1)
+                    or not re.fullmatch(
+                        r"[0-9A-Za-z][0-9A-Za-z.!+_-]{0,127}", version
+                    )
+                ):
+                    raise QualificationError(
+                        "pytest distribution version is not canonical"
+                    )
+                record_digest, record_size = _pytest_record_identity(
+                    record_bytes,
+                    noun=f"pytest {version} RECORD",
+                    distribution_name=name,
+                    metadata_bytes=metadata_bytes,
+                )
+                if record_digest == package_digest and record_size == package_size:
+                    matches.append(version)
+        finally:
+            os.close(root_fd)
+    if len(matches) != 1:
+        raise QualificationError(
+            "pytest distribution does not have one exact RECORD-matched installation"
+        )
+    return matches[0]
+
+
 def _protected_path_identity(root: Path, relative: str) -> dict[str, Any]:
     logical = PurePath(relative)
     if logical.is_absolute() or not relative or ".." in logical.parts:
@@ -1075,10 +1429,6 @@ def _protected_input_projection(
         _protected_path_identity(resolved_root, relative)
         for relative in sorted(set(authority_paths))
     ]
-    try:
-        import pytest
-    except ImportError as exc:
-        raise QualificationError("pytest toolchain is unavailable") from exc
     executable_sha256, executable_size = _sha256_file(Path(sys.executable))
     git_version = _git_bytes(
         resolved_root,
@@ -1097,7 +1447,7 @@ def _protected_input_projection(
             "python_executable_size_bytes": executable_size,
             "python_implementation": sys.implementation.name,
             "python_version": platform.python_version(),
-            "pytest_version": str(pytest.__version__),
+            "pytest_version": _pytest_distribution_version(),
         },
     }
     body["fingerprint_cid"] = content_identity(body)
@@ -1940,10 +2290,6 @@ def _recovery_source_binding(*, root: Path = ROOT) -> dict[str, Any]:
         raise QualificationError("recovery qualifier differs from the executing judge")
     executable = Path(sys.executable).resolve(strict=True)
     executable_digest, executable_size = _sha256_file(executable)
-    try:
-        import pytest
-    except ImportError as exc:
-        raise QualificationError("recovery pytest toolchain is unavailable") from exc
     body: dict[str, Any] = {
         "schema": "lgcvf-recovery-source-binding@1",
         "repository_topology": "accelerator_with_datasets_gitlink",
@@ -1970,7 +2316,7 @@ def _recovery_source_binding(*, root: Path = ROOT) -> dict[str, Any]:
             "python_executable_size_bytes": executable_size,
             "python_implementation": sys.implementation.name,
             "python_version": platform.python_version(),
-            "pytest_version": str(pytest.__version__),
+            "pytest_version": _pytest_distribution_version(),
         },
     }
     body["source_binding_cid"] = content_identity(body)
