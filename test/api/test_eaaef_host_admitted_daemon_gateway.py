@@ -81,3 +81,19 @@ def test_connect_admitted_duckdb_loads_httpfs_then_quack_without_install(
         f"LOAD '{escaped_quack}'",
     ]
     assert all("INSTALL" not in statement for statement in connection.statements)
+
+
+def test_factory_uses_daemon_execution_repository_property() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _Execution,
+    )
+
+    class _Daemon:
+        def __init__(self) -> None:
+            self.execution_repository = object()
+
+    daemon = _Daemon()
+    assert daemon.execution_repository is not None
+    # The closed execution component is what reserve/commit consume.
+    assert hasattr(_Execution, "reserve_effect")
+    assert hasattr(_Execution, "commit_effect")

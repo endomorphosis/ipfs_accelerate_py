@@ -69887,6 +69887,11 @@ class DatabaseImplementationDaemon:
         return self._coordinator
 
     @property
+    def execution_repository(self) -> Any:
+        self.open()
+        return self._execution_repository
+
+    @property
     def markdown_status_write_count(self) -> int:
         return int(self._markdown_status_writes)
 

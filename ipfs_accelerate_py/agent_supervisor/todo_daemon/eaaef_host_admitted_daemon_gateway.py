@@ -613,6 +613,12 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
         del parsed
         execution_repository = getattr(daemon, "execution_repository", None)
         if execution_repository is None:
+            execution_repository = getattr(
+                getattr(daemon, "_quack_command_gateway", None),
+                "execution_repository",
+                None,
+            )
+        if execution_repository is None:
             raise QuackDaemonGatewayError("daemon execution repository is absent")
         authority = json.loads(worker_network_launch_authority_json)
         image = str(authority.get("qualified_worker_image_digest") or "")
@@ -668,8 +674,10 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
                 "container_profile_cid": packet.container_profile_cid,
                 "image_digest": packet.image_digest,
                 "reservation_adapter_status": "qualified",
-                "container_launcher_status": "qualified",
-                "independent_verifier_status": "qualified",
+                # The EAAEF-185 image is a closed_unsigned_candidate with
+                # worker_capacity 0.  Do not claim a grok_cli_runner bind.
+                "container_launcher_status": "unavailable_fail_closed",
+                "independent_verifier_status": "unavailable_fail_closed",
                 "host_source_isolation_status": "qualified",
             }
             return {**receipt, "qualification_receipt_cid": _cid(receipt)}
@@ -680,7 +688,9 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
         ) -> Mapping[str, Any]:
             del reservation
             raise QuackDaemonGatewayError(
-                "host-admitted container launcher is not yet bound to grok_cli_runner"
+                "host-admitted container launcher cannot use the "
+                "closed_unsigned_candidate worker image; grok_cli_runner "
+                "requires a task-capable image"
             )
 
         def independent_verifier(
@@ -689,7 +699,8 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
         ) -> Mapping[str, Any]:
             del packet, proposal
             raise QuackDaemonGatewayError(
-                "host-admitted independent verifier is not yet bound"
+                "host-admitted independent verifier is unbound while the "
+                "worker image has zero capacity"
             )
 
         def merge_observer(
