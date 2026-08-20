@@ -73232,9 +73232,18 @@ def main(argv: list[str] | None = None) -> None:
     program = database_program_from_daemon_namespace(args)
     database_path = getattr(args, "database_path", None)
     if database_path is None and program is not None and program.store_id:
-        candidate = Path(program.store_id)
+        store_id = str(program.store_id)
+        candidate = Path(store_id)
         if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
             database_path = candidate
+        elif (
+            str(program.authority_mode or "").strip().lower().replace("-", "_")
+            == "quack"
+            and "/" not in store_id
+            and "\\" not in store_id
+        ):
+            # Opaque Quack store identity is never a local DuckDB file.
+            database_path = store_id
     if database_path is None and str(getattr(args, "todo_path", "") or "").endswith(
         (".duckdb", ".ddb")
     ):
