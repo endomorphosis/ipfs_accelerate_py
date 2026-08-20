@@ -304,16 +304,15 @@ class AcceleratorExecutionStore:
         }
         usage_cid, result_cid = self.artifacts.put(usage), commitment(result)
         with self._lock, self._connect() as db:
-            changed = db.execute(
+            updated = db.execute(
                 "UPDATE executions SET status=?,usage_cid=?,result_cid=?,updated_at=? "
-                "WHERE resource_id=? AND status IN ('starting','running')",
+                "WHERE resource_id=? AND status IN ('starting','running') RETURNING status",
                 (outcome, usage_cid, result_cid, self.clock_ms(), resource_id),
-            ).rowcount
-        if not changed:
-            latest = self.get(resource_id)
-            if not latest or latest["status"] != outcome:
-                raise AcceleratorPaymentError("H_RECONCILIATION_REQUIRED", "execution has a conflicting terminal outcome")
-        return self.get(resource_id) or {}
+            ).fetchone()
+        latest = self.get(resource_id)
+        if (not updated) and (not latest or latest["status"] != outcome):
+            raise AcceleratorPaymentError("H_RECONCILIATION_REQUIRED", "execution has a conflicting terminal outcome")
+        return latest or {}
 
     def cancel(self, resource_id: str, *, reason: str = "caller-requested") -> dict[str, Any]:
         record = self.get(resource_id)
@@ -336,12 +335,16 @@ class AcceleratorExecutionStore:
     def _transition(self, resource_id: str, status: str, *, allowed: set[str]) -> None:
         placeholders = ",".join("?" for _ in allowed)
         with self._connect() as db:
-            changed = db.execute(f"UPDATE executions SET status=?,updated_at=? WHERE resource_id=? AND status IN ({placeholders})",
-                                 (status, self.clock_ms(), resource_id, *sorted(allowed))).rowcount
-        if not changed:
-            current = self.get(resource_id)
-            if not current or current["status"] != status:
-                raise AcceleratorPaymentError("H_RECONCILIATION_REQUIRED", "invalid execution state transition", retryable=True)
+            updated = db.execute(
+                f"UPDATE executions SET status=?,updated_at=? "
+                f"WHERE resource_id=? AND status IN ({placeholders}) RETURNING status",
+                (status, self.clock_ms(), resource_id, *sorted(allowed)),
+            ).fetchone()
+        if updated:
+            return
+        current = self.get(resource_id)
+        if not current or current["status"] != status:
+            raise AcceleratorPaymentError("H_RECONCILIATION_REQUIRED", "invalid execution state transition", retryable=True)
 
     def reconcile(self) -> list[dict[str, Any]]:
         with self._connect() as db:
@@ -350,7 +353,8 @@ class AcceleratorExecutionStore:
 
     def diagnostics(self) -> dict[str, int]:
         with self._connect() as db:
-            return {str(status): int(count) for status, count in db.execute("SELECT status,count(*) FROM executions GROUP BY status")}
+            rows = db.execute("SELECT status,count(*) FROM executions GROUP BY status").fetchall()
+        return {str(status): int(count) for status, count in rows}
 
 
 class PaidAcceleratorService:
