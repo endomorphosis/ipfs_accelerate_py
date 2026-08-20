@@ -5,9 +5,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 import ipfs_accelerate_py.agent_supervisor.merge.lease_coordination as coordination_module
+import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
 )
@@ -19,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DUCKDB_CONNECTION_POLICY_SETTINGS,
     DuckDBConnectionPolicyError,
     connect_duckdb_with_policy,
+    connect_duckdb_with_preloaded_quack_policy,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_task_source import (
     materialize_duckdb_task_source,
@@ -245,6 +245,38 @@ def test_policy_is_atomic_verified_on_returned_connection_and_immutable(
         ):
             with pytest.raises(duckdb.InvalidInputException, match="locked"):
                 connection.execute(statement)
+    finally:
+        connection.close()
+
+
+def test_preinstalled_quack_bootstrap_seals_policy_before_return() -> None:
+    duckdb = pytest.importorskip("duckdb")
+    try:
+        connection = connect_duckdb_with_preloaded_quack_policy(
+            duckdb,
+            ":memory:",
+        )
+    except (duckdb.IOException, duckdb.PermissionException) as exc:
+        pytest.skip(f"reviewed preinstalled Quack extension unavailable: {type(exc).__name__}")
+    try:
+        assert connection.execute(
+            """
+            SELECT current_setting('autoinstall_known_extensions'),
+                   current_setting('autoload_known_extensions'),
+                   current_setting('enable_external_access'),
+                   current_setting('allow_unsigned_extensions'),
+                   current_setting('lock_configuration')
+            """
+        ).fetchone() == (False, False, False, False, True)
+        assert connection.execute(
+            """
+            SELECT count(DISTINCT function_name)
+            FROM duckdb_functions()
+            WHERE function_name IN ('quack_serve', 'quack_query')
+            """
+        ).fetchone() == (2,)
+        with pytest.raises(duckdb.PermissionException):
+            connection.execute("LOAD httpfs")
     finally:
         connection.close()
 

@@ -1083,6 +1083,11 @@ class InProcessQuackTransport:
         # text that might be logged by wrappers — use parameterized forms when
         # supported; fall back carefully.
         serve_attempts = (
+            (
+                "SELECT * FROM quack_serve(?, token := ?, "
+                "allow_other_hostname := false, disable_ssl := true)",
+                [uri, token],
+            ),
             ("SELECT quack_serve(?, ?, ?)", [host, int(port), token]),
             ("SELECT quack_serve(?, ?)", [f"{host}:{int(port)}", token]),
             ("CALL quack_serve(?, ?, ?)", [host, int(port), token]),
@@ -1153,8 +1158,16 @@ class InProcessQuackTransport:
         return MappingProxyType(observed)
 
     def stop(self, connection: Any | None = None) -> None:
-        del connection
+        if connection is not None and self._listen_uri:
+            try:
+                connection.execute(
+                    "SELECT * FROM quack_stop(?)",
+                    [self._listen_uri],
+                )
+            except Exception:
+                pass
         self._started = False
+        self._listen_uri = ""
         self._server_identity = {}
 
 
@@ -1616,7 +1629,10 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        return open_duckdb_connection(self.config.database_path)
+        return open_duckdb_connection(
+            self.config.database_path,
+            preload_quack=isinstance(self.transport, InProcessQuackTransport),
+        )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:

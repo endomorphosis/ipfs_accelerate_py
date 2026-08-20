@@ -207,6 +207,57 @@ def connect_duckdb_with_policy(
     return connection
 
 
+def connect_duckdb_with_preloaded_quack_policy(
+    duckdb_module: Any,
+    database: Path | str,
+    *,
+    configuration: Mapping[str, Any] | None = None,
+) -> Any:
+    """Preload the installed Quack extension, then seal the normal policy.
+
+    ``LOAD quack`` needs filesystem access to the already-installed extension
+    bytes.  The exclusive state-owner is the only caller admitted to this
+    narrow bootstrap: automatic installation and unsigned extensions remain
+    disabled, the only statement executed before sealing is the literal
+    allowlisted load, and no connection escapes until external access is
+    disabled and the standard policy has been verified.
+    """
+
+    tuning = {
+        "threads": "1",
+        "memory_limit": DEFAULT_MEMORY_LIMIT,
+    }
+    tuning.update(_connection_tuning(configuration))
+    connect_config = {
+        "autoinstall_known_extensions": "false",
+        "autoload_known_extensions": "false",
+        "enable_external_access": "true",
+        "allow_unsigned_extensions": "false",
+        **tuning,
+    }
+    connection = duckdb_module.connect(str(database), config=connect_config)
+    try:
+        connection.execute("LOAD quack")
+        functions = connection.execute(
+            """
+            SELECT count(DISTINCT function_name)
+            FROM duckdb_functions()
+            WHERE function_name IN ('quack_serve', 'quack_query')
+            """
+        ).fetchone()
+        if not isinstance(functions, tuple) or int(functions[0]) != 2:
+            raise DuckDBConnectionPolicyError(
+                "preloaded Quack extension lacks its required functions"
+            )
+        connection.execute("SET enable_external_access = false")
+        connection.execute("SET lock_configuration = true")
+        _verify_duckdb_connection_policy(connection)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
 def duckdb_only_enabled() -> bool:
     """Return whether legacy SQLite discovery and migration are disabled."""
 
@@ -370,7 +421,10 @@ class DuckDBConnection:
         memory_limit: str = DEFAULT_MEMORY_LIMIT,
         threads: int = 1,
         transaction_on_context: bool = False,
+        preload_quack: bool = False,
     ) -> None:
+        if type(preload_quack) is not bool:
+            raise TypeError("preload_quack must be a boolean")
         if is_quack_transport_target(path):
             raise DuckDBConnectionPolicyError(
                 "quack transport URIs cannot be opened as DuckDB files; "
@@ -393,13 +447,15 @@ class DuckDBConnection:
         try:
             import duckdb
 
-            self._connection = connect_duckdb_with_policy(
+            connect = (
+                connect_duckdb_with_preloaded_quack_policy
+                if preload_quack
+                else connect_duckdb_with_policy
+            )
+            self._connection = connect(
                 duckdb,
                 self.path,
-                configuration={
-                    "threads": threads,
-                    "memory_limit": memory_limit,
-                },
+                configuration={"threads": threads, "memory_limit": memory_limit},
             )
         except BaseException:
             self._lock_context.__exit__(None, None, None)
@@ -791,14 +847,20 @@ def open_duckdb_connection(
     timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
     memory_limit: str = DEFAULT_MEMORY_LIMIT,
     threads: int = 1,
+    preload_quack: bool = False,
 ) -> DuckDBConnection:
     if is_quack_transport_target(path):
+        if preload_quack:
+            raise DuckDBConnectionPolicyError(
+                "Quack transport clients cannot preload the owner extension"
+            )
         return open_quack_transport_connection(path)
     return DuckDBConnection(
         path,
         timeout_seconds=timeout_seconds,
         memory_limit=memory_limit,
         threads=threads,
+        preload_quack=preload_quack,
     )
 
 
