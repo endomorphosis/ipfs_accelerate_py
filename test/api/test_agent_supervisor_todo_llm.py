@@ -344,6 +344,48 @@ def test_child_pins_canonical_accelerator_router_ahead_of_hostile_editable(
     assert "from ipfs_datasets_py import llm_router" not in child_code
 
 
+def test_child_environment_strips_state_authority_but_retains_provider_credentials(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured: dict[str, str] = {}
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "state-secret")
+    monkeypatch.setenv("QUACK_TOKEN", "owner-secret")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "/private/quack-mutations"
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", '{"authority_mode":"quack"}'
+    )
+    monkeypatch.setenv("TEST_PROVIDER_API_KEY", "provider-secret")
+
+    def fake_popen(command, **kwargs):
+        captured.update(dict(kwargs.get("env") or {}))
+
+        class Proc:
+            returncode = 0
+            pid = 992
+
+            def communicate(self, timeout=None):
+                return ("ok", "")
+
+            def poll(self):
+                return self.returncode
+
+        return Proc()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm.subprocess.Popen",
+        fake_popen,
+    )
+
+    assert call_llm_router("prompt", _config(tmp_path)) == "ok"
+    assert captured["TEST_PROVIDER_API_KEY"] == "provider-secret"
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in captured
+    assert "QUACK_TOKEN" not in captured
+    assert "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR" not in captured
+    assert "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON" not in captured
+
+
 def test_child_failure_surfaces_without_leaking_prompt(
     monkeypatch, tmp_path: Path
 ) -> None:

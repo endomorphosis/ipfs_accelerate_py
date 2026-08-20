@@ -12,7 +12,9 @@ local DuckDB or file authority; provider subprocess lacks state credentials.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -261,6 +263,65 @@ def test_supervisor_propagates_program_to_daemon_command_and_child_env(
     )
     assert "QUACK_TOKEN" not in provider_env
     assert STATE_AUTHORITY_MODE_ENV not in provider_env
+
+
+def test_supervisor_loop_binds_trusted_source_root_for_safe_path_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = Path(supervisor_module.__file__).resolve().parents[3]
+    hostile_root = tmp_path / "hostile"
+    hostile_package = hostile_root / "ipfs_accelerate_py"
+    hostile_package.mkdir(parents=True)
+    (hostile_package / "__init__.py").write_text(
+        "raise RuntimeError('ambient shadow package imported')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(hostile_root))
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    todo = tmp_path / "tasks.md"
+    todo.write_text("# Tasks\n", encoding="utf-8")
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            implement=True,
+            database_program=_quack_program(worktree_root=""),
+            repo_root=repo_root,
+        )
+    )
+
+    loop_config = supervisor.build_supervisor_loop_config()
+    assert loop_config.child_env == loop_config.spec.launch_env
+    pythonpath = loop_config.child_env["PYTHONPATH"].split(os.pathsep)
+    assert pythonpath[0] == str(repo_root)
+    assert pythonpath.index(str(hostile_root)) > 0
+    assert loop_config.command[1] == "-P"
+
+    probe = subprocess.run(
+        [
+            loop_config.command[0],
+            loop_config.command[1],
+            "-c",
+            (
+                "from pathlib import Path; import ipfs_accelerate_py; "
+                "print(Path(ipfs_accelerate_py.__file__).resolve().parents[1])"
+            ),
+        ],
+        cwd=tmp_path,
+        env={**os.environ, **loop_config.child_env},
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.strip() == str(repo_root)
 
 
 def test_supervisor_cli_round_trip_from_namespace(

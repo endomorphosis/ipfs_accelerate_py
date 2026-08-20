@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     IMPLEMENTATION_CHECKPOINT_DIR_ENV,
+    IMPLEMENTATION_TASK_ID_ENV,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
@@ -153,6 +153,142 @@ def test_progress_output_renews_idle_deadline_but_not_hard_cap(
             )
     assert getattr(raised.value, "timeout_reason") == "hard_timeout"
     assert getattr(raised.value, "progress_events") > 0
+
+
+def test_provider_process_uses_exact_sanitized_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        DATABASE_PROGRAM_JSON_ENV,
+        DatabaseProgramConfig,
+    )
+
+    custom_secret_name = "APMC_CUSTOM_CONTROL_CREDENTIAL"
+    monkeypatch.setenv(custom_secret_name, "private-control-token")
+    monkeypatch.setenv("QUACK_TOKEN", "private-quack-token")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "private-canonical-quack-token",
+    )
+    monkeypatch.setenv("APMC_PROVIDER_ALLOWED", "allowed")
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle=f"env://{custom_secret_name}",
+        quack_endpoint="quack:127.0.0.1:45231",
+        store_id="apmc-control",
+        store_generation="1",
+        schema_revision="1",
+    )
+    monkeypatch.setenv(
+        DATABASE_PROGRAM_JSON_ENV,
+        json.dumps(program.to_dict(), separators=(",", ":"), sort_keys=True),
+    )
+    daemon = _daemon(tmp_path)
+    environment = daemon._implementation_process_environment(
+        _task(),
+        attempt=2,
+        checkpoint_dir=tmp_path / "checkpoint",
+    )
+    result_path = tmp_path / "provider-environment.json"
+    script = (
+        "import json, os, pathlib; "
+        "pathlib.Path('provider-environment.json').write_text(json.dumps({"
+        f"'custom_secret': bool(os.environ.get('{custom_secret_name}')), "
+        "'quack_token': bool(os.environ.get('QUACK_TOKEN')), "
+        "'canonical_quack_token': bool(os.environ.get("
+        "'IPFS_ACCELERATE_AGENT_QUACK_TOKEN')), "
+        "'database_program': bool(os.environ.get("
+        "'IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON')), "
+        "'allowed': os.environ.get('APMC_PROVIDER_ALLOWED'), "
+        "'task_id': os.environ.get('IPFS_ACCELERATE_AGENT_TASK_ID')}))"
+    )
+    with (tmp_path / "provider.log").open("w", encoding="utf-8") as log_fh:
+        completed = run_process_group_stream(
+            [sys.executable, "-c", script],
+            cwd=tmp_path,
+            stdout=log_fh,
+            env=environment,
+            inherit_environment=False,
+            timeout_seconds=5.0,
+        )
+
+    assert completed.returncode == 0
+    observed = json.loads(result_path.read_text(encoding="utf-8"))
+    assert observed == {
+        "allowed": "allowed",
+        "canonical_quack_token": False,
+        "custom_secret": False,
+        "database_program": False,
+        "quack_token": False,
+        "task_id": "SRT-014",
+    }
+    assert environment[IMPLEMENTATION_TASK_ID_ENV] == "SRT-014"
+
+
+def test_process_group_stream_preserves_default_environment_inheritance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APMC_AMBIENT_INHERITANCE_PROBE", "visible")
+    result_path = tmp_path / "ambient.txt"
+    script = (
+        "import os, pathlib; pathlib.Path('ambient.txt').write_text("
+        "os.environ.get('APMC_AMBIENT_INHERITANCE_PROBE', 'missing'))"
+    )
+    with (tmp_path / "ambient.log").open("w", encoding="utf-8") as log_fh:
+        completed = run_process_group_stream(
+            [sys.executable, "-c", script],
+            cwd=tmp_path,
+            stdout=log_fh,
+            timeout_seconds=5.0,
+        )
+
+    assert completed.returncode == 0
+    assert result_path.read_text(encoding="utf-8") == "visible"
+
+
+def test_deterministic_writer_uses_sanitized_exact_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUACK_TOKEN", "private-quack-token")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "private-canonical-quack-token",
+    )
+    monkeypatch.setenv("APMC_WRITER_ALLOWED", "allowed")
+    writer_path = tmp_path / "writer.py"
+    result_path = tmp_path / "writer-environment.json"
+    writer_path.write_text(
+        "import json, os, pathlib\n"
+        "pathlib.Path('writer-environment.json').write_text(json.dumps({\n"
+        "    'quack_token': bool(os.environ.get('QUACK_TOKEN')),\n"
+        "    'canonical_quack_token': bool(os.environ.get(\n"
+        "        'IPFS_ACCELERATE_AGENT_QUACK_TOKEN')),\n"
+        "    'allowed': os.environ.get('APMC_WRITER_ALLOWED'),\n"
+        "    'task_id': os.environ.get('IPFS_ACCELERATE_AGENT_TASK_ID'),\n"
+        "}))\n",
+        encoding="utf-8",
+    )
+    daemon = _daemon(tmp_path)
+
+    completed = daemon._run_lgswf_writer(
+        writer_path,
+        workspace_path=tmp_path,
+        task=_task(),
+        attempt=3,
+        checkpoint_dir=tmp_path / "checkpoint",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(result_path.read_text(encoding="utf-8")) == {
+        "allowed": "allowed",
+        "canonical_quack_token": False,
+        "quack_token": False,
+        "task_id": "SRT-014",
+    }
 
 
 def test_absolute_timeout_output_emits_progress_without_extending_deadline(

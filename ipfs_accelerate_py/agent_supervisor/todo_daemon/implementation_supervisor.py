@@ -8382,6 +8382,12 @@ class PortalImplementationSupervisor:
             spec=spec,
             command=command,
             log_prefix=f"{prefix}_implementation_daemon",
+            # ``SupervisorLoop`` launches the daemon from ``child_env``; it
+            # does not consult ``ManagedDaemonSpec.launch_env`` itself.  Keep
+            # the two projections identical so safe-path (``python -P``)
+            # children retain the admitted source root and database authority
+            # bindings instead of falling back to an ambient installation.
+            child_env=spec.launch_env,
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),

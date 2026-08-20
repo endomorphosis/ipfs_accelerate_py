@@ -75,6 +75,7 @@
     "scripts/lgswf_start_quack_control.py",
     "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
     "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
@@ -84,7 +85,9 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py"
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py"
   ],
   "runtime_paths": {
     "root": "state/agent_supervisor_autonomous_meta_controller",
