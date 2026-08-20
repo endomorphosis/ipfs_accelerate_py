@@ -3995,14 +3995,35 @@ def _run_plan_bound_coordinator(
                     "coordinator configuration changed board namespace"
                 )
             receipt = materialize_configured_board_execution_plan(current_board)
-        except (ConfiguredBoardError, OSError, RuntimeError, ValueError) as exc:
-            print(
-                json.dumps(
-                    {"valid": False, "errors": [f"adaptive_plan: {exc}"]},
-                    indent=2,
-                    sort_keys=True,
+        except (ConfiguredBoardError, OSError, RuntimeError, ValueError) as exec_error:
+            detail = str(exec_error)
+            retryable = any(
+                marker in detail
+                for marker in (
+                    "provider_infeasible",
+                    "resource_infeasible",
+                    "stale_capacity",
                 )
             )
+            print(
+                json.dumps(
+                    {
+                        "valid": not retryable,
+                        "errors": [f"adaptive_plan: {exec_error}"],
+                        "retryable": retryable,
+                        "wave_index": wave_index,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            if retryable:
+                retry_seconds = float(
+                    board.payload.get("poll_interval_seconds") or 5
+                )
+                time.sleep(max(1.0, min(retry_seconds, 30.0)))
+                continue
             return 2
         if receipt is None:
             print(
