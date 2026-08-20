@@ -6517,7 +6517,7 @@ def _agent_read_stable_file(
         or (
             stat_module.S_IMODE(after.st_mode) != exact_mode
             if exact_mode is not None
-            else bool(stat_module.S_IMODE(after.st_mode) & 0o022)
+            else bool(stat_module.S_IMODE(after.st_mode) & write_mask)
         )
         or len(raw) > maximum_bytes
         or len(raw) != after.st_size
