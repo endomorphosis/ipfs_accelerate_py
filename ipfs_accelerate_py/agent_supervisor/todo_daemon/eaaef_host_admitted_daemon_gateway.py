@@ -74,6 +74,53 @@ def _host_admitted(repo_root: Path) -> bool:
     )
 
 
+def _sql_literal(value: str) -> str:
+    text = str(value)
+    if "\x00" in text:
+        raise QuackDaemonGatewayError("admitted SQL literal contains a NUL")
+    return text.replace("'", "''")
+
+
+def _admitted_httpfs_extension(quack_extension: Path) -> Path:
+    path = Path(quack_extension).with_name("httpfs.duckdb_extension")
+    if not path.is_file():
+        raise QuackDaemonGatewayError("admitted httpfs extension file is absent")
+    return path
+
+
+def _admitted_home_directory(quack_extension: Path) -> Path | None:
+    """Return the home that owns ``.duckdb/extensions/...`` for the pin."""
+
+    try:
+        if (
+            quack_extension.parents[2].name == "extensions"
+            and quack_extension.parents[3].name == ".duckdb"
+        ):
+            return quack_extension.parents[4]
+    except IndexError:
+        return None
+    return None
+
+
+def _connect_admitted_duckdb(duckdb: Any, quack_extension: Path) -> Any:
+    """Open an in-memory client that can ATTACH without installing extensions.
+
+    Isolated ``python -I -S -B`` children have an empty HOME, so DuckDB cannot
+    auto-install ``httpfs`` when ATTACH TYPE QUACK requires it.  Load the
+    pinned sibling artifact and disable autoinstall instead.
+    """
+
+    httpfs = _admitted_httpfs_extension(quack_extension)
+    connection = duckdb.connect(":memory:")
+    home = _admitted_home_directory(quack_extension)
+    if home is not None:
+        connection.execute(f"SET home_directory='{_sql_literal(str(home))}'")
+    connection.execute("SET autoinstall_known_extensions=false")
+    connection.execute(f"LOAD '{_sql_literal(str(httpfs))}'")
+    connection.execute(f"LOAD '{_sql_literal(str(quack_extension))}'")
+    return connection
+
+
 def _import_admitted_duckdb(repo_root: Path) -> Any:
     path = Path(repo_root) / _DUCKDB_RECEIPT
     try:
@@ -108,6 +155,7 @@ def _import_admitted_duckdb(repo_root: Path) -> Any:
     )
     if not extension.is_file():
         raise QuackDaemonGatewayError("admitted Quack extension file is absent")
+    _admitted_httpfs_extension(extension)
     return duckdb, extension
 
 
@@ -514,10 +562,9 @@ def build_eaaef_host_admitted_command_gateway(
         uri = str(getattr(endpoint, "quack_uri", "") or getattr(endpoint, "target", "") or "")
         handle = str(getattr(endpoint, "secret_handle", "") or program.endpoint_secret_handle)
         token = _resolve_owner_token(handle, vault_dir=vault_dir)
-        if not str(uri).startswith("quack:127.0.0.1:"):
+        if not str(uri).startswith("quack:127.0.0.1:") or "'" in uri or "\x00" in uri:
             raise QuackDaemonGatewayError("host-admitted Quack URI is not loopback")
-        connection = duckdb.connect(":memory:")
-        connection.execute(f"LOAD '{extension}'")
+        connection = _connect_admitted_duckdb(duckdb, extension)
         connection.execute(
             f"ATTACH '{uri}' AS control_plane (TYPE QUACK, TOKEN ?)",
             [token],
