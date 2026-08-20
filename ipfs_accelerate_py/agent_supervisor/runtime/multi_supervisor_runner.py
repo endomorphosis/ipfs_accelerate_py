@@ -8481,7 +8481,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
 
     tokens = tuple(str(item) for item in argv)
     if len(tokens) < 8:
-        return 78
+        return _plan_bound_gate_fail("gate argv is too short")
     if tokens[5] == "--":
         live_config = "-"
         child_offset = 6
@@ -8489,7 +8489,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
         live_config = tokens[5]
         child_offset = 7
     else:
-        return 78
+        return _plan_bound_gate_fail("gate argv separator is invalid")
     try:
         gate_fd = int(tokens[0])
         control_plane_pin = parse_accepted_control_plane_pin(tokens[2])
@@ -8499,12 +8499,12 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             control_plane_pin,
             control_plane_descriptor,
         )
-    except ValueError:
-        return 78
+    except ValueError as exc:
+        return _plan_bound_gate_fail(f"control-plane pin rejected: {exc}")
     try:
         accepted_tree_root = _canonical_accepted_tree_root(Path(tokens[1]))
-    except ValueError:
-        return 78
+    except ValueError as exc:
+        return _plan_bound_gate_fail(f"accepted tree root rejected: {exc}")
     child_command = list(tokens[child_offset:])
     try:
         expected_prefix = build_sealed_control_plane_module_command(
@@ -8517,11 +8517,11 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             ),
             argv=(),
         )
-    except (IndexError, OSError, ValueError):
-        return 78
+    except (IndexError, OSError, ValueError) as exc:
+        return _plan_bound_gate_fail(f"child prefix build failed: {exc}")
     prefix_length = len(expected_prefix)
     if child_command[:prefix_length] != expected_prefix:
-        return 78
+        return _plan_bound_gate_fail("child command prefix mismatch")
     child_argv = child_command[prefix_length:]
     try:
         source_heads = _profile_option_values(
@@ -8566,8 +8566,8 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             child_argv,
             EAAEF_WORKER_NETWORK_LAUNCH_AUTHORITY_FLAG,
         )
-    except ValueError:
-        return 78
+    except ValueError as exc:
+        return _plan_bound_gate_fail(f"child argv profile rejected: {exc}")
     if (
         gate_fd < 3
         or control_plane_descriptor < 3
@@ -8590,7 +8590,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             control_plane_pin.source_tree,
         )
     ):
-        return 78
+        return _plan_bound_gate_fail("child argv bindings are incomplete")
     try:
         while True:
             try:
@@ -8598,15 +8598,15 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
                 break
             except InterruptedError:
                 continue
-    except OSError:
-        return 78
+    except OSError as exc:
+        return _plan_bound_gate_fail(f"gate fd read failed: {exc}")
     finally:
         try:
             os.close(gate_fd)
         except OSError:
             pass
     if authorization != PLAN_BOUND_LAUNCH_GATE_SUCCESS:
-        return 78
+        return _plan_bound_gate_fail("parent birth authorization was not granted")
     try:
         recovery_repository_head = ""
         recovery_repository_tree = ""
@@ -8629,13 +8629,13 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
                 or len(worktree_roots) != 1
                 or len(merge_queue_roots) != 1
             ):
-                return 78
+                return _plan_bound_gate_fail("recovery runtime roots are incomplete")
             state_dir = _resolve_path(
                 accepted_tree_root,
                 Path(state_dirs[0]),
             )
             if state_dir.parent != store_path.parent:
-                return 78
+                return _plan_bound_gate_fail("recovery state dir is not under the store parent")
             recovery_runtime_roots = (
                 store_path.parent,
                 _resolve_path(
@@ -8667,7 +8667,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
                 or execution is None
                 or execution[0] != recovery.execution_lease_cid
             ):
-                return 78
+                return _plan_bound_gate_fail("recovery launch identity drifted")
             recovery_repository_head = recovery.repository_head
             recovery_repository_tree = recovery.repository_tree
             recovery_artifacts = recovery.runtime_artifacts
@@ -8709,7 +8709,9 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             # preserves swap-at-birth detection even when propagation is
             # absent or stale.
             if len(worker_network_launch_authorities) != 1:
-                return 78
+                return _plan_bound_gate_fail(
+                    "worker-network launch authority count is not one"
+                )
             _assert_eaaef_operational_child_profile(
                 common_args=child_command,
                 track_args=(),
