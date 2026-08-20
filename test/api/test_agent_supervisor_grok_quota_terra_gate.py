@@ -1097,6 +1097,7 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
         "resolve_codex_quota_fallback_executable",
         lambda **_kwargs: str(codex),
     )
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: str(grok))
     wrapper_command = shlex.split(
         merge_resolver_fallback.llm_merge_resolver_fallback_command(
             python_executable="python-test"
@@ -2867,6 +2868,11 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
         implementation_daemon,
         "_grok_binary",
         lambda: "/usr/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: True,
     )
     monkeypatch.setattr(
         grok_cli_runner,
