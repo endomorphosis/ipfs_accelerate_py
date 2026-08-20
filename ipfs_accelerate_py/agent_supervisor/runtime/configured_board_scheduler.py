@@ -490,7 +490,10 @@ def _plan_bound_coordinator_environment(board: "ConfiguredBoard") -> dict[str, s
             resolved = shutil.which(command_name)
             if not resolved:
                 continue
-            directory = str(Path(resolved).resolve().parent)
+            # Keep the PATH entry that names the command.  Following the
+            # symlink to a versioned download directory would hide `grok`
+            # and `codex` from the sealed child's shutil.which().
+            directory = str(Path(resolved).parent)
             if directory and directory not in path_entries:
                 path_entries.insert(0, directory)
     environment["PATH"] = os.pathsep.join(path_entries)
