@@ -891,6 +891,10 @@ def _configured_board_task_state_snapshots(
                 )
             entry_path = Path(entry.path)
             if stat.S_ISDIR(metadata.st_mode):
+                # PlanRevisionStore CAS objects and the Quack owner vault are
+                # not daemon task-state projections.
+                if entry.name in {"plan-revision-store", "quack-owner"}:
+                    continue
                 pending.append(entry_path)
             elif (
                 stat.S_ISREG(metadata.st_mode)
