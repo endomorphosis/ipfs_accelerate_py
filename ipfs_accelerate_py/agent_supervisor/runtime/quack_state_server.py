@@ -544,6 +544,11 @@ def assert_bind_admitted(
             f"host {host!r} is not admitted by remote policy "
             f"{remote_policy.policy_id!r}"
         )
+    if remote_policy.require_tls:
+        raise QuackStateServerBindError(
+            "non-loopback Quack TLS is not implemented; an explicit reviewed "
+            "plaintext policy is required"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1128,19 +1133,25 @@ class InProcessQuackTransport:
         identity: StateServerIdentity,
         token: str,
     ) -> Mapping[str, Any]:
-        del token  # used only by remote clients; local owner uses the connection
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
-        # Local live probe: prove the exclusive connection still answers and
-        # published identity rows still match.
+        # Prove the listener, authentication, request worker, and response path
+        # are all usable.  A local ``SELECT 1`` is insufficient: Quack can bind
+        # successfully while every remote request fails with HTTP 500 when its
+        # required service settings are unavailable.
         try:
-            row = connection.execute("SELECT 1").fetchone()
+            rows = connection.execute(
+                "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := true)",
+                [self._listen_uri, "SELECT 1 AS quack_live", token],
+            ).fetchall()
         except Exception as exc:
             raise QuackStateServerReadyError(
-                f"live query failed: {type(exc).__name__}"
+                f"authenticated remote live query failed: {type(exc).__name__}"
             ) from exc
-        if row is None:
-            raise QuackStateServerReadyError("live query returned no row")
+        if len(rows) != 1 or tuple(rows[0]) != (1,):
+            raise QuackStateServerReadyError(
+                "authenticated remote live query returned an unexpected result"
+            )
         observed = dict(self._server_identity)
         observed["live"] = True
         if not identity.matches(
@@ -1631,7 +1642,7 @@ class QuackStateServer:
             raise QuackStateServerError("DuckDB is required for the state-owner")
         return open_duckdb_connection(
             self.config.database_path,
-            preload_quack=isinstance(self.transport, InProcessQuackTransport),
+            quack_owner=isinstance(self.transport, InProcessQuackTransport),
         )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:

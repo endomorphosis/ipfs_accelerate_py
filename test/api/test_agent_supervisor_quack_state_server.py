@@ -68,6 +68,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
+    open_quack_transport_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
     DEFAULT_QUACK_BETA_LIMITATIONS,
@@ -76,6 +77,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import 
     QuackCapabilityReport,
     QuackCapabilityStatus,
     default_compatibility_profile,
+    probe_quack_capabilities,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
     build_mutation_request,
@@ -434,10 +436,22 @@ def test_remote_policy_admits_listed_host_only() -> None:
         reviewed_by="security-reviewer",
         review_receipt="receipt:sha256:deadbeef",
         allowed_hosts=("10.0.0.5",),
+        require_tls=False,
     )
     assert_bind_admitted("10.0.0.5", remote_policy=policy)
     with pytest.raises(QuackStateServerBindError, match="not admitted"):
         assert_bind_admitted("10.0.0.6", remote_policy=policy)
+
+
+def test_remote_policy_rejects_unimplemented_tls() -> None:
+    policy = RemoteBindPolicy(
+        policy_id="policy:remote-tls",
+        reviewed_by="security-reviewer",
+        review_receipt="receipt:sha256:deadbeef",
+        allowed_hosts=("10.0.0.5",),
+    )
+    with pytest.raises(QuackStateServerBindError, match="TLS is not implemented"):
+        assert_bind_admitted("10.0.0.5", remote_policy=policy)
 
 
 def test_remote_policy_unavailable_without_receipt() -> None:
@@ -1275,6 +1289,37 @@ def test_real_duckdb_migration_then_fake_transport_ready(tmp_path: Path) -> None
     server.stop()
     # Connection closed; marker gone.
     assert not server.owner_marker_path().exists()
+
+
+def test_real_default_transport_requires_authenticated_remote_readiness(
+    tmp_path: Path,
+) -> None:
+    if not duckdb_available():
+        pytest.skip("DuckDB is unavailable")
+    capability = probe_quack_capabilities(allow_network_install=False)
+    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
+
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "owner",
+        port=0,
+        store_id="test-real-quack-owner",
+        secret_handle="handle:test-real-quack-owner",
+    )
+    identity = server.start()
+    client = None
+    try:
+        assert identity.status == "ready"
+        token = (tmp_path / "owner/handle_test-real-quack-owner.quack-token").read_text(
+            encoding="utf-8"
+        )
+        client = open_quack_transport_connection(identity.listen_uri, token=token)
+        assert client.execute("SELECT count(*) FROM tasks").fetchone()[0] == 0
+    finally:
+        if client is not None:
+            client.close()
+        server.stop()
 
 
 def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:

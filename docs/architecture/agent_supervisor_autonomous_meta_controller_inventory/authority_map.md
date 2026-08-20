@@ -51,6 +51,18 @@ with bounded authenticated envelopes and keeps the raw state credential out of
 provider subprocesses. These repairs make existing authorities operable; they
 do not give APMC a new database, mutation, or completion authority.
 
+Quack's reviewed `1.5.5+c154811` request worker requires extension autoload and
+external access while serving; disabling either produces HTTP 500 for every
+remote request. The owner therefore uses an explicit service-only policy rather
+than silently weakening the ordinary DuckDB connection policy: automatic
+installation and unsigned extensions remain disabled, configuration is locked
+at birth, binding is loopback-only unless an external review explicitly admits
+plaintext, the 0600 token is the local transport capability, and provider
+subprocesses receive neither that token nor the owner mutation inbox. Ready is
+established by an authenticated remote round-trip, not by a local query. This
+beta limitation is part of the transport authority boundary and must be
+re-evaluated when Quack can serve under the ordinary external-access denial.
+
 The APMC launch uses a dedicated program-bound DuckDB file and Quack store. It
 does not reuse the live legal-board database or any archived DQK database,
 whose repository/program/plan identities belong to different authorities.

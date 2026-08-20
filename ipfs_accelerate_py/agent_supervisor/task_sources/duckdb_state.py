@@ -54,6 +54,22 @@ DUCKDB_CONNECTION_POLICY_SETTINGS = (
     ("allow_unsigned_extensions", "false", False),
     ("lock_configuration", "true", True),
 )
+# Quack 1.5.5+c154811 creates an internal connection for each authenticated
+# request.  That worker requires both extension autoload and external access
+# even after ``quack`` itself has been loaded; disabling either makes every
+# remote request fail with HTTP 500.  This is therefore a distinct service
+# policy, not a relaxation of ``DUCKDB_CONNECTION_POLICY_SETTINGS``.  It is
+# admitted only for the loopback, single-owner transport process.  Automatic
+# installation and unsigned bytes stay disabled and the configuration is
+# immutable before the connection is returned.  The raw capability token and
+# mutation inbox are stripped from every provider subprocess.
+QUACK_OWNER_CONNECTION_POLICY_SETTINGS = (
+    ("autoinstall_known_extensions", "false", False),
+    ("autoload_known_extensions", "true", True),
+    ("enable_external_access", "true", True),
+    ("allow_unsigned_extensions", "false", False),
+    ("lock_configuration", "true", True),
+)
 DUCKDB_CONNECTION_POLICY_TUNING_KEYS = frozenset({"threads", "memory_limit"})
 DUCKDB_CONNECTION_POLICY_MAX_THREADS = 256
 DUCKDB_CONNECTION_POLICY_MIN_MEMORY_BYTES = 1_000_000
@@ -135,9 +151,14 @@ def _connection_tuning(
     return tuning
 
 
-def _verify_duckdb_connection_policy(connection: Any) -> None:
+def _verify_connection_policy(
+    connection: Any,
+    *,
+    settings: Sequence[tuple[str, str, bool]],
+    policy_name: str,
+) -> None:
     setting_names = tuple(
-        name for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
+        name for name, _configured, _expected in settings
     )
     expressions = ", ".join(
         f"current_setting('{name}')" for name in setting_names
@@ -146,10 +167,10 @@ def _verify_duckdb_connection_policy(connection: Any) -> None:
         row = connection.execute(f"SELECT {expressions}").fetchone()
     except Exception as exc:
         raise DuckDBConnectionPolicyError(
-            "could not verify DuckDB supervisor connection policy"
+            f"could not verify {policy_name}"
         ) from exc
     expected = tuple(
-        value for _name, _configured, value in DUCKDB_CONNECTION_POLICY_SETTINGS
+        value for _name, _configured, value in settings
     )
     if (
         not isinstance(row, tuple)
@@ -158,8 +179,24 @@ def _verify_duckdb_connection_policy(connection: Any) -> None:
         or row != expected
     ):
         raise DuckDBConnectionPolicyError(
-            "DuckDB supervisor connection policy verification failed"
+            f"{policy_name} verification failed"
         )
+
+
+def _verify_duckdb_connection_policy(connection: Any) -> None:
+    _verify_connection_policy(
+        connection,
+        settings=DUCKDB_CONNECTION_POLICY_SETTINGS,
+        policy_name="DuckDB supervisor connection policy",
+    )
+
+
+def _verify_quack_owner_connection_policy(connection: Any) -> None:
+    _verify_connection_policy(
+        connection,
+        settings=QUACK_OWNER_CONNECTION_POLICY_SETTINGS,
+        policy_name="Quack owner connection policy",
+    )
 
 
 def connect_duckdb_with_policy(
@@ -207,20 +244,20 @@ def connect_duckdb_with_policy(
     return connection
 
 
-def connect_duckdb_with_preloaded_quack_policy(
+def connect_duckdb_with_quack_owner_policy(
     duckdb_module: Any,
     database: Path | str,
     *,
     configuration: Mapping[str, Any] | None = None,
 ) -> Any:
-    """Preload the installed Quack extension, then seal the normal policy.
+    """Open the locked, loopback-only Quack state-owner connection.
 
-    ``LOAD quack`` needs filesystem access to the already-installed extension
-    bytes.  The exclusive state-owner is the only caller admitted to this
-    narrow bootstrap: automatic installation and unsigned extensions remain
-    disabled, the only statement executed before sealing is the literal
-    allowlisted load, and no connection escapes until external access is
-    disabled and the standard policy has been verified.
+    The Quack request worker currently requires autoload and external access.
+    Those settings remain enabled only in this exclusive transport authority;
+    ordinary supervisor connections continue to use the deny-by-default
+    policy.  No network installation is permitted, the exact installed Quack
+    extension is loaded with a literal statement, its required surface is
+    verified, and configuration is locked atomically at connection birth.
     """
 
     tuning = {
@@ -229,12 +266,12 @@ def connect_duckdb_with_preloaded_quack_policy(
     }
     tuning.update(_connection_tuning(configuration))
     connect_config = {
-        "autoinstall_known_extensions": "false",
-        "autoload_known_extensions": "false",
-        "enable_external_access": "true",
-        "allow_unsigned_extensions": "false",
-        **tuning,
+        name: configured
+        for name, configured, _expected in QUACK_OWNER_CONNECTION_POLICY_SETTINGS
+        if name != "lock_configuration"
     }
+    connect_config.update(tuning)
+    connect_config["lock_configuration"] = "true"
     connection = duckdb_module.connect(str(database), config=connect_config)
     try:
         connection.execute("LOAD quack")
@@ -249,9 +286,7 @@ def connect_duckdb_with_preloaded_quack_policy(
             raise DuckDBConnectionPolicyError(
                 "preloaded Quack extension lacks its required functions"
             )
-        connection.execute("SET enable_external_access = false")
-        connection.execute("SET lock_configuration = true")
-        _verify_duckdb_connection_policy(connection)
+        _verify_quack_owner_connection_policy(connection)
     except BaseException:
         connection.close()
         raise
@@ -421,10 +456,10 @@ class DuckDBConnection:
         memory_limit: str = DEFAULT_MEMORY_LIMIT,
         threads: int = 1,
         transaction_on_context: bool = False,
-        preload_quack: bool = False,
+        quack_owner: bool = False,
     ) -> None:
-        if type(preload_quack) is not bool:
-            raise TypeError("preload_quack must be a boolean")
+        if type(quack_owner) is not bool:
+            raise TypeError("quack_owner must be a boolean")
         if is_quack_transport_target(path):
             raise DuckDBConnectionPolicyError(
                 "quack transport URIs cannot be opened as DuckDB files; "
@@ -448,8 +483,8 @@ class DuckDBConnection:
             import duckdb
 
             connect = (
-                connect_duckdb_with_preloaded_quack_policy
-                if preload_quack
+                connect_duckdb_with_quack_owner_policy
+                if quack_owner
                 else connect_duckdb_with_policy
             )
             self._connection = connect(
@@ -847,12 +882,12 @@ def open_duckdb_connection(
     timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
     memory_limit: str = DEFAULT_MEMORY_LIMIT,
     threads: int = 1,
-    preload_quack: bool = False,
+    quack_owner: bool = False,
 ) -> DuckDBConnection:
     if is_quack_transport_target(path):
-        if preload_quack:
+        if quack_owner:
             raise DuckDBConnectionPolicyError(
-                "Quack transport clients cannot preload the owner extension"
+                "Quack transport clients cannot assume the owner policy"
             )
         return open_quack_transport_connection(path)
     return DuckDBConnection(
@@ -860,7 +895,7 @@ def open_duckdb_connection(
         timeout_seconds=timeout_seconds,
         memory_limit=memory_limit,
         threads=threads,
-        preload_quack=preload_quack,
+        quack_owner=quack_owner,
     )
 
 
