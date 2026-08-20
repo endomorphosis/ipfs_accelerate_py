@@ -714,7 +714,19 @@ class DatabaseTaskSource:
         snap = self._intent.snapshot()
         terminal = True
         plan_root = self.plan_root_cid
-        for task in self._intent.list_tasks(limit=MAX_QUERY_LIMIT):
+        tasks = self._intent.list_tasks(limit=MAX_QUERY_LIMIT)
+        task_plan_cids = {
+            str(task.get("plan_cid") or "")
+            for task in tasks
+            if str(task.get("plan_cid") or "")
+        }
+        if not plan_root and len(task_plan_cids) == 1:
+            # A reopened adapter has no in-memory materialization root.  The
+            # task rows retain their admitted canonical plan binding, even
+            # when their refinement-goal heads do not own the root plan.
+            plan_root = next(iter(task_plan_cids))
+        infer_from_goal_heads = not task_plan_cids
+        for task in tasks:
             status = str(task.get("status") or "")
             if status not in {
                 "completed",
@@ -726,7 +738,7 @@ class DatabaseTaskSource:
                 "done",
             }:
                 terminal = False
-            if not plan_root:
+            if not plan_root and infer_from_goal_heads:
                 head = self.plans.head(str(task.get("goal_cid") or ""))
                 if head is not None:
                     plan_root = head.plan_cid

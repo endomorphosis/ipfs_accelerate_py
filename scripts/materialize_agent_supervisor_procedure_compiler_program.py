@@ -1820,7 +1820,22 @@ def verify_existing() -> dict[str, Any]:
     evidence_root = REPO_ROOT / str(config["runtime_paths"]["evidence"])
     materialization_receipt = _read_json(evidence_root / "materialization.json")
     qualification = _read_json(evidence_root / "p0-qualification.json")
-    with DatabaseTaskSource(database_path, install_schema=False, repository_tree_id=tree) as source:
+    # A freshly opened DatabaseTaskSource does not infer a plan root from task
+    # goals: PCPC tasks are owned by refinement goals while the single plan is
+    # rooted at PCPC-G000.  Recompute the expected root from the exact current
+    # tree and tracked board inputs, instead of trusting the stored receipt or
+    # asking ``snapshot()`` to guess it from a child goal.
+    _, expected_plan_cid = _population(
+        head=head,
+        tree=tree,
+        qualification_cid=str(fresh_qualification.get("qualification_cid") or ""),
+    )
+    with DatabaseTaskSource(
+        database_path,
+        install_schema=False,
+        repository_tree_id=tree,
+        plan_root_cid=expected_plan_cid,
+    ) as source:
         records = [item.to_dict() for item in source.list_tasks(limit=64).tasks]
         ready = [item.task_alias for item in source.ready_tasks(limit=64).tasks]
         snapshot = source.snapshot()
@@ -1846,6 +1861,7 @@ def verify_existing() -> dict[str, Any]:
         and materialization_receipt.get("program") == PROGRAM
         and materialization_receipt.get("repository_commit") == head
         and materialization_receipt.get("repository_tree") == tree
+        and snapshot.plan_root_cid == expected_plan_cid
         and materialization_receipt.get("plan_root_cid") == snapshot.plan_root_cid
         and materialization_receipt.get("simulated") is False
         and materialization_receipt.get("qualification_cid")

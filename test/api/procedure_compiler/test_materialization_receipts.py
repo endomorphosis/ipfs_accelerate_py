@@ -86,6 +86,68 @@ def test_existing_materialization_cannot_bypass_fresh_qualification(
         module.verify_existing()
 
 
+def test_existing_materialization_reopens_with_recomputed_current_plan_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    database_path = tmp_path / "control.duckdb"
+    database_path.touch()
+    expected_plan_cid = "baguqeera" + "a" * 48
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        module,
+        "_qualify_exact_tree",
+        lambda: {
+            "qualification_cid": "baguqeera" + "b" * 48,
+            "repository_commit": "commit-current",
+            "repository_tree": "tree-current",
+            "simulated": False,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "_git",
+        lambda *args: (
+            "commit-current" if args[-1] == "HEAD" else "tree-current"
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "_read_json",
+        lambda path: (
+            {
+                "database_program": {"store_id": "control.duckdb"},
+                "runtime_paths": {"evidence": "evidence"},
+            }
+            if Path(path).name
+            == Path(module.CONFIG_RELATIVE).name
+            else {}
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "_population",
+        lambda **kwargs: ({}, expected_plan_cid),
+    )
+
+    class CapturedPlanRoot(RuntimeError):
+        pass
+
+    def capture_source(*args: object, **kwargs: object) -> object:
+        observed.update(kwargs)
+        raise CapturedPlanRoot
+
+    monkeypatch.setattr(module, "DatabaseTaskSource", capture_source)
+
+    with pytest.raises(CapturedPlanRoot):
+        module.verify_existing()
+    assert observed["repository_tree_id"] == "tree-current"
+    assert observed["plan_root_cid"] == expected_plan_cid
+
+
 def _command(argv: list[str], *, returncode: int, output: str) -> dict[str, object]:
     return {
         "argv": argv,

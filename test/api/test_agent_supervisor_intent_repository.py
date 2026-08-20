@@ -16,7 +16,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
@@ -634,6 +633,111 @@ def test_database_task_source_public_api_and_completion_gate(tmp_path: Path) -> 
             source.list_tasks(limit=MAX_QUERY_LIMIT + 1)
     finally:
         source.close()
+
+
+def test_reopened_source_infers_one_task_bound_root_without_cross_goal_guess(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "control.duckdb"
+    plan_cid = "plan:root"
+    with DatabaseTaskSource(database_path) as source:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:refinement",
+                "plan_root_cid": plan_cid,
+                "objectives": [
+                    {
+                        "goal_cid": "goal:root",
+                        "goal_id": "G-ROOT",
+                        "title": "Root",
+                    },
+                    {
+                        "goal_cid": "goal:child",
+                        "goal_id": "G-CHILD",
+                        "title": "Child",
+                        "parent_goal_cid": "goal:root",
+                    },
+                ],
+                "plans": [
+                    {
+                        "plan_cid": plan_cid,
+                        "goal_cid": "goal:root",
+                        "status": "active",
+                    }
+                ],
+                "taskboard": [
+                    {
+                        "task_cid": "task:child",
+                        "task_id": "T-CHILD",
+                        "goal_cid": "goal:child",
+                        "plan_cid": plan_cid,
+                        "acceptance_criteria": ["ok"],
+                    }
+                ],
+            },
+            repository_tree_id="tree:refinement",
+            plan_root_cid=plan_cid,
+        )
+
+    with DatabaseTaskSource(
+        database_path,
+        install_schema=False,
+        repository_tree_id="tree:refinement",
+    ) as reopened:
+        assert reopened.plan_root_cid == ""
+        assert reopened.snapshot().plan_root_cid == plan_cid
+
+
+def test_reopened_source_refuses_ambiguous_task_bound_plan_roots(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "control.duckdb"
+    with DatabaseTaskSource(database_path) as source:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:ambiguous",
+                "plans": [
+                    {
+                        "plan_cid": "plan:one",
+                        "goal_cid": "goal:one",
+                        "status": "active",
+                    },
+                    {
+                        "plan_cid": "plan:two",
+                        "goal_cid": "goal:two",
+                        "status": "active",
+                    },
+                ],
+                "objectives": [
+                    {"goal_cid": "goal:one", "goal_id": "G-ONE"},
+                    {"goal_cid": "goal:two", "goal_id": "G-TWO"},
+                ],
+                "taskboard": [
+                    {
+                        "task_cid": "task:one",
+                        "task_id": "T-ONE",
+                        "goal_cid": "goal:one",
+                        "plan_cid": "plan:one",
+                        "acceptance_criteria": ["one"],
+                    },
+                    {
+                        "task_cid": "task:two",
+                        "task_id": "T-TWO",
+                        "goal_cid": "goal:two",
+                        "plan_cid": "plan:two",
+                        "acceptance_criteria": ["two"],
+                    },
+                ],
+            },
+            repository_tree_id="tree:ambiguous",
+        )
+
+    with DatabaseTaskSource(
+        database_path,
+        install_schema=False,
+        repository_tree_id="tree:ambiguous",
+    ) as reopened:
+        assert reopened.snapshot().plan_root_cid == ""
 
 
 def test_database_task_source_stale_cursor_and_cas_conflict(tmp_path: Path) -> None:
