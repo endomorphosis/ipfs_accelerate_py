@@ -48,11 +48,96 @@ from pathlib import Path, PurePath
 from threading import Thread
 from typing import Any, Final
 
+_RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE: Final[str] = (
+    "_lgcvf_isolated_recovery_pycache_capsule_v1"
+)
+_RECOVERY_PYCACHE_CAPSULE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/lgcvf-isolated-recovery-pycache@1"
+)
+
+
+def _validated_isolated_recovery_pycache_capsule(
+    capsule: object,
+) -> tuple[tempfile.TemporaryDirectory[str], Path, tuple[int, int]]:
+    """Validate one process-lifetime, empty, owner-private pycache capsule."""
+
+    if not isinstance(capsule, tuple) or len(capsule) != 7:
+        raise RuntimeError("protected recovery pycache isolation conflict")
+    schema, process_id, directory, root_text, device, inode, seal = capsule
+    if (
+        schema != _RECOVERY_PYCACHE_CAPSULE_SCHEMA
+        or type(process_id) is not int
+        or process_id != os.getpid()
+        or not isinstance(directory, tempfile.TemporaryDirectory)
+        or type(root_text) is not str
+        or type(device) is not int
+        or type(inode) is not int
+        or type(seal) is not object
+        or getattr(sys, _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE, None) is not capsule
+        or sys.pycache_prefix != root_text
+        or directory.name != root_text
+    ):
+        raise RuntimeError("protected recovery pycache isolation conflict")
+    root = Path(root_text)
+    if not root.is_absolute() or root.as_posix() != root_text:
+        raise RuntimeError("protected recovery pycache isolation conflict")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as exc:
+        raise RuntimeError("protected recovery pycache isolation conflict") from exc
+    try:
+        status = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or (status.st_dev, status.st_ino) != (device, inode)
+            or status.st_uid != os.geteuid()
+            or stat.S_IMODE(status.st_mode) != 0o700
+        ):
+            raise RuntimeError("protected recovery pycache isolation conflict")
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise RuntimeError("protected recovery pycache isolation is not empty")
+    finally:
+        os.close(descriptor)
+    return directory, root, (device, inode)
+
+
+def _validate_external_isolated_recovery_pycache_prefix(prefix: object) -> None:
+    """Accept only the scheduler's empty, owner-private bootstrap prefix."""
+
+    if type(prefix) is not str:
+        raise RuntimeError("protected recovery pycache isolation conflict")
+    root = Path(prefix)
+    if not root.is_absolute() or root.as_posix() != prefix:
+        raise RuntimeError("protected recovery pycache isolation conflict")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as exc:
+        raise RuntimeError("protected recovery pycache isolation conflict") from exc
+    try:
+        status = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or status.st_uid != os.geteuid()
+            or stat.S_IMODE(status.st_mode) != 0o700
+        ):
+            raise RuntimeError("protected recovery pycache isolation conflict")
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise RuntimeError("protected recovery pycache isolation is not empty")
+    finally:
+        os.close(descriptor)
+
 
 def _install_isolated_recovery_pycache() -> tuple[
     tempfile.TemporaryDirectory[str] | None,
     Path | None,
     tuple[int, int] | None,
+    object | None,
 ]:
     """Redirect exact isolated execution away from repository bytecode caches."""
 
@@ -65,19 +150,49 @@ def _install_isolated_recovery_pycache() -> tuple[
         or flags.dont_write_bytecode != 1
         or sys.dont_write_bytecode is not True
     ):
-        return None, None, None
+        return None, None, None, None
+    if hasattr(sys, _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE):
+        existing = getattr(sys, _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE)
+        directory, root, identity = (
+            _validated_isolated_recovery_pycache_capsule(existing)
+        )
+        return directory, root, identity, existing
+    previous_prefix = sys.pycache_prefix
+    if previous_prefix is not None:
+        _validate_external_isolated_recovery_pycache_prefix(previous_prefix)
     directory = tempfile.TemporaryDirectory(prefix="lgcvf-isolated-pycache-")
     root = Path(directory.name).resolve(strict=True)
     os.chmod(root, 0o700)
     status = root.lstat()
     sys.pycache_prefix = str(root)
-    return directory, root, (status.st_dev, status.st_ino)
+    capsule = (
+        _RECOVERY_PYCACHE_CAPSULE_SCHEMA,
+        os.getpid(),
+        directory,
+        str(root),
+        status.st_dev,
+        status.st_ino,
+        object(),
+    )
+    setattr(sys, _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE, capsule)
+    try:
+        observed_directory, observed_root, identity = (
+            _validated_isolated_recovery_pycache_capsule(capsule)
+        )
+    except BaseException:
+        if getattr(sys, _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE, None) is capsule:
+            delattr(sys, _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE)
+        sys.pycache_prefix = previous_prefix
+        directory.cleanup()
+        raise
+    return observed_directory, observed_root, identity, capsule
 
 
 (
     _ISOLATED_RECOVERY_PYCACHE_DIRECTORY,
     _ISOLATED_RECOVERY_PYCACHE_ROOT,
     _ISOLATED_RECOVERY_PYCACHE_IDENTITY,
+    _ISOLATED_RECOVERY_PYCACHE_CAPSULE,
 ) = _install_isolated_recovery_pycache()
 
 ROOT: Final[Path] = Path(__file__).resolve().parents[1]
@@ -2996,37 +3111,29 @@ def _require_isolated_recovery_pycache() -> None:
 
     root = _ISOLATED_RECOVERY_PYCACHE_ROOT
     identity = _ISOLATED_RECOVERY_PYCACHE_IDENTITY
+    capsule = _ISOLATED_RECOVERY_PYCACHE_CAPSULE
     if (
         _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None
         or root is None
         or identity is None
+        or capsule is None
         or sys.pycache_prefix != str(root)
     ):
         raise QualificationError("protected recovery pycache isolation differs")
-    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
-    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(root, flags)
-    except OSError as exc:
+        observed_directory, observed_root, observed_identity = (
+            _validated_isolated_recovery_pycache_capsule(capsule)
+        )
+    except RuntimeError as exc:
         raise QualificationError(
-            "protected recovery pycache isolation differs"
+            str(exc)
         ) from exc
-    try:
-        status = os.fstat(descriptor)
-        if (
-            not stat.S_ISDIR(status.st_mode)
-            or (status.st_dev, status.st_ino) != identity
-            or status.st_uid != os.geteuid()
-            or stat.S_IMODE(status.st_mode) != 0o700
-        ):
-            raise QualificationError("protected recovery pycache isolation differs")
-        with os.scandir(descriptor) as entries:
-            if next(entries, None) is not None:
-                raise QualificationError(
-                    "protected recovery pycache isolation is not empty"
-                )
-    finally:
-        os.close(descriptor)
+    if (
+        observed_directory is not _ISOLATED_RECOVERY_PYCACHE_DIRECTORY
+        or observed_root != root
+        or observed_identity != identity
+    ):
+        raise QualificationError("protected recovery pycache isolation differs")
 
 
 def _duckdb_module_names() -> set[str]:

@@ -245,6 +245,38 @@ def _sealed_materializer_script(tmp_path: Path) -> Path:
     return script
 
 
+def _sealed_materializer_and_qualifier_scripts(
+    tmp_path: Path,
+) -> tuple[Path, Path]:
+    """Bind both recovery entry modules into one clean subprocess fixture."""
+
+    materializer_script = _sealed_materializer_script(tmp_path)
+    repository = materializer_script.parents[1]
+    qualifier_script = (
+        repository
+        / "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+    )
+    shutil.copy2(
+        ROOT / "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+        qualifier_script,
+    )
+    subprocess.run(
+        ("git", "add", qualifier_script.relative_to(repository).as_posix()),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ("git", "commit", "-qm", "bind shared recovery pycache fixture"),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return materializer_script, qualifier_script
+
+
 @pytest.fixture(autouse=True)
 def _unit_test_recovery_runtime_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Core unit tests run in pytest; subprocess tests retain the real guard."""
@@ -1631,6 +1663,234 @@ print(json.dumps(errors))
     )
     isolated_result = json.loads(isolated_cli.stdout)
     assert "protected recovery requires" not in str(isolated_result.get("error", ""))
+
+
+def test_recovery_modules_share_scheduler_safe_pycache_capsule(
+    tmp_path: Path,
+) -> None:
+    materializer_script, qualifier_script = (
+        _sealed_materializer_and_qualifier_scripts(tmp_path)
+    )
+    repository = materializer_script.parents[1]
+    probe = r'''
+import importlib.util
+import json
+import os
+import stat
+import sys
+import tempfile
+from pathlib import Path
+
+materializer_script = Path(sys.argv[1])
+qualifier_script = Path(sys.argv[2])
+mode = sys.argv[3]
+attribute = "_lgcvf_isolated_recovery_pycache_capsule_v1"
+
+def load(name, path):
+    specification = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[name] = module
+    try:
+        specification.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+def inventory(root):
+    return sorted(item.relative_to(root).as_posix() for item in root.rglob("*"))
+
+scheduler_directory = tempfile.TemporaryDirectory(
+    prefix="lgcvf-scheduler-pycache-"
+)
+scheduler_root = Path(scheduler_directory.name).resolve(strict=True)
+os.chmod(scheduler_root, 0o700)
+sys.pycache_prefix = str(scheduler_root)
+if mode == "preloaded-capsule":
+    setattr(sys, attribute, None)
+elif mode == "unsafe-prefix-content":
+    (scheduler_root / "forged.pyc").write_bytes(b"forged")
+elif mode == "unsafe-prefix-mode":
+    os.chmod(scheduler_root, 0o755)
+
+first_path, second_path = (
+    (qualifier_script, materializer_script)
+    if mode == "reverse-order"
+    else (materializer_script, qualifier_script)
+)
+first_name, second_name = (
+    ("lgcvf_qualifier_first", "lgcvf_materializer_second")
+    if mode == "reverse-order"
+    else ("lgcvf_materializer_first", "lgcvf_qualifier_second")
+)
+try:
+    first = load(first_name, first_path)
+    if mode == "prefix-conflict":
+        sys.pycache_prefix = str(scheduler_root)
+    second = load(second_name, second_path)
+except BaseException as exc:
+    if mode == "unsafe-prefix-mode":
+        os.chmod(scheduler_root, 0o700)
+    print(json.dumps({
+        "outcome": "rejected",
+        "error_type": type(exc).__name__,
+        "error": str(exc),
+        "scheduler_inventory": inventory(scheduler_root),
+    }, sort_keys=True))
+    raise SystemExit(0)
+
+materializer = first if hasattr(first, "MaterializationError") else second
+qualifier = first if hasattr(first, "QualificationError") else second
+shared_root = materializer._ISOLATED_RECOVERY_PYCACHE_ROOT
+shared_capsule = materializer._ISOLATED_RECOVERY_PYCACHE_CAPSULE
+inventories = [inventory(shared_root)]
+materializer_again = load("lgcvf_materializer_again", materializer_script)
+inventories.append(inventory(shared_root))
+qualifier_again = load("lgcvf_qualifier_again", qualifier_script)
+inventories.append(inventory(shared_root))
+
+original_prefix = sys.pycache_prefix
+original_capsule = getattr(sys, attribute)
+marker = shared_root / "forged.pyc"
+if mode == "replace-capsule":
+    setattr(sys, attribute, ("forged",))
+elif mode == "change-prefix":
+    sys.pycache_prefix = str(scheduler_root)
+elif mode == "content-tamper":
+    marker.write_bytes(b"forged")
+elif mode == "mode-tamper":
+    os.chmod(shared_root, 0o755)
+
+guard_errors = []
+for name, operation in (
+    ("materializer", materializer._require_isolated_recovery_pycache),
+    ("qualifier", qualifier._require_isolated_recovery_pycache),
+):
+    try:
+        operation()
+    except BaseException as exc:
+        guard_errors.append({
+            "module": name,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        })
+
+if marker.exists():
+    marker.unlink()
+os.chmod(shared_root, 0o700)
+sys.pycache_prefix = original_prefix
+setattr(sys, attribute, original_capsule)
+materializer._require_isolated_recovery_pycache()
+qualifier._require_isolated_recovery_pycache()
+inventories.append(inventory(shared_root))
+
+modules = (materializer, qualifier, materializer_again, qualifier_again)
+capsules = [module._ISOLATED_RECOVERY_PYCACHE_CAPSULE for module in modules]
+roots = [module._ISOLATED_RECOVERY_PYCACHE_ROOT for module in modules]
+identities = [module._ISOLATED_RECOVERY_PYCACHE_IDENTITY for module in modules]
+status = shared_root.lstat()
+print(json.dumps({
+    "outcome": "accepted",
+    "same_capsule": all(item is shared_capsule for item in capsules),
+    "same_root": all(item == shared_root for item in roots),
+    "same_identity": len(set(identities)) == 1,
+    "scheduler_superseded": shared_root != scheduler_root,
+    "scheduler_inventory": inventory(scheduler_root),
+    "shared_inventories": inventories,
+    "shared_mode": stat.S_IMODE(status.st_mode),
+    "shared_owner": status.st_uid,
+    "guard_errors": guard_errors,
+}, sort_keys=True))
+'''
+    environment = {
+        "HOME": str(repository),
+        "LANG": "C",
+        "PATH": "/usr/bin:/bin",
+    }
+    clean_modes = ("materializer-first", "reverse-order")
+    tamper_modes = (
+        "replace-capsule",
+        "change-prefix",
+        "content-tamper",
+        "mode-tamper",
+    )
+    rejected_startup_modes = (
+        "preloaded-capsule",
+        "prefix-conflict",
+        "unsafe-prefix-content",
+        "unsafe-prefix-mode",
+    )
+    for mode in (*clean_modes, *tamper_modes, *rejected_startup_modes):
+        completed = subprocess.run(
+            (
+                "/usr/bin/python3.12",
+                "-I",
+                "-S",
+                "-B",
+                "-c",
+                probe,
+                str(materializer_script),
+                str(qualifier_script),
+                mode,
+            ),
+            cwd=repository,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert completed.returncode == 0, (mode, completed.stderr)
+        result = json.loads(completed.stdout)
+        if mode in rejected_startup_modes:
+            assert result["outcome"] == "rejected"
+            assert result["error_type"] == "RuntimeError"
+            assert "protected recovery pycache isolation" in result["error"]
+            continue
+        assert result == {
+            "outcome": "accepted",
+            "same_capsule": True,
+            "same_root": True,
+            "same_identity": True,
+            "scheduler_superseded": True,
+            "scheduler_inventory": [],
+            "shared_inventories": [[], [], [], []],
+            "shared_mode": 0o700,
+            "shared_owner": os.geteuid(),
+            "guard_errors": (
+                []
+                if mode in clean_modes
+                else [
+                    {
+                        "module": "materializer",
+                        "error_type": "MaterializationError",
+                        "error": (
+                            "protected recovery pycache isolation is not empty"
+                            if mode == "content-tamper"
+                            else "protected recovery pycache isolation differs"
+                            if mode == "change-prefix"
+                            else "protected recovery pycache isolation conflict"
+                        ),
+                    },
+                    {
+                        "module": "qualifier",
+                        "error_type": "QualificationError",
+                        "error": (
+                            "protected recovery pycache isolation is not empty"
+                            if mode == "content-tamper"
+                            else "protected recovery pycache isolation differs"
+                            if mode == "change-prefix"
+                            else "protected recovery pycache isolation conflict"
+                        ),
+                    },
+                ]
+            ),
+        }
+    assert not (
+        repository
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
+    ).exists()
+    assert not any(path.name.startswith("stage-") for path in repository.rglob("*"))
 
 
 @pytest.mark.parametrize("index_flag", ("--skip-worktree", "--assume-unchanged"))
