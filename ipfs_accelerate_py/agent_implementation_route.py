@@ -6428,6 +6428,7 @@ def _agent_read_stable_file(
     *,
     maximum_bytes: int = _AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
     exact_mode: int | None = None,
+    allow_group_writable: bool = False,
 ) -> bytes:
     """Read a bounded stable file through exactly one no-follow descriptor."""
 
@@ -6464,6 +6465,7 @@ def _agent_read_stable_file(
         raise ValueError("accepted control-plane file is unavailable") from exc
     try:
         before = os.fstat(descriptor)
+        write_mask = 0o002 if allow_group_writable else 0o022
         if (
             not stat_module.S_ISREG(before.st_mode)
             or before.st_nlink != 1
@@ -6471,7 +6473,7 @@ def _agent_read_stable_file(
             or (
                 stat_module.S_IMODE(before.st_mode) != exact_mode
                 if exact_mode is not None
-                else bool(stat_module.S_IMODE(before.st_mode) & 0o022)
+                else bool(stat_module.S_IMODE(before.st_mode) & write_mask)
             )
             or before.st_size > maximum_bytes
         ):
@@ -6952,7 +6954,10 @@ def materialize_agent_implementation_control_plane_capsule(
         raise ValueError("accepted control-plane package differs from HEAD")
     for path in files:
         relative = str(path.relative_to(root))
-        if _agent_read_stable_file(path) != payloads[relative]:
+        if _agent_read_stable_file(
+            path,
+            allow_group_writable=allow_dirty_worktree,
+        ) != payloads[relative]:
             raise ValueError("loaded control-plane module differs from HEAD")
     _agent_control_plane_git_state(
         root,
