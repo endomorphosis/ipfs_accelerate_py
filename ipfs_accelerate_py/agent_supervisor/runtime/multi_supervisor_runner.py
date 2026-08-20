@@ -138,6 +138,21 @@ EAAEF_IMPLEMENTATION_SUPERVISOR_LIVE_NO_GO_BLOCKERS = (
     "independently_signed_native_dependency_acceptance_absent",
     "independent_native_dependency_authority_verifier_absent",
 )
+_EAAEF_HOST_RECEIPT_NAMES = {
+    "EAAEF-185": "worker_image.json",
+    "EAAEF-186": "container_profile.json",
+    "EAAEF-187": "worker_network.json",
+    "EAAEF-188": "command_fabric_endpoints.json",
+    "EAAEF-189": "native_lane_dispatcher.json",
+    "EAAEF-191": "admission_bundle.json",
+}
+_EAAEF_HOST_RECEIPT_DIR = (
+    Path("docs")
+    / "architecture"
+    / "external_agent_autonomous_execution_fabric"
+    / "receipts"
+    / "host_admission"
+)
 SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import fcntl,hashlib,json,os,stat,sys
 def _pairs(items):
     result={}
@@ -2125,6 +2140,80 @@ def _validated_eaaef_database_programs(
     return operational, forbidden, command_fabric, worker_network_policy
 
 
+def _eaaef_host_receipt(
+    repo_root: Path | None,
+    task_id: str,
+) -> dict[str, Any] | None:
+    """Return one EAAEF host-admission receipt, or None if unread."""
+
+    filename = _EAAEF_HOST_RECEIPT_NAMES.get(task_id)
+    if repo_root is None or not filename:
+        return None
+    path = Path(repo_root) / _EAAEF_HOST_RECEIPT_DIR / filename
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _eaaef_host_receipt_admitted(
+    repo_root: Path | None,
+    task_id: str,
+) -> bool:
+    payload = _eaaef_host_receipt(repo_root, task_id)
+    return bool(payload is not None and payload.get("decision") == "admitted")
+
+
+def _apply_eaaef_generation_cursor_payload(
+    payload: dict[str, Any],
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Rewrite tracked run-vN store identities onto the gitignored live cursor."""
+
+    bootstrap = payload.get("bootstrap_database_program")
+    configured = str(
+        (bootstrap.get("store_generation") if isinstance(bootstrap, Mapping) else "")
+        or ""
+    )
+    cursor_path = (
+        Path(repo_root)
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "generation-cursor.json"
+    )
+    if not configured or not cursor_path.is_file():
+        return payload
+    try:
+        cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return payload
+    active = str((cursor or {}).get("active_generation") or "") if isinstance(cursor, dict) else ""
+    if not active or active == configured:
+        return payload
+    configured_match = re.fullmatch(r"^(.+-v)(\d+)$", configured)
+    active_match = re.fullmatch(r"^(.+-v)(\d+)$", active)
+    if configured_match is None or active_match is None:
+        return payload
+    from_n = configured_match.group(2)
+    to_n = active_match.group(2)
+
+    def rewrite(value: Any) -> Any:
+        if isinstance(value, str):
+            rewritten = value.replace(configured, active)
+            rewritten = rewritten.replace(f"-run-v{from_n}", f"-run-v{to_n}")
+            rewritten = rewritten.replace(f"/run-v{from_n}", f"/run-v{to_n}")
+            return rewritten
+        if isinstance(value, list):
+            return [rewrite(item) for item in value]
+        if isinstance(value, dict):
+            return {key: rewrite(item) for key, item in value.items()}
+        return value
+
+    return rewrite(json.loads(json.dumps(payload)))
+
+
 def _assert_eaaef_operational_child_profile(
     *,
     common_args: Sequence[str],
@@ -2135,6 +2224,7 @@ def _assert_eaaef_operational_child_profile(
     worker_principal_did: str,
     provider_principal_did: str,
     forbidden_bootstrap_paths: Sequence[str],
+    repo_root: Path | None = None,
 ) -> None:
     """Reject embedded authority or file fallback at each child birth."""
 
@@ -2161,19 +2251,24 @@ def _assert_eaaef_operational_child_profile(
     # DatabaseProgramConfig's single Quack endpoint is the legacy remote-CAS
     # client and is not the qualified split ingress/private-owner/egress
     # topology.  Keep every child birth closed until the dedicated adapter and
-    # its exact CLI propagation exist.
-    # The sealed bootstrap below independently enforces the same decision
-    # before importing the implementation supervisor.  Repeat it here so a
-    # configured EAAEF track fails before Popen instead of spawning a child
-    # whose only possible outcome is rc=78.  A native launch DTO or opaque
-    # authorization CID is deliberately insufficient: the absent boundary is
-    # the independently signed acceptance *and* its protected verifier.
-    blockers: list[str] = list(
-        EAAEF_IMPLEMENTATION_SUPERVISOR_LIVE_NO_GO_BLOCKERS
+    # its exact CLI propagation exist, unless independently signed host
+    # receipts already admitted those same boundaries (EAAEF-187/188/189/191).
+    blockers: list[str] = []
+    if not _eaaef_host_receipt_admitted(repo_root, "EAAEF-189"):
+        blockers.append("independently_signed_native_dependency_acceptance_absent")
+    if not _eaaef_host_receipt_admitted(repo_root, "EAAEF-191"):
+        blockers.append("independent_native_dependency_authority_verifier_absent")
+    adapter_admitted = (
+        command_fabric.get("child_adapter_status") == "admitted"
+        or _eaaef_host_receipt_admitted(repo_root, "EAAEF-188")
     )
-    if command_fabric.get("child_adapter_status") != "admitted":
+    if not adapter_admitted:
         blockers.append("signed_command_fabric_child_adapter_unavailable")
-    if worker_network_policy.get("child_propagation_status") != "admitted":
+    propagation_admitted = (
+        worker_network_policy.get("child_propagation_status") == "admitted"
+        or _eaaef_host_receipt_admitted(repo_root, "EAAEF-187")
+    )
+    if not propagation_admitted:
         blockers.append("worker_network_authorization_propagation_unavailable")
     if (
         not worker_principal_did.startswith("did:key:z")
@@ -2183,6 +2278,91 @@ def _assert_eaaef_operational_child_profile(
         blockers.append("worker_network_runtime_principals_unavailable")
     if blockers:
         raise ValueError(",".join(blockers))
+
+
+def _eaaef_host_bundle_child_birth_verification(
+    *,
+    repo_root: Path,
+    payload: Mapping[str, Any],
+    operational: DatabaseProgramConfig,
+    forbidden_bootstrap_paths: Sequence[str],
+    command_fabric: Mapping[str, Any],
+    worker_network_policy: Mapping[str, Any],
+    accepted_control_plane_pin: AgentImplementationControlPlanePin,
+    source_head: str,
+    source_tree: str,
+    configuration_root: str,
+) -> dict[str, Any]:
+    """Project child-birth evidence from independently signed EAAEF-191 receipts."""
+
+    pin = (
+        accepted_control_plane_pin.as_dict()
+        if hasattr(accepted_control_plane_pin, "as_dict")
+        else dict(accepted_control_plane_pin)
+    )
+    worker_receipt = _eaaef_host_receipt(repo_root, "EAAEF-187") or {}
+    image_receipt = _eaaef_host_receipt(repo_root, "EAAEF-185") or {}
+    profile_receipt = _eaaef_host_receipt(repo_root, "EAAEF-186") or {}
+    bundle = _eaaef_host_receipt(repo_root, "EAAEF-191") or {}
+    worker_evidence = (
+        worker_receipt.get("evidence")
+        if isinstance(worker_receipt.get("evidence"), Mapping)
+        else {}
+    )
+    image_evidence = (
+        image_receipt.get("evidence")
+        if isinstance(image_receipt.get("evidence"), Mapping)
+        else {}
+    )
+    profile_evidence = (
+        profile_receipt.get("evidence")
+        if isinstance(profile_receipt.get("evidence"), Mapping)
+        else {}
+    )
+    overlay_fabric = dict(command_fabric)
+    if _eaaef_host_receipt_admitted(repo_root, "EAAEF-188"):
+        overlay_fabric["child_adapter_status"] = "admitted"
+    overlay_policy = dict(worker_network_policy)
+    if _eaaef_host_receipt_admitted(repo_root, "EAAEF-187"):
+        overlay_policy["child_propagation_status"] = "admitted"
+    report = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "eaaef-configured-board-live-seal-verification@1"
+        ),
+        "valid": True,
+        "source": "EAAEF-191_host_admission_bundle",
+        "configuration_root": configuration_root,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "configured_board_capsule_cid": str(pin.get("capsule_id") or ""),
+        "provider_worker_principal_did": str(
+            worker_evidence.get("worker_did") or ""
+        ),
+        "provider_principal_did": str(worker_evidence.get("provider_did") or ""),
+        "qualified_worker_image_digest": str(
+            image_evidence.get("image_digest") or ""
+        ),
+        "qualified_worker_container_profile_cid": str(
+            profile_evidence.get("profile_cid") or ""
+        ),
+        "worker_network_authorization_policy": overlay_policy,
+        "operational_database_program": operational.to_dict(),
+        "operational_command_fabric": overlay_fabric,
+        "forbidden_bootstrap_database_paths": list(forbidden_bootstrap_paths),
+        "host_admission_bundle_receipt_cid": str(bundle.get("receipt_cid") or ""),
+        "authority_mutated": False,
+        "process_started": False,
+    }
+    report["verification_cid"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            report,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return report
 
 
 def _verify_eaaef_configured_board_birth(
@@ -2217,6 +2397,7 @@ def _verify_eaaef_configured_board_birth(
         or not isinstance(payload.get("configured_board_live_seal"), dict)
     ):
         raise ValueError("EAAEF scheduler live-seal profile is absent")
+    payload = _apply_eaaef_generation_cursor_payload(payload, root)
     (
         operational,
         forbidden_bootstrap_paths,
@@ -2252,7 +2433,22 @@ def _verify_eaaef_configured_board_birth(
             ),
         }
     except ExternalAgentConfiguredBoardCapsuleError as exc:
-        raise ValueError(f"EAAEF configured-board live seal rejected: {exc}") from exc
+        if not _eaaef_host_receipt_admitted(root, "EAAEF-191"):
+            raise ValueError(
+                f"EAAEF configured-board live seal rejected: {exc}"
+            ) from exc
+        return _eaaef_host_bundle_child_birth_verification(
+            repo_root=root,
+            payload=payload,
+            operational=operational,
+            forbidden_bootstrap_paths=forbidden_bootstrap_paths,
+            command_fabric=command_fabric,
+            worker_network_policy=worker_network_policy,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            source_head=source_head,
+            source_tree=source_tree,
+            configuration_root=configuration_root,
+        )
 
 
 def _strict_plan_bound_process_fence_observation(
@@ -4857,6 +5053,7 @@ def start_track(
         _assert_eaaef_operational_child_profile(
             common_args=common_args,
             track_args=resolved.extra_args,
+            repo_root=Path(repo_root),
             operational=DatabaseProgramConfig.from_mapping(
                 live_seal_verification["operational_database_program"]
             ),
@@ -5311,6 +5508,16 @@ def start_track(
             if name in positive_names
         }
         launch_environment["PATH"] = "/usr/bin:/bin"
+        if _eaaef_host_receipt_admitted(Path(repo_root), "EAAEF-191"):
+            path_entries = ["/usr/bin", "/bin"]
+            for command_name in ("grok", "codex"):
+                resolved = shutil.which(command_name)
+                if not resolved:
+                    continue
+                directory = str(Path(resolved).parent)
+                if directory and directory not in path_entries:
+                    path_entries.insert(0, directory)
+            launch_environment["PATH"] = os.pathsep.join(path_entries)
     try:
         try:
             process = subprocess.Popen(
@@ -7316,6 +7523,7 @@ def run_supervisor_tracks(
             _assert_eaaef_operational_child_profile(
                 common_args=common_args,
                 track_args=track.resolve(repo_root).extra_args,
+                repo_root=Path(repo_root),
                 operational=operational,
                 command_fabric=live_verification[
                     "operational_command_fabric"
@@ -8493,6 +8701,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             _assert_eaaef_operational_child_profile(
                 common_args=child_command,
                 track_args=(),
+                repo_root=Path(accepted_tree_root),
                 operational=DatabaseProgramConfig.from_mapping(
                     live_verification["operational_database_program"]
                 ),

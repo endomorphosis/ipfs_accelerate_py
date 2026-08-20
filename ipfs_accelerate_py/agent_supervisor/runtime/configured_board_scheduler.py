@@ -4281,9 +4281,23 @@ def _run_plan_bound_coordinator(
                 accepted_control_plane_descriptor
             ),
         )
-        print(json.dumps(plan, indent=2, sort_keys=True))
+        print(json.dumps(plan, indent=2, sort_keys=True), flush=True)
         _apply_configured_board_environment(plan)
-        result = int(multi_supervisor_main(plan["argv"]))
+        try:
+            result = int(multi_supervisor_main(plan["argv"]))
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "errors": [f"wave_dispatch: {type(exc).__name__}: {exc}"],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            raise
         if result == PLAN_BOUND_REPLAN_RETURN_CODE:
             wave_index += 1
             continue

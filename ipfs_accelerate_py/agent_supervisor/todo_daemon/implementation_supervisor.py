@@ -91,6 +91,7 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
     TASK_SOURCE_LEGACY_MARKDOWN,
+    _eaaef_host_receipt_admitted,
     parse_accepted_control_plane_pin,
     provider_subprocess_environment,
 )
@@ -19845,9 +19846,20 @@ class PortalImplementationSupervisor:
         if _requires_eaaef_implementation_daemon_birth(
             self.config.database_program
         ):
-            raise PlanBoundDispatchError(
-                EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO
+            raw_root = getattr(self.config, "repo_root", None)
+            repo_root = Path(raw_root) if raw_root else None
+            host_admitted = (
+                repo_root is not None
+                and repo_root.is_dir()
+                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-191")
+                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-189")
+                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-185")
+                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-186")
             )
+            if not host_admitted:
+                raise PlanBoundDispatchError(
+                    EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO
+                )
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
         env = os.environ.copy()
