@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import base64
+import binascii
 import ctypes
 import errno
 import fcntl
@@ -40,7 +42,35 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
+
+_RECOVERY_INITIAL_STDLIB_ATTRIBUTE = (
+    "_lgcvf_initial_isolated_stdlib_paths_v1"
+)
+_RECOVERY_EXPECTED_ISOLATED_STDLIB_PATHS = (
+    "/usr/lib/python312.zip",
+    "/usr/lib/python3.12",
+    "/usr/lib/python3.12/lib-dynload",
+)
+_RECOVERY_INITIAL_STDLIB_MISSING = object()
+_recovery_initial_stdlib = getattr(
+    sys,
+    _RECOVERY_INITIAL_STDLIB_ATTRIBUTE,
+    _RECOVERY_INITIAL_STDLIB_MISSING,
+)
+if _recovery_initial_stdlib is _RECOVERY_INITIAL_STDLIB_MISSING:
+    if tuple(sys.path) == _RECOVERY_EXPECTED_ISOLATED_STDLIB_PATHS:
+        setattr(
+            sys,
+            _RECOVERY_INITIAL_STDLIB_ATTRIBUTE,
+            _RECOVERY_EXPECTED_ISOLATED_STDLIB_PATHS,
+        )
+elif (
+    type(_recovery_initial_stdlib) is not tuple
+    or _recovery_initial_stdlib != _RECOVERY_EXPECTED_ISOLATED_STDLIB_PATHS
+):
+    raise RuntimeError("protected recovery initial stdlib identity differs")
+del _recovery_initial_stdlib
 
 _RECOVERY_PYCACHE_CAPSULE_ATTRIBUTE = (
     "_lgcvf_isolated_recovery_pycache_capsule_v1"
@@ -1157,19 +1187,35 @@ SUCCESSOR_RECOVERY_MANIFEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-successor-recovery-manifest@1"
 )
 FRESH_RECOVERY_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-policy@2"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-policy@3"
 )
 FRESH_RECOVERY_PREVIEW_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-preview@2"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-preview@3"
 )
 FRESH_RECOVERY_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-manifest@3"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-manifest@4"
 )
 FRESH_RECOVERY_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-receipt@3"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-receipt@4"
 )
 FRESH_RECOVERY_VERIFICATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-verification@3"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-verification@4"
+)
+FRESH_RECOVERY_QUALIFICATION_UNAVAILABLE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-fresh-generation-recovery-qualification-unavailable@1"
+)
+MATERIALIZER_ZERO_WX_POLICY_SCHEMA = (
+    "lgcvf-recovery-materializer-zero-wx-policy@1"
+)
+MATERIALIZER_ZERO_WX_OBSERVATION_SCHEMA = (
+    "lgcvf-recovery-materializer-zero-wx-observation@1"
+)
+MATERIALIZER_ZERO_WX_LIFECYCLE_SCHEMA = (
+    "lgcvf-recovery-materializer-zero-wx-lifecycle@1"
+)
+HISTORICAL_POSTPUBLISH_ZERO_WX_EVIDENCE = (
+    "not_persisted_not_reconstructed"
 )
 FRESH_RECOVERED_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-recovered-evidence@1"
@@ -1235,6 +1281,13 @@ FRESH_RECOVERY_MANIFEST_FIELDS = frozenset(
         "schema",
         "source_evidence_cid",
         "duckdb_runtime_cid",
+        "qualification_runtime_cid",
+        "qualification_runtime_evidence",
+        "qualification_runtime_evidence_cid",
+        "materializer_zero_wx_policy",
+        "materializer_zero_wx_policy_cid",
+        "materializer_zero_wx_qualification_lifecycle",
+        "materializer_zero_wx_qualification_lifecycle_cid",
         "source_generation",
         "target_generation",
         "source_runtime_root",
@@ -1296,6 +1349,13 @@ FRESH_RECOVERY_RECEIPT_FIELDS = frozenset(
         "manifest_cid",
         "source_evidence_cid",
         "duckdb_runtime_cid",
+        "qualification_runtime_cid",
+        "qualification_runtime_evidence",
+        "qualification_runtime_evidence_cid",
+        "materializer_zero_wx_policy",
+        "materializer_zero_wx_policy_cid",
+        "materializer_zero_wx_prepublication_lifecycle",
+        "materializer_zero_wx_prepublication_lifecycle_cid",
         "bootstrap_receipt_cid",
         "bootstrap_receipt_sha256",
         "imported_completions",
@@ -1334,6 +1394,14 @@ class MaterializationError(RuntimeError):
     """Raised when bootstrap input or an operational store fails closed."""
 
 
+class RecoveryQualificationUnavailableMaterializationError(MaterializationError):
+    """Carry one closed, non-authoritative runtime-unavailable projection."""
+
+    def __init__(self, evidence: Mapping[str, Any]) -> None:
+        super().__init__("independent recovery qualification is unavailable")
+        self.evidence = dict(evidence)
+
+
 def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -1342,6 +1410,418 @@ def _canonical_bytes(value: Any) -> bytes:
         separators=(",", ":"),
         sort_keys=True,
     ).encode("utf-8")
+
+
+_MAX_MATERIALIZER_EXECUTABLE_MAPPINGS = 4_096
+_MAX_MATERIALIZER_MAP_BYTES = 4 * 1024 * 1024
+_MATERIALIZER_ZERO_WX_LIFECYCLES = {
+    ("materialize_fresh_generation_recovery", "fresh_publish"): (
+        "entry",
+        "qualification_final",
+        "receipt_seal_prepublication_persisted",
+        "pre_rename_enforcement",
+        "postpublish_enforcement",
+    ),
+    ("materialize_fresh_generation_recovery", "idempotent_replay"): (
+        "entry",
+        "replay_verification_final",
+    ),
+    ("verify_fresh_generation_recovery", "read_only_strict"): (
+        "entry",
+        "final",
+    ),
+}
+_MATERIALIZER_ZERO_WX_CONTEXTS: list[dict[str, Any]] = []
+
+
+def _materializer_zero_wx_policy() -> dict[str, Any]:
+    """Return the closed zero-WX contract for protected recovery operations."""
+
+    value: dict[str, Any] = {
+        "schema": MATERIALIZER_ZERO_WX_POLICY_SCHEMA,
+        "scope": "protected_recovery_operation",
+        "required_lifecycles": [
+            {
+                "operation": operation,
+                "operation_mode": operation_mode,
+                "ordered_phases": list(phases),
+            }
+            for (operation, operation_mode), phases in (
+                _MATERIALIZER_ZERO_WX_LIFECYCLES.items()
+            )
+        ],
+        "controller_wx_mapping_count": 0,
+        "controller_rwx_permitted": False,
+    }
+    value["policy_cid"] = content_identity(value)
+    return value
+
+
+def _materializer_executable_mapping_signatures() -> list[dict[str, Any]]:
+    """Read and normalize every executable VMA in the current process."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open("/proc/self/maps", flags)
+        try:
+            chunks = bytearray()
+            while len(chunks) <= _MAX_MATERIALIZER_MAP_BYTES:
+                block = os.read(
+                    descriptor,
+                    min(
+                        64 * 1024,
+                        _MAX_MATERIALIZER_MAP_BYTES + 1 - len(chunks),
+                    ),
+                )
+                if not block:
+                    break
+                chunks.extend(block)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise MaterializationError(
+            "materializer executable mapping evidence is unavailable"
+        ) from exc
+    maps_bytes = bytes(chunks)
+    if (
+        len(maps_bytes) > _MAX_MATERIALIZER_MAP_BYTES
+        or b" (deleted)" in maps_bytes
+    ):
+        raise MaterializationError("materializer executable mapping evidence differs")
+    result: list[dict[str, Any]] = []
+    for raw_line in maps_bytes.splitlines():
+        fields = raw_line.split(maxsplit=5)
+        if len(fields) < 5 or b"x" not in fields[1]:
+            continue
+        try:
+            address_text = fields[0].decode("ascii", errors="strict")
+            permissions = fields[1].decode("ascii", errors="strict")
+            offset = fields[2].decode("ascii", errors="strict")
+            device = fields[3].decode("ascii", errors="strict")
+            inode = fields[4].decode("ascii", errors="strict")
+            addresses = address_text.split("-", 1)
+            address_start = int(addresses[0], 16)
+            address_end = int(addresses[1], 16)
+            int(offset, 16)
+            device_parts = device.split(":", 1)
+            int(device_parts[0], 16)
+            int(device_parts[1], 16)
+            int(inode, 10)
+        except (IndexError, UnicodeDecodeError, ValueError) as exc:
+            raise MaterializationError(
+                "materializer executable mapping evidence is malformed"
+            ) from exc
+        if (
+            len(addresses) != 2
+            or address_start >= address_end
+            or len(permissions) != 4
+            or permissions[0] not in "r-"
+            or permissions[1] not in "w-"
+            or permissions[2] not in "x-"
+            or permissions[3] not in "ps"
+        ):
+            raise MaterializationError(
+                "materializer executable mapping evidence is malformed"
+            )
+        path_kind = "anonymous"
+        path_token = "anonymous"
+        if len(fields) == 6:
+            try:
+                label = fields[5].decode("utf-8", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise MaterializationError(
+                    "materializer executable mapping label is malformed"
+                ) from exc
+            if label.startswith("/"):
+                path_kind = "absolute_file"
+                path_token = "absolute:" + hashlib.sha256(
+                    label.encode("utf-8")
+                ).hexdigest()
+            elif (
+                len(label) >= 3
+                and label[0] == "["
+                and label[-1] == "]"
+                and all(
+                    character.isalnum() or character in "_.:-"
+                    for character in label[1:-1]
+                )
+            ):
+                path_kind = "kernel"
+                path_token = "kernel:" + label
+            else:
+                raise MaterializationError(
+                    "materializer executable mapping label differs"
+                )
+        if permissions[1] == "w" and permissions[2] == "x":
+            raise MaterializationError(
+                "materializer contains a writable executable mapping"
+            )
+        result.append(
+            {
+                "kind": path_kind,
+                "permissions": permissions,
+                "offset": offset,
+                "size_bytes": address_end - address_start,
+                "path_token": path_token,
+            }
+        )
+        if len(result) > _MAX_MATERIALIZER_EXECUTABLE_MAPPINGS:
+            raise MaterializationError(
+                "materializer executable mapping population exceeds its bound"
+            )
+    if not result:
+        raise MaterializationError("materializer executable mapping population is empty")
+    return sorted(result, key=_canonical_bytes)
+
+
+def _materializer_zero_wx_observation(
+    *, operation: str, phase: str
+) -> dict[str, Any]:
+    """Capture one zero-WX observation at a protected recovery boundary."""
+
+    allowed_phases = {
+        item
+        for (candidate_operation, _mode), phases in (
+            _MATERIALIZER_ZERO_WX_LIFECYCLES.items()
+        )
+        if candidate_operation == operation
+        for item in phases
+    }
+    if phase not in allowed_phases:
+        raise MaterializationError("materializer zero-WX phase differs")
+    _materializer_executable_mapping_signatures()
+    empty_wx_root = content_identity([])
+    value: dict[str, Any] = {
+        "schema": MATERIALIZER_ZERO_WX_OBSERVATION_SCHEMA,
+        "scope": "protected_recovery_operation",
+        "operation": operation,
+        "phase": phase,
+        "controller_wx_mapping_count": 0,
+        "controller_wx_mapping_root": empty_wx_root,
+        "controller_rwx_permitted": False,
+        "full_rx_telemetry_semantic": False,
+    }
+    value["observation_cid"] = content_identity(value)
+    return value
+
+
+def _validate_materializer_zero_wx_observation(
+    value: Any, *, operation: str, phase: str
+) -> dict[str, Any]:
+    """Validate one persisted materializer zero-WX observation."""
+
+    if not isinstance(value, Mapping):
+        raise MaterializationError("materializer zero-WX observation is absent")
+    body = {key: item for key, item in value.items() if key != "observation_cid"}
+    if (
+        set(value)
+        != {
+            "schema",
+            "scope",
+            "operation",
+            "phase",
+            "controller_wx_mapping_count",
+            "controller_wx_mapping_root",
+            "controller_rwx_permitted",
+            "full_rx_telemetry_semantic",
+            "observation_cid",
+        }
+        or value.get("schema") != MATERIALIZER_ZERO_WX_OBSERVATION_SCHEMA
+        or value.get("scope") != "protected_recovery_operation"
+        or value.get("operation") != operation
+        or value.get("phase") != phase
+        or isinstance(value.get("controller_wx_mapping_count"), bool)
+        or value.get("controller_wx_mapping_count") != 0
+        or value.get("controller_wx_mapping_root") != content_identity([])
+        or value.get("controller_rwx_permitted") is not False
+        or value.get("full_rx_telemetry_semantic") is not False
+        or value.get("observation_cid") != content_identity(body)
+    ):
+        raise MaterializationError("materializer zero-WX observation differs")
+    return dict(value)
+
+
+def _materializer_zero_wx_lifecycle(
+    *, operation: str, operation_mode: str, ordered_phases: Sequence[str]
+) -> dict[str, Any]:
+    """Seal the exact observed prefix of one protected recovery operation."""
+
+    if not _MATERIALIZER_ZERO_WX_CONTEXTS:
+        raise MaterializationError("materializer zero-WX context is absent")
+    context = _MATERIALIZER_ZERO_WX_CONTEXTS[-1]
+    observations = context.get("observations")
+    expected_phases = tuple(ordered_phases)
+    if (
+        context.get("operation") != operation
+        or context.get("operation_mode") != operation_mode
+        or not isinstance(observations, list)
+        or tuple(item.get("phase") for item in observations) != expected_phases
+    ):
+        raise MaterializationError("materializer zero-WX lifecycle differs")
+    normalized = [
+        _validate_materializer_zero_wx_observation(
+            item, operation=operation, phase=phase
+        )
+        for item, phase in zip(observations, expected_phases, strict=True)
+    ]
+    value: dict[str, Any] = {
+        "schema": MATERIALIZER_ZERO_WX_LIFECYCLE_SCHEMA,
+        "scope": "protected_recovery_operation",
+        "operation": operation,
+        "operation_mode": operation_mode,
+        "ordered_phases": list(expected_phases),
+        "observations": normalized,
+        "observation_root": content_identity(normalized),
+        "controller_wx_mapping_count": 0,
+        "controller_rwx_permitted": False,
+    }
+    value["lifecycle_cid"] = content_identity(value)
+    return value
+
+
+def _validate_materializer_zero_wx_lifecycle(
+    value: Any,
+    *,
+    operation: str,
+    operation_mode: str,
+    ordered_phases: Sequence[str],
+) -> dict[str, Any]:
+    """Reconstruct one closed persisted materializer lifecycle prefix."""
+
+    if not isinstance(value, Mapping):
+        raise MaterializationError("materializer zero-WX lifecycle is absent")
+    expected_phases = tuple(ordered_phases)
+    observations = value.get("observations")
+    if not isinstance(observations, list) or len(observations) != len(
+        expected_phases
+    ):
+        raise MaterializationError("materializer zero-WX observations differ")
+    normalized = [
+        _validate_materializer_zero_wx_observation(
+            item, operation=operation, phase=phase
+        )
+        for item, phase in zip(observations, expected_phases, strict=True)
+    ]
+    body = {key: item for key, item in value.items() if key != "lifecycle_cid"}
+    if (
+        set(value)
+        != {
+            "schema",
+            "scope",
+            "operation",
+            "operation_mode",
+            "ordered_phases",
+            "observations",
+            "observation_root",
+            "controller_wx_mapping_count",
+            "controller_rwx_permitted",
+            "lifecycle_cid",
+        }
+        or value.get("schema") != MATERIALIZER_ZERO_WX_LIFECYCLE_SCHEMA
+        or value.get("scope") != "protected_recovery_operation"
+        or value.get("operation") != operation
+        or value.get("operation_mode") != operation_mode
+        or value.get("ordered_phases") != list(expected_phases)
+        or value.get("observations") != normalized
+        or value.get("observation_root") != content_identity(normalized)
+        or isinstance(value.get("controller_wx_mapping_count"), bool)
+        or value.get("controller_wx_mapping_count") != 0
+        or value.get("controller_rwx_permitted") is not False
+        or value.get("lifecycle_cid") != content_identity(body)
+    ):
+        raise MaterializationError("materializer zero-WX lifecycle differs")
+    return dict(value)
+
+
+def _validate_materializer_zero_wx_policy(value: Any) -> dict[str, Any]:
+    """Validate the persisted closed materializer zero-WX policy."""
+
+    expected = _materializer_zero_wx_policy()
+    if value != expected:
+        raise MaterializationError("materializer zero-WX policy differs")
+    return expected
+
+
+def _record_materializer_zero_wx(*, operation: str, phase: str) -> dict[str, Any]:
+    """Append one exact phase to the active protected-operation context."""
+
+    if not _MATERIALIZER_ZERO_WX_CONTEXTS:
+        raise MaterializationError("materializer zero-WX context is absent")
+    context = _MATERIALIZER_ZERO_WX_CONTEXTS[-1]
+    observations = context.get("observations")
+    if context.get("operation") != operation or not isinstance(observations, list):
+        raise MaterializationError("materializer zero-WX context differs")
+    operation_mode = context.get("operation_mode")
+    expected = _MATERIALIZER_ZERO_WX_LIFECYCLES.get(
+        (operation, operation_mode)
+    )
+    if expected is None:
+        raise MaterializationError("materializer zero-WX operation mode differs")
+    if len(observations) >= len(expected) or expected[len(observations)] != phase:
+        raise MaterializationError("materializer zero-WX phase ordering differs")
+    observation = _materializer_zero_wx_observation(
+        operation=operation, phase=phase
+    )
+    observations.append(observation)
+    return observation
+
+
+def _set_materializer_zero_wx_operation_mode(
+    *, operation: str, operation_mode: str
+) -> None:
+    """Select exactly one truthful lifecycle after target-state inspection."""
+
+    if not _MATERIALIZER_ZERO_WX_CONTEXTS:
+        raise MaterializationError("materializer zero-WX context is absent")
+    context = _MATERIALIZER_ZERO_WX_CONTEXTS[-1]
+    if (
+        context.get("operation") != operation
+        or context.get("operation_mode") is not None
+        or (operation, operation_mode) not in _MATERIALIZER_ZERO_WX_LIFECYCLES
+    ):
+        raise MaterializationError("materializer zero-WX operation mode differs")
+    context["operation_mode"] = operation_mode
+
+
+def _validate_materializer_zero_wx_context_prefix(
+    context: Mapping[str, Any],
+) -> None:
+    """Require every failed operation to expose only an exact lifecycle prefix."""
+
+    operation = context.get("operation")
+    operation_mode = context.get("operation_mode")
+    observations = context.get("observations")
+    if not isinstance(operation, str) or not isinstance(observations, list):
+        raise MaterializationError("materializer zero-WX context differs")
+    if operation_mode is None:
+        if operation != "materialize_fresh_generation_recovery":
+            raise MaterializationError("materializer zero-WX operation mode differs")
+        expected_phases = ("entry",)
+    else:
+        expected_phases = _MATERIALIZER_ZERO_WX_LIFECYCLES.get(
+            (operation, operation_mode)
+        )
+        if expected_phases is None:
+            raise MaterializationError("materializer zero-WX operation mode differs")
+    if (
+        not observations
+        or len(observations) > len(expected_phases)
+        or any(not isinstance(item, Mapping) for item in observations)
+        or tuple(item.get("phase") for item in observations)
+        != expected_phases[: len(observations)]
+    ):
+        raise MaterializationError("materializer zero-WX lifecycle prefix differs")
+    for item, phase in zip(
+        observations,
+        expected_phases[: len(observations)],
+        strict=True,
+    ):
+        _validate_materializer_zero_wx_observation(
+            item,
+            operation=operation,
+            phase=phase,
+        )
 
 
 def _strict_json_loads(value: str | bytes, *, noun: str) -> Any:
@@ -1377,6 +1857,26 @@ def _is_sha256(value: object) -> bool:
         len(text) == 71
         and text.startswith("sha256:")
         and all(character in "0123456789abcdef" for character in text[7:])
+    )
+
+
+def _is_canonical_content_cid(value: object) -> bool:
+    """Recognize the exact CIDv1/base32/raw/sha2-256 identity encoding."""
+
+    if not isinstance(value, str) or len(value) != 61:
+        return False
+    if value[0] != "b" or any(character not in "abcdefghijklmnopqrstuvwxyz234567" for character in value[1:]):
+        return False
+    encoded = value[1:]
+    try:
+        raw = base64.b32decode(encoded.upper() + "====", casefold=False)
+    except (binascii.Error, ValueError):
+        return False
+    return (
+        len(raw) == 37
+        and raw[:5] == b"\x01\xa9\x02\x12\x20"
+        and base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+        == encoded
     )
 
 
@@ -2189,6 +2689,7 @@ def _fresh_recovery_policy(config: Mapping[str, Any]) -> Mapping[str, Any]:
         "target_generation",
         "target_runtime_root",
         "duckdb_runtime_cid",
+        "qualification_runtime_cid",
         "verification_python_executable",
         "verification_python_executable_sha256",
         "retained_revision_receipt_path",
@@ -2219,6 +2720,13 @@ def _fresh_recovery_policy(config: Mapping[str, Any]) -> Mapping[str, Any]:
     runtime_cid = str(policy.get("duckdb_runtime_cid") or "")
     if not runtime_cid.startswith("baguqeera"):
         raise MaterializationError("fresh recovery DuckDB runtime identity is absent")
+    qualification_runtime_cid = str(
+        policy.get("qualification_runtime_cid") or ""
+    )
+    if not _is_canonical_content_cid(qualification_runtime_cid):
+        raise MaterializationError(
+            "fresh recovery qualification runtime identity is absent"
+        )
     executable = str(policy.get("verification_python_executable") or "")
     executable_digest = str(
         policy.get("verification_python_executable_sha256") or ""
@@ -2482,34 +2990,93 @@ def _with_bound_duckdb_runtime(
 
     @functools.wraps(function)
     def wrapped(config: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        expected = _require_bound_duckdb_runtime_policy(config)
+        operation = function.__name__
+        modes = tuple(
+            mode
+            for candidate_operation, mode in _MATERIALIZER_ZERO_WX_LIFECYCLES
+            if candidate_operation == operation
+        )
+        if not modes:
+            raise MaterializationError("materializer zero-WX operation differs")
+        initial_mode = modes[0] if len(modes) == 1 else None
+        context: dict[str, Any] = {
+            "operation": operation,
+            "operation_mode": initial_mode,
+            "observations": [
+                _materializer_zero_wx_observation(
+                    operation=operation,
+                    phase="entry",
+                )
+            ],
+        }
+        _MATERIALIZER_ZERO_WX_CONTEXTS.append(context)
         try:
-            from scripts.qualify_logic_governed_compositional_verification_fabric import (
-                QualificationError,
-                isolated_bound_duckdb_runtime,
-            )
-        except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
-            raise MaterializationError("bound DuckDB runtime admission failed") from exc
-        runtime = isolated_bound_duckdb_runtime(expected_runtime_cid=expected)
-        try:
-            runtime.__enter__()
-        except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
-            raise MaterializationError("bound DuckDB runtime admission failed") from exc
-        try:
-            result = function(config, *args, **kwargs)
-        except BaseException:
+            expected = _require_bound_duckdb_runtime_policy(config)
             try:
-                runtime.__exit__(*sys.exc_info())
+                from scripts.qualify_logic_governed_compositional_verification_fabric import (
+                    QualificationError,
+                    isolated_bound_duckdb_runtime,
+                )
+            except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+                raise MaterializationError("bound DuckDB runtime admission failed") from exc
+            runtime = isolated_bound_duckdb_runtime(expected_runtime_cid=expected)
+            try:
+                runtime.__enter__()
+            except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+                raise MaterializationError("bound DuckDB runtime admission failed") from exc
+            try:
+                result = function(config, *args, **kwargs)
+            except BaseException:
+                try:
+                    runtime.__exit__(*sys.exc_info())
+                except (
+                    ImportError,
+                    OSError,
+                    QualificationError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    raise MaterializationError(
+                        "bound DuckDB runtime validation failed"
+                ) from exc
+                raise
+            try:
+                runtime.__exit__(None, None, None)
             except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
                 raise MaterializationError(
                     "bound DuckDB runtime validation failed"
                 ) from exc
-            raise
-        try:
-            runtime.__exit__(None, None, None)
-        except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
-            raise MaterializationError("bound DuckDB runtime validation failed") from exc
-        return result
+            operation_mode = context.get("operation_mode")
+            expected_phases = _MATERIALIZER_ZERO_WX_LIFECYCLES.get(
+                (operation, operation_mode)
+            )
+            observations = context.get("observations")
+            if (
+                expected_phases is None
+                or not isinstance(observations, list)
+                or any(not isinstance(item, Mapping) for item in observations)
+                or tuple(item.get("phase") for item in observations)
+                != expected_phases
+            ):
+                raise MaterializationError(
+                    "materializer zero-WX lifecycle is incomplete"
+                )
+            return result
+        finally:
+            try:
+                _validate_materializer_zero_wx_context_prefix(context)
+            finally:
+                try:
+                    _materializer_executable_mapping_signatures()
+                finally:
+                    if (
+                        not _MATERIALIZER_ZERO_WX_CONTEXTS
+                        or _MATERIALIZER_ZERO_WX_CONTEXTS[-1] is not context
+                    ):
+                        raise MaterializationError(
+                            "materializer zero-WX context was replaced"
+                        )
+                    _MATERIALIZER_ZERO_WX_CONTEXTS.pop()
 
     return wrapped
 
@@ -7895,6 +8462,7 @@ def preview_fresh_generation_recovery(
         "source_generation": policy["source_generation"],
         "target_generation": policy["target_generation"],
         "duckdb_runtime_cid": duckdb_runtime_cid,
+        "qualification_runtime_cid": policy["qualification_runtime_cid"],
         "verification_python_executable": policy[
             "verification_python_executable"
         ],
@@ -7931,6 +8499,776 @@ def preview_fresh_generation_recovery(
     return preview
 
 
+def _recovery_qualification_unavailable_evidence(
+    qualification: Mapping[str, Any],
+    *,
+    preview: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project one verified unavailable receipt into a bounded no-write error."""
+
+    population = qualification.get("ordered_task_population")
+    expected_runtime_cid = str(preview.get("qualification_runtime_cid") or "")
+    observed_runtime_cid = qualification.get("observed_runtime_cid")
+    false_authority_fields = (
+        "task_authority",
+        "objective_authority",
+        "release_authority",
+        "production_authority",
+        "self_authority",
+        "completion_authoritative",
+        "task_implementation_complete",
+        "test_qualification_complete",
+        "objective_complete",
+        "release_qualified",
+        "production_authorized",
+        "production_authoritative",
+    )
+    expected_detail = "pin:identity_mismatch:qualification_runtime"
+    if (
+        qualification.get("disposition") != "unavailable"
+        or qualification.get("phase") != "pin"
+        or qualification.get("reason_code") != "identity_mismatch"
+        or qualification.get("component") != "qualification_runtime"
+        or qualification.get("expected_runtime_cid") != expected_runtime_cid
+        or not _is_canonical_content_cid(expected_runtime_cid)
+        or not _is_canonical_content_cid(observed_runtime_cid)
+        or observed_runtime_cid == expected_runtime_cid
+        or qualification.get("detail") != expected_detail
+        or qualification.get("detail_sha256")
+        != "sha256:" + hashlib.sha256(expected_detail.encode("utf-8")).hexdigest()
+        or not isinstance(population, list)
+        or len(population) != len(FRESH_RECOVERY_MERGE_COMPLETIONS)
+        or any(not isinstance(item, Mapping) for item in population)
+        or any(qualification.get(field) is not False for field in false_authority_fields)
+        or not _is_canonical_content_cid(qualification.get("receipt_cid"))
+    ):
+        raise MaterializationError(
+            "independent recovery unavailable qualification differs"
+        )
+    evidence: dict[str, Any] = {
+        "schema": FRESH_RECOVERY_QUALIFICATION_UNAVAILABLE_SCHEMA,
+        "valid": False,
+        "disposition": "unavailable",
+        "error_code": "qualification_runtime_unavailable",
+        "operation": "materialize_fresh_generation_recovery",
+        "plan_cid": qualification["plan_cid"],
+        "ordered_task_population_count": len(population),
+        "ordered_task_population_root": content_identity(population),
+        "phase": "pin",
+        "reason_code": "identity_mismatch",
+        "component": "qualification_runtime",
+        "expected_runtime_cid": expected_runtime_cid,
+        "observed_runtime_cid": observed_runtime_cid,
+        "detail": expected_detail,
+        "detail_sha256": qualification["detail_sha256"],
+        "qualification_receipt_cid": qualification["receipt_cid"],
+        "target_write_performed": False,
+        "stage_write_performed": False,
+        "self_authority": False,
+        "completion_authoritative": False,
+        "task_implementation_complete": False,
+        "test_qualification_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authorized": False,
+        "production_authoritative": False,
+    }
+    evidence["evidence_cid"] = content_identity(evidence)
+    return evidence
+
+
+_RECOVERY_061_CALL_NAMES: Final[tuple[str, ...]] = (
+    "test_closed_dispositions_are_exactly_the_required_terminals",
+    "test_safe_cfg_is_proved_without_refinement",
+    "test_spurious_trace_refines_with_validated_interpolant",
+    "test_spurious_trace_refines_with_validated_unsat_core",
+    "test_spurious_trace_refines_with_weakest_precondition",
+    "test_spurious_trace_refines_with_reviewed_predicate",
+    "test_unreviewed_predicate_is_rejected",
+    "test_real_trace_remains_counterexample",
+    "test_real_trace_is_not_refined_away",
+    "test_iteration_budget_exhausts_on_remaining_spurious_trace",
+    "test_predicate_budget_exhausts_when_refinement_cannot_grow",
+    "test_timeout_terminates",
+    "test_path_timeout_terminates",
+    "test_unavailable_solver_terminates",
+    "test_unknown_path_check_terminates",
+    "test_unknown_when_no_refinement_authority_applies",
+    "test_every_run_has_exactly_one_closed_disposition",
+    "test_refinement_binds_partitions_vocabulary_theory_provider_bounds_and_identities",
+    "test_non_interpolant_refinement_does_not_fabricate_an_interpolant",
+    "test_receipt_identity_is_stable_for_identical_runs",
+    "test_malformed_system_is_rejected",
+    "test_disproved_receipt_requires_a_real_counterexample",
+    "test_spurious_list_cannot_hold_a_real_trace",
+    "test_scripted_solver_can_answer_by_query_id",
+    "test_live_incremental_smt_real_trace_stays_a_counterexample",
+    "test_live_incremental_smt_spurious_trace_is_refined_or_typed",
+    "test_default_backends_never_fabricate_an_interpolant_on_the_spurious_example",
+)
+
+
+def _materializer_recovery_061_call_nodeids() -> list[str]:
+    prefix = "tests/unit/logic/software_verification/test_cegar.py::"
+    return [prefix + name for name in _RECOVERY_061_CALL_NAMES]
+
+
+def _materializer_z3_policy_commitments(
+    *, task_id: str, profile: Mapping[str, Any]
+) -> dict[str, Any]:
+    enabled = task_id == "LGCVF-061"
+    call_nodeids = _materializer_recovery_061_call_nodeids()
+    meta_denials = (
+        [
+            {
+                "ordinal": ordinal,
+                "pytest_call_ordinal": call_ordinal,
+                "nodeid": call_nodeids[call_ordinal - 1],
+                "module": "z3",
+                "disposition": "denied_before_loader_as_typed_unavailable",
+                "meta_path_identity_exact": True,
+                "owner_thread_only": True,
+                "z3_modules_absent": True,
+                "z3_file_descriptor_count": 0,
+                "z3_file_descriptor_root": content_identity([]),
+                "z3_native_mapping_count": 0,
+                "z3_native_mapping_root": content_identity([]),
+            }
+            for ordinal, call_ordinal in enumerate((25, 26, 27), start=1)
+        ]
+        if enabled
+        else []
+    )
+    return {
+        "z3_import_policy_disposition": profile.get(
+            "z3_import_policy_disposition"
+        ),
+        "z3_import_policy_cid": profile.get("z3_import_policy_cid"),
+        "z3_expected_meta_denial_count": len(meta_denials),
+        "z3_expected_meta_denial_root": content_identity(meta_denials),
+        "z3_expected_open_boundary_denial_count": 0,
+        "z3_expected_open_boundary_denial_root": content_identity([]),
+        "z3_policy_namespace_unavailability": enabled,
+        "z3_live_cegar_disposition": (
+            "not_exercised_policy_namespace_unavailable"
+            if enabled
+            else "not_applicable"
+        ),
+        "z3_candidate_reason_interpretation": (
+            "z3 Python API is not installed means policy namespace unavailable "
+            "inside the sealed LGCVF-061 worker"
+            if enabled
+            else "not_applicable"
+        ),
+    }
+
+
+def _validate_materialized_z3_import_denial_evidence(
+    value: Any,
+    *,
+    phase: str,
+    task_id: str,
+    suite_id: str,
+    task_receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise MaterializationError("qualification Z3 denial evidence is absent")
+    enabled = task_id == "LGCVF-061"
+    call_nodeids = _materializer_recovery_061_call_nodeids() if enabled else []
+    expected_meta = (
+        [
+            {
+                "ordinal": ordinal,
+                "pytest_call_ordinal": call_ordinal,
+                "nodeid": call_nodeids[call_ordinal - 1],
+                "module": "z3",
+                "disposition": "denied_before_loader_as_typed_unavailable",
+                "meta_path_identity_exact": True,
+                "owner_thread_only": True,
+                "z3_modules_absent": True,
+                "z3_file_descriptor_count": 0,
+                "z3_file_descriptor_root": content_identity([]),
+                "z3_native_mapping_count": 0,
+                "z3_native_mapping_root": content_identity([]),
+            }
+            for ordinal, call_ordinal in enumerate((25, 26, 27), start=1)
+        ]
+        if enabled and phase == "final"
+        else []
+    )
+    expected_calls = call_nodeids if enabled and phase == "final" else []
+    expected_modules_absent = task_id not in {"LGCVF-051", "LGCVF-060"}
+    body = {key: item for key, item in value.items() if key != "evidence_cid"}
+    expected_fields = {
+        "schema",
+        "phase",
+        "task_id",
+        "suite_id",
+        "policy_cid",
+        "policy_disposition",
+        "top_level_import_audit_claimed",
+        "irreversible_audit_open_boundary_installed",
+        "meta_path_guard_state",
+        "owner_phase",
+        "process_exit_removal_boundary",
+        "pytest_meta_path_lifecycle_disposition",
+        "pytest_meta_path_admission_count",
+        "pytest_meta_path_call_start_validation_count",
+        "pytest_meta_path_sessionfinish_validation_count",
+        "pytest_meta_path_unconfigure_validation_count",
+        "pytest_meta_path_return_restoration_count",
+        "pytest_meta_path_candidate_tuple_validated",
+        "pytest_meta_path_bootstrap_tuple_restored",
+        "trusted_revalidation_owner_thread_only",
+        "trusted_revalidation_scope_closed",
+        "ordered_meta_denials",
+        "meta_denial_count",
+        "meta_denial_root",
+        "ordered_open_boundary_denials",
+        "open_boundary_denial_count",
+        "open_boundary_denial_root",
+        "trusted_revalidation_scope_entry_count",
+        "trusted_revalidation_scope_exit_count",
+        "trusted_revalidation_scope_completed",
+        "trusted_revalidation_permitted_z3_open_count",
+        "trusted_revalidation_telemetry_authoritative",
+        "trusted_revalidation_telemetry_reconstructed",
+        "z3_modules_absent",
+        "z3_file_descriptor_count",
+        "z3_file_descriptor_root",
+        "policy_denied_z3_native_mapping_count",
+        "policy_denied_z3_native_mapping_root",
+        "z3_loader_executed",
+        "pytest_call_count",
+        "pytest_call_nodeid_root",
+        "policy_namespace_unavailability",
+        "live_z3_cegar_disposition",
+        "candidate_reason_interpretation",
+        "infrastructure_not_proof",
+        "cache_authority",
+        "completion_authoritative",
+        "evidence_cid",
+    }
+    numeric_fields = (
+        "meta_denial_count",
+        "open_boundary_denial_count",
+        "pytest_meta_path_admission_count",
+        "pytest_meta_path_call_start_validation_count",
+        "pytest_meta_path_sessionfinish_validation_count",
+        "pytest_meta_path_unconfigure_validation_count",
+        "pytest_meta_path_return_restoration_count",
+        "trusted_revalidation_scope_entry_count",
+        "trusted_revalidation_scope_exit_count",
+        "trusted_revalidation_permitted_z3_open_count",
+        "z3_file_descriptor_count",
+        "policy_denied_z3_native_mapping_count",
+        "pytest_call_count",
+    )
+    if any(
+        isinstance(value.get(field), bool) or not isinstance(value.get(field), int)
+        for field in numeric_fields
+    ):
+        raise MaterializationError("qualification Z3 denial counts differ")
+    permitted = int(value.get("trusted_revalidation_permitted_z3_open_count", -1))
+    if (
+        set(value) != expected_fields
+        or value.get("schema") != "lgcvf-recovery-z3-import-denial-evidence@2"
+        or value.get("phase") != phase
+        or value.get("task_id") != task_id
+        or value.get("suite_id") != suite_id
+        or value.get("policy_cid") != task_receipt.get("z3_import_policy_cid")
+        or value.get("policy_disposition")
+        != task_receipt.get("z3_import_policy_disposition")
+        or value.get("top_level_import_audit_claimed") is not False
+        or value.get("irreversible_audit_open_boundary_installed") is not enabled
+        or value.get("meta_path_guard_state")
+        != ("active_exact" if enabled else "not_applicable")
+        or value.get("owner_phase")
+        != (
+            "candidate_execution"
+            if enabled and phase == "prepared"
+            else "post_candidate_revalidation"
+            if enabled
+            else "not_applicable"
+        )
+        or value.get("process_exit_removal_boundary") is not enabled
+        or value.get("pytest_meta_path_lifecycle_disposition")
+        != (
+            "candidate_completed_bootstrap_restored"
+            if enabled and phase == "final"
+            else "candidate_not_started"
+            if enabled
+            else "not_applicable"
+        )
+        or value.get("pytest_meta_path_admission_count")
+        != (1 if enabled and phase == "final" else 0)
+        or value.get("pytest_meta_path_call_start_validation_count")
+        != (len(expected_calls) if enabled and phase == "final" else 0)
+        or value.get("pytest_meta_path_sessionfinish_validation_count")
+        != (1 if enabled and phase == "final" else 0)
+        or value.get("pytest_meta_path_unconfigure_validation_count")
+        != (1 if enabled and phase == "final" else 0)
+        or value.get("pytest_meta_path_return_restoration_count")
+        != (1 if enabled and phase == "final" else 0)
+        or value.get("pytest_meta_path_candidate_tuple_validated")
+        is not (enabled and phase == "final")
+        or value.get("pytest_meta_path_bootstrap_tuple_restored") is not enabled
+        or value.get("trusted_revalidation_owner_thread_only") is not enabled
+        or value.get("trusted_revalidation_scope_closed") is not True
+        or value.get("ordered_meta_denials") != expected_meta
+        or value.get("meta_denial_count") != len(expected_meta)
+        or value.get("meta_denial_root") != content_identity(expected_meta)
+        or value.get("ordered_open_boundary_denials") != []
+        or value.get("open_boundary_denial_count") != 0
+        or value.get("open_boundary_denial_root") != content_identity([])
+        or value.get("trusted_revalidation_scope_entry_count")
+        != (1 if enabled and phase == "final" else 0)
+        or value.get("trusted_revalidation_scope_exit_count")
+        != (1 if enabled and phase == "final" else 0)
+        or value.get("trusted_revalidation_scope_completed")
+        is not (enabled and phase == "final")
+        or (enabled and phase == "final" and not 1 <= permitted <= 4096)
+        or ((not enabled or phase == "prepared") and permitted != 0)
+        or value.get("trusted_revalidation_telemetry_authoritative") is not False
+        or value.get("trusted_revalidation_telemetry_reconstructed") is not False
+        or value.get("z3_modules_absent") is not expected_modules_absent
+        or value.get("z3_file_descriptor_count") != 0
+        or value.get("z3_file_descriptor_root") != content_identity([])
+        or value.get("policy_denied_z3_native_mapping_count") != 0
+        or value.get("policy_denied_z3_native_mapping_root")
+        != content_identity([])
+        or value.get("z3_loader_executed") is not (not expected_modules_absent)
+        or value.get("pytest_call_count") != len(expected_calls)
+        or value.get("pytest_call_nodeid_root") != content_identity(expected_calls)
+        or value.get("policy_namespace_unavailability")
+        is not task_receipt.get("z3_policy_namespace_unavailability")
+        or value.get("live_z3_cegar_disposition")
+        != task_receipt.get("z3_live_cegar_disposition")
+        or value.get("candidate_reason_interpretation")
+        != task_receipt.get("z3_candidate_reason_interpretation")
+        or value.get("infrastructure_not_proof") is not True
+        or value.get("cache_authority") is not False
+        or value.get("completion_authoritative") is not False
+        or value.get("evidence_cid") != content_identity(body)
+    ):
+        raise MaterializationError("qualification Z3 denial evidence differs")
+    return dict(value)
+
+
+def _materialized_public_z3_import_commitments(
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "z3_import_denial_evidence_cid": evidence.get("evidence_cid"),
+        "z3_import_policy_cid": evidence.get("policy_cid"),
+        "z3_import_policy_disposition": evidence.get("policy_disposition"),
+        "z3_meta_denial_count": evidence.get("meta_denial_count"),
+        "z3_meta_denial_root": evidence.get("meta_denial_root"),
+        "z3_open_boundary_denial_count": evidence.get(
+            "open_boundary_denial_count"
+        ),
+        "z3_open_boundary_denial_root": evidence.get(
+            "open_boundary_denial_root"
+        ),
+        "z3_modules_absent": evidence.get("z3_modules_absent"),
+        "z3_file_descriptor_count": evidence.get("z3_file_descriptor_count"),
+        "z3_file_descriptor_root": evidence.get("z3_file_descriptor_root"),
+        "z3_policy_denied_native_mapping_count": evidence.get(
+            "policy_denied_z3_native_mapping_count"
+        ),
+        "z3_policy_denied_native_mapping_root": evidence.get(
+            "policy_denied_z3_native_mapping_root"
+        ),
+        "z3_owner_phase": evidence.get("owner_phase"),
+        "z3_trusted_revalidation_scope_completed": evidence.get(
+            "trusted_revalidation_scope_completed"
+        ),
+        "z3_trusted_revalidation_owner_thread_only": evidence.get(
+            "trusted_revalidation_owner_thread_only"
+        ),
+        "z3_trusted_revalidation_permitted_open_count": evidence.get(
+            "trusted_revalidation_permitted_z3_open_count"
+        ),
+        "z3_trusted_revalidation_telemetry_authoritative": evidence.get(
+            "trusted_revalidation_telemetry_authoritative"
+        ),
+        "z3_trusted_revalidation_telemetry_reconstructed": evidence.get(
+            "trusted_revalidation_telemetry_reconstructed"
+        ),
+        "z3_policy_namespace_unavailability": evidence.get(
+            "policy_namespace_unavailability"
+        ),
+        "z3_live_cegar_disposition": evidence.get("live_z3_cegar_disposition"),
+        "z3_candidate_reason_interpretation": evidence.get(
+            "candidate_reason_interpretation"
+        ),
+    }
+
+
+_MATERIALIZED_PUBLIC_Z3_IMPORT_FIELDS: Final[frozenset[str]] = frozenset(
+    _materialized_public_z3_import_commitments({})
+)
+
+
+def _materialized_recovery_suite_native_policy(
+    *, z3_required: bool
+) -> dict[str, Any]:
+    value: dict[str, Any] = {
+        "schema": "lgcvf-recovery-suite-native-policy@1",
+        "z3_required": z3_required,
+        "controller_rwx_permitted": False,
+        "worker_rwx_disposition": (
+            "exact_z3_libffi_anonymous_4096_rwxp"
+            if z3_required
+            else "zero_writable_executable"
+        ),
+    }
+    value["policy_cid"] = content_identity(value)
+    return value
+
+
+def _validate_materialized_controller_zero_wx_observation(
+    value: Any, *, phase: str
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise MaterializationError("qualification controller W+X evidence is absent")
+    body = {key: item for key, item in value.items() if key != "observation_cid"}
+    executable_count = value.get("executable_mapping_count")
+    if (
+        set(value)
+        != {
+            "schema",
+            "phase",
+            "executable_mapping_count",
+            "normalized_executable_mapping_root",
+            "controller_wx_mapping_count",
+            "controller_rwx_permitted",
+            "observation_cid",
+        }
+        or value.get("schema")
+        != "lgcvf-recovery-controller-zero-wx-observation@1"
+        or value.get("phase") != phase
+        or isinstance(executable_count, bool)
+        or not isinstance(executable_count, int)
+        or executable_count <= 0
+        or not _is_canonical_content_cid(
+            value.get("normalized_executable_mapping_root")
+        )
+        or isinstance(value.get("controller_wx_mapping_count"), bool)
+        or value.get("controller_wx_mapping_count") != 0
+        or value.get("controller_rwx_permitted") is not False
+        or value.get("observation_cid") != content_identity(body)
+    ):
+        raise MaterializationError("qualification controller W+X evidence differs")
+    return dict(value)
+
+
+def _validate_materialized_public_attestation_phase(
+    value: Any,
+    *,
+    phase_name: str,
+    task_id: str,
+    suite_id: str,
+    runtime_cid: str,
+    task_receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise MaterializationError("qualification attestation phase is absent")
+    evidence = _validate_materialized_z3_import_denial_evidence(
+        value.get("z3_import_denial_evidence"),
+        phase=phase_name,
+        task_id=task_id,
+        suite_id=suite_id,
+        task_receipt=task_receipt,
+    )
+    self_observation = value.get("self_observation")
+    parent_observation = value.get("parent_observation")
+    if not isinstance(self_observation, Mapping) or not isinstance(
+        parent_observation, Mapping
+    ):
+        raise MaterializationError("qualification attestation observations are absent")
+    z3_commitments = _materialized_public_z3_import_commitments(evidence)
+    z3_required = task_id in {"LGCVF-051", "LGCVF-060"}
+    native_policy = _materialized_recovery_suite_native_policy(
+        z3_required=z3_required
+    )
+    expected_wx = (
+        [
+            {
+                "kind": "anonymous",
+                "permissions": "rwxp",
+                "offset": "00000000",
+                "device": "00:00",
+                "inode": "0",
+                "size_bytes": 4096,
+                "path_token": "anonymous",
+            }
+        ]
+        if z3_required
+        else []
+    )
+    self_body = {
+        key: item
+        for key, item in self_observation.items()
+        if key != "self_observation_cid"
+    }
+    self_numeric = (
+        "executable_mapping_count",
+        "thread_count",
+        "kernel_task_count",
+        "child_process_count",
+        "process_group_count",
+        "z3_meta_denial_count",
+        "z3_open_boundary_denial_count",
+        "z3_file_descriptor_count",
+        "z3_policy_denied_native_mapping_count",
+        "z3_trusted_revalidation_permitted_open_count",
+    )
+    if (
+        set(self_observation)
+        != {
+            "schema",
+            "phase",
+            "suite_id",
+            "runtime_cid",
+            "suite_native_policy",
+            "suite_task_policy_matrix_cid",
+            "suite_task_profile_cid",
+            "full_live_observation_cid",
+            "suite_task_receipt_cid",
+            "fixed_point_to_prepared_identity_restored",
+            "native_guard_cid",
+            *_MATERIALIZED_PUBLIC_Z3_IMPORT_FIELDS,
+            "executable_mapping_count",
+            "normalized_executable_mapping_root",
+            "writable_executable_mappings",
+            "thread_count",
+            "kernel_task_count",
+            "normalized_kernel_task_root",
+            "child_process_count",
+            "children_absent",
+            "process_group_count",
+            "process_group_leader_only",
+            "self_observation_cid",
+        }
+        or self_observation.get("schema")
+        != "lgcvf-recovery-worker-normalized-self-observation@3"
+        or self_observation.get("phase") != phase_name
+        or self_observation.get("suite_id") != suite_id
+        or self_observation.get("runtime_cid") != runtime_cid
+        or self_observation.get("suite_native_policy") != native_policy
+        or self_observation.get("suite_task_policy_matrix_cid")
+        != task_receipt.get("policy_matrix_cid")
+        or self_observation.get("suite_task_profile_cid")
+        != task_receipt.get("profile_cid")
+        or self_observation.get("full_live_observation_cid")
+        != task_receipt.get("full_live_observation_cid")
+        or self_observation.get("suite_task_receipt_cid")
+        != task_receipt.get("receipt_cid")
+        or self_observation.get("fixed_point_to_prepared_identity_restored")
+        is not True
+        or not _is_canonical_content_cid(self_observation.get("native_guard_cid"))
+        or any(
+            self_observation.get(key) != expected
+            for key, expected in z3_commitments.items()
+        )
+        or any(
+            isinstance(self_observation.get(field), bool)
+            or not isinstance(self_observation.get(field), int)
+            or int(self_observation[field]) < 0
+            for field in self_numeric
+        )
+        or int(self_observation.get("executable_mapping_count", 0)) <= 0
+        or int(self_observation.get("thread_count", 0)) <= 0
+        or int(self_observation.get("kernel_task_count", 0)) <= 0
+        or self_observation.get("normalized_kernel_task_root")
+        != task_receipt.get("ordered_normalized_task_roots", [None])[-1]
+        or self_observation.get("child_process_count") != 0
+        or self_observation.get("children_absent") is not True
+        or self_observation.get("process_group_count") != 1
+        or self_observation.get("process_group_leader_only") is not True
+        or not _is_canonical_content_cid(
+            self_observation.get("normalized_executable_mapping_root")
+        )
+        or self_observation.get("writable_executable_mappings") != expected_wx
+        or self_observation.get("self_observation_cid")
+        != content_identity(self_body)
+    ):
+        raise MaterializationError("qualification normalized self evidence differs")
+
+    controller = _validate_materialized_controller_zero_wx_observation(
+        parent_observation.get("controller_zero_wx_observation"),
+        phase=(
+            "prepared_parent_inspection"
+            if phase_name == "prepared"
+            else "final_parent_inspection"
+        ),
+    )
+    parent_body = {
+        key: item
+        for key, item in parent_observation.items()
+        if key != "parent_observation_cid"
+    }
+    parent_numeric = (
+        "executable_mapping_count",
+        "kernel_task_count",
+        "child_process_count",
+        "process_group_count",
+        "parent_z3_file_descriptor_count",
+        "parent_policy_denied_z3_native_mapping_count",
+        "z3_meta_denial_count",
+        "z3_open_boundary_denial_count",
+        "z3_file_descriptor_count",
+        "z3_policy_denied_native_mapping_count",
+        "z3_trusted_revalidation_permitted_open_count",
+    )
+    if (
+        set(parent_observation)
+        != {
+            "schema",
+            "phase",
+            "suite_id",
+            "runtime_cid",
+            "suite_native_policy",
+            "suite_task_policy_matrix_cid",
+            "suite_task_profile_cid",
+            "full_live_observation_cid",
+            "suite_task_receipt_cid",
+            "fixed_point_to_prepared_identity_restored",
+            "native_guard_cid",
+            *_MATERIALIZED_PUBLIC_Z3_IMPORT_FIELDS,
+            "parent_z3_file_descriptor_count",
+            "parent_z3_file_descriptor_root",
+            "parent_policy_denied_z3_native_mapping_count",
+            "parent_policy_denied_z3_native_mapping_root",
+            "pidfd_bound",
+            "process_live",
+            "process_start_time_matched",
+            "executable_mapping_count",
+            "normalized_executable_mapping_root",
+            "writable_executable_mappings",
+            "kernel_task_count",
+            "normalized_kernel_task_root",
+            "task_directory_identity_held",
+            "task_directory_identity_restored",
+            "child_process_count",
+            "children_absent",
+            "process_group_count",
+            "process_group_leader_only",
+            "prepared_task_population_restored",
+            "prepared_writable_executable_mapping_restored",
+            "prepared_mappings_retained",
+            "prepared_process_group_restored",
+            "controller_zero_wx_observation",
+            "controller_zero_wx_observation_cid",
+            "parent_observation_cid",
+        }
+        or parent_observation.get("schema")
+        != "lgcvf-recovery-worker-parent-observation@3"
+        or parent_observation.get("phase") != phase_name
+        or parent_observation.get("suite_id") != suite_id
+        or parent_observation.get("runtime_cid") != runtime_cid
+        or parent_observation.get("suite_native_policy") != native_policy
+        or parent_observation.get("suite_task_policy_matrix_cid")
+        != task_receipt.get("policy_matrix_cid")
+        or parent_observation.get("suite_task_profile_cid")
+        != task_receipt.get("profile_cid")
+        or parent_observation.get("full_live_observation_cid")
+        != task_receipt.get("full_live_observation_cid")
+        or parent_observation.get("suite_task_receipt_cid")
+        != task_receipt.get("receipt_cid")
+        or parent_observation.get("fixed_point_to_prepared_identity_restored")
+        is not True
+        or parent_observation.get("native_guard_cid")
+        != self_observation.get("native_guard_cid")
+        or any(
+            parent_observation.get(key) != expected
+            for key, expected in z3_commitments.items()
+        )
+        or parent_observation.get("parent_z3_file_descriptor_count") != 0
+        or parent_observation.get("parent_z3_file_descriptor_root")
+        != content_identity([])
+        or parent_observation.get("parent_policy_denied_z3_native_mapping_count")
+        != 0
+        or parent_observation.get("parent_policy_denied_z3_native_mapping_root")
+        != content_identity([])
+        or any(
+            isinstance(parent_observation.get(field), bool)
+            or not isinstance(parent_observation.get(field), int)
+            or int(parent_observation[field]) < 0
+            for field in parent_numeric
+        )
+        or parent_observation.get("pidfd_bound") is not True
+        or parent_observation.get("process_live") is not True
+        or parent_observation.get("process_start_time_matched") is not True
+        or any(
+            parent_observation.get(field) != self_observation.get(field)
+            for field in (
+                "executable_mapping_count",
+                "normalized_executable_mapping_root",
+                "writable_executable_mappings",
+                "kernel_task_count",
+                "normalized_kernel_task_root",
+                "child_process_count",
+                "children_absent",
+                "process_group_count",
+                "process_group_leader_only",
+            )
+        )
+        or parent_observation.get("task_directory_identity_held") is not True
+        or parent_observation.get("task_directory_identity_restored") is not True
+        or any(
+            parent_observation.get(field) is not True
+            for field in (
+                "prepared_task_population_restored",
+                "prepared_writable_executable_mapping_restored",
+                "prepared_mappings_retained",
+                "prepared_process_group_restored",
+            )
+        )
+        or parent_observation.get("controller_zero_wx_observation") != controller
+        or parent_observation.get("controller_zero_wx_observation_cid")
+        != controller.get("observation_cid")
+        or parent_observation.get("parent_observation_cid")
+        != content_identity(parent_body)
+    ):
+        raise MaterializationError("qualification normalized parent evidence differs")
+
+    phase_body = {key: item for key, item in value.items() if key != "phase_cid"}
+    if (
+        set(value)
+        != {
+            "schema",
+            "phase",
+            "self_observation",
+            "parent_observation",
+            "parent_observation_cid",
+            "z3_import_denial_evidence",
+            "z3_import_denial_evidence_cid",
+            "parent_admitted",
+            "post_ack_state_rechecked",
+            "phase_cid",
+        }
+        or value.get("schema") != "lgcvf-recovery-worker-attestation-phase@4"
+        or value.get("phase") != phase_name
+        or value.get("self_observation") != self_observation
+        or value.get("parent_observation") != parent_observation
+        or value.get("parent_observation_cid")
+        != parent_observation.get("parent_observation_cid")
+        or value.get("z3_import_denial_evidence") != evidence
+        or value.get("z3_import_denial_evidence_cid") != evidence.get("evidence_cid")
+        or value.get("z3_import_denial_evidence_cid")
+        != self_observation.get("z3_import_denial_evidence_cid")
+        or value.get("z3_import_denial_evidence_cid")
+        != parent_observation.get("z3_import_denial_evidence_cid")
+        or value.get("parent_admitted") is not True
+        or value.get("post_ack_state_rechecked") is not True
+        or value.get("phase_cid") != content_identity(phase_body)
+    ):
+        raise MaterializationError("qualification attestation phase differs")
+    return dict(value)
+
+
 def _verify_recovery_qualification(
     value: Mapping[str, Any], *, preview: Mapping[str, Any], source_root: Path
 ) -> dict[str, Any]:
@@ -7947,7 +9285,7 @@ def _verify_recovery_qualification(
         ) from exc
     try:
         verified = verify_preregistered_recovery_qualification(
-            value, root=source_root, require_passed=True
+            value, root=source_root, require_passed=False
         )
     except (OSError, QualificationError, TypeError, ValueError) as exc:
         raise MaterializationError(
@@ -7956,21 +9294,645 @@ def _verify_recovery_qualification(
     qualification = _plain_json(verified)
     if not isinstance(qualification, dict):
         raise MaterializationError("independent recovery qualification is malformed")
+    if qualification.get("disposition") == "unavailable":
+        raise RecoveryQualificationUnavailableMaterializationError(
+            _recovery_qualification_unavailable_evidence(
+                qualification,
+                preview=preview,
+            )
+        )
+    if qualification.get("disposition") != "passed":
+        raise MaterializationError(
+            "independent recovery qualification disposition differs"
+        )
+    expected_runtime_cid = str(preview.get("qualification_runtime_cid") or "")
+    runtime_evidence = qualification.get("qualification_runtime_evidence")
+    if not isinstance(runtime_evidence, Mapping):
+        raise MaterializationError("qualification runtime evidence is absent")
+    runtime_fields = {
+        "schema",
+        "components",
+        "component_count",
+        "file_count",
+        "total_bytes",
+        "file_manifest_root",
+        "omission_manifest_root",
+        "python_runtime_binding",
+        "native_platform_binding",
+        "recovery_suite_task_policy",
+        "pycache_projected",
+        "pth_processed",
+        "plugin_autoload",
+        "runtime_cid",
+    }
+    components = runtime_evidence.get("components")
+    if not isinstance(components, list):
+        raise MaterializationError("qualification runtime components are absent")
+    component_fields = {
+        "ordinal",
+        "role",
+        "normalized_name",
+        "version",
+        "file_count",
+        "total_bytes",
+        "file_manifest_root",
+        "component_cid",
+    }
+    normalized_components: list[dict[str, Any]] = []
+    for ordinal, component in enumerate(components, start=1):
+        if (
+            not isinstance(component, Mapping)
+            or set(component) != component_fields
+            or component.get("ordinal") != ordinal
+            or not isinstance(component.get("role"), str)
+            or not component.get("role")
+            or not isinstance(component.get("normalized_name"), str)
+            or not component.get("normalized_name")
+            or not isinstance(component.get("version"), str)
+            or not component.get("version")
+            or isinstance(component.get("file_count"), bool)
+            or not isinstance(component.get("file_count"), int)
+            or int(component["file_count"]) <= 0
+            or isinstance(component.get("total_bytes"), bool)
+            or not isinstance(component.get("total_bytes"), int)
+            or int(component["total_bytes"]) <= 0
+            or not _is_canonical_content_cid(component.get("file_manifest_root"))
+            or not _is_canonical_content_cid(component.get("component_cid"))
+        ):
+            raise MaterializationError("qualification runtime component differs")
+        normalized_components.append(dict(component))
+    python_runtime = runtime_evidence.get("python_runtime_binding")
+    native_platform = runtime_evidence.get("native_platform_binding")
+    task_policy_matrix = runtime_evidence.get("recovery_suite_task_policy")
+    if not isinstance(task_policy_matrix, Mapping):
+        raise MaterializationError("qualification task policy matrix is absent")
+    task_profiles = task_policy_matrix.get("ordered_profiles")
+    if not isinstance(task_profiles, list) or len(task_profiles) != 6:
+        raise MaterializationError("qualification task policy profiles differ")
+    normalized_task_profiles: list[dict[str, Any]] = []
+    for profile in task_profiles:
+        if not isinstance(profile, Mapping):
+            raise MaterializationError("qualification task policy profile differs")
+        profile_body = {
+            key: item for key, item in profile.items() if key != "profile_cid"
+        }
+        if (
+            profile.get("schema")
+            != "lgcvf-recovery-suite-task-fixed-point@2"
+            or not isinstance(profile.get("task_id"), str)
+            or not isinstance(profile.get("suite_id"), str)
+            or profile.get("disposition")
+            not in {
+                "public_prefix_fixed_point_required",
+                "single_task_no_z3",
+                "single_task_z3_import_denied_as_typed_unavailable",
+            }
+            or profile.get("z3_import_policy_disposition")
+            not in {
+                "bound_z3_import_admitted_for_other_suite_semantics",
+                "z3_import_denied_as_typed_unavailable",
+                "z3_import_not_expected",
+            }
+            or not _is_canonical_content_cid(
+                profile.get("z3_import_policy_cid")
+            )
+            or not isinstance(profile.get("lifetime_boundaries"), list)
+            or any(
+                not isinstance(item, str) or not item
+                for item in profile.get("lifetime_boundaries", [])
+            )
+            or profile.get("facade_reset_disposition")
+            not in {"performed", "not_applicable"}
+            or profile.get("stability_sample_scope")
+            not in {
+                "after_each_public_operation_transition",
+                "after_public_operation_reset_gc",
+                "not_applicable",
+            }
+            or any(
+                isinstance(profile.get(field), bool)
+                or not isinstance(profile.get(field), int)
+                or int(profile[field]) < 0
+                for field in (
+                    "gc_collection_count",
+                    "stability_checkpoint_count",
+                    "stability_samples_per_checkpoint",
+                    "stability_interval_ms",
+                )
+            )
+            or profile.get("infrastructure_not_proof") is not True
+            or profile.get("cache_authority") is not False
+            or profile.get("completion_authoritative") is not False
+            or profile.get("profile_cid") != content_identity(profile_body)
+        ):
+            raise MaterializationError("qualification task policy profile differs")
+        profile_task_id = str(profile.get("task_id") or "")
+        expected_z3_disposition = (
+            "bound_z3_import_admitted_for_other_suite_semantics"
+            if profile_task_id in {"LGCVF-051", "LGCVF-060"}
+            else "z3_import_denied_as_typed_unavailable"
+            if profile_task_id == "LGCVF-061"
+            else "z3_import_not_expected"
+        )
+        if profile.get("z3_import_policy_disposition") != expected_z3_disposition:
+            raise MaterializationError("qualification Z3 import policy differs")
+        normalized_task_profiles.append(dict(profile))
+    task_matrix_body = {
+        key: item
+        for key, item in task_policy_matrix.items()
+        if key != "matrix_cid"
+    }
+    if (
+        set(task_policy_matrix)
+        != {
+            "schema",
+            "ordered_profiles",
+            "profile_count",
+            "fresh_worker_recomputation_required",
+            "process_local_task_identity_not_cacheable",
+            "completion_authoritative",
+            "matrix_cid",
+        }
+        or task_policy_matrix.get("schema")
+        != "lgcvf-recovery-suite-task-policy-matrix@2"
+        or task_policy_matrix.get("ordered_profiles")
+        != normalized_task_profiles
+        or task_policy_matrix.get("profile_count") != 6
+        or task_policy_matrix.get("fresh_worker_recomputation_required") is not True
+        or task_policy_matrix.get("process_local_task_identity_not_cacheable")
+        is not True
+        or task_policy_matrix.get("completion_authoritative") is not False
+        or task_policy_matrix.get("matrix_cid")
+        != content_identity(task_matrix_body)
+    ):
+        raise MaterializationError("qualification task policy matrix differs")
+    native_host = (
+        native_platform.get("native_host_runtime")
+        if isinstance(native_platform, Mapping)
+        else None
+    )
+    if (
+        set(runtime_evidence) != runtime_fields
+        or runtime_evidence.get("schema")
+        != "lgcvf-qualification-runtime-bundle@1"
+        or runtime_evidence.get("runtime_cid") != expected_runtime_cid
+        or qualification.get("qualification_runtime_cid")
+        != expected_runtime_cid
+        or qualification.get("qualification_runtime_evidence_cid")
+        != expected_runtime_cid
+        or runtime_evidence.get("runtime_cid")
+        != content_identity(
+            {
+                key: item
+                for key, item in runtime_evidence.items()
+                if key != "runtime_cid"
+            }
+        )
+        or runtime_evidence.get("component_count") != 12
+        or len(normalized_components) != 12
+        or runtime_evidence.get("file_count") != 619
+        or runtime_evidence.get("total_bytes") != 87_243_248
+        or sum(int(item["file_count"]) for item in normalized_components) != 619
+        or sum(int(item["total_bytes"]) for item in normalized_components)
+        != 87_243_248
+        or not _is_canonical_content_cid(
+            runtime_evidence.get("file_manifest_root")
+        )
+        or not _is_canonical_content_cid(
+            runtime_evidence.get("omission_manifest_root")
+        )
+        or runtime_evidence.get("pycache_projected") is not False
+        or runtime_evidence.get("pth_processed") is not False
+        or runtime_evidence.get("plugin_autoload") is not False
+        or not isinstance(python_runtime, Mapping)
+        or python_runtime.get("required_flags") != ["-I", "-S", "-B"]
+        or python_runtime.get("executable_path_token")
+        != "python:/usr/bin/python3.12"
+        or not isinstance(native_platform, Mapping)
+        or native_platform.get("schema")
+        != "lgcvf-qualification-native-platform@1"
+        or not isinstance(native_host, Mapping)
+        or native_host.get("schema")
+        != "lgcvf-native-host-runtime-binding@1"
+        or native_host.get("host_runtime_cid")
+        != content_identity(
+            {
+                key: item
+                for key, item in native_host.items()
+                if key != "host_runtime_cid"
+            }
+        )
+        or native_platform.get("native_host_runtime_root")
+        != native_host.get("host_runtime_cid")
+        or native_platform.get("actual_solver_mapping_required") is not True
+    ):
+        raise MaterializationError("qualification runtime authority differs")
+    runtime_component_root = content_identity(normalized_components)
     observations = qualification.get("suites")
     merge_evidence = preview.get("merge_completion_evidence")
     if not isinstance(observations, list) or not isinstance(merge_evidence, list):
         raise MaterializationError("independent recovery observations are absent")
     if len(observations) != 6 or len(merge_evidence) != 6:
         raise MaterializationError("independent recovery observation count differs")
-    for evidence, observation in zip(merge_evidence, observations, strict=True):
+    for evidence, observation, task_profile in zip(
+        merge_evidence,
+        observations,
+        normalized_task_profiles,
+        strict=True,
+    ):
         if not isinstance(evidence, Mapping) or not isinstance(observation, Mapping):
             raise MaterializationError("independent recovery observation is malformed")
         spec = evidence.get("validation_spec")
         isolation = observation.get("isolation")
+        task_receipt = observation.get(
+            "qualification_runtime_suite_task_receipt"
+        )
+        barrier_cid = observation.get(
+            "qualification_runtime_parent_attestation_barrier_cid"
+        )
+        barrier = observation.get(
+            "qualification_runtime_parent_attestation_barrier"
+        )
+        if not isinstance(task_receipt, Mapping):
+            raise MaterializationError("qualification task receipt is absent")
+        task_receipt_body = {
+            key: item
+            for key, item in task_receipt.items()
+            if key != "receipt_cid"
+        }
+        readonly_projection = observation.get("readonly_projection")
+        source_projection_root = (
+            readonly_projection.get("copied_source_manifest_root")
+            if isinstance(readonly_projection, Mapping)
+            else None
+        )
+        task_disposition = task_profile.get("disposition")
+        if task_disposition == "public_prefix_fixed_point_required":
+            expected_task_counts = task_profile.get(
+                "ordered_expected_task_counts"
+            )
+            expected_task_roots = task_profile.get(
+                "ordered_normalized_task_roots"
+            )
+        elif task_disposition in {
+            "single_task_no_z3",
+            "single_task_z3_import_denied_as_typed_unavailable",
+        }:
+            expected_task_counts = [task_profile.get("expected_task_count")]
+            expected_task_roots = [
+                task_profile.get("expected_normalized_task_root")
+            ]
+        else:
+            raise MaterializationError(
+                "qualification task policy disposition differs"
+            )
+        z3_expected = _materializer_z3_policy_commitments(
+            task_id=str(task_profile.get("task_id") or ""),
+            profile=task_profile,
+        )
+        expected_compact = {
+            **z3_expected,
+            "semantic_execution_cid": task_profile.get(
+                "semantic_execution_cid"
+            ),
+            "semantic_check_event_count": task_profile.get(
+                "semantic_check_event_count"
+            ),
+            "semantic_check_event_root": task_profile.get(
+                "semantic_check_event_root"
+            ),
+            "semantic_operation_evidence_count": task_profile.get(
+                "semantic_operation_evidence_count"
+            ),
+            "semantic_operation_evidence_root": task_profile.get(
+                "semantic_operation_evidence_root"
+            ),
+            "semantic_transition_evidence_count": task_profile.get(
+                "semantic_transition_evidence_count"
+            ),
+            "semantic_transition_evidence_root": task_profile.get(
+                "semantic_transition_evidence_root"
+            ),
+            "ordered_task_counts": expected_task_counts,
+            "ordered_normalized_task_roots": expected_task_roots,
+            "lifetime_boundary_count": len(
+                task_profile.get("lifetime_boundaries", [])
+            ),
+            "lifetime_boundary_root": content_identity(
+                task_profile.get("lifetime_boundaries", [])
+            ),
+            "facade_reset_disposition": task_profile.get(
+                "facade_reset_disposition"
+            ),
+            "gc_collection_count": task_profile.get("gc_collection_count"),
+            "stability_sample_scope": task_profile.get(
+                "stability_sample_scope"
+            ),
+            "stability_checkpoint_count": task_profile.get(
+                "stability_checkpoint_count"
+            ),
+            "stability_samples_per_checkpoint": task_profile.get(
+                "stability_samples_per_checkpoint"
+            ),
+            "stability_interval_ms": task_profile.get(
+                "stability_interval_ms"
+            ),
+        }
+        full_live_observation_cid = observation.get(
+            "qualification_runtime_suite_task_full_live_observation_cid"
+        )
+        suite_task_receipt_cid = observation.get(
+            "qualification_runtime_suite_task_receipt_cid"
+        )
+        compact_numeric_fields = (
+            "z3_expected_meta_denial_count",
+            "z3_expected_open_boundary_denial_count",
+            "semantic_check_event_count",
+            "semantic_operation_evidence_count",
+            "semantic_transition_evidence_count",
+            "lifetime_boundary_count",
+            "gc_collection_count",
+            "stability_checkpoint_count",
+            "stability_samples_per_checkpoint",
+            "stability_interval_ms",
+        )
+        if (
+            set(task_receipt)
+            != {
+                "schema",
+                "task_id",
+                "suite_id",
+                "runtime_cid",
+                "source_projection_root",
+                "policy_matrix_cid",
+                "profile_cid",
+                "z3_import_policy_disposition",
+                "z3_import_policy_cid",
+                "z3_expected_meta_denial_count",
+                "z3_expected_meta_denial_root",
+                "z3_expected_open_boundary_denial_count",
+                "z3_expected_open_boundary_denial_root",
+                "z3_policy_namespace_unavailability",
+                "z3_live_cegar_disposition",
+                "z3_candidate_reason_interpretation",
+                "semantic_execution_cid",
+                "full_live_observation_cid",
+                "semantic_check_event_count",
+                "semantic_check_event_root",
+                "semantic_operation_evidence_count",
+                "semantic_operation_evidence_root",
+                "semantic_transition_evidence_count",
+                "semantic_transition_evidence_root",
+                "ordered_task_counts",
+                "ordered_normalized_task_roots",
+                "lifetime_boundary_count",
+                "lifetime_boundary_root",
+                "helper_references_dropped",
+                "facade_reset_disposition",
+                "gc_collection_count",
+                "stability_sample_scope",
+                "stability_checkpoint_count",
+                "stability_samples_per_checkpoint",
+                "stability_interval_ms",
+                "stability_verified",
+                "instrumentation_restored",
+                "fresh_worker_recomputed",
+                "full_live_observation_persisted",
+                "full_live_observation_parent_validated",
+                "direct_verifier_reconstructs_full_live_observation",
+                "disposition",
+                "infrastructure_not_proof",
+                "cache_authority",
+                "completion_authoritative",
+                "receipt_cid",
+            }
+            or task_receipt.get("schema")
+            != "lgcvf-recovery-suite-task-receipt@3"
+            or task_receipt.get("task_id")
+            != (spec.get("task_id") if isinstance(spec, Mapping) else None)
+            or task_receipt.get("suite_id") != observation.get("suite_id")
+            or task_receipt.get("runtime_cid") != expected_runtime_cid
+            or task_receipt.get("source_projection_root")
+            != source_projection_root
+            or task_receipt.get("policy_matrix_cid")
+            != task_policy_matrix.get("matrix_cid")
+            or task_receipt.get("profile_cid")
+            != task_profile.get("profile_cid")
+            or any(
+                task_receipt.get(key) != expected
+                for key, expected in z3_expected.items()
+            )
+            or task_receipt.get("semantic_execution_cid")
+            != expected_compact["semantic_execution_cid"]
+            or task_receipt.get("full_live_observation_cid")
+            != full_live_observation_cid
+            or not _is_canonical_content_cid(full_live_observation_cid)
+            or any(
+                isinstance(task_receipt.get(field), bool)
+                or not isinstance(task_receipt.get(field), int)
+                or int(task_receipt[field]) < 0
+                for field in compact_numeric_fields
+            )
+            or task_receipt.get("semantic_check_event_count")
+            != expected_compact["semantic_check_event_count"]
+            or task_receipt.get("semantic_check_event_root")
+            != expected_compact["semantic_check_event_root"]
+            or task_receipt.get("semantic_operation_evidence_count")
+            != expected_compact["semantic_operation_evidence_count"]
+            or task_receipt.get("semantic_operation_evidence_root")
+            != expected_compact["semantic_operation_evidence_root"]
+            or task_receipt.get("semantic_transition_evidence_count")
+            != expected_compact["semantic_transition_evidence_count"]
+            or task_receipt.get("semantic_transition_evidence_root")
+            != expected_compact["semantic_transition_evidence_root"]
+            or task_receipt.get("ordered_task_counts")
+            != expected_compact["ordered_task_counts"]
+            or not isinstance(task_receipt.get("ordered_task_counts"), list)
+            or any(
+                isinstance(item, bool)
+                or not isinstance(item, int)
+                or item <= 0
+                for item in task_receipt["ordered_task_counts"]
+            )
+            or task_receipt.get("ordered_normalized_task_roots")
+            != expected_compact["ordered_normalized_task_roots"]
+            or not isinstance(
+                task_receipt.get("ordered_normalized_task_roots"), list
+            )
+            or any(
+                not _is_canonical_content_cid(item)
+                for item in task_receipt["ordered_normalized_task_roots"]
+            )
+            or task_receipt.get("lifetime_boundary_count")
+            != expected_compact["lifetime_boundary_count"]
+            or task_receipt.get("lifetime_boundary_root")
+            != expected_compact["lifetime_boundary_root"]
+            or not _is_canonical_content_cid(
+                task_receipt.get("lifetime_boundary_root")
+            )
+            or task_receipt.get("helper_references_dropped") is not True
+            or task_receipt.get("facade_reset_disposition")
+            != expected_compact["facade_reset_disposition"]
+            or task_receipt.get("gc_collection_count")
+            != expected_compact["gc_collection_count"]
+            or task_receipt.get("stability_sample_scope")
+            != expected_compact["stability_sample_scope"]
+            or task_receipt.get("stability_checkpoint_count")
+            != expected_compact["stability_checkpoint_count"]
+            or task_receipt.get("stability_samples_per_checkpoint")
+            != expected_compact["stability_samples_per_checkpoint"]
+            or task_receipt.get("stability_interval_ms")
+            != expected_compact["stability_interval_ms"]
+            or task_receipt.get("stability_verified") is not True
+            or task_receipt.get("instrumentation_restored") is not True
+            or task_receipt.get("fresh_worker_recomputed") is not True
+            or task_receipt.get("full_live_observation_persisted") is not False
+            or task_receipt.get("full_live_observation_parent_validated")
+            is not True
+            or task_receipt.get(
+                "direct_verifier_reconstructs_full_live_observation"
+            )
+            is not False
+            or task_receipt.get("disposition")
+            != "parent_live_validated_cid_not_reconstructed"
+            or task_receipt.get("infrastructure_not_proof") is not True
+            or task_receipt.get("cache_authority") is not False
+            or task_receipt.get("completion_authoritative") is not False
+            or task_receipt.get("receipt_cid") != content_identity(task_receipt_body)
+            or suite_task_receipt_cid != task_receipt.get("receipt_cid")
+        ):
+            raise MaterializationError("qualification task receipt differs")
+        if not isinstance(barrier, Mapping):
+            raise MaterializationError("qualification task barrier is absent")
+        barrier_body = {
+            key: item for key, item in barrier.items() if key != "barrier_cid"
+        }
+        if (
+            not _is_canonical_content_cid(barrier_cid)
+            or barrier_cid != barrier.get("barrier_cid")
+            or barrier.get("barrier_cid") != content_identity(barrier_body)
+        ):
+            raise MaterializationError("qualification task barrier CID differs")
+        task_id = str(task_profile.get("task_id") or "")
+        suite_id = str(task_profile.get("suite_id") or "")
+        prepared_phase = _validate_materialized_public_attestation_phase(
+            barrier.get("prepared"),
+            phase_name="prepared",
+            task_id=task_id,
+            suite_id=suite_id,
+            runtime_cid=expected_runtime_cid,
+            task_receipt=task_receipt,
+        )
+        final_phase = _validate_materialized_public_attestation_phase(
+            barrier.get("final"),
+            phase_name="final",
+            task_id=task_id,
+            suite_id=suite_id,
+            runtime_cid=expected_runtime_cid,
+            task_receipt=task_receipt,
+        )
+        prepared_self = prepared_phase["self_observation"]
+        final_self = final_phase["self_observation"]
+        prepared_parent = prepared_phase["parent_observation"]
+        final_parent = final_phase["parent_observation"]
+        prepared_z3 = prepared_phase["z3_import_denial_evidence"]
+        final_z3 = final_phase["z3_import_denial_evidence"]
+        barrier_fields = {
+            "schema",
+            "suite_native_policy",
+            "suite_task_policy_matrix_cid",
+            "suite_task_profile_cid",
+            "full_live_observation_cid",
+            "suite_task_receipt_cid",
+            "fixed_point_to_prepared_identity_restored",
+            "z3_import_policy_cid",
+            "prepared_z3_import_denial_evidence_cid",
+            "final_z3_import_denial_evidence_cid",
+            "z3_import_denial_parent_live_validated",
+            "full_z3_import_denial_evidence_persisted",
+            "direct_verifier_validates_full_z3_import_denial_evidence",
+            "prepared",
+            "final",
+            "parent_admitted_before_pytest",
+            "parent_admitted_before_receipt",
+            "writable_executable_mapping_stable",
+            "prepared_normalized_executable_mapping_root",
+            "final_normalized_executable_mapping_root",
+            "prepared_mappings_retained",
+            "kernel_task_population_restored",
+            "children_absent",
+            "process_group_leader_only",
+            "barrier_cid",
+        }
+        if (
+            set(barrier) != barrier_fields
+            or barrier.get("schema")
+            != "lgcvf-recovery-worker-parent-attestation-barrier@4"
+            or barrier.get("suite_native_policy")
+            != prepared_self.get("suite_native_policy")
+            or prepared_self.get("suite_native_policy")
+            != final_self.get("suite_native_policy")
+            or barrier.get("suite_task_policy_matrix_cid")
+            != task_policy_matrix.get("matrix_cid")
+            or barrier.get("suite_task_profile_cid")
+            != task_profile.get("profile_cid")
+            or barrier.get("full_live_observation_cid")
+            != full_live_observation_cid
+            or barrier.get("suite_task_receipt_cid")
+            != task_receipt.get("receipt_cid")
+            or barrier.get("fixed_point_to_prepared_identity_restored") is not True
+            or barrier.get("z3_import_policy_cid")
+            != task_receipt.get("z3_import_policy_cid")
+            or barrier.get("prepared_z3_import_denial_evidence_cid")
+            != prepared_z3.get("evidence_cid")
+            or barrier.get("final_z3_import_denial_evidence_cid")
+            != final_z3.get("evidence_cid")
+            or prepared_z3.get("evidence_cid") == final_z3.get("evidence_cid")
+            or observation.get(
+                "qualification_runtime_z3_import_denial_prepared_cid"
+            )
+            != prepared_z3.get("evidence_cid")
+            or observation.get("qualification_runtime_z3_import_denial_final_cid")
+            != final_z3.get("evidence_cid")
+            or barrier.get("z3_import_denial_parent_live_validated") is not True
+            or barrier.get("full_z3_import_denial_evidence_persisted") is not True
+            or barrier.get(
+                "direct_verifier_validates_full_z3_import_denial_evidence"
+            )
+            is not True
+            or barrier.get("prepared") != prepared_phase
+            or barrier.get("final") != final_phase
+            or barrier.get("parent_admitted_before_pytest") is not True
+            or barrier.get("parent_admitted_before_receipt") is not True
+            or barrier.get("writable_executable_mapping_stable") is not True
+            or barrier.get("prepared_normalized_executable_mapping_root")
+            != prepared_self.get("normalized_executable_mapping_root")
+            or barrier.get("final_normalized_executable_mapping_root")
+            != final_self.get("normalized_executable_mapping_root")
+            or barrier.get("prepared_mappings_retained") is not True
+            or barrier.get("kernel_task_population_restored") is not True
+            or barrier.get("children_absent") is not True
+            or barrier.get("process_group_leader_only") is not True
+            or prepared_self.get("writable_executable_mappings")
+            != final_self.get("writable_executable_mappings")
+            or prepared_self.get("thread_count") != final_self.get("thread_count")
+            or prepared_self.get("kernel_task_count")
+            != final_self.get("kernel_task_count")
+            or any(
+                item.get("parent_z3_file_descriptor_count") != 0
+                or item.get("parent_z3_file_descriptor_root")
+                != content_identity([])
+                or item.get("parent_policy_denied_z3_native_mapping_count") != 0
+                or item.get("parent_policy_denied_z3_native_mapping_root")
+                != content_identity([])
+                for item in (prepared_parent, final_parent)
+            )
+        ):
+            raise MaterializationError("qualification task barrier differs")
         if (
             not isinstance(spec, Mapping)
             or observation.get("schema")
-            != "lgcvf-independent-recovery-pytest-observation@3"
+            != "lgcvf-independent-recovery-pytest-observation@8"
             or observation.get("task_id") != spec.get("task_id")
             or observation.get("task_cid") != spec.get("task_cid")
             or observation.get("validation_spec") != dict(spec)
@@ -7980,6 +9942,15 @@ def _verify_recovery_qualification(
             or observation.get("candidate_authored") is not True
             or observation.get("self_authority") is not False
             or observation.get("completion_authoritative") is not False
+            or observation.get("qualification_runtime_cid")
+            != expected_runtime_cid
+            or observation.get("qualification_runtime_component_root")
+            != runtime_component_root
+            or observation.get("qualification_runtime_file_manifest_root")
+            != runtime_evidence.get("file_manifest_root")
+            or not _is_canonical_content_cid(
+                observation.get("qualification_runtime_projection_cid")
+            )
             or observation.get("provider_imports_observed") not in ([], ())
             or observation.get("provider_import_attempts") not in ([], ())
             or observation.get("provider_process_attempts") not in ([], ())
@@ -8002,9 +9973,26 @@ def _verify_recovery_qualification(
     ):
         if qualification.get(field) is not False:
             raise MaterializationError(f"recovery qualification raises {field}")
+    limitations = qualification.get("limitations")
+    compact_task_limitation = (
+        "full suite-task live observations are parent-validated in both "
+        "attestation phases but are not persisted or reconstructed by later "
+        "direct verification; compact receipts retain their exact CIDs and "
+        "config-pinned semantic commitments"
+    )
+    z3_denial_limitation = (
+        "LGCVF-061 deliberately makes the projected Z3 Python namespace "
+        "policy-unavailable in the sealed main suite worker, so its live-Z3 "
+        "CEGAR path is not exercised; the exact MetaPathFinder denial and "
+        "candidate-phase audit open boundary assume trusted tracked source; "
+        "direct transient sys.modules mutation, custom in-memory loaders, and "
+        "C-native import/file bypasses are outside that boundary; only an "
+        "owner-thread scoped runtime reread is permitted after quiescence, and "
+        "no process-tree namespace denial is claimed"
+    )
     if (
         qualification.get("schema")
-        != "lgcvf-independent-recovery-qualification@3"
+        != "lgcvf-independent-recovery-qualification@8"
         or qualification.get("passed") is not True
         or qualification.get("source_unchanged") is not True
         or qualification.get("exact_suite_membership") is not True
@@ -8013,6 +10001,18 @@ def _verify_recovery_qualification(
         or qualification.get("cache_reused") is not False
         or qualification.get("candidate_authored_replay") is not True
         or qualification.get("self_authority") is not False
+        or qualification.get("qualification_runtime_worker_consistent") is not True
+        or not isinstance(limitations, list)
+        or compact_task_limitation not in limitations
+        or z3_denial_limitation not in limitations
+        or not _is_canonical_content_cid(
+            qualification.get("qualification_runtime_projection_cid")
+        )
+        or any(
+            observation.get("qualification_runtime_projection_cid")
+            != qualification.get("qualification_runtime_projection_cid")
+            for observation in observations
+        )
         or not str(qualification.get("receipt_cid") or "").startswith("b")
     ):
         raise MaterializationError("recovery qualification test authorship differs")
@@ -8021,9 +10021,36 @@ def _verify_recovery_qualification(
     duckdb_runtime = (
         toolchain.get("duckdb_runtime") if isinstance(toolchain, Mapping) else None
     )
+    qualification_runtime = (
+        source_binding.get("qualification_runtime")
+        if isinstance(source_binding, Mapping)
+        else None
+    )
+    runtime_policy_binding = (
+        qualification_runtime.get("policy_binding")
+        if isinstance(qualification_runtime, Mapping)
+        else None
+    )
     if (
         not isinstance(source_binding, Mapping)
-        or source_binding.get("schema") != "lgcvf-recovery-source-binding@2"
+        or source_binding.get("schema") != "lgcvf-recovery-source-binding@3"
+        or not isinstance(qualification_runtime, Mapping)
+        or set(qualification_runtime) != {"runtime_cid", "policy_binding", "bundle"}
+        or qualification_runtime.get("runtime_cid") != expected_runtime_cid
+        or qualification_runtime.get("bundle") != runtime_evidence
+        or not isinstance(runtime_policy_binding, Mapping)
+        or runtime_policy_binding.get("schema")
+        != "lgcvf-qualification-runtime-policy-binding@1"
+        or runtime_policy_binding.get("qualification_runtime_cid")
+        != expected_runtime_cid
+        or runtime_policy_binding.get("policy_binding_cid")
+        != content_identity(
+            {
+                key: item
+                for key, item in runtime_policy_binding.items()
+                if key != "policy_binding_cid"
+            }
+        )
         or not isinstance(duckdb_runtime, Mapping)
         or duckdb_runtime.get("schema") != "lgcvf-bound-duckdb-runtime@1"
         or duckdb_runtime.get("runtime_cid") != preview.get("duckdb_runtime_cid")
@@ -8115,7 +10142,7 @@ def _verify_recovery_qualification(
         if (
             not isinstance(projection, Mapping)
             or projection.get("schema")
-            != "lgcvf-closed-recovery-test-projection@1"
+            != "lgcvf-closed-recovery-test-projection@2"
             or projection.get("contains_live_source_links") is not False
             or projection.get("original_checkout_writable") is not False
         ):
@@ -8297,6 +10324,7 @@ def _source_evidence_cid(preview: Mapping[str, Any]) -> str:
             "source_generation": preview["source_generation"],
             "target_generation": preview["target_generation"],
             "duckdb_runtime_cid": preview["duckdb_runtime_cid"],
+            "qualification_runtime_cid": preview["qualification_runtime_cid"],
             "source_head": preview["source_head"],
             "source_tree": preview["source_tree"],
             "plan_root_cid": preview["plan_root_cid"],
@@ -8317,13 +10345,37 @@ def _build_fresh_recovery_manifest(
     *,
     source_root: Path,
 ) -> dict[str, Any]:
+    operation = "materialize_fresh_generation_recovery"
     qualification = _run_and_verify_recovery_qualification(
         preview=preview, source_root=source_root
+    )
+    _record_materializer_zero_wx(
+        operation=operation,
+        phase="qualification_final",
+    )
+    zero_wx_policy = _materializer_zero_wx_policy()
+    qualification_lifecycle = _materializer_zero_wx_lifecycle(
+        operation=operation,
+        operation_mode="fresh_publish",
+        ordered_phases=("entry", "qualification_final"),
     )
     manifest = {
         "schema": FRESH_RECOVERY_MANIFEST_SCHEMA,
         "source_evidence_cid": _source_evidence_cid(preview),
         "duckdb_runtime_cid": preview["duckdb_runtime_cid"],
+        "qualification_runtime_cid": preview["qualification_runtime_cid"],
+        "qualification_runtime_evidence": qualification[
+            "qualification_runtime_evidence"
+        ],
+        "qualification_runtime_evidence_cid": qualification[
+            "qualification_runtime_evidence_cid"
+        ],
+        "materializer_zero_wx_policy": zero_wx_policy,
+        "materializer_zero_wx_policy_cid": zero_wx_policy["policy_cid"],
+        "materializer_zero_wx_qualification_lifecycle": qualification_lifecycle,
+        "materializer_zero_wx_qualification_lifecycle_cid": (
+            qualification_lifecycle["lifecycle_cid"]
+        ),
         "source_generation": preview["source_generation"],
         "target_generation": preview["target_generation"],
         "source_runtime_root": preview["source_runtime_root"],
@@ -8851,6 +10903,39 @@ def verify_fresh_generation_recovery(
     )
     if manifest.get("manifest_cid") != manifest_cid:
         raise MaterializationError("fresh recovery manifest/receipt binding differs")
+    zero_wx_policy = _validate_materializer_zero_wx_policy(
+        manifest.get("materializer_zero_wx_policy")
+    )
+    qualification_zero_wx = _validate_materializer_zero_wx_lifecycle(
+        manifest.get("materializer_zero_wx_qualification_lifecycle"),
+        operation="materialize_fresh_generation_recovery",
+        operation_mode="fresh_publish",
+        ordered_phases=("entry", "qualification_final"),
+    )
+    prepublication_zero_wx = _validate_materializer_zero_wx_lifecycle(
+        receipt.get("materializer_zero_wx_prepublication_lifecycle"),
+        operation="materialize_fresh_generation_recovery",
+        operation_mode="fresh_publish",
+        ordered_phases=(
+            "entry",
+            "qualification_final",
+            "receipt_seal_prepublication_persisted",
+        ),
+    )
+    if (
+        manifest.get("materializer_zero_wx_policy_cid")
+        != zero_wx_policy["policy_cid"]
+        or receipt.get("materializer_zero_wx_policy") != zero_wx_policy
+        or receipt.get("materializer_zero_wx_policy_cid")
+        != zero_wx_policy["policy_cid"]
+        or manifest.get("materializer_zero_wx_qualification_lifecycle_cid")
+        != qualification_zero_wx["lifecycle_cid"]
+        or receipt.get("materializer_zero_wx_prepublication_lifecycle_cid")
+        != prepublication_zero_wx["lifecycle_cid"]
+        or prepublication_zero_wx["observations"][:2]
+        != qualification_zero_wx["observations"]
+    ):
+        raise MaterializationError("materializer zero-WX binding differs")
     preview = preview_fresh_generation_recovery(
         config, population, root=root, source_root=authority_root
     )
@@ -8860,6 +10945,13 @@ def verify_fresh_generation_recovery(
         "source_generation": preview["source_generation"],
         "target_generation": preview["target_generation"],
         "duckdb_runtime_cid": preview["duckdb_runtime_cid"],
+        "qualification_runtime_cid": preview["qualification_runtime_cid"],
+        "materializer_zero_wx_policy": zero_wx_policy,
+        "materializer_zero_wx_policy_cid": zero_wx_policy["policy_cid"],
+        "materializer_zero_wx_qualification_lifecycle": qualification_zero_wx,
+        "materializer_zero_wx_qualification_lifecycle_cid": (
+            qualification_zero_wx["lifecycle_cid"]
+        ),
         "source_runtime_root": preview["source_runtime_root"],
         "target_runtime_root": preview["target_runtime_root"],
         "source_head": preview["source_head"],
@@ -8904,9 +10996,24 @@ def verify_fresh_generation_recovery(
             "validation_projection_evidence_root",
         )
     }
+    runtime_bindings = {
+        "qualification_runtime_cid": qualification[
+            "qualification_runtime_cid"
+        ],
+        "qualification_runtime_evidence": qualification[
+            "qualification_runtime_evidence"
+        ],
+        "qualification_runtime_evidence_cid": qualification[
+            "qualification_runtime_evidence_cid"
+        ],
+    }
     if (
         manifest.get("validation_qualification_cid") != qualification_cid
         or receipt.get("validation_qualification_cid") != qualification_cid
+        or any(
+            manifest.get(field) != value or receipt.get(field) != value
+            for field, value in runtime_bindings.items()
+        )
         or any(
             manifest.get(field) != value or receipt.get(field) != value
             for field, value in projection_bindings.items()
@@ -8923,6 +11030,13 @@ def verify_fresh_generation_recovery(
         "manifest_cid": manifest_cid,
         "source_evidence_cid": manifest["source_evidence_cid"],
         "duckdb_runtime_cid": manifest["duckdb_runtime_cid"],
+        **runtime_bindings,
+        "materializer_zero_wx_policy": zero_wx_policy,
+        "materializer_zero_wx_policy_cid": zero_wx_policy["policy_cid"],
+        "materializer_zero_wx_prepublication_lifecycle": prepublication_zero_wx,
+        "materializer_zero_wx_prepublication_lifecycle_cid": (
+            prepublication_zero_wx["lifecycle_cid"]
+        ),
         "completed_task_ids": list(
             FRESH_RECOVERY_CONSTRUCTION_COMPLETIONS
             + FRESH_RECOVERY_MERGE_COMPLETIONS
@@ -9307,6 +11421,15 @@ def verify_fresh_generation_recovery(
     )
     if before_authority != after_authority or after_authority != closed_authority:
         raise MaterializationError("strict recovery verification changed authority files")
+    _record_materializer_zero_wx(
+        operation="verify_fresh_generation_recovery",
+        phase="final",
+    )
+    verification_zero_wx = _materializer_zero_wx_lifecycle(
+        operation="verify_fresh_generation_recovery",
+        operation_mode="read_only_strict",
+        ordered_phases=("entry", "final"),
+    )
     report = {
         "schema": FRESH_RECOVERY_VERIFICATION_SCHEMA,
         "valid": True,
@@ -9317,6 +11440,24 @@ def verify_fresh_generation_recovery(
         "receipt_cid": receipt["receipt_cid"],
         "source_evidence_cid": manifest["source_evidence_cid"],
         "duckdb_runtime_cid": manifest["duckdb_runtime_cid"],
+        **runtime_bindings,
+        "materializer_zero_wx_policy": zero_wx_policy,
+        "materializer_zero_wx_policy_cid": zero_wx_policy["policy_cid"],
+        "materializer_zero_wx_qualification_lifecycle": qualification_zero_wx,
+        "materializer_zero_wx_qualification_lifecycle_cid": (
+            qualification_zero_wx["lifecycle_cid"]
+        ),
+        "materializer_zero_wx_prepublication_lifecycle": prepublication_zero_wx,
+        "materializer_zero_wx_prepublication_lifecycle_cid": (
+            prepublication_zero_wx["lifecycle_cid"]
+        ),
+        "materializer_zero_wx_verification_lifecycle": verification_zero_wx,
+        "materializer_zero_wx_verification_lifecycle_cid": (
+            verification_zero_wx["lifecycle_cid"]
+        ),
+        "historical_postpublish_zero_wx_evidence": (
+            HISTORICAL_POSTPUBLISH_ZERO_WX_EVIDENCE
+        ),
         "completed_task_ids": list(
             FRESH_RECOVERY_CONSTRUCTION_COMPLETIONS
             + FRESH_RECOVERY_MERGE_COMPLETIONS
@@ -9533,6 +11674,10 @@ def materialize_fresh_generation_recovery(
     if paths["target"] != target:
         raise MaterializationError("fresh recovery target path resolution differs")
     if target_state == "present":
+        _set_materializer_zero_wx_operation_mode(
+            operation="materialize_fresh_generation_recovery",
+            operation_mode="idempotent_replay",
+        )
         verification = verify_fresh_generation_recovery(
             config, population, root=root, source_root=authority_root
         )
@@ -9545,7 +11690,20 @@ def materialize_fresh_generation_recovery(
         )
         if verification.get("receipt_cid") != receipt.get("receipt_cid"):
             raise MaterializationError("fresh recovery replay verification differs")
+        _record_materializer_zero_wx(
+            operation="materialize_fresh_generation_recovery",
+            phase="replay_verification_final",
+        )
+        _materializer_zero_wx_lifecycle(
+            operation="materialize_fresh_generation_recovery",
+            operation_mode="idempotent_replay",
+            ordered_phases=("entry", "replay_verification_final"),
+        )
         return receipt
+    _set_materializer_zero_wx_operation_mode(
+        operation="materialize_fresh_generation_recovery",
+        operation_mode="fresh_publish",
+    )
     preview = preview_fresh_generation_recovery(
         config, population, root=root, source_root=authority_root
     )
@@ -9675,6 +11833,19 @@ def materialize_fresh_generation_recovery(
             staged_paths["recovery"] / f"{manifest['manifest_cid']}.manifest.json"
         )
         _atomic_write_json(manifest_path, manifest)
+        _record_materializer_zero_wx(
+            operation="materialize_fresh_generation_recovery",
+            phase="receipt_seal_prepublication_persisted",
+        )
+        prepublication_lifecycle = _materializer_zero_wx_lifecycle(
+            operation="materialize_fresh_generation_recovery",
+            operation_mode="fresh_publish",
+            ordered_phases=(
+                "entry",
+                "qualification_final",
+                "receipt_seal_prepublication_persisted",
+            ),
+        )
         receipt = {
             "schema": FRESH_RECOVERY_RECEIPT_SCHEMA,
             "source_generation": manifest["source_generation"],
@@ -9686,6 +11857,27 @@ def materialize_fresh_generation_recovery(
             "manifest_cid": manifest["manifest_cid"],
             "source_evidence_cid": manifest["source_evidence_cid"],
             "duckdb_runtime_cid": manifest["duckdb_runtime_cid"],
+            "qualification_runtime_cid": manifest[
+                "qualification_runtime_cid"
+            ],
+            "qualification_runtime_evidence": manifest[
+                "qualification_runtime_evidence"
+            ],
+            "qualification_runtime_evidence_cid": manifest[
+                "qualification_runtime_evidence_cid"
+            ],
+            "materializer_zero_wx_policy": manifest[
+                "materializer_zero_wx_policy"
+            ],
+            "materializer_zero_wx_policy_cid": manifest[
+                "materializer_zero_wx_policy_cid"
+            ],
+            "materializer_zero_wx_prepublication_lifecycle": (
+                prepublication_lifecycle
+            ),
+            "materializer_zero_wx_prepublication_lifecycle_cid": (
+                prepublication_lifecycle["lifecycle_cid"]
+            ),
             "bootstrap_receipt_cid": bootstrap["receipt_cid"],
             "bootstrap_receipt_sha256": _sha256_file(staged_paths["receipt"]),
             "imported_completions": imported,
@@ -9806,6 +11998,10 @@ def materialize_fresh_generation_recovery(
             raise MaterializationError(
                 "fresh recovery stage changed after strict verification"
             )
+        _record_materializer_zero_wx(
+            operation="materialize_fresh_generation_recovery",
+            phase="pre_rename_enforcement",
+        )
         _rename_noreplace(
             staged_target,
             parent_descriptor,
@@ -9813,6 +12009,10 @@ def materialize_fresh_generation_recovery(
             expected_source_identity=verified_stage_identity,
         )
         os.fsync(parent_descriptor)
+        _record_materializer_zero_wx(
+            operation="materialize_fresh_generation_recovery",
+            phase="postpublish_enforcement",
+        )
         if fault_injector is not None:
             fault_injector("after_publish")
         verification = verify_fresh_generation_recovery(
@@ -9820,6 +12020,13 @@ def materialize_fresh_generation_recovery(
         )
         if verification.get("receipt_cid") != receipt.get("receipt_cid"):
             raise MaterializationError("published recovery receipt failed replay")
+        _materializer_zero_wx_lifecycle(
+            operation="materialize_fresh_generation_recovery",
+            operation_mode="fresh_publish",
+            ordered_phases=_MATERIALIZER_ZERO_WX_LIFECYCLES[
+                ("materialize_fresh_generation_recovery", "fresh_publish")
+            ],
+        )
         return receipt
     finally:
         try:
@@ -10063,6 +12270,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = verify_read_only(config, population, expected_stage="live")
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
+    except RecoveryQualificationUnavailableMaterializationError as exc:
+        print(json.dumps(exc.evidence, indent=2, sort_keys=True))
+        return 2
     except MaterializationError as exc:
         print(
             json.dumps(

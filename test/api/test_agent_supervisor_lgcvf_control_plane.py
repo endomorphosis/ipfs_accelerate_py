@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.machinery
 import json
 import os
@@ -34,6 +35,9 @@ from scripts import (
 )
 from scripts import (
     qualify_logic_governed_compositional_verification_fabric as qualifier,
+)
+from test.api import (
+    test_agent_supervisor_lgcvf_independent_qualification as independent_qualification_tests,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -379,6 +383,23 @@ def _fake_recovery_qualification(preview: dict[str, Any]) -> dict[str, Any]:
     }
     receipt["receipt_cid"] = materializer.content_identity(receipt)
     return receipt
+
+
+def _fake_runtime_unavailable_qualification(
+    *,
+    expected_runtime_cid: str,
+    observed_runtime_cid: str,
+) -> dict[str, Any]:
+    return qualifier._recovery_unavailable(  # noqa: SLF001
+        qualifier.QualificationRuntimeUnavailable(
+            reason_code="identity_mismatch",
+            phase="pin",
+            expected_runtime_cid=expected_runtime_cid,
+            observed_runtime_cid=observed_runtime_cid,
+            component="qualification_runtime",
+            detail="qualification runtime differs from policy",
+        )
+    )
 
 
 def _patch_recovery_judge(
@@ -3449,4 +3470,277 @@ os._exit(75)
             {"passed": True, "returncode": 0},
             preview=preview,
             source_root=ROOT,
+        )
+
+
+def test_runtime_unavailable_materialization_is_structured_and_writes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config, population = _fresh_recovery_population()
+    expected_runtime_cid = str(
+        config["fresh_generation_recovery"]["qualification_runtime_cid"]
+    )
+    observed_runtime_cid = materializer.content_identity(
+        {"qualification_runtime": "different"}
+    )
+    unavailable = _fake_runtime_unavailable_qualification(
+        expected_runtime_cid=expected_runtime_cid,
+        observed_runtime_cid=observed_runtime_cid,
+    )
+    preview = {"qualification_runtime_cid": expected_runtime_cid}
+    verifier_calls: list[bool] = []
+
+    def verify_unavailable(
+        value: dict[str, Any],
+        *,
+        root: Path,
+        require_passed: bool,
+    ) -> dict[str, Any]:
+        assert root == ROOT
+        assert value == unavailable
+        verifier_calls.append(require_passed)
+        return copy.deepcopy(unavailable)
+
+    monkeypatch.setattr(
+        qualifier,
+        "verify_preregistered_recovery_qualification",
+        verify_unavailable,
+    )
+    with pytest.raises(
+        materializer.RecoveryQualificationUnavailableMaterializationError
+    ) as direct_error:
+        materializer._verify_recovery_qualification(  # noqa: SLF001
+            unavailable,
+            preview=preview,
+            source_root=ROOT,
+        )
+    assert verifier_calls == [False]
+    evidence = direct_error.value.evidence
+    assert evidence == {
+        **{
+            key: item
+            for key, item in evidence.items()
+            if key != "evidence_cid"
+        },
+        "evidence_cid": materializer.content_identity(
+            {
+                key: item
+                for key, item in evidence.items()
+                if key != "evidence_cid"
+            }
+        ),
+    }
+    assert evidence["schema"] == (
+        materializer.FRESH_RECOVERY_QUALIFICATION_UNAVAILABLE_SCHEMA
+    )
+    assert evidence["error_code"] == "qualification_runtime_unavailable"
+    assert evidence["phase"] == "pin"
+    assert evidence["reason_code"] == "identity_mismatch"
+    assert evidence["expected_runtime_cid"] == expected_runtime_cid
+    assert evidence["observed_runtime_cid"] == observed_runtime_cid
+    assert evidence["ordered_task_population_count"] == 6
+    assert evidence["target_write_performed"] is False
+    assert evidence["stage_write_performed"] is False
+    assert evidence["completion_authoritative"] is False
+
+    publish_root = tmp_path / "publish"
+    publish_root.mkdir()
+    target = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=publish_root
+    )["target"]
+    staging = _fresh_recovery_staging_container(config, publish_root)
+    monkeypatch.setattr(
+        materializer,
+        "_require_clean_recovery_source",
+        lambda *_args, **_kwargs: (
+            str(population["source_head"]),
+            str(population["repository_tree_id"]).removeprefix("git-tree:"),
+        ),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "preview_fresh_generation_recovery",
+        lambda *_args, **_kwargs: {
+            "target_state": "absent",
+            "qualification_runtime_cid": expected_runtime_cid,
+        },
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_set_materializer_zero_wx_operation_mode",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        qualifier,
+        "run_preregistered_recovery_qualification",
+        lambda **_kwargs: copy.deepcopy(unavailable),
+    )
+    with pytest.raises(
+        materializer.RecoveryQualificationUnavailableMaterializationError
+    ) as materialize_error:
+        materializer.materialize_fresh_generation_recovery.__wrapped__(
+            config,
+            population,
+            root=publish_root,
+            source_root=ROOT,
+        )
+    assert materialize_error.value.evidence == evidence
+    assert verifier_calls == [False, False]
+    assert not target.exists()
+    assert not staging.exists()
+
+    monkeypatch.setattr(
+        materializer,
+        "_require_isolated_recovery_interpreter",
+        lambda: None,
+    )
+    monkeypatch.setattr(materializer, "load_config", lambda: config)
+    monkeypatch.setattr(
+        materializer,
+        "build_population",
+        lambda _config: population,
+    )
+
+    def unavailable_materialization(*_args: object, **_kwargs: object) -> object:
+        raise materializer.RecoveryQualificationUnavailableMaterializationError(
+            evidence
+        )
+
+    monkeypatch.setattr(
+        materializer,
+        "materialize_fresh_generation_recovery",
+        unavailable_materialization,
+    )
+    assert materializer.main(("recovery-materialize",)) == 2
+    assert json.loads(capsys.readouterr().out) == evidence
+
+
+def test_materializer_rejects_forged_unavailable_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, _population = _fresh_recovery_population()
+    expected_runtime_cid = str(
+        config["fresh_generation_recovery"]["qualification_runtime_cid"]
+    )
+    unavailable = _fake_runtime_unavailable_qualification(
+        expected_runtime_cid=expected_runtime_cid,
+        observed_runtime_cid=materializer.content_identity(
+            {"qualification_runtime": "different"}
+        ),
+    )
+    forged = copy.deepcopy(unavailable)
+    forged["phase"] = "worker_import"
+    forged["reason_code"] = "import_origin_mismatch"
+    forged["detail"] = (
+        "worker_import:import_origin_mismatch:qualification_runtime"
+    )
+    forged["detail_sha256"] = (
+        "sha256:" + hashlib.sha256(forged["detail"].encode("utf-8")).hexdigest()
+    )
+    forged["receipt_cid"] = materializer.content_identity(
+        {key: item for key, item in forged.items() if key != "receipt_cid"}
+    )
+    monkeypatch.setattr(
+        qualifier,
+        "verify_preregistered_recovery_qualification",
+        lambda *_args, **_kwargs: forged,
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="unavailable qualification differs",
+    ):
+        materializer._verify_recovery_qualification(  # noqa: SLF001
+            forged,
+            preview={"qualification_runtime_cid": expected_runtime_cid},
+            source_root=ROOT,
+        )
+
+
+def test_materializer_rejects_recomputed_061_denial_and_phase_link_tamper() -> None:
+    barrier, task_receipt = (
+        independent_qualification_tests._fixture_061_attestation_barrier(  # noqa: SLF001
+            qualifier
+        )
+    )
+    final_phase = barrier["final"]
+    assert materializer._validate_materialized_public_attestation_phase(  # noqa: SLF001
+        final_phase,
+        phase_name="final",
+        task_id="LGCVF-061",
+        suite_id="recovery_lgcvf_061",
+        runtime_cid=str(task_receipt["runtime_cid"]),
+        task_receipt=task_receipt,
+    ) == dict(final_phase)
+
+    forged_evidence_phase = copy.deepcopy(final_phase)
+    forged_evidence = forged_evidence_phase["z3_import_denial_evidence"]
+    forged_evidence["pytest_meta_path_return_restoration_count"] = 0
+    forged_evidence["evidence_cid"] = materializer.content_identity(
+        {
+            key: item
+            for key, item in forged_evidence.items()
+            if key != "evidence_cid"
+        }
+    )
+    forged_evidence_phase["z3_import_denial_evidence_cid"] = forged_evidence[
+        "evidence_cid"
+    ]
+    for observation_key, cid_key in (
+        ("self_observation", "self_observation_cid"),
+        ("parent_observation", "parent_observation_cid"),
+    ):
+        observation = forged_evidence_phase[observation_key]
+        observation["z3_import_denial_evidence_cid"] = forged_evidence[
+            "evidence_cid"
+        ]
+        observation[cid_key] = materializer.content_identity(
+            {key: item for key, item in observation.items() if key != cid_key}
+        )
+    forged_evidence_phase["parent_observation_cid"] = forged_evidence_phase[
+        "parent_observation"
+    ]["parent_observation_cid"]
+    forged_evidence_phase["phase_cid"] = materializer.content_identity(
+        {
+            key: item
+            for key, item in forged_evidence_phase.items()
+            if key != "phase_cid"
+        }
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="Z3 denial evidence differs",
+    ):
+        materializer._validate_materialized_public_attestation_phase(  # noqa: SLF001
+            forged_evidence_phase,
+            phase_name="final",
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            runtime_cid=str(task_receipt["runtime_cid"]),
+            task_receipt=task_receipt,
+        )
+
+    forged_phase_link = copy.deepcopy(final_phase)
+    forged_phase_link["z3_import_denial_evidence_cid"] = barrier[
+        "prepared_z3_import_denial_evidence_cid"
+    ]
+    forged_phase_link["phase_cid"] = materializer.content_identity(
+        {
+            key: item
+            for key, item in forged_phase_link.items()
+            if key != "phase_cid"
+        }
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="attestation phase differs",
+    ):
+        materializer._validate_materialized_public_attestation_phase(  # noqa: SLF001
+            forged_phase_link,
+            phase_name="final",
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            runtime_cid=str(task_receipt["runtime_cid"]),
+            task_receipt=task_receipt,
         )
