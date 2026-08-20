@@ -991,7 +991,7 @@ def _fixture_compact_task_receipt(
         suite_id=suite_id,
     )
     value: dict[str, object] = {
-        "schema": "lgcvf-recovery-suite-task-receipt@3",
+        "schema": "lgcvf-recovery-suite-task-receipt@4",
         "task_id": task_id,
         "suite_id": suite_id,
         "runtime_cid": module.content_identity({"runtime": "fixture"}),
@@ -1064,8 +1064,17 @@ def _fixture_061_z3_denial_evidence(
     final = phase == "final"
     calls = module._recovery_061_expected_pytest_call_nodeids() if final else []
     meta_denials = list(policy["expected_meta_denials"]) if final else []
+    source_projection_root = module.content_identity({"source": "fixture"})
+    trusted_source_events = (
+        [
+            {**dict(item), "source_projection_root": source_projection_root}
+            for item in policy["expected_trusted_source_events"]
+        ]
+        if final
+        else []
+    )
     value: dict[str, object] = {
-        "schema": "lgcvf-recovery-z3-import-denial-evidence@2",
+        "schema": "lgcvf-recovery-z3-import-denial-evidence@3",
         "phase": phase,
         "task_id": "LGCVF-061",
         "suite_id": "recovery_lgcvf_061",
@@ -1079,7 +1088,7 @@ def _fixture_061_z3_denial_evidence(
         ),
         "process_exit_removal_boundary": True,
         "pytest_meta_path_lifecycle_disposition": (
-            "candidate_completed_bootstrap_restored"
+            "candidate_and_trusted_source_completed_bootstrap_restored"
             if final
             else "candidate_not_started"
         ),
@@ -1092,6 +1101,37 @@ def _fixture_061_z3_denial_evidence(
         "pytest_meta_path_bootstrap_tuple_restored": True,
         "trusted_revalidation_owner_thread_only": True,
         "trusted_revalidation_scope_closed": True,
+        "trusted_source_revalidation_disposition": policy[
+            "trusted_source_revalidation_disposition"
+        ],
+        "trusted_source_revalidation_source_projection_root": (
+            source_projection_root
+        ),
+        "trusted_source_revalidation_expected_event_count": policy[
+            "expected_trusted_source_event_count"
+        ],
+        "trusted_source_revalidation_expected_event_root": policy[
+            "expected_trusted_source_event_root"
+        ],
+        "ordered_trusted_source_revalidation_events": trusted_source_events,
+        "trusted_source_revalidation_event_count": len(trusted_source_events),
+        "trusted_source_revalidation_event_root": module.content_identity(
+            trusted_source_events
+        ),
+        "trusted_source_revalidation_scope_entry_count": int(final),
+        "trusted_source_revalidation_scope_exit_count": int(final),
+        "trusted_source_revalidation_scope_completed": final,
+        "trusted_source_revalidation_pending_empty": True,
+        "trusted_source_revalidation_confirmation_count": len(
+            trusted_source_events
+        ),
+        "trusted_source_revalidation_owner_thread_only": True,
+        "trusted_source_revalidation_caller_code_identity_exact": final,
+        "trusted_source_revalidation_descriptor_identity_validated": final,
+        "trusted_source_revalidation_global_z3_exemption": False,
+        "trusted_source_revalidation_audit_dirfd_observed": False,
+        "trusted_source_revalidation_telemetry_authoritative": True,
+        "trusted_source_revalidation_telemetry_reconstructed": False,
         "ordered_meta_denials": meta_denials,
         "meta_denial_count": len(meta_denials),
         "meta_denial_root": module.content_identity(meta_denials),
@@ -1145,7 +1185,7 @@ def _fixture_061_attestation_barrier(
         z3_commitments = module._public_z3_import_denial_commitments(evidence)
         native_guard_cid = module.content_identity({"native_guard": phase})
         self_value: dict[str, object] = {
-            "schema": "lgcvf-recovery-worker-normalized-self-observation@3",
+            "schema": "lgcvf-recovery-worker-normalized-self-observation@4",
             "phase": phase,
             "suite_id": "recovery_lgcvf_061",
             "runtime_cid": task_receipt["runtime_cid"],
@@ -1190,7 +1230,7 @@ def _fixture_061_attestation_barrier(
         }
         controller["observation_cid"] = module.content_identity(controller)
         parent_value: dict[str, object] = {
-            "schema": "lgcvf-recovery-worker-parent-observation@3",
+            "schema": "lgcvf-recovery-worker-parent-observation@4",
             "phase": phase,
             "suite_id": "recovery_lgcvf_061",
             "runtime_cid": task_receipt["runtime_cid"],
@@ -1233,7 +1273,7 @@ def _fixture_061_attestation_barrier(
         }
         parent_value["parent_observation_cid"] = module.content_identity(parent_value)
         value: dict[str, object] = {
-            "schema": "lgcvf-recovery-worker-attestation-phase@4",
+            "schema": "lgcvf-recovery-worker-attestation-phase@5",
             "phase": phase,
             "self_observation": self_value,
             "parent_observation": parent_value,
@@ -1362,8 +1402,8 @@ def test_recovery_061_and_prior_worst_case_child_receipt_budget_is_closed() -> N
         task_id="LGCVF-061",
         suite_id="recovery_lgcvf_061",
     )
-    assert len(module._canonical_bytes(receipt_051)) == 2_685
-    assert len(module._canonical_bytes(receipt_061)) == 2_578
+    assert len(module._canonical_bytes(receipt_051)) == 2_894
+    assert len(module._canonical_bytes(receipt_061)) == 2_830
 
     # The frozen pre-061 051 terminal measurement was 29,102 bytes.  The
     # parent-owned compact receipt and full barrier remain absent from the pipe;
@@ -1539,6 +1579,12 @@ runtime_root = work / "runtime"
 z3_root = runtime_root / "z3"
 z3_root.mkdir(parents=True)
 (z3_root / "trusted-probe").write_bytes(b"bound")
+projection_root = work / "projection"
+trusted_relative = module._RECOVERY_061_TRUSTED_SOURCE_LOGICAL_PATH
+trusted_file = projection_root / trusted_relative
+trusted_file.parent.mkdir(parents=True)
+trusted_file.write_bytes(b"VALUE = 1\n")
+source_projection_root = module.content_identity({"source": "fixture"})
 test_root = work / "tests/unit/logic/software_verification"
 test_root.mkdir(parents=True)
 names = module._RECOVERY_061_PYTEST_CALL_NAMES
@@ -1560,11 +1606,14 @@ for ordinal, name in enumerate(names, start=1):
 (test_root / "test_cegar.py").write_text("\n".join(source) + "\n", encoding="utf-8")
 
 recorder = module._Recorder()
+provider_guard = module._RecoveryProviderGuard()
 guard = module._RecoveryZ3ImportDenialGuard(
     task_id="LGCVF-061",
     suite_id="recovery_lgcvf_061",
     runtime_root=runtime_root,
     recorder=recorder,
+    source_projection_root=source_projection_root,
+    provider_guard=provider_guard,
 )
 guard.__enter__()
 import pytest
@@ -1572,9 +1621,10 @@ prepared = guard.evidence(phase="prepared")
 threads = module._recovery_live_thread_population()
 tasks = module._recovery_kernel_task_population()
 children = module._recovery_child_process_population(task_ids=tasks)
+sealed_path = tuple(sys.path)
 os.chdir(work)
 exit_code = int(pytest.main(
-    ["-q", "-p", "no:cacheprovider", "tests/unit/logic/software_verification/test_cegar.py"],
+    ["-q", "--import-mode=importlib", "-p", "no:cacheprovider", "tests/unit/logic/software_verification/test_cegar.py"],
     plugins=[recorder],
 ))
 guard.validate_pytest_return_meta_path()
@@ -1582,7 +1632,18 @@ guard.complete_candidate_execution(
     expected_threads=threads,
     expected_tasks=tasks,
     expected_children=children,
+    pytest_exit_code=exit_code,
+    expected_sys_path=sealed_path,
+    transcript_within_bound=True,
+    loaded_origins_captured=True,
+    importer_cache_entry_cleared=True,
 )
+with guard.trusted_source_revalidation():
+    assert module._read_recovery_projection_source(
+        projection_root,
+        trusted_relative,
+        source_revalidation_guard=guard,
+    ) == b"VALUE = 1\n"
 with guard.trusted_runtime_revalidation():
     with (z3_root / "trusted-probe").open("rb") as stream:
         assert stream.read() == b"bound"
@@ -1592,12 +1653,14 @@ module._validate_recovery_z3_import_denial_evidence(
     phase="prepared",
     task_id="LGCVF-061",
     suite_id="recovery_lgcvf_061",
+    source_projection_root=source_projection_root,
 )
 module._validate_recovery_z3_import_denial_evidence(
     final,
     phase="final",
     task_id="LGCVF-061",
     suite_id="recovery_lgcvf_061",
+    source_projection_root=source_projection_root,
 )
 print(json.dumps({
     "exit_code": exit_code,
@@ -1643,7 +1706,7 @@ print(json.dumps({
     )
     assert prepared["pytest_meta_path_admission_count"] == 0
     assert final["pytest_meta_path_lifecycle_disposition"] == (
-        "candidate_completed_bootstrap_restored"
+        "candidate_and_trusted_source_completed_bootstrap_restored"
     )
     assert final["pytest_meta_path_admission_count"] == 1
     assert final["pytest_meta_path_call_start_validation_count"] == 27
@@ -1654,6 +1717,18 @@ print(json.dumps({
     assert final["pytest_meta_path_bootstrap_tuple_restored"] is True
     assert final["meta_denial_count"] == 3
     assert final["open_boundary_denial_count"] == 0
+    assert final["trusted_source_revalidation_event_count"] == 1
+    assert final["trusted_source_revalidation_scope_entry_count"] == 1
+    assert final["trusted_source_revalidation_scope_exit_count"] == 1
+    assert final["trusted_source_revalidation_scope_completed"] is True
+    assert final["trusted_source_revalidation_pending_empty"] is True
+    assert final["trusted_source_revalidation_confirmation_count"] == 1
+    assert final[
+        "trusted_source_revalidation_caller_code_identity_exact"
+    ] is True
+    assert final[
+        "trusted_source_revalidation_descriptor_identity_validated"
+    ] is True
     assert final["z3_modules_absent"] is True
     assert final["z3_file_descriptor_count"] == 0
     assert final["policy_denied_z3_native_mapping_count"] == 0
@@ -1671,6 +1746,9 @@ print(json.dumps({
             phase="final",
             task_id="LGCVF-061",
             suite_id="recovery_lgcvf_061",
+            source_projection_root=str(
+                final["trusted_source_revalidation_source_projection_root"]
+            ),
         )
 
 
@@ -1689,6 +1767,8 @@ def test_recovery_061_z3_denial_rejects_alias_preload_fd_and_meta_tamper(
         suite_id="recovery_lgcvf_061",
         runtime_root=runtime_root,
         recorder=module._Recorder(),
+        source_projection_root=module.content_identity({"source": "fixture"}),
+        provider_guard=module._RecoveryProviderGuard(),
     )
     assert classifier._path_targets_z3("z3") == (True, "relative:z3")
     assert classifier._path_targets_z3("z3/") == (True, "relative:z3")
@@ -1719,6 +1799,10 @@ def test_recovery_061_z3_denial_rejects_alias_preload_fd_and_meta_tamper(
             suite_id="recovery_lgcvf_061",
             runtime_root=runtime_root,
             recorder=module._Recorder(),
+            source_projection_root=module.content_identity(
+                {"source": "fixture"}
+            ),
+            provider_guard=module._RecoveryProviderGuard(),
         )
         with pytest.raises(module.QualificationError, match="state loaded"):
             preopened.__enter__()
@@ -1732,6 +1816,10 @@ def test_recovery_061_z3_denial_rejects_alias_preload_fd_and_meta_tamper(
             suite_id="recovery_lgcvf_061",
             runtime_root=runtime_root,
             recorder=module._Recorder(),
+            source_projection_root=module.content_identity(
+                {"source": "fixture"}
+            ),
+            provider_guard=module._RecoveryProviderGuard(),
         )
         with pytest.raises(module.QualificationError, match="state loaded"):
             preloaded.__enter__()
@@ -1744,6 +1832,8 @@ def test_recovery_061_z3_denial_rejects_alias_preload_fd_and_meta_tamper(
         suite_id="recovery_lgcvf_061",
         runtime_root=runtime_root,
         recorder=module._Recorder(),
+        source_projection_root=module.content_identity({"source": "fixture"}),
+        provider_guard=module._RecoveryProviderGuard(),
     )
     tampered._meta_path_before = tuple(original_meta_path)
     sys.meta_path.insert(0, tampered._finder)
@@ -1764,6 +1854,8 @@ def test_recovery_061_z3_denial_rejects_alias_preload_fd_and_meta_tamper(
         suite_id="recovery_lgcvf_061",
         runtime_root=runtime_root,
         recorder=module._Recorder(),
+        source_projection_root=module.content_identity({"source": "fixture"}),
+        provider_guard=module._RecoveryProviderGuard(),
     )
     wrong_hook._meta_path_before = tuple(original_meta_path)
     wrong_hook._meta_path_active = True
@@ -1796,13 +1888,26 @@ def test_recovery_061_trusted_reread_is_owner_single_use_and_fail_closed(
             suite_id="recovery_lgcvf_061",
             runtime_root=runtime_root,
             recorder=module._Recorder(),
+            source_projection_root=module.content_identity(
+                {"source": "fixture"}
+            ),
+            provider_guard=module._RecoveryProviderGuard(),
         )
         guard._meta_path_before = tuple(original_meta_path)
         guard._meta_path_active = True
         guard._audit_installed = True
         guard._owner_phase = "post_candidate_revalidation"
+        guard._trusted_source_revalidation_scope_entry_count = 1
+        guard._trusted_source_revalidation_scope_exit_count = 1
+        guard._trusted_source_revalidation_scope_completed = True
+        guard._trusted_source_events = guard._expected_trusted_source_events()
+        guard._trusted_source_confirmation_count = len(
+            guard._trusted_source_events
+        )
+        guard._trusted_source_caller_code_identity_validated = True
         guard._pytest_meta_path_return_restoration_count = 1
         guard._pytest_meta_path_bootstrap_tuple_restored = True
+        guard.provider_guard.imported_modules = lambda: []
         sys.meta_path[:] = [guard._finder, *original_meta_path]
         return guard
 
@@ -1857,10 +1962,441 @@ def test_recovery_061_trusted_reread_is_owner_single_use_and_fail_closed(
         sys.meta_path[:] = original_meta_path
 
 
+def test_recovery_061_trusted_source_capability_is_exact_and_failure_latched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    runtime_root = tmp_path / "runtime"
+    (runtime_root / "z3").mkdir(parents=True)
+    projection_root = tmp_path / "projection"
+    trusted_relative = module._RECOVERY_061_TRUSTED_SOURCE_LOGICAL_PATH
+    trusted_file = projection_root / trusted_relative
+    trusted_file.parent.mkdir(parents=True)
+    trusted_file.write_text("VALUE = 1\n", encoding="utf-8")
+    original_meta_path = list(sys.meta_path)
+    stable_threads = module._recovery_live_thread_population()
+    stable_tasks = module._recovery_kernel_task_population()
+    stable_children = module._recovery_child_process_population(
+        task_ids=stable_tasks
+    )
+    monkeypatch.setattr(
+        module,
+        "_recovery_live_thread_population",
+        lambda: copy.deepcopy(stable_threads),
+    )
+    monkeypatch.setattr(
+        module,
+        "_recovery_kernel_task_population",
+        lambda: list(stable_tasks),
+    )
+    monkeypatch.setattr(
+        module,
+        "_recovery_child_process_population",
+        lambda *, task_ids: (
+            list(stable_children)
+            if list(task_ids) == list(stable_tasks)
+            else [-1]
+        ),
+    )
+
+    def source_phase_guard() -> object:
+        guard = module._RecoveryZ3ImportDenialGuard(
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            runtime_root=runtime_root,
+            recorder=module._Recorder(),
+            source_projection_root=module.content_identity(
+                {"source": "fixture"}
+            ),
+            provider_guard=module._RecoveryProviderGuard(),
+        )
+        guard._meta_path_before = tuple(original_meta_path)
+        guard._meta_path_active = True
+        guard._audit_installed = True
+        guard._owner_phase = "source_revalidation_pending"
+        guard._pytest_meta_path_return_restoration_count = 1
+        guard._pytest_meta_path_bootstrap_tuple_restored = True
+        guard._candidate_expected_threads = (
+            module._recovery_live_thread_population()
+        )
+        guard._candidate_expected_tasks = (
+            module._recovery_kernel_task_population()
+        )
+        guard._candidate_expected_children = (
+            module._recovery_child_process_population(
+                task_ids=guard._candidate_expected_tasks
+            )
+        )
+        guard.provider_guard.imported_modules = lambda: []
+        sys.meta_path[:] = [guard._finder, *original_meta_path]
+        return guard
+
+    direct = source_phase_guard()
+    try:
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source registration boundary differs",
+        ):
+            module._read_recovery_projection_source(
+                projection_root,
+                trusted_relative,
+                source_revalidation_guard=direct,
+            )
+        assert direct._trusted_source_failed is True
+        assert direct._z3_file_descriptor_evidence() == []
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source revalidation admission differs",
+        ):
+            with direct.trusted_source_revalidation():
+                pass
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    missing = source_phase_guard()
+    try:
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source revalidation closure differs",
+        ):
+            with missing.trusted_source_revalidation():
+                pass
+        assert missing._trusted_source_failed is True
+        assert missing._trusted_source_revalidation_scope_entry_count == 1
+        assert missing._trusted_source_revalidation_scope_exit_count == 1
+        assert missing._trusted_source_revalidation_scope_completed is False
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    nested = source_phase_guard()
+    try:
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source revalidation closure differs",
+        ):
+            with nested.trusted_source_revalidation():
+                with pytest.raises(
+                    module.QualificationError,
+                    match="trusted source revalidation admission differs",
+                ):
+                    with nested.trusted_source_revalidation():
+                        pass
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source revalidation admission differs",
+        ):
+            with nested.trusted_source_revalidation():
+                pass
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    wrong_thread_guard = source_phase_guard()
+    thread_errors: list[str] = []
+
+    def wrong_source_thread() -> None:
+        try:
+            with wrong_thread_guard.trusted_source_revalidation():
+                pass
+        except module.QualificationError as exc:
+            thread_errors.append(str(exc))
+
+    thread = Thread(target=wrong_source_thread)
+    thread.start()
+    thread.join(5)
+    try:
+        assert thread.is_alive() is False
+        assert thread_errors == [
+            "recovery trusted source revalidation admission differs"
+        ]
+        assert wrong_thread_guard._trusted_source_failed is True
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    ambient = source_phase_guard()
+    try:
+        with pytest.raises(ModuleNotFoundError):
+            ambient._audit(
+                "open",
+                ("z3", None, module._recovery_projection_directory_flags()),
+            )
+        assert ambient.open_boundary_denials == [
+            {
+                "ordinal": 1,
+                "event": "open",
+                "path_token": "relative:z3",
+                "disposition": "denied_by_irreversible_audit_open_boundary",
+            }
+        ]
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    post_scope = source_phase_guard()
+    try:
+        post_scope._trusted_source_reader_code = sys._getframe().f_code
+        expected_event = post_scope._expected_trusted_source_events()[0]
+        with post_scope.trusted_source_revalidation():
+            assert post_scope.register_trusted_source_directory_open(
+                logical_path=expected_event["logical_path"],
+                component_index=expected_event["component_index"],
+                component=expected_event["component"],
+                directory_flags=expected_event["directory_flags"],
+            ) is True
+            post_scope._audit(
+                "open",
+                ("z3", None, module._recovery_projection_directory_flags()),
+            )
+            post_scope.confirm_trusted_source_directory_open()
+        assert post_scope._owner_phase == "post_candidate_revalidation"
+        with pytest.raises(ModuleNotFoundError):
+            post_scope._audit(
+                "open",
+                ("z3", None, module._recovery_projection_directory_flags()),
+            )
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source revalidation admission differs",
+        ):
+            with post_scope.trusted_source_revalidation():
+                pass
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    extra_event = source_phase_guard()
+    try:
+        extra_event._trusted_source_reader_code = sys._getframe().f_code
+        expected_event = extra_event._expected_trusted_source_events()[0]
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source revalidation closure differs",
+        ):
+            with extra_event.trusted_source_revalidation():
+                assert extra_event.register_trusted_source_directory_open(
+                    logical_path=expected_event["logical_path"],
+                    component_index=expected_event["component_index"],
+                    component=expected_event["component"],
+                    directory_flags=expected_event["directory_flags"],
+                ) is True
+                extra_event._audit(
+                    "open",
+                    (
+                        "z3",
+                        None,
+                        module._recovery_projection_directory_flags(),
+                    ),
+                )
+                extra_event.confirm_trusted_source_directory_open()
+                assert extra_event.register_trusted_source_directory_open(
+                    logical_path=expected_event["logical_path"],
+                    component_index=expected_event["component_index"],
+                    component=expected_event["component"],
+                    directory_flags=expected_event["directory_flags"],
+                ) is False
+                with pytest.raises(ModuleNotFoundError):
+                    extra_event._audit(
+                        "open",
+                        (
+                            "z3",
+                            None,
+                            module._recovery_projection_directory_flags(),
+                        ),
+                    )
+        assert extra_event._trusted_source_failed is True
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    wrong_caller = source_phase_guard()
+    try:
+        wrong_caller._trusted_source_revalidation_depth = 1
+        wrong_caller._trusted_source_revalidation_scope_entry_count = 1
+        wrong_caller._trusted_source_pending_event = (
+            wrong_caller._expected_trusted_source_events()[0]
+        )
+        with pytest.raises(
+            module.QualificationError,
+            match="trusted source audit capability differs",
+        ):
+            wrong_caller._audit(
+                "open",
+                ("z3", None, module._recovery_projection_directory_flags()),
+            )
+        assert wrong_caller._trusted_source_failed is True
+    finally:
+        sys.meta_path[:] = original_meta_path
+
+    for event, arguments in (
+        (
+            "open",
+            (b"z3", None, module._recovery_projection_directory_flags()),
+        ),
+        (
+            "open",
+            ("./z3", None, module._recovery_projection_directory_flags()),
+        ),
+        (
+            "open",
+            ("z3/", None, module._recovery_projection_directory_flags()),
+        ),
+        (
+            "open",
+            ("z3", None, module._recovery_projection_directory_flags() | 1),
+        ),
+        ("open_code", ("z3",)),
+    ):
+        raw_mismatch = source_phase_guard()
+        try:
+            raw_mismatch._trusted_source_revalidation_depth = 1
+            raw_mismatch._trusted_source_revalidation_scope_entry_count = 1
+            raw_mismatch._trusted_source_pending_event = (
+                raw_mismatch._expected_trusted_source_events()[0]
+            )
+            raw_mismatch._trusted_source_reader_code = sys._getframe().f_code
+            with pytest.raises(
+                module.QualificationError,
+                match="trusted source audit capability differs",
+            ):
+                raw_mismatch._audit(event, arguments)
+            assert raw_mismatch._trusted_source_failed is True
+        finally:
+            sys.meta_path[:] = original_meta_path
+
+
+def test_recovery_061_trusted_source_fstat_failure_closes_fd_and_forbids_retry(
+    tmp_path: Path,
+) -> None:
+    probe = r'''
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+
+script = Path(sys.argv[1])
+work = Path(sys.argv[2])
+sys.path.insert(0, str(script.parents[1]))
+specification = importlib.util.spec_from_file_location(
+    "lgcvf_z3_source_failure_probe", script
+)
+module = importlib.util.module_from_spec(specification)
+sys.modules[specification.name] = module
+specification.loader.exec_module(module)
+
+runtime_root = work / "runtime"
+(runtime_root / "z3").mkdir(parents=True)
+projection_root = work / "projection"
+trusted_relative = module._RECOVERY_061_TRUSTED_SOURCE_LOGICAL_PATH
+trusted_file = projection_root / trusted_relative
+trusted_file.parent.mkdir(parents=True)
+trusted_file.write_bytes(b"VALUE = 1\n")
+guard = module._RecoveryZ3ImportDenialGuard(
+    task_id="LGCVF-061",
+    suite_id="recovery_lgcvf_061",
+    runtime_root=runtime_root,
+    recorder=module._Recorder(),
+    source_projection_root=module.content_identity({"source": "fixture"}),
+    provider_guard=module._RecoveryProviderGuard(),
+)
+guard.__enter__()
+guard._owner_phase = "source_revalidation_pending"
+guard._pytest_meta_path_return_restoration_count = 1
+guard._pytest_meta_path_bootstrap_tuple_restored = True
+guard._candidate_expected_threads = module._recovery_live_thread_population()
+guard._candidate_expected_tasks = module._recovery_kernel_task_population()
+guard._candidate_expected_children = module._recovery_child_process_population(
+    task_ids=guard._candidate_expected_tasks
+)
+original_fstat = os.fstat
+failure = ""
+failure_cause = ""
+try:
+    with guard.trusted_source_revalidation():
+        def failing_fstat(descriptor):
+            target = os.readlink(f"/proc/self/fd/{descriptor}")
+            if target == str(projection_root / trusted_relative).rsplit("/", 1)[0]:
+                raise OSError("injected trusted source directory fstat failure")
+            return original_fstat(descriptor)
+
+        module.os.fstat = failing_fstat
+        try:
+            module._read_recovery_projection_source(
+                projection_root,
+                trusted_relative,
+                source_revalidation_guard=guard,
+            )
+        finally:
+            module.os.fstat = original_fstat
+except module.QualificationError as exc:
+    failure = str(exc)
+    failure_cause = str(exc.__cause__)
+
+retry = ""
+try:
+    with guard.trusted_source_revalidation():
+        pass
+except module.QualificationError as exc:
+    retry = str(exc)
+
+print(json.dumps({
+    "failure": failure,
+    "failure_cause": failure_cause,
+    "retry": retry,
+    "failed": guard._trusted_source_failed,
+    "event_count": len(guard._trusted_source_events),
+    "confirmation_count": guard._trusted_source_confirmation_count,
+    "entry_count": guard._trusted_source_revalidation_scope_entry_count,
+    "exit_count": guard._trusted_source_revalidation_scope_exit_count,
+    "completed": guard._trusted_source_revalidation_scope_completed,
+    "pending_empty": guard._trusted_source_pending_event is None,
+    "audit_consumed_restored": not guard._trusted_source_pending_audit_consumed,
+    "z3_fds": guard._z3_file_descriptor_evidence(),
+}, sort_keys=True))
+'''
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            probe,
+            str(SCRIPT),
+            str(tmp_path),
+        ),
+        cwd=ROOT,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout.splitlines()[-1])
+    assert result == {
+        "audit_consumed_restored": True,
+        "completed": False,
+        "confirmation_count": 0,
+        "entry_count": 1,
+        "event_count": 1,
+        "exit_count": 1,
+        "failed": True,
+        "failure": "recovery projection source is unavailable",
+        "failure_cause": "injected trusted source directory fstat failure",
+        "pending_empty": True,
+        "retry": "recovery trusted source revalidation admission differs",
+        "z3_fds": [],
+    }
+
+
 def test_recovery_parent_adds_barrier_only_after_child_cid_validation() -> None:
     module = _load()
     barrier_body = {
-        "schema": "lgcvf-recovery-worker-parent-attestation-barrier@4",
+        "schema": "lgcvf-recovery-worker-parent-attestation-barrier@5",
         "prepared": {"phase": "prepared"},
         "final": {"phase": "final"},
         "parent_admitted_before_pytest": True,
@@ -1932,6 +2468,57 @@ def test_recovery_061_full_denial_evidence_and_barrier_cids_are_closed() -> None
     assert barrier["prepared_z3_import_denial_evidence_cid"] != barrier[
         "final_z3_import_denial_evidence_cid"
     ]
+
+    forged_source_event = copy.deepcopy(
+        barrier["final"]["z3_import_denial_evidence"]
+    )
+    forged_source_event["ordered_trusted_source_revalidation_events"][0][
+        "component_index"
+    ] = 3
+    forged_source_event["trusted_source_revalidation_event_root"] = (
+        module.content_identity(
+            forged_source_event[
+                "ordered_trusted_source_revalidation_events"
+            ]
+        )
+    )
+    forged_source_event["evidence_cid"] = module.content_identity(
+        {
+            key: item
+            for key, item in forged_source_event.items()
+            if key != "evidence_cid"
+        }
+    )
+    with pytest.raises(module.QualificationError, match="denial evidence differs"):
+        module._validate_recovery_z3_import_denial_evidence(
+            forged_source_event,
+            phase="final",
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            source_projection_root=str(task_receipt["source_projection_root"]),
+        )
+
+    forged_source_root = copy.deepcopy(
+        barrier["final"]["z3_import_denial_evidence"]
+    )
+    forged_source_root[
+        "trusted_source_revalidation_source_projection_root"
+    ] = module.content_identity({"source": "forged"})
+    forged_source_root["evidence_cid"] = module.content_identity(
+        {
+            key: item
+            for key, item in forged_source_root.items()
+            if key != "evidence_cid"
+        }
+    )
+    with pytest.raises(module.QualificationError, match="denial evidence differs"):
+        module._validate_recovery_z3_import_denial_evidence(
+            forged_source_root,
+            phase="final",
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            source_projection_root=str(task_receipt["source_projection_root"]),
+        )
 
     same_phase_cid = copy.deepcopy(barrier)
     same_phase_cid["final_z3_import_denial_evidence_cid"] = same_phase_cid[

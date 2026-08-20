@@ -1029,9 +1029,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 
 SCHEMA: Final[str] = "lgcvf-independent-hermetic-qualification@1"
 WORKER_SCHEMA: Final[str] = "lgcvf-independent-pytest-observation@1"
-RECOVERY_SCHEMA: Final[str] = "lgcvf-independent-recovery-qualification@8"
+RECOVERY_SCHEMA: Final[str] = "lgcvf-independent-recovery-qualification@9"
 RECOVERY_WORKER_SCHEMA: Final[str] = (
-    "lgcvf-independent-recovery-pytest-observation@8"
+    "lgcvf-independent-recovery-pytest-observation@9"
 )
 RECOVERY_UNAVAILABLE_SCHEMA: Final[str] = (
     "lgcvf-independent-recovery-qualification-unavailable@3"
@@ -1047,7 +1047,7 @@ RECOVERY_LIMITATIONS: Final[tuple[str, ...]] = (
     "each suite worker exits immediately after two-phase parent attestation, so the qualified libffi page cannot persist into controller or materialization authority",
     "solver ELF dependencies and the pinned CPython lib-dynload inventory are content-bound; transitive dependencies of root-owned standard-library extensions remain an explicit pinned-host platform boundary",
     "full suite-task live observations are parent-validated in both attestation phases but are not persisted or reconstructed by later direct verification; compact receipts retain their exact CIDs and config-pinned semantic commitments",
-    "LGCVF-061 deliberately makes the projected Z3 Python namespace policy-unavailable in the sealed main suite worker, so its live-Z3 CEGAR path is not exercised; the exact MetaPathFinder denial and candidate-phase audit open boundary assume trusted tracked source; direct transient sys.modules mutation, custom in-memory loaders, and C-native import/file bypasses are outside that boundary; only an owner-thread scoped runtime reread is permitted after quiescence, and no process-tree namespace denial is claimed",
+    "LGCVF-061 deliberately makes the projected Z3 Python namespace policy-unavailable in the sealed main suite worker, so its live-Z3 CEGAR path is not exercised; the exact MetaPathFinder denial and candidate-phase audit open boundary assume trusted tracked source; direct transient sys.modules mutation, custom in-memory loaders, and C-native import/file bypasses are outside that boundary; after candidate quiescence exactly one owner-thread nonreentrant tracked-source directory-component open is admitted by a source-bound pending capability, not by any global relative-z3 exemption; Python's open audit tuple omits dir_fd, so its root binding relies on the exact pending logical path, trusted reader code identity, and post-open descriptor validation; the separate owner-thread runtime reread remains scoped, and no process-tree namespace denial is claimed",
     "tracked recovery tests may invoke source-bound external subprocess tools whose executable internals are outside the in-process native-module closure",
     "current-source, merge, semantic, and control-plane evidence must be cross-checked by recovery admission",
     "this receipt grants no task, objective, release, or production authority",
@@ -2423,12 +2423,24 @@ def _recovery_projection_omitted_symlinks(root: Path) -> list[dict[str, str]]:
     return sorted(omitted, key=lambda item: item["path"])
 
 
+def _recovery_projection_directory_flags() -> int:
+    """Return the one exact no-follow directory-open flag set."""
+
+    return (
+        os.O_RDONLY
+        | os.O_CLOEXEC
+        | os.O_DIRECTORY
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+
 def _read_recovery_projection_source(
     root: Path,
     relative: str,
     *,
     git_entry: tuple[str, str] | None = None,
     required_git_mode: str | None = None,
+    source_revalidation_guard: _RecoveryZ3ImportDenialGuard | None = None,
 ) -> bytes:
     """Read one bounded regular source through a no-follow descriptor chain."""
 
@@ -2440,12 +2452,7 @@ def _read_recovery_projection_source(
         or logical.as_posix() != relative
     ):
         raise QualificationError("recovery projection path differs")
-    directory_flags = (
-        os.O_RDONLY
-        | os.O_CLOEXEC
-        | os.O_DIRECTORY
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
+    directory_flags = _recovery_projection_directory_flags()
     file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(root, directory_flags)
@@ -2482,8 +2489,19 @@ def _read_recovery_projection_source(
         directory_observations.append(
             tuple(getattr(root_status, key) for key in stable_directory_fields)
         )
-        for component in logical.parts[:-1]:
+        for component_index, component in enumerate(logical.parts[:-1]):
+            guarded_open = False
+            if source_revalidation_guard is not None:
+                guarded_open = (
+                    source_revalidation_guard.register_trusted_source_directory_open(
+                        logical_path=relative,
+                        component_index=component_index,
+                        component=component,
+                        directory_flags=directory_flags,
+                    )
+                )
             child = os.open(component, directory_flags, dir_fd=descriptor)
+            directory_chain.append(child)
             child_status = os.fstat(child)
             if (
                 not stat.S_ISDIR(child_status.st_mode)
@@ -2493,11 +2511,11 @@ def _read_recovery_projection_source(
                 )
                 or stat.S_IMODE(child_status.st_mode) & 0o500 != 0o500
             ):
-                os.close(child)
                 raise QualificationError(
                     "recovery projection directory identity differs"
                 )
-            directory_chain.append(child)
+            if guarded_open:
+                source_revalidation_guard.confirm_trusted_source_directory_open()
             directory_observations.append(
                 tuple(
                     getattr(child_status, key)
@@ -2506,23 +2524,32 @@ def _read_recovery_projection_source(
             )
             descriptor = child
         source_fd = os.open(logical.name, file_flags, dir_fd=descriptor)
-        before = os.fstat(source_fd)
-        expected_mode = "100755" if stat.S_IMODE(before.st_mode) & 0o111 else "100644"
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
-            or before.st_size < 0
-            or before.st_size > 16 * 1024 * 1024
-            or not _qualification_source_mode_is_safe(
-                before,
-                owner_uid=os.geteuid(),
-            )
-            or not stat.S_IMODE(before.st_mode) & 0o400
-            or (git_entry is not None and git_entry[0] != expected_mode)
-            or (required_git_mode is not None and required_git_mode != expected_mode)
-        ):
-            raise QualificationError("recovery projection source identity differs")
         try:
+            before = os.fstat(source_fd)
+            expected_mode = (
+                "100755"
+                if stat.S_IMODE(before.st_mode) & 0o111
+                else "100644"
+            )
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_size < 0
+                or before.st_size > 16 * 1024 * 1024
+                or not _qualification_source_mode_is_safe(
+                    before,
+                    owner_uid=os.geteuid(),
+                )
+                or not stat.S_IMODE(before.st_mode) & 0o400
+                or (git_entry is not None and git_entry[0] != expected_mode)
+                or (
+                    required_git_mode is not None
+                    and required_git_mode != expected_mode
+                )
+            ):
+                raise QualificationError(
+                    "recovery projection source identity differs"
+                )
             chunks: list[bytes] = []
             observed = 0
             while True:
@@ -2742,6 +2769,7 @@ def _recovery_projection_manifest(
     paths: Sequence[str],
     *,
     head_bound: bool = True,
+    source_revalidation_guard: _RecoveryZ3ImportDenialGuard | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
     """Read and content-address every closed recovery projection file."""
 
@@ -2757,6 +2785,7 @@ def _recovery_projection_manifest(
             root,
             relative,
             git_entry=git_entries.get(relative),
+            source_revalidation_guard=source_revalidation_guard,
         )
         total += len(payload)
         if total > 256 * 1024 * 1024:
@@ -6227,6 +6256,8 @@ class _RecoveryZ3ImportDenialGuard:
         suite_id: str,
         runtime_root: Path,
         recorder: _Recorder,
+        source_projection_root: str,
+        provider_guard: _RecoveryProviderGuard,
     ) -> None:
         self.task_id = task_id
         self.suite_id = suite_id
@@ -6239,6 +6270,12 @@ class _RecoveryZ3ImportDenialGuard:
             suite_id=suite_id,
         )
         self.enabled = task_id in _RECOVERY_Z3_IMPORT_DENIED_TASKS
+        if not _is_canonical_content_cid(source_projection_root):
+            raise QualificationError(
+                "recovery Z3 source projection identity differs"
+            )
+        self.source_projection_root = source_projection_root
+        self.provider_guard = provider_guard
         self.recorder = recorder
         self.meta_denials: list[dict[str, Any]] = []
         self.open_boundary_denials: list[dict[str, Any]] = []
@@ -6262,6 +6299,22 @@ class _RecoveryZ3ImportDenialGuard:
         self._trusted_revalidation_scope_entry_count = 0
         self._trusted_revalidation_scope_exit_count = 0
         self._trusted_revalidation_scope_completed = False
+        self._trusted_source_revalidation_depth = 0
+        self._trusted_source_revalidation_scope_entry_count = 0
+        self._trusted_source_revalidation_scope_exit_count = 0
+        self._trusted_source_revalidation_scope_completed = False
+        self._trusted_source_pending_event: dict[str, Any] | None = None
+        self._trusted_source_pending_audit_consumed = False
+        self._trusted_source_confirmation_count = 0
+        self._trusted_source_events: list[dict[str, Any]] = []
+        self._trusted_source_failed = False
+        self._trusted_source_reader_code = (
+            _read_recovery_projection_source.__code__
+        )
+        self._trusted_source_caller_code_identity_validated = False
+        self._candidate_expected_threads: list[dict[str, Any]] | None = None
+        self._candidate_expected_tasks: list[int] | None = None
+        self._candidate_expected_children: list[int] | None = None
         self._owner_phase = (
             "candidate_execution" if self.enabled else "not_applicable"
         )
@@ -6308,11 +6361,57 @@ class _RecoveryZ3ImportDenialGuard:
             return True, "runtime:z3" + (("/" + suffix) if suffix else "")
         return True, "relative:" + normalized_relative[:256]
 
+    def _expected_trusted_source_events(self) -> list[dict[str, Any]]:
+        """Close policy templates over this worker's source projection root."""
+
+        return [
+            {**dict(item), "source_projection_root": self.source_projection_root}
+            for item in self.policy["expected_trusted_source_events"]
+        ]
+
     def _audit(self, event: str, arguments: tuple[Any, ...]) -> None:
         if not self.enabled or event not in {"open", "open_code"} or not arguments:
             return
         denied, token = self._path_targets_z3(arguments[0])
         if not denied:
+            return
+        pending = self._trusted_source_pending_event
+        if pending is not None:
+            try:
+                caller = sys._getframe(1)
+            except (ValueError, RuntimeError) as exc:
+                self._trusted_source_failed = True
+                raise QualificationError(
+                    "recovery trusted source caller is unavailable"
+                ) from exc
+            exact_source_open = (
+                self._owner_phase == "source_revalidation_pending"
+                and self._trusted_source_revalidation_depth == 1
+                and not self._trusted_source_failed
+                and threading.get_ident() == self._owner_thread_ident
+                and threading.get_native_id() == self._owner_native_thread_id
+                and event == "open"
+                and len(arguments) == 3
+                and type(arguments[0]) is str
+                and arguments[0] == "z3"
+                and arguments[1] is None
+                and type(arguments[2]) is int
+                and arguments[2] == _recovery_projection_directory_flags()
+                and caller.f_code is self._trusted_source_reader_code
+                and pending
+                == self._expected_trusted_source_events()[
+                    len(self._trusted_source_events)
+                ]
+            )
+            if not exact_source_open:
+                self._trusted_source_failed = True
+                raise QualificationError(
+                    "recovery trusted source audit capability differs"
+                )
+            self._trusted_source_pending_event = None
+            self._trusted_source_pending_audit_consumed = True
+            self._trusted_source_caller_code_identity_validated = True
+            self._trusted_source_events.append(dict(pending))
             return
         if (
             self._owner_phase == "post_candidate_revalidation"
@@ -6340,6 +6439,89 @@ class _RecoveryZ3ImportDenialGuard:
             "z3 namespace is policy-unavailable inside the sealed LGCVF-061 worker",
             name="z3",
         )
+
+    def register_trusted_source_directory_open(
+        self,
+        *,
+        logical_path: str,
+        component_index: int,
+        component: str,
+        directory_flags: int,
+    ) -> bool:
+        """Arm only the config-pinned source component immediately before open."""
+
+        if not self.enabled:
+            return False
+        expected_events = self._expected_trusted_source_events()
+        if len(self._trusted_source_events) >= len(expected_events):
+            return False
+        expected = expected_events[len(self._trusted_source_events)]
+        candidate = {
+            "event": "open",
+            "logical_path": logical_path,
+            "component_index": component_index,
+            "component": component,
+            "directory_flags": directory_flags,
+            "caller_code_identity": (
+                "_read_recovery_projection_source.__code__"
+            ),
+            "source_projection_root": self.source_projection_root,
+            "disposition": (
+                "permitted_by_one_use_trusted_source_revalidation_capability"
+            ),
+        }
+        if candidate != expected:
+            return False
+        try:
+            caller = sys._getframe(1)
+        except (ValueError, RuntimeError) as exc:
+            self._trusted_source_failed = True
+            raise QualificationError(
+                "recovery trusted source registration caller is unavailable"
+            ) from exc
+        if (
+            self._owner_phase != "source_revalidation_pending"
+            or self._trusted_source_revalidation_depth != 1
+            or self._trusted_source_failed
+            or self._trusted_source_pending_event is not None
+            or self._trusted_source_pending_audit_consumed
+            or self._trusted_source_confirmation_count
+            != len(self._trusted_source_events)
+            or threading.get_ident() != self._owner_thread_ident
+            or threading.get_native_id() != self._owner_native_thread_id
+            or caller.f_code is not self._trusted_source_reader_code
+            or not self._meta_path_identity_exact()
+            or self._loaded_z3_modules()
+            or self._z3_file_descriptor_evidence()
+            or self._z3_native_mapping_evidence()
+            or self.open_boundary_denials
+        ):
+            self._trusted_source_failed = True
+            raise QualificationError(
+                "recovery trusted source registration boundary differs"
+            )
+        self._trusted_source_pending_event = dict(candidate)
+        return True
+
+    def confirm_trusted_source_directory_open(self) -> None:
+        """Confirm that the audit hook consumed the armed open capability."""
+
+        if (
+            not self.enabled
+            or self._owner_phase != "source_revalidation_pending"
+            or self._trusted_source_revalidation_depth != 1
+            or self._trusted_source_failed
+            or self._trusted_source_pending_event is not None
+            or not self._trusted_source_pending_audit_consumed
+            or self._trusted_source_confirmation_count + 1
+            != len(self._trusted_source_events)
+        ):
+            self._trusted_source_failed = True
+            raise QualificationError(
+                "recovery trusted source audit consumption differs"
+            )
+        self._trusted_source_pending_audit_consumed = False
+        self._trusted_source_confirmation_count += 1
 
     def deny_meta_import(self, fullname: str) -> None:
         if not self.enabled:
@@ -6550,8 +6732,13 @@ class _RecoveryZ3ImportDenialGuard:
         expected_threads: Sequence[Mapping[str, Any]],
         expected_tasks: Sequence[int],
         expected_children: Sequence[int],
+        pytest_exit_code: int,
+        expected_sys_path: Sequence[str],
+        transcript_within_bound: bool,
+        loaded_origins_captured: bool,
+        importer_cache_entry_cleared: bool,
     ) -> None:
-        """Seal the judged interval before trusted runtime revalidation begins."""
+        """Seal the judged interval before one-use source revalidation."""
 
         if not self.enabled:
             return
@@ -6582,12 +6769,147 @@ class _RecoveryZ3ImportDenialGuard:
             != _recovery_061_expected_pytest_call_nodeids()
             or self.recorder._current_call_nodeid
             or self.recorder._current_call_ordinal != 0
+            or pytest_exit_code != 0
+            or self.recorder.collected
+            != len(_recovery_061_expected_pytest_call_nodeids())
+            or self.recorder.passed != self.recorder.collected
+            or any(
+                value != 0
+                for value in (
+                    self.recorder.failed,
+                    self.recorder.skipped,
+                    self.recorder.xfailed,
+                    self.recorder.xpassed,
+                    self.recorder.errors,
+                )
+            )
+            or tuple(sys.path) != tuple(expected_sys_path)
+            or transcript_within_bound is not True
+            or loaded_origins_captured is not True
+            or importer_cache_entry_cleared is not True
             or observed_threads != [dict(item) for item in expected_threads]
             or observed_tasks != list(expected_tasks)
             or observed_children != list(expected_children)
+            or self.provider_guard.imported_modules()
+            or self.provider_guard.import_attempts
+            or self.provider_guard.process_attempts
+            or self._trusted_source_revalidation_depth != 0
+            or self._trusted_source_revalidation_scope_entry_count != 0
+            or self._trusted_source_revalidation_scope_exit_count != 0
+            or self._trusted_source_revalidation_scope_completed
+            or self._trusted_source_pending_event is not None
+            or self._trusted_source_pending_audit_consumed
+            or self._trusted_source_confirmation_count != 0
+            or self._trusted_source_events
+            or self._trusted_source_failed
         ):
             raise QualificationError("recovery Z3 candidate boundary differs")
-        self._owner_phase = "post_candidate_revalidation"
+        self._candidate_expected_threads = [dict(item) for item in expected_threads]
+        self._candidate_expected_tasks = list(expected_tasks)
+        self._candidate_expected_children = list(expected_children)
+        self._owner_phase = "source_revalidation_pending"
+
+    @contextlib.contextmanager
+    def trusted_source_revalidation(self) -> Iterator[None]:
+        """Admit one exact tracked-source component open after candidate closure."""
+
+        if not self.enabled:
+            yield
+            return
+        before = self._meta_path_before
+        if (
+            self._owner_phase != "source_revalidation_pending"
+            or self._trusted_source_revalidation_depth != 0
+            or self._trusted_source_revalidation_scope_entry_count != 0
+            or self._trusted_source_revalidation_scope_exit_count != 0
+            or self._trusted_source_revalidation_scope_completed
+            or self._trusted_source_pending_event is not None
+            or self._trusted_source_pending_audit_consumed
+            or self._trusted_source_confirmation_count != 0
+            or self._trusted_source_events
+            or self._trusted_source_failed
+            or threading.get_ident() != self._owner_thread_ident
+            or threading.get_native_id() != self._owner_native_thread_id
+            or before is None
+            or not self._meta_path_identity_exact()
+            or self._pytest_meta_path_return_restoration_count != 1
+            or not self._pytest_meta_path_bootstrap_tuple_restored
+            or self._loaded_z3_modules()
+            or self._z3_file_descriptor_evidence()
+            or self._z3_native_mapping_evidence()
+            or self.open_boundary_denials
+            or self.provider_guard.imported_modules()
+            or self.provider_guard.import_attempts
+            or self.provider_guard.process_attempts
+            or self._candidate_expected_threads is None
+            or self._candidate_expected_tasks is None
+            or self._candidate_expected_children is None
+            or _recovery_live_thread_population()
+            != self._candidate_expected_threads
+            or _recovery_kernel_task_population()
+            != self._candidate_expected_tasks
+            or _recovery_child_process_population(
+                task_ids=self._candidate_expected_tasks
+            )
+            != self._candidate_expected_children
+        ):
+            self._trusted_source_failed = True
+            raise QualificationError(
+                "recovery trusted source revalidation admission differs"
+            )
+        self._trusted_source_revalidation_depth = 1
+        self._trusted_source_revalidation_scope_entry_count = 1
+        body_completed = False
+        try:
+            yield
+            body_completed = True
+        except BaseException:
+            self._trusted_source_failed = True
+            raise
+        finally:
+            self._trusted_source_revalidation_depth = 0
+            self._trusted_source_revalidation_scope_exit_count += 1
+            closure_exact = (
+                body_completed
+                and not self._trusted_source_failed
+                and self._trusted_source_pending_event is None
+                and not self._trusted_source_pending_audit_consumed
+                and self._trusted_source_confirmation_count
+                == self.policy["expected_trusted_source_event_count"]
+                and self._trusted_source_events
+                == self._expected_trusted_source_events()
+                and content_identity(self._trusted_source_events)
+                == content_identity(self._expected_trusted_source_events())
+                and self._trusted_source_revalidation_scope_exit_count == 1
+                and not self.open_boundary_denials
+                and self._meta_path_identity_exact()
+                and not self._loaded_z3_modules()
+                and not self._z3_file_descriptor_evidence()
+                and not self._z3_native_mapping_evidence()
+                and not self.provider_guard.imported_modules()
+                and not self.provider_guard.import_attempts
+                and not self.provider_guard.process_attempts
+                and _recovery_live_thread_population()
+                == self._candidate_expected_threads
+                and _recovery_kernel_task_population()
+                == self._candidate_expected_tasks
+                and _recovery_child_process_population(
+                    task_ids=self._candidate_expected_tasks or []
+                )
+                == self._candidate_expected_children
+            )
+            if not closure_exact:
+                self._trusted_source_failed = True
+                self._trusted_source_pending_event = None
+                self._trusted_source_pending_audit_consumed = False
+                self._trusted_source_revalidation_scope_completed = False
+                if body_completed:
+                    raise QualificationError(
+                        "recovery trusted source revalidation closure differs"
+                    )
+            else:
+                self._trusted_source_revalidation_scope_completed = True
+                self._owner_phase = "post_candidate_revalidation"
 
     @contextlib.contextmanager
     def trusted_runtime_revalidation(self) -> Iterator[None]:
@@ -6603,6 +6925,17 @@ class _RecoveryZ3ImportDenialGuard:
             or self._trusted_revalidation_scope_entry_count != 0
             or self._trusted_revalidation_scope_exit_count != 0
             or self._trusted_revalidation_scope_completed
+            or not self._trusted_source_revalidation_scope_completed
+            or self._trusted_source_revalidation_scope_entry_count != 1
+            or self._trusted_source_revalidation_scope_exit_count != 1
+            or self._trusted_source_events
+            != self._expected_trusted_source_events()
+            or self._trusted_source_confirmation_count
+            != self.policy["expected_trusted_source_event_count"]
+            or self._trusted_source_failed
+            or self.provider_guard.imported_modules()
+            or self.provider_guard.import_attempts
+            or self.provider_guard.process_attempts
             or threading.get_ident() != self._owner_thread_ident
             or threading.get_native_id() != self._owner_native_thread_id
             or before is None
@@ -6671,7 +7004,7 @@ class _RecoveryZ3ImportDenialGuard:
         )
         final_enabled = self.enabled and phase == "final"
         expected_lifecycle_disposition = (
-            "candidate_completed_bootstrap_restored"
+            "candidate_and_trusted_source_completed_bootstrap_restored"
             if final_enabled
             else "candidate_not_started"
             if self.enabled
@@ -6684,10 +7017,14 @@ class _RecoveryZ3ImportDenialGuard:
             or observed_meta_state != expected_meta_state
             or self._owner_phase != expected_owner_phase
             or self._trusted_revalidation_depth != 0
+            or self._trusted_source_revalidation_depth != 0
             or (policy["z3_module_absence_required"] and modules)
             or (policy["z3_module_absence_required"] and z3_fds)
             or (self.enabled and z3_native_mappings)
             or (self.enabled and not self._audit_installed)
+            or self.provider_guard.imported_modules()
+            or self.provider_guard.import_attempts
+            or self.provider_guard.process_attempts
             or self._pytest_meta_path_admission_count != (1 if final_enabled else 0)
             or self._pytest_meta_path_call_validation_count
             != (len(_recovery_061_expected_pytest_call_nodeids()) if final_enabled else 0)
@@ -6699,6 +7036,9 @@ class _RecoveryZ3ImportDenialGuard:
             != (1 if final_enabled else 0)
             or self._pytest_meta_path_candidate_tuple_validated is not final_enabled
             or self._pytest_meta_path_bootstrap_tuple_restored is not self.enabled
+            or self._trusted_source_failed
+            or self._trusted_source_pending_event is not None
+            or self._trusted_source_pending_audit_consumed
             or (
                 phase == "final"
                 and self.enabled
@@ -6714,16 +7054,35 @@ class _RecoveryZ3ImportDenialGuard:
                 phase == "final"
                 and self.enabled
                 and (
-                    self._trusted_revalidation_open_count < 1
+                    self._trusted_source_revalidation_scope_entry_count != 1
+                    or self._trusted_source_revalidation_scope_exit_count != 1
+                    or not self._trusted_source_revalidation_scope_completed
+                    or self._trusted_source_events
+                    != self._expected_trusted_source_events()
+                    or self._trusted_source_confirmation_count
+                    != policy["expected_trusted_source_event_count"]
+                    or not self._trusted_source_caller_code_identity_validated
+                    or self._trusted_revalidation_open_count < 1
                     or self._trusted_revalidation_scope_entry_count != 1
                     or self._trusted_revalidation_scope_exit_count != 1
                     or not self._trusted_revalidation_scope_completed
                 )
             )
+            or (
+                phase == "prepared"
+                and self.enabled
+                and (
+                    self._trusted_source_revalidation_scope_entry_count != 0
+                    or self._trusted_source_revalidation_scope_exit_count != 0
+                    or self._trusted_source_revalidation_scope_completed
+                    or self._trusted_source_events
+                    or self._trusted_source_confirmation_count != 0
+                )
+            )
         ):
             raise QualificationError("recovery Z3 import denial evidence differs")
         value: dict[str, Any] = {
-            "schema": "lgcvf-recovery-z3-import-denial-evidence@2",
+            "schema": "lgcvf-recovery-z3-import-denial-evidence@3",
             "phase": phase,
             "task_id": self.task_id,
             "suite_id": self.suite_id,
@@ -6762,6 +7121,58 @@ class _RecoveryZ3ImportDenialGuard:
             "trusted_revalidation_scope_closed": (
                 self._trusted_revalidation_depth == 0
             ),
+            "trusted_source_revalidation_disposition": policy[
+                "trusted_source_revalidation_disposition"
+            ],
+            "trusted_source_revalidation_source_projection_root": (
+                self.source_projection_root
+            ),
+            "trusted_source_revalidation_expected_event_count": policy[
+                "expected_trusted_source_event_count"
+            ],
+            "trusted_source_revalidation_expected_event_root": policy[
+                "expected_trusted_source_event_root"
+            ],
+            "ordered_trusted_source_revalidation_events": [
+                dict(item) for item in self._trusted_source_events
+            ],
+            "trusted_source_revalidation_event_count": len(
+                self._trusted_source_events
+            ),
+            "trusted_source_revalidation_event_root": content_identity(
+                self._trusted_source_events
+            ),
+            "trusted_source_revalidation_scope_entry_count": (
+                self._trusted_source_revalidation_scope_entry_count
+            ),
+            "trusted_source_revalidation_scope_exit_count": (
+                self._trusted_source_revalidation_scope_exit_count
+            ),
+            "trusted_source_revalidation_scope_completed": (
+                self._trusted_source_revalidation_scope_completed
+            ),
+            "trusted_source_revalidation_pending_empty": (
+                self._trusted_source_pending_event is None
+                and not self._trusted_source_pending_audit_consumed
+            ),
+            "trusted_source_revalidation_confirmation_count": (
+                self._trusted_source_confirmation_count
+            ),
+            "trusted_source_revalidation_owner_thread_only": self.enabled,
+            "trusted_source_revalidation_caller_code_identity_exact": (
+                self._trusted_source_caller_code_identity_validated
+            ),
+            "trusted_source_revalidation_descriptor_identity_validated": (
+                final_enabled
+                and self._trusted_source_confirmation_count
+                == policy["expected_trusted_source_event_count"]
+            ),
+            "trusted_source_revalidation_global_z3_exemption": False,
+            "trusted_source_revalidation_audit_dirfd_observed": False,
+            "trusted_source_revalidation_telemetry_authoritative": (
+                self.enabled
+            ),
+            "trusted_source_revalidation_telemetry_reconstructed": False,
             "ordered_meta_denials": [dict(item) for item in self.meta_denials],
             "meta_denial_count": len(self.meta_denials),
             "meta_denial_root": content_identity(self.meta_denials),
@@ -8617,6 +9028,47 @@ def _recovery_061_expected_pytest_call_nodeids() -> list[str]:
     return [prefix + name for name in _RECOVERY_061_PYTEST_CALL_NAMES]
 
 
+_RECOVERY_061_TRUSTED_SOURCE_LOGICAL_PATH: Final[str] = (
+    "ipfs_datasets_py/ipfs_datasets_py/logic/backends/z3/compiler.py"
+)
+
+
+def _recovery_z3_expected_trusted_source_events(
+    *, task_id: str,
+    source_projection_root: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return the exact host-ephemeral-free one-use source capability."""
+
+    if task_id != "LGCVF-061":
+        return []
+    if source_projection_root is not None and not _is_canonical_content_cid(
+        source_projection_root
+    ):
+        raise QualificationError(
+            "recovery trusted source projection identity differs"
+        )
+    return [
+        {
+            "event": "open",
+            "logical_path": _RECOVERY_061_TRUSTED_SOURCE_LOGICAL_PATH,
+            "component_index": 4,
+            "component": "z3",
+            "directory_flags": _recovery_projection_directory_flags(),
+            "caller_code_identity": (
+                "_read_recovery_projection_source.__code__"
+            ),
+            **(
+                {"source_projection_root": source_projection_root}
+                if source_projection_root is not None
+                else {}
+            ),
+            "disposition": (
+                "permitted_by_one_use_trusted_source_revalidation_capability"
+            ),
+        }
+    ]
+
+
 def _recovery_z3_import_denial_policy(
     *, task_id: str, suite_id: str
 ) -> dict[str, Any]:
@@ -8669,8 +9121,11 @@ def _recovery_z3_import_denial_policy(
         namespace_unavailability = False
         live_cegar_disposition = "not_applicable"
         candidate_reason_interpretation = "not_applicable"
+    expected_trusted_source_events = (
+        _recovery_z3_expected_trusted_source_events(task_id=task_id)
+    )
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-z3-import-denial-policy@2",
+        "schema": "lgcvf-recovery-z3-import-denial-policy@3",
         "task_id": task_id,
         "suite_id": suite_id,
         "disposition": disposition,
@@ -8689,9 +9144,23 @@ def _recovery_z3_import_denial_policy(
             else "not_applicable"
         ),
         "trusted_postvalidation_read_scope": (
-            "owner_thread_only_explicit_runtime_revalidation_context"
+            "one_use_source_capability_then_owner_thread_runtime_revalidation"
             if task_id in _RECOVERY_Z3_IMPORT_DENIED_TASKS
             else "not_applicable"
+        ),
+        "trusted_source_revalidation_disposition": (
+            "owner_thread_nonreentrant_exact_projection_component_once"
+            if task_id in _RECOVERY_Z3_IMPORT_DENIED_TASKS
+            else "not_applicable"
+        ),
+        "trusted_source_revalidation_global_z3_exemption": False,
+        "trusted_source_revalidation_audit_dirfd_observed": False,
+        "expected_trusted_source_events": expected_trusted_source_events,
+        "expected_trusted_source_event_count": len(
+            expected_trusted_source_events
+        ),
+        "expected_trusted_source_event_root": content_identity(
+            expected_trusted_source_events
         ),
         "meta_path_removal_boundary": (
             "sealed_worker_process_exit"
@@ -8747,6 +9216,15 @@ def _recovery_z3_import_policy_commitments(
         ],
         "z3_expected_open_boundary_denial_root": policy[
             "expected_open_boundary_denial_root"
+        ],
+        "z3_trusted_source_revalidation_disposition": policy[
+            "trusted_source_revalidation_disposition"
+        ],
+        "z3_expected_trusted_source_event_count": policy[
+            "expected_trusted_source_event_count"
+        ],
+        "z3_expected_trusted_source_event_root": policy[
+            "expected_trusted_source_event_root"
         ],
         "z3_policy_namespace_unavailability": policy[
             "policy_namespace_unavailability"
@@ -9805,7 +10283,7 @@ def _recovery_051_public_prefix_fixed_point(
             + semantic_execution_cid
         )
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-suite-task-observation@3",
+        "schema": "lgcvf-recovery-suite-task-observation@4",
         "task_id": "LGCVF-051",
         "suite_id": "recovery_lgcvf_051",
         "runtime_cid": runtime_cid,
@@ -10203,7 +10681,7 @@ def _recovery_060_public_prefix_fixed_point(
             + semantic_execution_cid
         )
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-suite-task-observation@3",
+        "schema": "lgcvf-recovery-suite-task-observation@4",
         "task_id": "LGCVF-060",
         "suite_id": "recovery_lgcvf_060",
         "runtime_cid": runtime_cid,
@@ -10302,7 +10780,7 @@ def _recovery_suite_task_fixed_point(
         interval_ms=0,
     )
     value = {
-        "schema": "lgcvf-recovery-suite-task-observation@3",
+        "schema": "lgcvf-recovery-suite-task-observation@4",
         "task_id": recovery.task_id,
         "suite_id": suite.suite_id,
         "runtime_cid": runtime_cid,
@@ -10370,6 +10848,9 @@ _RECOVERY_SUITE_TASK_OBSERVATION_FIELDS: Final[frozenset[str]] = frozenset(
         "z3_expected_meta_denial_root",
         "z3_expected_open_boundary_denial_count",
         "z3_expected_open_boundary_denial_root",
+        "z3_trusted_source_revalidation_disposition",
+        "z3_expected_trusted_source_event_count",
+        "z3_expected_trusted_source_event_root",
         "z3_policy_namespace_unavailability",
         "z3_live_cegar_disposition",
         "z3_candidate_reason_interpretation",
@@ -10425,6 +10906,7 @@ def _validate_recovery_suite_task_observation(
     numeric_observation_fields = (
         "z3_expected_meta_denial_count",
         "z3_expected_open_boundary_denial_count",
+        "z3_expected_trusted_source_event_count",
         "z3_check_event_count",
         "lifetime_boundary_count",
         "gc_collection_count",
@@ -10435,7 +10917,7 @@ def _validate_recovery_suite_task_observation(
     if (
         set(observation) != _RECOVERY_SUITE_TASK_OBSERVATION_FIELDS
         or observation.get("schema")
-        != "lgcvf-recovery-suite-task-observation@3"
+        != "lgcvf-recovery-suite-task-observation@4"
         or observation.get("task_id") != task_id
         or observation.get("suite_id") != suite_id
         or observation.get("runtime_cid") != runtime_cid
@@ -10709,6 +11191,9 @@ _RECOVERY_SUITE_TASK_RECEIPT_FIELDS: Final[frozenset[str]] = frozenset(
         "z3_expected_meta_denial_root",
         "z3_expected_open_boundary_denial_count",
         "z3_expected_open_boundary_denial_root",
+        "z3_trusted_source_revalidation_disposition",
+        "z3_expected_trusted_source_event_count",
+        "z3_expected_trusted_source_event_root",
         "z3_policy_namespace_unavailability",
         "z3_live_cegar_disposition",
         "z3_candidate_reason_interpretation",
@@ -10964,7 +11449,7 @@ def _recovery_suite_task_receipt_from_live_observation(
     if observed_commitments != expected:
         raise QualificationError("recovery live task commitments differ")
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-suite-task-receipt@3",
+        "schema": "lgcvf-recovery-suite-task-receipt@4",
         "task_id": task_id,
         "suite_id": suite_id,
         "runtime_cid": runtime_cid,
@@ -10986,6 +11471,15 @@ def _recovery_suite_task_receipt_from_live_observation(
         ],
         "z3_expected_open_boundary_denial_root": expected[
             "z3_expected_open_boundary_denial_root"
+        ],
+        "z3_trusted_source_revalidation_disposition": expected[
+            "z3_trusted_source_revalidation_disposition"
+        ],
+        "z3_expected_trusted_source_event_count": expected[
+            "z3_expected_trusted_source_event_count"
+        ],
+        "z3_expected_trusted_source_event_root": expected[
+            "z3_expected_trusted_source_event_root"
         ],
         "z3_policy_namespace_unavailability": expected[
             "z3_policy_namespace_unavailability"
@@ -11067,6 +11561,7 @@ def _validate_recovery_suite_task_receipt(
     numeric_fields = (
         "z3_expected_meta_denial_count",
         "z3_expected_open_boundary_denial_count",
+        "z3_expected_trusted_source_event_count",
         "semantic_check_event_count",
         "semantic_operation_evidence_count",
         "semantic_transition_evidence_count",
@@ -11078,7 +11573,7 @@ def _validate_recovery_suite_task_receipt(
     )
     if (
         set(value) != _RECOVERY_SUITE_TASK_RECEIPT_FIELDS
-        or value.get("schema") != "lgcvf-recovery-suite-task-receipt@3"
+        or value.get("schema") != "lgcvf-recovery-suite-task-receipt@4"
         or value.get("task_id") != task_id
         or value.get("suite_id") != suite_id
         or value.get("runtime_cid") != runtime_cid
@@ -11648,6 +12143,7 @@ def _validate_recovery_z3_import_denial_evidence(
     phase: str,
     task_id: str,
     suite_id: str,
+    source_projection_root: str,
 ) -> dict[str, Any]:
     if not isinstance(value, Mapping) or phase not in {"prepared", "final"}:
         raise QualificationError("recovery Z3 import denial evidence is absent")
@@ -11663,6 +12159,14 @@ def _validate_recovery_z3_import_denial_evidence(
     )
     expected_calls = (
         _recovery_061_expected_pytest_call_nodeids()
+        if enabled and phase == "final"
+        else []
+    )
+    expected_trusted_source_events = (
+        [
+            {**dict(item), "source_projection_root": source_projection_root}
+            for item in expected_policy["expected_trusted_source_events"]
+        ]
         if enabled and phase == "final"
         else []
     )
@@ -11689,6 +12193,25 @@ def _validate_recovery_z3_import_denial_evidence(
         "pytest_meta_path_bootstrap_tuple_restored",
         "trusted_revalidation_owner_thread_only",
         "trusted_revalidation_scope_closed",
+        "trusted_source_revalidation_disposition",
+        "trusted_source_revalidation_source_projection_root",
+        "trusted_source_revalidation_expected_event_count",
+        "trusted_source_revalidation_expected_event_root",
+        "ordered_trusted_source_revalidation_events",
+        "trusted_source_revalidation_event_count",
+        "trusted_source_revalidation_event_root",
+        "trusted_source_revalidation_scope_entry_count",
+        "trusted_source_revalidation_scope_exit_count",
+        "trusted_source_revalidation_scope_completed",
+        "trusted_source_revalidation_pending_empty",
+        "trusted_source_revalidation_confirmation_count",
+        "trusted_source_revalidation_owner_thread_only",
+        "trusted_source_revalidation_caller_code_identity_exact",
+        "trusted_source_revalidation_descriptor_identity_validated",
+        "trusted_source_revalidation_global_z3_exemption",
+        "trusted_source_revalidation_audit_dirfd_observed",
+        "trusted_source_revalidation_telemetry_authoritative",
+        "trusted_source_revalidation_telemetry_reconstructed",
         "ordered_meta_denials",
         "meta_denial_count",
         "meta_denial_root",
@@ -11699,6 +12222,11 @@ def _validate_recovery_z3_import_denial_evidence(
         "trusted_revalidation_scope_exit_count",
         "trusted_revalidation_scope_completed",
         "trusted_revalidation_permitted_z3_open_count",
+        "trusted_source_revalidation_expected_event_count",
+        "trusted_source_revalidation_event_count",
+        "trusted_source_revalidation_scope_entry_count",
+        "trusted_source_revalidation_scope_exit_count",
+        "trusted_source_revalidation_confirmation_count",
         "trusted_revalidation_telemetry_authoritative",
         "trusted_revalidation_telemetry_reconstructed",
         "z3_modules_absent",
@@ -11728,6 +12256,11 @@ def _validate_recovery_z3_import_denial_evidence(
         "trusted_revalidation_scope_entry_count",
         "trusted_revalidation_scope_exit_count",
         "trusted_revalidation_permitted_z3_open_count",
+        "trusted_source_revalidation_expected_event_count",
+        "trusted_source_revalidation_event_count",
+        "trusted_source_revalidation_scope_entry_count",
+        "trusted_source_revalidation_scope_exit_count",
+        "trusted_source_revalidation_confirmation_count",
         "z3_file_descriptor_count",
         "policy_denied_z3_native_mapping_count",
         "pytest_call_count",
@@ -11744,7 +12277,7 @@ def _validate_recovery_z3_import_denial_evidence(
     expected_exit_count = expected_entry_count
     expected_scope_completed = enabled and phase == "final"
     expected_lifecycle_disposition = (
-        "candidate_completed_bootstrap_restored"
+        "candidate_and_trusted_source_completed_bootstrap_restored"
         if expected_scope_completed
         else "candidate_not_started"
         if enabled
@@ -11754,7 +12287,7 @@ def _validate_recovery_z3_import_denial_evidence(
     expected_loader_executed = task_id in _RECOVERY_Z3_REQUIRED_TASKS
     if (
         set(value) != expected_fields
-        or value.get("schema") != "lgcvf-recovery-z3-import-denial-evidence@2"
+        or value.get("schema") != "lgcvf-recovery-z3-import-denial-evidence@3"
         or value.get("phase") != phase
         or value.get("task_id") != task_id
         or value.get("suite_id") != suite_id
@@ -11790,6 +12323,46 @@ def _validate_recovery_z3_import_denial_evidence(
         or value.get("pytest_meta_path_bootstrap_tuple_restored") is not enabled
         or value.get("trusted_revalidation_owner_thread_only") is not enabled
         or value.get("trusted_revalidation_scope_closed") is not True
+        or value.get("trusted_source_revalidation_disposition")
+        != expected_policy["trusted_source_revalidation_disposition"]
+        or value.get("trusted_source_revalidation_source_projection_root")
+        != source_projection_root
+        or not _is_canonical_content_cid(source_projection_root)
+        or value.get("trusted_source_revalidation_expected_event_count")
+        != expected_policy["expected_trusted_source_event_count"]
+        or value.get("trusted_source_revalidation_expected_event_root")
+        != expected_policy["expected_trusted_source_event_root"]
+        or value.get("ordered_trusted_source_revalidation_events")
+        != expected_trusted_source_events
+        or value.get("trusted_source_revalidation_event_count")
+        != len(expected_trusted_source_events)
+        or value.get("trusted_source_revalidation_event_root")
+        != content_identity(expected_trusted_source_events)
+        or value.get("trusted_source_revalidation_scope_entry_count")
+        != expected_entry_count
+        or value.get("trusted_source_revalidation_scope_exit_count")
+        != expected_exit_count
+        or value.get("trusted_source_revalidation_scope_completed")
+        is not expected_scope_completed
+        or value.get("trusted_source_revalidation_pending_empty") is not True
+        or value.get("trusted_source_revalidation_confirmation_count")
+        != len(expected_trusted_source_events)
+        or value.get("trusted_source_revalidation_owner_thread_only")
+        is not enabled
+        or value.get(
+            "trusted_source_revalidation_caller_code_identity_exact"
+        ) is not (enabled and phase == "final")
+        or value.get(
+            "trusted_source_revalidation_descriptor_identity_validated"
+        ) is not (enabled and phase == "final")
+        or value.get("trusted_source_revalidation_global_z3_exemption")
+        is not False
+        or value.get("trusted_source_revalidation_audit_dirfd_observed")
+        is not False
+        or value.get("trusted_source_revalidation_telemetry_authoritative")
+        is not enabled
+        or value.get("trusted_source_revalidation_telemetry_reconstructed")
+        is not False
         or value.get("ordered_meta_denials") != expected_meta
         or value.get("meta_denial_count") != len(expected_meta)
         or value.get("meta_denial_root") != content_identity(expected_meta)
@@ -11868,6 +12441,60 @@ def _public_z3_import_denial_commitments(
         "z3_trusted_revalidation_telemetry_reconstructed": evidence[
             "trusted_revalidation_telemetry_reconstructed"
         ],
+        "z3_trusted_source_revalidation_disposition": evidence[
+            "trusted_source_revalidation_disposition"
+        ],
+        "z3_trusted_source_revalidation_source_projection_root": evidence[
+            "trusted_source_revalidation_source_projection_root"
+        ],
+        "z3_trusted_source_revalidation_expected_event_count": evidence[
+            "trusted_source_revalidation_expected_event_count"
+        ],
+        "z3_trusted_source_revalidation_expected_event_root": evidence[
+            "trusted_source_revalidation_expected_event_root"
+        ],
+        "z3_trusted_source_revalidation_event_count": evidence[
+            "trusted_source_revalidation_event_count"
+        ],
+        "z3_trusted_source_revalidation_event_root": evidence[
+            "trusted_source_revalidation_event_root"
+        ],
+        "z3_trusted_source_revalidation_scope_entry_count": evidence[
+            "trusted_source_revalidation_scope_entry_count"
+        ],
+        "z3_trusted_source_revalidation_scope_exit_count": evidence[
+            "trusted_source_revalidation_scope_exit_count"
+        ],
+        "z3_trusted_source_revalidation_scope_completed": evidence[
+            "trusted_source_revalidation_scope_completed"
+        ],
+        "z3_trusted_source_revalidation_pending_empty": evidence[
+            "trusted_source_revalidation_pending_empty"
+        ],
+        "z3_trusted_source_revalidation_confirmation_count": evidence[
+            "trusted_source_revalidation_confirmation_count"
+        ],
+        "z3_trusted_source_revalidation_owner_thread_only": evidence[
+            "trusted_source_revalidation_owner_thread_only"
+        ],
+        "z3_trusted_source_revalidation_caller_code_identity_exact": evidence[
+            "trusted_source_revalidation_caller_code_identity_exact"
+        ],
+        "z3_trusted_source_revalidation_descriptor_identity_validated": evidence[
+            "trusted_source_revalidation_descriptor_identity_validated"
+        ],
+        "z3_trusted_source_revalidation_global_z3_exemption": evidence[
+            "trusted_source_revalidation_global_z3_exemption"
+        ],
+        "z3_trusted_source_revalidation_audit_dirfd_observed": evidence[
+            "trusted_source_revalidation_audit_dirfd_observed"
+        ],
+        "z3_trusted_source_revalidation_telemetry_authoritative": evidence[
+            "trusted_source_revalidation_telemetry_authoritative"
+        ],
+        "z3_trusted_source_revalidation_telemetry_reconstructed": evidence[
+            "trusted_source_revalidation_telemetry_reconstructed"
+        ],
         "z3_policy_namespace_unavailability": evidence[
             "policy_namespace_unavailability"
         ],
@@ -11899,6 +12526,24 @@ _RECOVERY_PUBLIC_Z3_IMPORT_DENIAL_FIELDS: Final[frozenset[str]] = frozenset(
             "trusted_revalidation_permitted_z3_open_count": 0,
             "trusted_revalidation_telemetry_authoritative": False,
             "trusted_revalidation_telemetry_reconstructed": False,
+            "trusted_source_revalidation_disposition": "",
+            "trusted_source_revalidation_source_projection_root": "",
+            "trusted_source_revalidation_expected_event_count": 0,
+            "trusted_source_revalidation_expected_event_root": "",
+            "trusted_source_revalidation_event_count": 0,
+            "trusted_source_revalidation_event_root": "",
+            "trusted_source_revalidation_scope_entry_count": 0,
+            "trusted_source_revalidation_scope_exit_count": 0,
+            "trusted_source_revalidation_scope_completed": False,
+            "trusted_source_revalidation_pending_empty": True,
+            "trusted_source_revalidation_confirmation_count": 0,
+            "trusted_source_revalidation_owner_thread_only": False,
+            "trusted_source_revalidation_caller_code_identity_exact": False,
+            "trusted_source_revalidation_descriptor_identity_validated": False,
+            "trusted_source_revalidation_global_z3_exemption": False,
+            "trusted_source_revalidation_audit_dirfd_observed": False,
+            "trusted_source_revalidation_telemetry_authoritative": False,
+            "trusted_source_revalidation_telemetry_reconstructed": False,
             "policy_namespace_unavailability": False,
             "live_z3_cegar_disposition": "",
             "candidate_reason_interpretation": "",
@@ -11913,6 +12558,7 @@ def _validate_public_z3_import_denial_commitments(
     phase: str,
     task_id: str,
     suite_id: str,
+    source_projection_root: str,
 ) -> dict[str, Any]:
     policy = _recovery_z3_import_denial_policy(
         task_id=task_id,
@@ -11929,6 +12575,11 @@ def _validate_public_z3_import_denial_commitments(
         "z3_file_descriptor_count",
         "z3_policy_denied_native_mapping_count",
         "z3_trusted_revalidation_permitted_open_count",
+        "z3_trusted_source_revalidation_expected_event_count",
+        "z3_trusted_source_revalidation_event_count",
+        "z3_trusted_source_revalidation_scope_entry_count",
+        "z3_trusted_source_revalidation_scope_exit_count",
+        "z3_trusted_source_revalidation_confirmation_count",
     )
     if any(
         isinstance(observed.get(field), bool)
@@ -11940,6 +12591,14 @@ def _validate_public_z3_import_denial_commitments(
         observed.get("z3_trusted_revalidation_permitted_open_count", -1)
     )
     expected_modules_absent = task_id not in _RECOVERY_Z3_REQUIRED_TASKS
+    expected_source_events = (
+        [
+            {**dict(item), "source_projection_root": source_projection_root}
+            for item in policy["expected_trusted_source_events"]
+        ]
+        if enabled and phase == "final"
+        else []
+    )
     if (
         not _is_canonical_content_cid(
             observed.get("z3_import_denial_evidence_cid")
@@ -11980,6 +12639,55 @@ def _validate_public_z3_import_denial_commitments(
         is not False
         or observed.get("z3_trusted_revalidation_telemetry_reconstructed")
         is not False
+        or observed.get("z3_trusted_source_revalidation_disposition")
+        != policy["trusted_source_revalidation_disposition"]
+        or observed.get(
+            "z3_trusted_source_revalidation_source_projection_root"
+        ) != source_projection_root
+        or not _is_canonical_content_cid(source_projection_root)
+        or observed.get(
+            "z3_trusted_source_revalidation_expected_event_count"
+        ) != policy["expected_trusted_source_event_count"]
+        or observed.get(
+            "z3_trusted_source_revalidation_expected_event_root"
+        ) != policy["expected_trusted_source_event_root"]
+        or observed.get("z3_trusted_source_revalidation_event_count")
+        != len(expected_source_events)
+        or observed.get("z3_trusted_source_revalidation_event_root")
+        != content_identity(expected_source_events)
+        or observed.get(
+            "z3_trusted_source_revalidation_scope_entry_count"
+        ) != (1 if enabled and phase == "final" else 0)
+        or observed.get(
+            "z3_trusted_source_revalidation_scope_exit_count"
+        ) != (1 if enabled and phase == "final" else 0)
+        or observed.get("z3_trusted_source_revalidation_scope_completed")
+        is not (enabled and phase == "final")
+        or observed.get("z3_trusted_source_revalidation_pending_empty")
+        is not True
+        or observed.get(
+            "z3_trusted_source_revalidation_confirmation_count"
+        ) != len(expected_source_events)
+        or observed.get("z3_trusted_source_revalidation_owner_thread_only")
+        is not enabled
+        or observed.get(
+            "z3_trusted_source_revalidation_caller_code_identity_exact"
+        ) is not (enabled and phase == "final")
+        or observed.get(
+            "z3_trusted_source_revalidation_descriptor_identity_validated"
+        ) is not (enabled and phase == "final")
+        or observed.get(
+            "z3_trusted_source_revalidation_global_z3_exemption"
+        ) is not False
+        or observed.get(
+            "z3_trusted_source_revalidation_audit_dirfd_observed"
+        ) is not False
+        or observed.get(
+            "z3_trusted_source_revalidation_telemetry_authoritative"
+        ) is not enabled
+        or observed.get(
+            "z3_trusted_source_revalidation_telemetry_reconstructed"
+        ) is not False
         or observed.get("z3_policy_namespace_unavailability")
         is not policy["policy_namespace_unavailability"]
         or observed.get("z3_live_cegar_disposition")
@@ -12034,6 +12742,9 @@ def _worker_live_attestation(
         phase=phase,
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=str(
+            suite_task_observation.get("source_projection_root") or ""
+        ),
     )
     terminal_records = [dict(item) for item in suite_task_terminal_records]
     current_records = [dict(item) for item in kernel_task_records]
@@ -12042,7 +12753,7 @@ def _worker_live_attestation(
             "worker task identity changed after its fixed point"
         )
     body: dict[str, Any] = {
-        "schema": "lgcvf-recovery-worker-live-attestation@3",
+        "schema": "lgcvf-recovery-worker-live-attestation@4",
         "phase": phase,
         "launch_nonce": launch_nonce,
         "suite_id": suite_id,
@@ -12114,9 +12825,19 @@ def _public_worker_self_observation(
         phase=str(phase or ""),
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=str(
+            (
+                attestation.get("suite_task_observation")
+                if isinstance(
+                    attestation.get("suite_task_observation"), Mapping
+                )
+                else {}
+            ).get("source_projection_root")
+            or ""
+        ),
     )
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-worker-normalized-self-observation@3",
+        "schema": "lgcvf-recovery-worker-normalized-self-observation@4",
         "phase": attestation.get("phase"),
         "suite_id": attestation.get("suite_id"),
         "runtime_cid": attestation.get("runtime_cid"),
@@ -12200,6 +12921,9 @@ def _validate_worker_parent_ack(
         phase=str(attestation.get("phase") or ""),
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=str(
+            validated_task_observation.get("source_projection_root") or ""
+        ),
     )
     public_z3_commitments = _public_z3_import_denial_commitments(
         z3_import_denial_evidence
@@ -12243,7 +12967,7 @@ def _validate_worker_parent_ack(
             "admitted",
             "ack_cid",
         }
-        or ack.get("schema") != "lgcvf-recovery-worker-parent-ack@3"
+        or ack.get("schema") != "lgcvf-recovery-worker-parent-ack@4"
         or ack.get("phase") != attestation.get("phase")
         or ack.get("launch_nonce") != attestation.get("launch_nonce")
         or ack.get("suite_id") != attestation.get("suite_id")
@@ -12360,7 +13084,7 @@ def _validate_worker_parent_ack(
     if (
         set(parent_observation) != expected_parent_fields
         or parent_observation.get("schema")
-        != "lgcvf-recovery-worker-parent-observation@3"
+        != "lgcvf-recovery-worker-parent-observation@4"
         or parent_observation.get("phase") != attestation.get("phase")
         or parent_observation.get("suite_id") != attestation.get("suite_id")
         or parent_observation.get("runtime_cid") != attestation.get("runtime_cid")
@@ -12463,7 +13187,7 @@ def _public_attestation_phase_evidence(
     if not isinstance(z3_import_denial_evidence, Mapping):
         raise QualificationError("worker Z3 import denial phase evidence is absent")
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-worker-attestation-phase@4",
+        "schema": "lgcvf-recovery-worker-attestation-phase@5",
         "phase": attestation.get("phase"),
         "self_observation": self_observation,
         "parent_observation": dict(parent_observation),
@@ -12539,6 +13263,9 @@ def _worker_attestation_phase(
             phase=phase,
             task_id=recovery.task_id,
             suite_id=suite_id,
+            source_projection_root=str(
+                suite_task_observation.get("source_projection_root") or ""
+            ),
         )
         != observed_z3_import_denial
     ):
@@ -12719,7 +13446,7 @@ def _worker_attestation_barrier_evidence(
     ):
         raise QualificationError("worker attestation phases disagree")
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-worker-parent-attestation-barrier@4",
+        "schema": "lgcvf-recovery-worker-parent-attestation-barrier@5",
         "suite_native_policy": prepared_self["suite_native_policy"],
         "suite_task_policy_matrix_cid": prepared_self[
             "suite_task_policy_matrix_cid"
@@ -12771,7 +13498,7 @@ def _parent_attestation_barrier_from_child_cid(
     expected_cid = expected.get("barrier_cid")
     if (
         expected.get("schema")
-        != "lgcvf-recovery-worker-parent-attestation-barrier@4"
+        != "lgcvf-recovery-worker-parent-attestation-barrier@5"
         or not _is_canonical_content_cid(expected_cid)
         or expected_cid != content_identity(body)
         or claimed_cid != expected_cid
@@ -12800,6 +13527,9 @@ def _validate_public_worker_self_observation(
         phase=phase,
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=str(
+            task_receipt.get("source_projection_root") or ""
+        ),
     )
     body = {
         key: item for key, item in value.items() if key != "self_observation_cid"
@@ -12839,7 +13569,7 @@ def _validate_public_worker_self_observation(
             "self_observation_cid",
         }
         or value.get("schema")
-        != "lgcvf-recovery-worker-normalized-self-observation@3"
+        != "lgcvf-recovery-worker-normalized-self-observation@4"
         or value.get("phase") != phase
         or value.get("suite_id") != suite_id
         or value.get("runtime_cid") != runtime_cid
@@ -12905,6 +13635,9 @@ def _validate_public_worker_parent_observation(
         phase=phase,
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=str(
+            task_receipt.get("source_projection_root") or ""
+        ),
     )
     body = {
         key: item for key, item in value.items() if key != "parent_observation_cid"
@@ -12968,7 +13701,7 @@ def _validate_public_worker_parent_observation(
             "parent_observation_cid",
         }
         or value.get("schema")
-        != "lgcvf-recovery-worker-parent-observation@3"
+        != "lgcvf-recovery-worker-parent-observation@4"
         or value.get("phase") != phase
         or value.get("suite_id") != suite_id
         or value.get("runtime_cid") != runtime_cid
@@ -13067,6 +13800,9 @@ def _validate_public_attestation_phase(
         phase=phase,
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=str(
+            task_receipt.get("source_projection_root") or ""
+        ),
     )
     self_observation = _validate_public_worker_self_observation(
         value.get("self_observation"),
@@ -13102,7 +13838,7 @@ def _validate_public_attestation_phase(
             "post_ack_state_rechecked",
             "phase_cid",
         }
-        or value.get("schema") != "lgcvf-recovery-worker-attestation-phase@4"
+        or value.get("schema") != "lgcvf-recovery-worker-attestation-phase@5"
         or value.get("phase") != phase
         or value.get("self_observation") != self_observation
         or value.get("parent_observation") != parent_observation
@@ -13613,6 +14349,7 @@ def _parent_worker_live_observation(
         phase=phase,
         task_id=recovery.task_id,
         suite_id=suite_id,
+        source_projection_root=source_projection_root,
     )
     compact_task_receipt = _recovery_suite_task_receipt_from_live_observation(
         validated_task_observation,
@@ -13662,7 +14399,7 @@ def _parent_worker_live_observation(
     if (
         set(attestation) != expected_fields
         or attestation.get("schema")
-        != "lgcvf-recovery-worker-live-attestation@3"
+        != "lgcvf-recovery-worker-live-attestation@4"
         or attestation.get("phase") != phase
         or attestation.get("launch_nonce") != launch_nonce
         or attestation.get("suite_id") != suite_id
@@ -13904,7 +14641,7 @@ def _parent_worker_live_observation(
             f"{suite_id}: task fixed-point live state differs"
         )
     public: dict[str, Any] = {
-        "schema": "lgcvf-recovery-worker-parent-observation@3",
+        "schema": "lgcvf-recovery-worker-parent-observation@4",
         "phase": phase,
         "suite_id": suite_id,
         "runtime_cid": runtime.resolved.bundle["runtime_cid"],
@@ -14004,7 +14741,7 @@ def _parent_worker_ack(
     parent_observation: Mapping[str, Any],
 ) -> dict[str, Any]:
     value: dict[str, Any] = {
-        "schema": "lgcvf-recovery-worker-parent-ack@3",
+        "schema": "lgcvf-recovery-worker-parent-ack@4",
         "phase": attestation.get("phase"),
         "launch_nonce": attestation.get("launch_nonce"),
         "suite_id": attestation.get("suite_id"),
@@ -14319,6 +15056,8 @@ def _legal_data_import_path_policy(
     worker_root: Path,
     suite: Suite,
     execution_projection: Mapping[str, Any],
+    *,
+    source_revalidation_guard: _RecoveryZ3ImportDenialGuard | None = None,
 ) -> tuple[Path | None, dict[str, Any]]:
     """Bind the sole tracked conftest import-path addition below runtime."""
 
@@ -14346,6 +15085,7 @@ def _legal_data_import_path_policy(
         worker_root,
         paths,
         head_bound=False,
+        source_revalidation_guard=source_revalidation_guard,
     )
     if content_identity(manifest) != execution_projection.get(
         "copied_source_manifest_root"
@@ -14693,6 +15433,12 @@ def _worker(
                         suite_id=suite.suite_id,
                         runtime_root=runtime_root,
                         recorder=recorder,
+                        provider_guard=provider_guard,
+                        source_projection_root=str(
+                            execution_projection[
+                                "copied_source_manifest_root"
+                            ]
+                        ),
                     )
                     z3_import_denial_guard.__enter__()
                     import cvc5  # noqa: F401
@@ -14849,21 +15595,6 @@ def _worker(
                         suite,
                         temporary_import_path,
                     )
-                    (
-                        after_temporary_path,
-                        after_temporary_policy,
-                    ) = _legal_data_import_path_policy(
-                        worker_root,
-                        suite,
-                        execution_projection,
-                    )
-                    if (
-                        after_temporary_path != temporary_import_path
-                        or after_temporary_policy != temporary_import_policy
-                    ):
-                        raise QualificationError(
-                            "temporary qualification import policy changed"
-                        )
                     if temporary_import_path is not None:
                         if sys.path[1] != str(temporary_import_path):
                             raise QualificationError(
@@ -14879,25 +15610,6 @@ def _worker(
                         raise QualificationError(
                             "temporary qualification import policy is absent"
                         )
-                    temporary_import_observation = {
-                        "schema": (
-                            "lgcvf-recovery-temporary-import-path-observation@1"
-                        ),
-                        "policy": temporary_import_policy,
-                        "loaded_module_origins": loaded_origins,
-                        "loaded_module_origin_root": content_identity(
-                            loaded_origins
-                        ),
-                        "importer_cache_entry_cleared": (
-                            temporary_import_path is None
-                            or str(temporary_import_path)
-                            not in sys.path_importer_cache
-                        ),
-                        "sealed_path_restored": True,
-                    }
-                    temporary_import_observation["observation_cid"] = (
-                        content_identity(temporary_import_observation)
-                    )
                     if z3_import_denial_guard is None:
                         raise QualificationError(
                             "recovery Z3 import denial guard is absent"
@@ -14914,7 +15626,68 @@ def _worker(
                         expected_threads=native_threads_before_pytest,
                         expected_tasks=native_kernel_tasks_before_pytest,
                         expected_children=native_children_before_pytest,
+                        pytest_exit_code=exit_code,
+                        expected_sys_path=sealed_worker_path,
+                        transcript_within_bound=(
+                            len(
+                                (
+                                    captured_out.getvalue()
+                                    + "\n"
+                                    + captured_err.getvalue()
+                                ).encode("utf-8", errors="replace")
+                            )
+                            <= _MAX_WORKER_TRANSCRIPT_BYTES
+                        ),
+                        loaded_origins_captured=isinstance(
+                            loaded_origins, list
+                        ),
+                        importer_cache_entry_cleared=(
+                            temporary_import_path is None
+                            or str(temporary_import_path)
+                            not in sys.path_importer_cache
+                        ),
                     )
+                    with (
+                        z3_import_denial_guard.trusted_source_revalidation()
+                    ):
+                        (
+                            after_temporary_path,
+                            after_temporary_policy,
+                        ) = _legal_data_import_path_policy(
+                            worker_root,
+                            suite,
+                            execution_projection,
+                            source_revalidation_guard=(
+                                z3_import_denial_guard
+                            ),
+                        )
+                        if (
+                            after_temporary_path != temporary_import_path
+                            or after_temporary_policy
+                            != temporary_import_policy
+                        ):
+                            raise QualificationError(
+                                "temporary qualification import policy changed"
+                            )
+                        temporary_import_observation = {
+                            "schema": (
+                                "lgcvf-recovery-temporary-import-path-observation@1"
+                            ),
+                            "policy": temporary_import_policy,
+                            "loaded_module_origins": loaded_origins,
+                            "loaded_module_origin_root": content_identity(
+                                loaded_origins
+                            ),
+                            "importer_cache_entry_cleared": (
+                                temporary_import_path is None
+                                or str(temporary_import_path)
+                                not in sys.path_importer_cache
+                            ),
+                            "sealed_path_restored": True,
+                        }
+                        temporary_import_observation["observation_cid"] = (
+                            content_identity(temporary_import_observation)
+                        )
         finally:
             for import_path in inserted_import_paths:
                 try:

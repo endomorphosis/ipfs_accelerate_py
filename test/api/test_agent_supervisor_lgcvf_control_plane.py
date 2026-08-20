@@ -3674,6 +3674,63 @@ def test_materializer_rejects_recomputed_061_denial_and_phase_link_tamper() -> N
         task_receipt=task_receipt,
     ) == dict(final_phase)
 
+    forged_source_event = copy.deepcopy(
+        final_phase["z3_import_denial_evidence"]
+    )
+    forged_source_event["ordered_trusted_source_revalidation_events"][0][
+        "component_index"
+    ] = 3
+    forged_source_event["trusted_source_revalidation_event_root"] = (
+        materializer.content_identity(
+            forged_source_event[
+                "ordered_trusted_source_revalidation_events"
+            ]
+        )
+    )
+    forged_source_event["evidence_cid"] = materializer.content_identity(
+        {
+            key: item
+            for key, item in forged_source_event.items()
+            if key != "evidence_cid"
+        }
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="Z3 denial evidence differs",
+    ):
+        materializer._validate_materialized_z3_import_denial_evidence(  # noqa: SLF001
+            forged_source_event,
+            phase="final",
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            task_receipt=task_receipt,
+        )
+
+    forged_boolean_count = copy.deepcopy(
+        final_phase["z3_import_denial_evidence"]
+    )
+    forged_boolean_count[
+        "trusted_source_revalidation_confirmation_count"
+    ] = True
+    forged_boolean_count["evidence_cid"] = materializer.content_identity(
+        {
+            key: item
+            for key, item in forged_boolean_count.items()
+            if key != "evidence_cid"
+        }
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="Z3 denial counts differ",
+    ):
+        materializer._validate_materialized_z3_import_denial_evidence(  # noqa: SLF001
+            forged_boolean_count,
+            phase="final",
+            task_id="LGCVF-061",
+            suite_id="recovery_lgcvf_061",
+            task_receipt=task_receipt,
+        )
+
     forged_evidence_phase = copy.deepcopy(final_phase)
     forged_evidence = forged_evidence_phase["z3_import_denial_evidence"]
     forged_evidence["pytest_meta_path_return_restoration_count"] = 0
