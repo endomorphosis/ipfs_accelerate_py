@@ -25,6 +25,7 @@ provider, or process action.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -46,10 +47,13 @@ from .control_plane_contracts import (
 from .control_plane_migrations import duckdb_available
 from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
+    DuckDBQuackMutationConflictError,
+    DuckDBQuackMutationUnknownOutcomeError,
     exclusive_file_lock,
     is_quack_transport_target,
-    quack_transport_uri,
     open_duckdb_connection,
+    quack_owner_mutation_write_lock_path,
+    quack_transport_uri,
 )
 
 
@@ -181,6 +185,10 @@ class IntentRepositoryError(RuntimeError):
 
 class IntentRepositoryConflictError(IntentRepositoryError):
     """CAS head, fence, or expected-revision conflict."""
+
+
+class IntentRepositoryUnknownOutcomeError(IntentRepositoryError):
+    """A remote owner effect committed without fresh projection settlement."""
 
 
 class IntentRepositoryIntegrityError(IntentRepositoryError):
@@ -646,6 +654,91 @@ class IntentRepository:
                         except Exception:
                             pass
                         raise
+                finally:
+                    connection.close()
+            return
+        if write and self._quack_transport:
+            # Serialize before opening the remote connection.  The owner
+            # deliberately restarts its read-only endpoint after each admitted
+            # commit; a waiting writer must not retain a connection to the
+            # prior replica generation.
+            expected_store = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+            ).strip()
+            write_lock = quack_owner_mutation_write_lock_path(expected_store)
+            if write_lock is None:
+                raise IntentRepositoryIntegrityError(
+                    "quack write transaction has no accepted-root lock path"
+                )
+            with exclusive_file_lock(
+                write_lock, timeout_seconds=self.lock_timeout_seconds
+            ):
+                connection = open_duckdb_connection(self._open_target)
+                try:
+                    binding = getattr(connection, "_quack_mutation_binding", None)
+                    if (
+                        not isinstance(binding, Mapping)
+                        or binding.get("store_id") != expected_store
+                    ):
+                        raise IntentRepositoryIntegrityError(
+                            "quack write lock is not bound to the live store"
+                        )
+                    connection.execute("BEGIN TRANSACTION")
+                    try:
+                        yield connection
+                        connection.execute("COMMIT")
+                    except DuckDBQuackMutationConflictError as exc:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise IntentRepositoryConflictError(
+                            "remote task revision or event-head CAS conflicted"
+                        ) from exc
+                    except DuckDBQuackMutationUnknownOutcomeError as exc:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise IntentRepositoryUnknownOutcomeError(
+                            "remote mutation outcome requires exact reconciliation"
+                        ) from exc
+                    except BaseException:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise
+                finally:
+                    connection.close()
+            return
+        if self._quack_transport:
+            # Replica publication is fail-closed: the owner withdraws and
+            # restarts the endpoint synchronously after each admitted bundle.
+            # Hold the same bounded store lock for the complete open/query/
+            # close window so a trusted read can never straddle that refresh.
+            expected_store = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+            ).strip()
+            read_lock = quack_owner_mutation_write_lock_path(expected_store)
+            if read_lock is None:
+                raise IntentRepositoryIntegrityError(
+                    "quack read transaction has no accepted-root lock path"
+                )
+            with exclusive_file_lock(
+                read_lock, timeout_seconds=self.lock_timeout_seconds
+            ):
+                connection = open_duckdb_connection(self._open_target)
+                try:
+                    binding = getattr(connection, "_quack_mutation_binding", None)
+                    if (
+                        not isinstance(binding, Mapping)
+                        or binding.get("store_id") != expected_store
+                    ):
+                        raise IntentRepositoryIntegrityError(
+                            "quack read lock is not bound to the live store"
+                        )
+                    yield connection
                 finally:
                     connection.close()
             return
@@ -2666,78 +2759,13 @@ class IntentRepository:
         evidence_digests: Sequence[str] | None = None,
         now_ms: int | None = None,
     ) -> tuple[str, ...]:
-        clock = int(now_ms if now_ms is not None else self._clock_ms())
-        freshness_ms = self.evidence_freshness_seconds * 1000
-        acceptance_rows = connection.execute(
-            """
-            SELECT ordinal, criterion, evidence_policy_json
-            FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal
-            """,
-            [task_cid],
-        ).fetchall()
-        evidence_rows = connection.execute(
-            """
-            SELECT evidence_kind, digest, created_at
-            FROM evidence_nodes WHERE task_cid = ?
-            """,
-            [task_cid],
-        ).fetchall()
-        current_digests: set[str] = set()
-        current_kinds: set[str] = set()
-        # DuckDBRow iterates column names (Mapping protocol); always index values.
-        for row in evidence_rows:
-            kind = str(row[0])
-            digest = str(row[1])
-            created_at = str(row[2] or "")
-            created_ms = _parse_iso_ms(created_at)
-            if freshness_ms > 0 and created_ms > 0 and clock - created_ms > freshness_ms:
-                continue
-            current_digests.add(digest)
-            current_kinds.add(kind)
-        # Caller-supplied digests are advisory cross-checks only; completion
-        # authority comes from current stored evidence nodes, never invented
-        # digests that are not already recorded against the task.
-        if evidence_digests:
-            provided = {
-                _identifier(item, noun="evidence_digest") for item in evidence_digests
-            }
-            if not provided.issubset(current_digests):
-                return tuple(
-                    f"digest:{digest}"
-                    for digest in sorted(provided - current_digests)
-                )
-        missing: list[str] = []
-        if not acceptance_rows:
-            if not current_digests:
-                missing.append("required:current_validation_evidence")
-            return tuple(missing)
-        for row in acceptance_rows:
-            ordinal = row[0]
-            criterion = row[1]
-            policy_json = row[2]
-            policy = _decode_json(policy_json, noun="acceptance policy")
-            if not isinstance(policy, dict):
-                policy = {}
-            required_digest = str(
-                policy.get("required_digest")
-                or policy.get("evidence_digest")
-                or policy.get("digest")
-                or ""
-            ).strip()
-            required_kind = str(
-                policy.get("evidence_kind") or policy.get("kind") or ""
-            ).strip()
-            if required_digest:
-                if required_digest not in current_digests:
-                    missing.append(f"digest:{required_digest}")
-                continue
-            if required_kind:
-                if required_kind not in current_kinds:
-                    missing.append(f"kind:{required_kind}")
-                continue
-            if not current_digests:
-                missing.append(f"criterion:{criterion or ordinal}")
-        return tuple(missing)
+        return missing_current_evidence_on(
+            connection,
+            task_cid,
+            evidence_digests=evidence_digests,
+            now_ms=int(now_ms if now_ms is not None else self._clock_ms()),
+            evidence_freshness_seconds=self.evidence_freshness_seconds,
+        )
 
     # -- queue / attempts / blocks -------------------------------------------
 
@@ -4225,6 +4253,93 @@ def _parse_iso_ms(value: str) -> int:
         return 0
 
 
+def missing_current_evidence_on(
+    connection: Any,
+    task_cid: str,
+    *,
+    evidence_digests: Sequence[str] | None,
+    now_ms: int,
+    evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+) -> tuple[str, ...]:
+    """Evaluate the canonical task-completion evidence gate on one transaction.
+
+    This function is shared with the Quack state owner so an authenticated
+    remote bundle cannot rely on a client-side precheck or reinterpret the
+    task's current acceptance policy.
+    """
+
+    clock = int(now_ms)
+    freshness_ms = int(evidence_freshness_seconds) * 1000
+    acceptance_rows = connection.execute(
+        """
+        SELECT ordinal, criterion, evidence_policy_json
+        FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal
+        """,
+        [task_cid],
+    ).fetchall()
+    evidence_rows = connection.execute(
+        """
+        SELECT evidence_kind, digest, created_at
+        FROM evidence_nodes WHERE task_cid = ?
+        """,
+        [task_cid],
+    ).fetchall()
+    current_digests: set[str] = set()
+    current_kinds: set[str] = set()
+    # DuckDBRow iterates column names (Mapping protocol); always index values.
+    for row in evidence_rows:
+        kind = str(row[0])
+        digest = str(row[1])
+        created_at = str(row[2] or "")
+        created_ms = _parse_iso_ms(created_at)
+        if freshness_ms > 0 and created_ms > 0 and clock - created_ms > freshness_ms:
+            continue
+        current_digests.add(digest)
+        current_kinds.add(kind)
+    # Caller-supplied digests are advisory cross-checks only; completion
+    # authority comes from current stored evidence nodes, never invented
+    # digests that are not already recorded against the task.
+    if evidence_digests:
+        provided = {
+            _identifier(item, noun="evidence_digest") for item in evidence_digests
+        }
+        if not provided.issubset(current_digests):
+            return tuple(
+                f"digest:{digest}" for digest in sorted(provided - current_digests)
+            )
+    missing: list[str] = []
+    if not acceptance_rows:
+        if not current_digests:
+            missing.append("required:current_validation_evidence")
+        return tuple(missing)
+    for row in acceptance_rows:
+        ordinal = row[0]
+        criterion = row[1]
+        policy = _decode_json(row[2], noun="acceptance policy")
+        if not isinstance(policy, dict):
+            policy = {}
+        required_digest = str(
+            policy.get("required_digest")
+            or policy.get("evidence_digest")
+            or policy.get("digest")
+            or ""
+        ).strip()
+        required_kind = str(
+            policy.get("evidence_kind") or policy.get("kind") or ""
+        ).strip()
+        if required_digest:
+            if required_digest not in current_digests:
+                missing.append(f"digest:{required_digest}")
+            continue
+        if required_kind:
+            if required_kind not in current_kinds:
+                missing.append(f"kind:{required_kind}")
+            continue
+        if not current_digests:
+            missing.append(f"criterion:{criterion or ordinal}")
+    return tuple(missing)
+
+
 # ---------------------------------------------------------------------------
 # Public constructors
 # ---------------------------------------------------------------------------
@@ -4258,6 +4373,7 @@ __all__ = (
     "IntentRepository",
     "IntentRepositoryError",
     "IntentRepositoryConflictError",
+    "IntentRepositoryUnknownOutcomeError",
     "IntentRepositoryIntegrityError",
     "IntentRepositoryBoundsError",
     "IntentRepositoryNotOpenError",

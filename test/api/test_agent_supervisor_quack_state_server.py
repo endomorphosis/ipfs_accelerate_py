@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -447,6 +448,80 @@ def test_exclusive_owner_lease_fence_mismatch_on_release(tmp_path: Path) -> None
     lease.release()
 
 
+def test_concurrent_starts_only_lease_winner_migrates_and_opens(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    state_dir = tmp_path / "state"
+    migration_entered = threading.Event()
+    release_migration = threading.Event()
+    migration_calls: list[str] = []
+    open_calls: list[str] = []
+    winner_errors: list[BaseException] = []
+
+    def winner_migrate(_path: Path) -> MigrationRunReport:
+        migration_calls.append("winner")
+        migration_entered.set()
+        if not release_migration.wait(timeout=5):
+            raise AssertionError("test did not release winner migration")
+        return _migration_report()
+
+    def loser_migrate(_path: Path) -> MigrationRunReport:
+        migration_calls.append("loser")
+        return _migration_report()
+
+    winner_connection = FakeConnection()
+    loser_connection = FakeConnection()
+    common = {
+        "database_path": database,
+        "state_dir": state_dir,
+        "repository_id": "repository:sha256:test",
+        "transport": FakeQuackTransport(),
+        "capability_probe": lambda **_kwargs: _compatible_report(),
+        "process_birth_factory": lambda: _birth(),
+        "owner_liveness_probe": lambda _birth: OwnerLiveness.DEAD,
+    }
+    winner = build_server(
+        **common,
+        migrate=winner_migrate,
+        connection_factory=lambda _path: (
+            open_calls.append("winner") or winner_connection
+        ),
+    )
+    loser = build_server(
+        **{**common, "transport": FakeQuackTransport()},
+        migrate=loser_migrate,
+        connection_factory=lambda _path: (
+            open_calls.append("loser") or loser_connection
+        ),
+    )
+
+    def start_winner() -> None:
+        try:
+            winner.start()
+        except BaseException as exc:  # pragma: no cover - diagnostic capture
+            winner_errors.append(exc)
+
+    thread = threading.Thread(target=start_winner, daemon=True)
+    thread.start()
+    assert migration_entered.wait(timeout=5)
+    try:
+        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
+            loser.start()
+        assert migration_calls == ["winner"]
+        assert open_calls == []
+    finally:
+        release_migration.set()
+        thread.join(timeout=5)
+        if winner.lifecycle is ServerLifecycle.READY:
+            winner.stop()
+
+    assert not thread.is_alive()
+    assert winner_errors == []
+    assert migration_calls == ["winner"]
+    assert open_calls == ["winner"]
+
+
 # ---------------------------------------------------------------------------
 # Ready / identity / migration / lifecycle
 # ---------------------------------------------------------------------------
@@ -485,13 +560,11 @@ def test_start_ready_checkpoint_stop_lifecycle(tmp_path: Path) -> None:
 def test_ready_requires_live_query(tmp_path: Path) -> None:
     transport = FakeQuackTransport(fail_live_query=True)
     server = _server(tmp_path, transport=transport)
-    server.start()
     with pytest.raises(QuackStateServerReadyError, match="live query"):
-        server.ready()
+        server.start()
     assert server.is_ready() is False
-    # Clear failure for clean stop path
-    transport.fail_live_query = False
-    server.stop()
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert transport.stopped is True
 
 
 def test_ready_requires_matching_identities(tmp_path: Path) -> None:
@@ -510,10 +583,9 @@ def test_ready_requires_matching_identities(tmp_path: Path) -> None:
             }
 
     server = _server(tmp_path, transport=DriftTransport())
-    server.start()
     with pytest.raises(QuackStateServerReadyError, match="do not match"):
-        server.ready()
-    server.stop()
+        server.start()
+    assert server.lifecycle is ServerLifecycle.FAILED
 
 
 def test_ready_requires_complete_live_identity_fields(tmp_path: Path) -> None:
@@ -532,10 +604,9 @@ def test_ready_requires_complete_live_identity_fields(tmp_path: Path) -> None:
             }
 
     server = _server(tmp_path, transport=IncompleteTransport())
-    server.start()
     with pytest.raises(QuackStateServerReadyError, match="missing identity fields"):
-        server.ready()
-    server.stop()
+        server.start()
+    assert server.lifecycle is ServerLifecycle.FAILED
 
 
 def test_migration_required_before_ready(tmp_path: Path) -> None:
@@ -681,6 +752,7 @@ def test_real_duckdb_migration_then_fake_transport_ready(tmp_path: Path) -> None
         # which is replay-safe.
         process_birth_factory=lambda: _birth(pid=os.getpid()),
         owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
+        connection_factory=lambda path: open_duckdb_connection(path),
     )
     # Override connection to keep open across ready.
     # Default migrate+connection_factory use real duckdb.

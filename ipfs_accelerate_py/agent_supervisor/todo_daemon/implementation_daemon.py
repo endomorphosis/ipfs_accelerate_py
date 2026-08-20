@@ -2241,6 +2241,27 @@ _CODEX_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW"
 _CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 _CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
 _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
+PROVIDER_EXTERNAL_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
+)
+PROVIDER_EXTERNAL_ISOLATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.provider-external-isolation@1"
+)
+_DOCKER_LOCAL_ENDPOINTS = frozenset(
+    {
+        "unix:///var/run/docker.sock",
+        f"unix:///run/user/{os.getuid()}/docker.sock",
+    }
+)
+_CODEX_CONTAINER_HOME = Path("/opt/codex-home")
+_CODEX_CONTAINER_EXECUTABLE = Path("/usr/local/bin/codex")
+_VALIDATION_CONTAINER_HOME = Path("/opt/validation-home")
+_VALIDATION_CONTAINER_PYTHON = Path("/opt/pcpc-runtime/bin/python")
+_LIFECYCLE_REPOSITORY_ROOT_ENV = (
+    "IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT"
+)
+_MAX_EXTERNAL_ISOLATION_JSON_BYTES = 16 * 1024
+_MAX_PROVIDER_CREDENTIAL_BYTES = 256 * 1024
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.6"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
@@ -2588,10 +2609,1060 @@ _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
 
 
+def _external_isolation_absolute_path(value: Any, *, field: str) -> Path:
+    text = str(value or "")
+    if (
+        not text
+        or len(text.encode("utf-8")) > 4096
+        or "\x00" in text
+        or "\n" in text
+        or "\r" in text
+        or "," in text
+    ):
+        raise ValueError(f"external isolation {field} is malformed")
+    path = Path(text)
+    if not path.is_absolute() or os.path.abspath(text) != text:
+        raise ValueError(
+            f"external isolation {field} must be a normalized absolute path"
+        )
+    return path
+
+
+@dataclass(frozen=True)
+class ExternalProviderIsolationConfig:
+    """Closed, bounded configuration for an external provider boundary."""
+
+    schema: str
+    required: bool
+    backend: str
+    provider_id: str
+    runtime_executable: str
+    runtime_endpoint: str
+    image_id: str
+    image_os: str
+    image_architecture: str
+    image_label: str
+    container_executable: str
+    container_executable_sha256: str
+    credential_file: str
+    network: str
+    pids_limit: int
+    memory_bytes: int
+    cpus: float
+    tmpfs_size_bytes: int
+
+    @classmethod
+    def parse(
+        cls,
+        value: Mapping[str, Any] | str,
+    ) -> "ExternalProviderIsolationConfig":
+        if isinstance(value, str):
+            if not value or len(value.encode("utf-8")) > _MAX_EXTERNAL_ISOLATION_JSON_BYTES:
+                raise ValueError("external isolation configuration is malformed")
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "external isolation configuration is not valid JSON"
+                ) from exc
+        else:
+            parsed = dict(value)
+        if not isinstance(parsed, dict):
+            raise ValueError("external isolation configuration must be an object")
+        expected_fields = {
+            "schema",
+            "required",
+            "backend",
+            "provider_id",
+            "runtime_executable",
+            "runtime_endpoint",
+            "image_id",
+            "image_os",
+            "image_architecture",
+            "image_label",
+            "container_executable",
+            "container_executable_sha256",
+            "credential_file",
+            "network",
+            "pids_limit",
+            "memory_bytes",
+            "cpus",
+            "tmpfs_size_bytes",
+        }
+        if set(parsed) != expected_fields:
+            raise ValueError(
+                "external isolation configuration has unknown or missing fields"
+            )
+        if parsed.get("schema") != PROVIDER_EXTERNAL_ISOLATION_SCHEMA:
+            raise ValueError("external isolation schema is unsupported")
+        if parsed.get("required") is not True:
+            raise ValueError("external isolation must be explicitly required")
+        if parsed.get("backend") != "docker":
+            raise ValueError("external isolation backend must be docker")
+        if parsed.get("provider_id") != "codex":
+            raise ValueError("external isolation provider must be codex")
+        runtime = _external_isolation_absolute_path(
+            parsed.get("runtime_executable"),
+            field="runtime_executable",
+        )
+        endpoint = str(parsed.get("runtime_endpoint") or "")
+        if endpoint not in _DOCKER_LOCAL_ENDPOINTS:
+            raise ValueError(
+                "external isolation Docker endpoint must be an admitted local socket"
+            )
+        image_id = str(parsed.get("image_id") or "")
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+            raise ValueError("external isolation image must be an immutable image ID")
+        if parsed.get("image_os") != "linux":
+            raise ValueError("external isolation image OS must be linux")
+        architecture = str(parsed.get("image_architecture") or "")
+        if architecture not in {"amd64", "arm64"}:
+            raise ValueError("external isolation image architecture is unsupported")
+        image_label = str(parsed.get("image_label") or "")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", image_label) is None:
+            raise ValueError("external isolation image label is malformed")
+        container_executable = _external_isolation_absolute_path(
+            parsed.get("container_executable"),
+            field="container_executable",
+        )
+        if container_executable != _CODEX_CONTAINER_EXECUTABLE:
+            raise ValueError("external isolation Codex executable is not canonical")
+        executable_sha256 = str(
+            parsed.get("container_executable_sha256") or ""
+        )
+        if re.fullmatch(r"[0-9a-f]{64}", executable_sha256) is None:
+            raise ValueError("external isolation Codex digest is malformed")
+        credential = _external_isolation_absolute_path(
+            parsed.get("credential_file"),
+            field="credential_file",
+        )
+        if parsed.get("network") != "bridge":
+            raise ValueError("external isolation network must be bridge")
+
+        def bounded_integer(
+            field: str,
+            *,
+            minimum: int,
+            maximum: int,
+        ) -> int:
+            raw = parsed.get(field)
+            if (
+                isinstance(raw, bool)
+                or not isinstance(raw, int)
+                or raw < minimum
+                or raw > maximum
+            ):
+                raise ValueError(f"external isolation {field} is out of bounds")
+            return raw
+
+        pids_limit = bounded_integer("pids_limit", minimum=16, maximum=4096)
+        memory_bytes = bounded_integer(
+            "memory_bytes",
+            minimum=256 * 1024 * 1024,
+            maximum=64 * 1024 * 1024 * 1024,
+        )
+        tmpfs_size_bytes = bounded_integer(
+            "tmpfs_size_bytes",
+            minimum=16 * 1024 * 1024,
+            maximum=4 * 1024 * 1024 * 1024,
+        )
+        raw_cpus = parsed.get("cpus")
+        if (
+            isinstance(raw_cpus, bool)
+            or not isinstance(raw_cpus, (int, float))
+            or not math.isfinite(float(raw_cpus))
+            or float(raw_cpus) < 0.25
+            or float(raw_cpus) > 64.0
+        ):
+            raise ValueError("external isolation cpus is out of bounds")
+        return cls(
+            schema=PROVIDER_EXTERNAL_ISOLATION_SCHEMA,
+            required=True,
+            backend="docker",
+            provider_id="codex",
+            runtime_executable=str(runtime),
+            runtime_endpoint=endpoint,
+            image_id=image_id,
+            image_os="linux",
+            image_architecture=architecture,
+            image_label=image_label,
+            container_executable=str(container_executable),
+            container_executable_sha256=executable_sha256,
+            credential_file=str(credential),
+            network="bridge",
+            pids_limit=pids_limit,
+            memory_bytes=memory_bytes,
+            cpus=float(raw_cpus),
+            tmpfs_size_bytes=tmpfs_size_bytes,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def environment_json(self) -> str:
+        return json.dumps(
+            self.to_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        )
+
+
+def _validated_provider_credential(path: Path) -> None:
+    try:
+        entry = path.lstat()
+    except OSError as exc:
+        raise ValueError("external isolation provider credential is unavailable") from exc
+    if (
+        not stat_module.S_ISREG(entry.st_mode)
+        or entry.st_uid not in {0, os.getuid()}
+        or entry.st_mode & 0o077
+        or entry.st_size < 2
+        or entry.st_size > _MAX_PROVIDER_CREDENTIAL_BYTES
+    ):
+        raise ValueError("external isolation provider credential is not private data")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            body = os.read(descriptor, _MAX_PROVIDER_CREDENTIAL_BYTES + 1)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise ValueError("external isolation provider credential is unstable") from exc
+    if (
+        (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+        != (entry.st_dev, entry.st_ino, entry.st_size, entry.st_mtime_ns)
+        or len(body) != entry.st_size
+    ):
+        raise ValueError("external isolation provider credential changed while read")
+    try:
+        parsed = json.loads(body.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("external isolation provider credential is malformed") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("external isolation provider credential is malformed")
+
+
+def validate_external_provider_isolation_config(
+    value: Mapping[str, Any] | str,
+    *,
+    verify_host: bool = True,
+) -> ExternalProviderIsolationConfig:
+    """Validate one sealed external-isolation config and its local runtime."""
+
+    config = ExternalProviderIsolationConfig.parse(value)
+    if not verify_host:
+        return config
+    runtime = Path(config.runtime_executable)
+    try:
+        runtime_entry = runtime.lstat()
+        resolved_runtime = runtime.resolve(strict=True)
+        runtime_stat = resolved_runtime.stat()
+    except OSError as exc:
+        raise ValueError("external isolation Docker runtime is unavailable") from exc
+    if (
+        resolved_runtime != runtime
+        or not stat_module.S_ISREG(runtime_entry.st_mode)
+        or not stat_module.S_ISREG(runtime_stat.st_mode)
+        or runtime_stat.st_uid != 0
+        or runtime_stat.st_mode & 0o022
+        or not os.access(runtime, os.X_OK)
+    ):
+        raise ValueError("external isolation Docker runtime is not trusted")
+    _validated_provider_credential(Path(config.credential_file))
+    inspect_command = [
+        str(runtime),
+        f"--host={config.runtime_endpoint}",
+        "image",
+        "inspect",
+        "--format",
+        (
+            '{{.Id}}|{{.Os}}|{{.Architecture}}|'
+            '{{index .Config.Labels "org.ipfs-accelerate.pcpc-runtime"}}|'
+            '{{index .Config.Labels "org.ipfs-accelerate.codex.sha256"}}'
+        ),
+        config.image_id,
+    ]
+    try:
+        inspected = subprocess.run(
+            inspect_command,
+            env={"HOME": "/nonexistent", "PATH": "/usr/bin:/bin"},
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("external isolation Docker daemon is unavailable") from exc
+    expected = "|".join(
+        (
+            config.image_id,
+            config.image_os,
+            config.image_architecture,
+            config.image_label,
+            config.container_executable_sha256,
+        )
+    )
+    if inspected.returncode != 0 or inspected.stdout.strip() != expected:
+        raise ValueError("external isolation image identity is unavailable")
+    digest_command = [
+        str(runtime),
+        f"--host={config.runtime_endpoint}",
+        "run",
+        "--pull=never",
+        "--rm",
+        "--network=none",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "--pids-limit=16",
+        "--memory=268435456",
+        "--memory-swap=268435456",
+        "--cpus=0.25",
+        "--user",
+        "65534:65534",
+        "--entrypoint=/usr/bin/sha256sum",
+        config.image_id,
+        config.container_executable,
+    ]
+    try:
+        digested = subprocess.run(
+            digest_command,
+            env={"HOME": "/nonexistent", "PATH": "/usr/bin:/bin"},
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(
+            "external isolation Codex executable digest is unavailable"
+        ) from exc
+    expected_digest_output = [
+        config.container_executable_sha256,
+        config.container_executable,
+    ]
+    if (
+        digested.returncode != 0
+        or digested.stdout.strip().split() != expected_digest_output
+    ):
+        raise ValueError("external isolation Codex executable digest mismatch")
+    return config
+
+
+def _external_isolation_mount(
+    source: Path,
+    *,
+    destination: Path | None = None,
+    read_only: bool,
+) -> list[str]:
+    resolved = source.resolve(strict=True)
+    target = destination or resolved
+    for path, path_field in (
+        (resolved, "mount source"),
+        (target, "mount target"),
+    ):
+        _external_isolation_absolute_path(str(path), field=path_field)
+    mode = "readonly" if read_only else "readonly=false"
+    return [
+        "--mount",
+        f"type=bind,src={resolved},dst={target},{mode}",
+    ]
+
+
+def _git_common_directory_from_marker(checkout: Path) -> tuple[Path, Path | None]:
+    marker = checkout / ".git"
+    try:
+        marker_entry = marker.lstat()
+    except FileNotFoundError:
+        return marker, None
+    except OSError as exc:
+        raise ValueError("external isolation Git marker is unavailable") from exc
+    if stat_module.S_ISDIR(marker_entry.st_mode):
+        return marker, marker.resolve(strict=True)
+    if not stat_module.S_ISREG(marker_entry.st_mode) or marker_entry.st_size > 4096:
+        raise ValueError("external isolation Git marker is not bounded regular data")
+    try:
+        prefix, separator, raw_git_dir = marker.read_text(
+            encoding="utf-8"
+        ).strip().partition(":")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("external isolation Git marker is unreadable") from exc
+    if prefix.casefold() != "gitdir" or not separator or not raw_git_dir.strip():
+        raise ValueError("external isolation Git marker is malformed")
+    git_dir = Path(raw_git_dir.strip())
+    if not git_dir.is_absolute():
+        git_dir = marker.parent / git_dir
+    try:
+        git_dir = git_dir.resolve(strict=True)
+        commondir_marker = git_dir / "commondir"
+        if commondir_marker.is_file():
+            raw_common = commondir_marker.read_text(encoding="utf-8").strip()
+            common = Path(raw_common)
+            if not common.is_absolute():
+                common = git_dir / common
+            common = common.resolve(strict=True)
+        else:
+            common = git_dir
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("external isolation Git metadata is unavailable") from exc
+    if not git_dir.is_dir() or not common.is_dir():
+        raise ValueError("external isolation Git metadata is not a directory")
+    return marker, common
+
+
+def _external_isolation_git_mounts(
+    workspace: Path,
+    *,
+    repository_root: Path | None,
+    allow_main_checkout: bool = False,
+) -> list[str]:
+    marker, common = _git_common_directory_from_marker(workspace)
+    if common is None:
+        return []
+    if marker.is_dir():
+        if (
+            not allow_main_checkout
+            or repository_root is None
+            or workspace != repository_root.resolve(strict=True)
+            or common != marker.resolve(strict=True)
+        ):
+            raise ValueError(
+                "external isolation requires linked-worktree Git metadata"
+            )
+        return [*_external_isolation_mount(marker, read_only=True)]
+    if repository_root is None:
+        raise ValueError("external isolation requires a repository identity root")
+    _repository_marker, expected_common = _git_common_directory_from_marker(
+        repository_root.resolve(strict=True)
+    )
+    if (
+        expected_common is None
+        or common != expected_common
+        or ".git" not in common.parts
+    ):
+        raise ValueError("external isolation Git common directory is outside authority")
+    return [
+        *_external_isolation_mount(common, read_only=True),
+        *_external_isolation_mount(marker, read_only=True),
+    ]
+
+
+def _external_validation_authority_roots() -> tuple[Path, Path]:
+    """Resolve the accepted repository and database-control roots."""
+
+    from ..runtime.multi_supervisor_runner import (
+        DATABASE_PROGRAM_JSON_ENV,
+        parse_database_program_config,
+    )
+
+    repository_text = str(
+        os.environ.get(_LIFECYCLE_REPOSITORY_ROOT_ENV, "") or ""
+    ).strip()
+    program_text = str(
+        os.environ.get(DATABASE_PROGRAM_JSON_ENV, "") or ""
+    ).strip()
+    if not repository_text or not program_text:
+        raise ValueError(
+            "external validation lacks repository or database authority"
+        )
+    repository = _external_isolation_absolute_path(
+        repository_text,
+        field="validation repository root",
+    ).resolve(strict=True)
+    if not repository.is_dir():
+        raise ValueError("external validation repository root is unavailable")
+    try:
+        raw_program = json.loads(program_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("external validation database authority is malformed") from exc
+    if not isinstance(raw_program, Mapping):
+        raise ValueError("external validation database authority is malformed")
+    try:
+        program = parse_database_program_config(raw_program)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("external validation database authority is invalid") from exc
+    store_text = str(program.store_id or "").strip()
+    if not store_text:
+        raise ValueError("external validation database store identity is absent")
+    store = Path(store_text)
+    if not store.is_absolute():
+        store = repository / store
+    try:
+        store = store.resolve(strict=False)
+        store.relative_to(repository)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("external validation database store escapes repository") from exc
+    if store.suffix.lower() not in {".duckdb", ".ddb"}:
+        raise ValueError("external validation database store is not canonical")
+    control_root = store.parent
+    if control_root == repository:
+        raise ValueError("external validation control root is too broad")
+    try:
+        control_entry = control_root.lstat()
+        control_resolved = control_root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(
+            "external validation control root is unavailable"
+        ) from exc
+    if (
+        not stat_module.S_ISDIR(control_entry.st_mode)
+        or control_resolved != control_root
+    ):
+        raise ValueError("external validation control root is not canonical")
+    return repository, control_root
+
+
+def _docker_codex_implementation_command(
+    *,
+    inner_command: Sequence[str],
+    workspace_path: Path,
+    repository_root: Path | None,
+    config: ExternalProviderIsolationConfig,
+) -> list[str]:
+    """Run direct Codex with danger-full-access only inside Docker."""
+
+    config = validate_external_provider_isolation_config(config.to_dict())
+    workspace = workspace_path.resolve(strict=True)
+    if not workspace.is_dir() or workspace == Path("/"):
+        raise ValueError("external isolation workspace is not a bounded directory")
+    credential = Path(config.credential_file)
+    container_command = [str(item) for item in inner_command]
+    if not container_command:
+        raise ValueError("external isolation Codex command is empty")
+    container_command[0] = config.container_executable
+    if "--dangerously-bypass-approvals-and-sandbox" not in container_command:
+        raise ValueError("external isolation Codex command lost its sandbox binding")
+    if str(workspace) not in container_command:
+        raise ValueError("external isolation Codex command lost its workspace binding")
+
+    cpus = format(config.cpus, ".3f").rstrip("0").rstrip(".")
+    docker_command = [
+        "/usr/bin/env",
+        "-i",
+        "HOME=/nonexistent",
+        "PATH=/usr/bin:/bin",
+        config.runtime_executable,
+        f"--host={config.runtime_endpoint}",
+        "run",
+        "--pull=never",
+        "--rm",
+        "-i",
+        "--read-only",
+        "--network=bridge",
+        "--ipc=private",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        f"--pids-limit={config.pids_limit}",
+        f"--memory={config.memory_bytes}",
+        f"--memory-swap={config.memory_bytes}",
+        f"--cpus={cpus}",
+        "--ulimit=nofile=4096:4096",
+        "--user",
+        "0:0",
+        "--workdir",
+        str(workspace),
+        "--entrypoint=/usr/bin/env",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid=0,gid=0,size={config.tmpfs_size_bytes}"
+        ),
+        "--tmpfs",
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid=0,gid=0,size={config.tmpfs_size_bytes}"
+        ),
+        "--tmpfs",
+        (
+            f"{_CODEX_CONTAINER_HOME}:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid=0,gid=0,size={config.tmpfs_size_bytes}"
+        ),
+        *_external_isolation_mount(workspace, read_only=False),
+        *_external_isolation_git_mounts(
+            workspace,
+            repository_root=repository_root,
+        ),
+        *_external_isolation_mount(
+            credential,
+            destination=_CODEX_CONTAINER_HOME / "auth.json",
+            read_only=True,
+        ),
+        config.image_id,
+        "-i",
+        "BASH_ENV=",
+        f"CODEX_HOME={_CODEX_CONTAINER_HOME}",
+        "ENV=",
+        "GIT_CONFIG_COUNT=1",
+        "GIT_CONFIG_GLOBAL=/dev/null",
+        "GIT_CONFIG_KEY_0=safe.directory",
+        "GIT_CONFIG_NOSYSTEM=1",
+        f"GIT_CONFIG_VALUE_0={workspace}",
+        "GIT_TERMINAL_PROMPT=0",
+        f"HOME={_CODEX_CONTAINER_HOME}",
+        "LANG=C.UTF-8",
+        "LC_ALL=C.UTF-8",
+        "PATH=/opt/pcpc-runtime/bin:/usr/local/bin:/usr/bin:/bin",
+        "PYTHONDONTWRITEBYTECODE=1",
+        "PYTHONNOUSERSITE=1",
+        "TERM=dumb",
+        *container_command,
+    ]
+    return docker_command
+
+
+def _external_validation_child_environment(
+    environment: Mapping[str, str],
+    *,
+    workspace: Path,
+) -> dict[str, str]:
+    """Project deterministic, credential-free values into validation."""
+
+    admitted_names = frozenset(
+        {
+            "CARGO_NET_OFFLINE",
+            "CI",
+            "HF_DATASETS_OFFLINE",
+            "HF_HUB_OFFLINE",
+            "IPFS_ACCEL_SKIP_CORE",
+            "IPFS_KIT_DISABLE",
+            "LANG",
+            "LANGUAGE",
+            "LC_ALL",
+            "NODE_ENV",
+            "NPM_CONFIG_OFFLINE",
+            "PIP_NO_INDEX",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+            "PYTHONDONTWRITEBYTECODE",
+            "PYTHONHASHSEED",
+            "PYTHONWARNINGS",
+            "TRANSFORMERS_OFFLINE",
+            "TZ",
+        }
+    )
+    child: dict[str, str] = {}
+    for name in admitted_names:
+        value = str(environment.get(name, "") or "")
+        if value and len(value.encode("utf-8")) <= 4096 and "\x00" not in value:
+            child[name] = value
+    child.update(
+        {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_KEY_0": "safe.directory",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_VALUE_0": str(workspace),
+            "GIT_PAGER": "cat",
+            "GIT_TERMINAL_PROMPT": "0",
+            "HOME": str(_VALIDATION_CONTAINER_HOME),
+            "NO_COLOR": "1",
+            "NPM_CONFIG_CACHE": str(_VALIDATION_CONTAINER_HOME / ".npm"),
+            "NPM_CONFIG_GLOBALCONFIG": "/dev/null",
+            "NPM_CONFIG_USERCONFIG": "/dev/null/npmrc",
+            "PAGER": "cat",
+            "PATH": "/opt/pcpc-runtime/bin:/usr/local/bin:/usr/bin:/bin",
+            "PIP_CONFIG_FILE": "/dev/null",
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            "PIP_NO_INPUT": "1",
+            "PYTHON": str(_VALIDATION_CONTAINER_PYTHON),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONPATH": str(workspace),
+            "TERM": "dumb",
+            "TMPDIR": "/tmp",
+            "XDG_CACHE_HOME": str(_VALIDATION_CONTAINER_HOME / ".cache"),
+            "XDG_CONFIG_HOME": str(_VALIDATION_CONTAINER_HOME / ".config"),
+            "XDG_DATA_HOME": str(
+                _VALIDATION_CONTAINER_HOME / ".local" / "share"
+            ),
+            "XDG_STATE_HOME": str(
+                _VALIDATION_CONTAINER_HOME / ".local" / "state"
+            ),
+        }
+    )
+    return child
+
+
+def _docker_external_validation_command(
+    *,
+    spec: Any,
+    workspace_path: Path,
+    timeout_seconds: float,
+    environment: Mapping[str, str],
+    isolation_value: Mapping[str, Any] | str,
+    container_name: str,
+) -> tuple[
+    list[str],
+    dict[str, str],
+    ExternalProviderIsolationConfig,
+    dict[str, Any],
+]:
+    """Build one fail-closed isolated candidate-validation invocation."""
+
+    config = validate_external_provider_isolation_config(isolation_value)
+    workspace = workspace_path.resolve(strict=True)
+    if not workspace.is_dir() or workspace == Path("/"):
+        raise ValueError("external validation workspace is not bounded")
+    repository, control_root = _external_validation_authority_roots()
+    try:
+        control_relative = control_root.relative_to(workspace)
+    except ValueError:
+        control_relative = None
+    if control_relative == Path("."):
+        raise ValueError("external validation control root equals workspace")
+    state_masked = control_relative is not None
+    command_argv = validation_shell_command(str(spec.command))
+    if (
+        not container_name
+        or re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,127}", container_name) is None
+    ):
+        raise ValueError("external validation container name is malformed")
+    requested_timeout = float(timeout_seconds)
+    if not math.isfinite(requested_timeout) or requested_timeout <= 0:
+        raise ValueError("external validation timeout is not positive and finite")
+    effective_timeout = min(
+        requested_timeout,
+        float(AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS),
+    )
+    tmpfs_size = max(16 * 1024 * 1024, config.tmpfs_size_bytes // 3)
+    child_environment = _external_validation_child_environment(
+        environment,
+        workspace=workspace,
+    )
+    docker_environment = {
+        "HOME": "/nonexistent",
+        "PATH": "/usr/bin:/bin",
+    }
+    docker_command = [
+        config.runtime_executable,
+        f"--host={config.runtime_endpoint}",
+        "run",
+        "--pull=never",
+        "--rm",
+        f"--name={container_name}",
+        "--init",
+        "--stop-timeout=1",
+        "--network=none",
+        "--read-only",
+        "--ipc=private",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "--log-driver=none",
+        f"--pids-limit={config.pids_limit}",
+        f"--memory={config.memory_bytes}",
+        f"--memory-swap={config.memory_bytes}",
+        f"--cpus={format(config.cpus, '.3f').rstrip('0').rstrip('.')}",
+        "--shm-size=67108864",
+        "--ulimit=nofile=4096:4096",
+        "--user",
+        "0:0",
+        "--workdir",
+        str(workspace),
+        "--entrypoint=/usr/bin/env",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,exec,mode=0700,"
+            f"uid=0,gid=0,size={tmpfs_size}"
+        ),
+        "--tmpfs",
+        (
+            "/var/tmp:rw,nosuid,nodev,exec,mode=0700,"
+            f"uid=0,gid=0,size={tmpfs_size}"
+        ),
+        "--tmpfs",
+        (
+            f"{_VALIDATION_CONTAINER_HOME}:rw,nosuid,nodev,noexec,"
+            f"mode=0700,uid=0,gid=0,size={tmpfs_size}"
+        ),
+        *_external_isolation_mount(workspace, read_only=False),
+        *_external_isolation_git_mounts(
+            workspace,
+            repository_root=repository,
+            allow_main_checkout=True,
+        ),
+    ]
+    if state_masked:
+        docker_command.extend(
+            [
+                "--tmpfs",
+                (
+                    f"{control_root}:rw,nosuid,nodev,noexec,mode=000,"
+                    "uid=0,gid=0,size=1048576"
+                ),
+            ]
+        )
+    docker_command.extend(
+        [
+            config.image_id,
+            "-i",
+            *(
+                f"{name}={value}"
+                for name, value in sorted(child_environment.items())
+            ),
+            *command_argv,
+        ]
+    )
+    contract = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "external-validation-isolation@1"
+        ),
+        "image_id": config.image_id,
+        "image_label": config.image_label,
+        "container_executable_sha256": config.container_executable_sha256,
+        "network_mode": "none",
+        "workspace_path": str(workspace),
+        "workspace_read_only": False,
+        "git_metadata_read_only": True,
+        "control_root": str(control_root),
+        "control_root_masked": state_masked,
+        "credential_mounted": False,
+        "docker_socket_mounted": False,
+        "host_pid_namespace": False,
+        "container_root_read_only": True,
+        "capabilities_dropped": "all",
+        "no_new_privileges": True,
+        "pids_limit": config.pids_limit,
+        "memory_limit_bytes": config.memory_bytes,
+        "cpu_limit_millis": int(round(config.cpus * 1000.0)),
+        "tmpfs_total_limit_bytes": tmpfs_size * 3 + (1048576 if state_masked else 0),
+        "timeout_limit_milliseconds": int(round(effective_timeout * 1000.0)),
+        "output_limit_bytes": AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES,
+        "command_id": content_identity({"argv": command_argv}),
+    }
+    contract["contract_id"] = content_identity(contract)
+    return docker_command, docker_environment, config, contract
+
+
+def _run_external_validation_in_container(
+    *,
+    spec: Any,
+    workspace_path: Path,
+    timeout_seconds: float,
+    environment: Mapping[str, str],
+    isolation_value: Mapping[str, Any] | str,
+) -> dict[str, Any]:
+    """Execute validation in the pinned image and emit bounded evidence."""
+
+    started_at = utc_now()
+    container_name = (
+        f"ipfs-accelerate-validation-{os.getpid()}-{time.time_ns()}"
+    )
+    base = {
+        "command": str(spec.command),
+        "raw_command": str(spec.raw_command or spec.command),
+        "started_at": started_at,
+    }
+    try:
+        command, docker_environment, config, contract = (
+            _docker_external_validation_command(
+                spec=spec,
+                workspace_path=workspace_path,
+                timeout_seconds=timeout_seconds,
+                environment=environment,
+                isolation_value=isolation_value,
+                container_name=container_name,
+            )
+        )
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        return {
+            **base,
+            "finished_at": utc_now(),
+            "returncode": 75,
+            "output": "",
+            "error": "external_validation_isolation_unavailable",
+            "reason": f"{type(exc).__name__}: {exc}"[:1000],
+            "infrastructure_failure": True,
+        }
+    docker_prefix = [
+        config.runtime_executable,
+        f"--host={config.runtime_endpoint}",
+    ]
+    output_bytes = bytearray()
+    output_overflow = threading.Event()
+    reader_finished = threading.Event()
+    process: subprocess.Popen[bytes] | None = None
+    reader: threading.Thread | None = None
+    timed_out = False
+    infrastructure_failure = False
+
+    def collect_output() -> None:
+        try:
+            if process is None or process.stdout is None:
+                return
+            while True:
+                chunk = process.stdout.read(64 * 1024)
+                if not chunk:
+                    return
+                remaining = AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES - len(
+                    output_bytes
+                )
+                if remaining > 0:
+                    output_bytes.extend(chunk[:remaining])
+                if len(chunk) > remaining:
+                    output_overflow.set()
+                    return
+        finally:
+            reader_finished.set()
+
+    def docker_control(
+        arguments: Sequence[str],
+    ) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                [*docker_prefix, *arguments],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10.0,
+                check=False,
+                env=docker_environment,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=workspace_path,
+            text=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=docker_environment,
+        )
+        reader = threading.Thread(
+            target=collect_output,
+            name=f"{container_name}-output",
+            daemon=True,
+        )
+        reader.start()
+        deadline = time.monotonic() + (
+            int(contract["timeout_limit_milliseconds"]) / 1000.0
+        )
+        while process.poll() is None:
+            if output_overflow.is_set() or time.monotonic() >= deadline:
+                timed_out = not output_overflow.is_set()
+                break
+            time.sleep(0.05)
+        if process.poll() is None:
+            docker_control(["container", "kill", container_name])
+            try:
+                process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=2.0)
+        returncode = int(process.returncode if process.returncode is not None else 75)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        infrastructure_failure = True
+        returncode = 75
+        output_bytes.extend(
+            f"{type(exc).__name__}: {exc}\n".encode("utf-8", errors="replace")[
+                :AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES
+            ]
+        )
+    if process is not None and process.poll() is None:
+        docker_control(["container", "kill", container_name])
+    if reader is not None:
+        reader.join(timeout=3.0)
+        if not reader_finished.is_set():
+            infrastructure_failure = True
+            if process is not None and process.stdout is not None:
+                process.stdout.close()
+            reader.join(timeout=1.0)
+    listed = docker_control(
+        [
+            "container",
+            "ls",
+            "--all",
+            "--filter",
+            f"name=^/{container_name}$",
+            "--format",
+            "{{.ID}}",
+        ]
+    )
+    container_removed = bool(
+        listed is not None
+        and listed.returncode == 0
+        and not str(listed.stdout or "").strip()
+    )
+    if not container_removed:
+        docker_control(["container", "rm", "--force", container_name])
+        verified = docker_control(
+            [
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                f"name=^/{container_name}$",
+                "--format",
+                "{{.ID}}",
+            ]
+        )
+        container_removed = bool(
+            verified is not None
+            and verified.returncode == 0
+            and not str(verified.stdout or "").strip()
+        )
+        infrastructure_failure = True
+        returncode = 75
+    if timed_out:
+        returncode = 124
+    if output_overflow.is_set():
+        infrastructure_failure = True
+        returncode = 75
+    if returncode == 125:
+        infrastructure_failure = True
+        returncode = 75
+    receipt_body = {
+        **contract,
+        "container_removed": container_removed,
+        "process_tree_quiesced": container_removed,
+        "output_limit_exceeded": output_overflow.is_set(),
+    }
+    receipt = {
+        **receipt_body,
+        "receipt_id": content_identity(receipt_body),
+    }
+    return {
+        **base,
+        "finished_at": utc_now(),
+        "returncode": returncode,
+        "output": output_bytes.decode("utf-8", errors="replace"),
+        "timed_out": timed_out,
+        "infrastructure_failure": infrastructure_failure,
+        "error": (
+            "external_validation_output_limit_exceeded"
+            if output_overflow.is_set()
+            else "external_validation_container_runtime_failed"
+            if infrastructure_failure
+            else ""
+        ),
+        "reason": (
+            "external_validation_container_not_quiesced"
+            if not container_removed
+            else "external_validation_output_limit_exceeded"
+            if output_overflow.is_set()
+            else "external_validation_timed_out"
+            if timed_out
+            else ""
+        ),
+        "external_validation_isolation_receipt": receipt,
+    }
+
+
 def _codex_implementation_command(
     *,
     codex: str,
     workspace_path: Path,
+    repository_root: Path | None = None,
     codex_context_window: int | None = None,
     model_override: str | None = None,
     reasoning_effort_override: str | None = None,
@@ -2642,6 +3713,20 @@ def _codex_implementation_command(
     if codex_max_depth:
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
     command.append("-")
+    external_isolation = os.environ.get(
+        PROVIDER_EXTERNAL_ISOLATION_ENV,
+        "",
+    ).strip()
+    if external_isolation:
+        config = validate_external_provider_isolation_config(
+            external_isolation,
+        )
+        return _docker_codex_implementation_command(
+            inner_command=command,
+            workspace_path=workspace_path,
+            repository_root=repository_root,
+            config=config,
+        )
     return command
 
 
@@ -44909,7 +45994,10 @@ class PortalImplementationDaemon:
             if pythonpath_note:
                 normalization_notes.append(pythonpath_note)
         scheduled_commands: Sequence[Any] = commands
-        if force_uncached:
+        external_validation_isolation = bool(
+            os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "").strip()
+        )
+        if force_uncached or external_validation_isolation:
             scheduled_commands = tuple(
                 replace(spec, cacheable=False)
                 for spec in build_validation_commands(commands)
@@ -45744,6 +46832,19 @@ class PortalImplementationDaemon:
         exposing the operator's profile or sharing mutable state between
         validations.
         """
+
+        external_isolation = os.environ.get(
+            PROVIDER_EXTERNAL_ISOLATION_ENV,
+            "",
+        ).strip()
+        if external_isolation:
+            return _run_external_validation_in_container(
+                spec=spec,
+                workspace_path=workspace_path,
+                timeout_seconds=timeout_seconds,
+                environment=environment,
+                isolation_value=external_isolation,
+            )
 
         started_at = utc_now()
         launcher_receipt: ValidationPythonLauncherReceipt | None = None
@@ -59597,6 +60698,31 @@ class PortalImplementationDaemon:
                 f"Unsupported implementation provider {provider!r}; "
                 "automatic routing fails closed on unknown values"
             )
+        external_isolation = os.environ.get(
+            PROVIDER_EXTERNAL_ISOLATION_ENV,
+            "",
+        ).strip()
+        if external_isolation:
+            try:
+                isolation_config = validate_external_provider_isolation_config(
+                    external_isolation,
+                    verify_host=False,
+                )
+            except ValueError as exc:
+                raise ImplementationRetryDeferred(
+                    f"invalid sealed provider isolation: {exc}",
+                    backoff_seconds=300,
+                ) from exc
+            if provider != isolation_config.provider_id:
+                raise ImplementationRetryDeferred(
+                    "sealed provider isolation rejects a provider override",
+                    backoff_seconds=300,
+                )
+            if self.implementation_command or env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed provider isolation rejects a direct command override",
+                    backoff_seconds=300,
+                )
         try:
             route_plan = _configured_agent_implementation_route_plan(
                 Path(self.repo_root)
@@ -59927,6 +61053,7 @@ class PortalImplementationDaemon:
                 return _codex_implementation_command(
                     codex=str(codex),
                     workspace_path=workspace_path,
+                    repository_root=self.repo_root,
                     codex_context_window=codex_context_window,
                     model_override=DEFAULT_CODEX_MODEL,
                     reasoning_effort_override=(
@@ -60002,6 +61129,7 @@ class PortalImplementationDaemon:
             return _codex_implementation_command(
                 codex=str(codex),
                 workspace_path=workspace_path,
+                repository_root=self.repo_root,
                 codex_context_window=codex_context_window,
             )
         if force_claude:
@@ -60057,6 +61185,7 @@ class PortalImplementationDaemon:
             return _codex_implementation_command(
                 codex=str(codex),
                 workspace_path=workspace_path,
+                repository_root=self.repo_root,
                 codex_context_window=codex_context_window,
             )
         if grok_ready and automatic_family_allowed("grok"):

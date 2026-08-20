@@ -5,9 +5,10 @@ task sharding, worktree isolation, and merge serialization.  This module is a
 small configuration boundary that turns a reviewed ``scheduler_config@1``
 JSON document into arguments for that existing runtime.
 
-No provider is imported or probed while loading, preflighting, or rendering a
-launch plan.  In particular, dry runs do not read credentials or install
-optional tools.
+Loading performs only structural provider validation.  A configured external
+isolation boundary deliberately probes its pinned local runtime, image, and
+provider credential while rendering the trusted launch plan; it never installs
+optional tools or falls back to an unsealed provider command.
 """
 
 from __future__ import annotations
@@ -86,6 +87,8 @@ from ..validation.validation_commands import split_validation_commands
 from .multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
     DATABASE_PROGRAM_CONFIG_INTERFACE,
+    STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_STORE_LIVE_GENERATION_ENV,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
@@ -129,6 +132,9 @@ CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 )
+EXTERNAL_PROVIDER_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
+)
 GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 ROUTE_BOARD_NAMESPACE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
@@ -160,6 +166,7 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
+    EXTERNAL_PROVIDER_ISOLATION_ENV,
     GROK_BIN_ENV,
     ROUTE_BOARD_NAMESPACE_ENV,
     ROUTE_AUTHORIZATION_PATH_ENV,
@@ -1954,6 +1961,38 @@ def load_configured_board(
             raise ConfiguredBoardError(
                 "provider.provider_id is not a supported identifier"
             )
+    external_isolation = provider.get("external_isolation")
+    if external_isolation is not None:
+        if ordered_provider:
+            raise ConfiguredBoardError(
+                "provider.external_isolation is supported only for a direct "
+                "Codex route"
+            )
+        if provider_id != "codex":
+            raise ConfiguredBoardError(
+                "provider.external_isolation requires provider_id 'codex'"
+            )
+        if not isinstance(external_isolation, dict):
+            raise ConfiguredBoardError(
+                "provider.external_isolation must be an object"
+            )
+        try:
+            from ..todo_daemon.implementation_daemon import (
+                validate_external_provider_isolation_config,
+            )
+
+            # Loading is a deterministic structural operation and must remain
+            # usable in the credential-free validation container.  Host
+            # runtime/image/credential admission is repeated fail-closed by
+            # ``configured_board_launch_plan`` immediately before launch.
+            validate_external_provider_isolation_config(
+                external_isolation,
+                verify_host=False,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                f"provider.external_isolation is unavailable: {exc}"
+            ) from exc
     concurrency = _positive_int(
         provider.get("max_concurrency"),
         field="provider.max_concurrency",
@@ -2745,6 +2784,27 @@ def configured_board_launch_plan(
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
+        external_isolation = provider.get("external_isolation")
+        if external_isolation is not None:
+            from ..todo_daemon.implementation_daemon import (
+                validate_external_provider_isolation_config,
+            )
+
+            try:
+                isolation_config = (
+                    validate_external_provider_isolation_config(
+                        external_isolation,
+                        verify_host=True,
+                    )
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ConfiguredBoardError(
+                    "provider.external_isolation launch preflight failed: "
+                    f"{exc}"
+                ) from exc
+            environment[EXTERNAL_PROVIDER_ISOLATION_ENV] = (
+                isolation_config.environment_json()
+            )
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
@@ -3160,6 +3220,38 @@ def _cleanup_plan_bound_control_plane(
         return
 
 
+def _plan_bound_coordinator_environment() -> dict[str, str]:
+    """Retain only locale and exact live database identities across reseal."""
+
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name
+        in {
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "TZ",
+            STATE_STORE_LIVE_GENERATION_ENV,
+            STATE_LIVE_SCHEMA_REVISION_ENV,
+        }
+    }
+    for name in (
+        STATE_STORE_LIVE_GENERATION_ENV,
+        STATE_LIVE_SCHEMA_REVISION_ENV,
+    ):
+        value = str(environment.get(name, "") or "")
+        if value and (
+            re.fullmatch(r"[0-9]{1,20}", value) is None
+            or int(value) > 2**63 - 1
+        ):
+            raise ConfiguredBoardError(
+                f"plan-bound coordinator {name} is not a bounded identity"
+            )
+    environment["PATH"] = "/usr/bin:/bin"
+    return environment
+
+
 def _launch_foreground_plan_bound_coordinator(
     board: ConfiguredBoard,
     *,
@@ -3185,12 +3277,7 @@ def _launch_foreground_plan_bound_coordinator(
                 capsule_parent=capsule_parent,
             ),
         )
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment["PATH"] = "/usr/bin:/bin"
+        environment = _plan_bound_coordinator_environment()
         process = subprocess.Popen(
             command,
             cwd=board.repo_root,
@@ -3270,12 +3357,7 @@ def _launch_detached_plan_bound_coordinator(
             ),
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
-            launch_environment = {
-                name: value
-                for name, value in os.environ.items()
-                if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-            }
-            launch_environment["PATH"] = "/usr/bin:/bin"
+            launch_environment = _plan_bound_coordinator_environment()
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,

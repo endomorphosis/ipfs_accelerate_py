@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -212,6 +213,9 @@ _ROUTE_AUTHORIZATION_ENV_NAMES = (
 )
 _PROVIDER_EXECUTABLE_ENV_NAMES = (
     "IPFS_ACCELERATE_AGENT_GROK_BIN",
+)
+PROVIDER_EXTERNAL_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
 )
 
 
@@ -467,6 +471,12 @@ STATE_ENDPOINT_SECRET_HANDLE_ENV = (
 STATE_STORE_ID_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_ID"
 STATE_STORE_GENERATION_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"
 STATE_SCHEMA_REVISION_ENV = "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"
+STATE_STORE_LIVE_GENERATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION"
+)
+STATE_LIVE_SCHEMA_REVISION_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION"
+)
 TASK_SOURCE_KIND_ENV = "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND"
 EVENT_STORE_PATH_ENV = "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH"
 RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
@@ -481,6 +491,8 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_STORE_ID_ENV,
     STATE_STORE_GENERATION_ENV,
     STATE_SCHEMA_REVISION_ENV,
+    STATE_STORE_LIVE_GENERATION_ENV,
+    STATE_LIVE_SCHEMA_REVISION_ENV,
     TASK_SOURCE_KIND_ENV,
     EVENT_STORE_PATH_ENV,
     RUNTIME_REGISTRY_PATH_ENV,
@@ -488,6 +500,64 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_FAILOVER_POLICY_ENV,
     DATABASE_PROGRAM_JSON_ENV,
 )
+
+_PLAN_BOUND_PROFILE_ENV_NAMES = frozenset(
+    {
+        *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+        *_ROUTE_AUTHORIZATION_ENV_NAMES,
+        *_PROVIDER_EXECUTABLE_ENV_NAMES,
+        *DATABASE_PROGRAM_ENV_NAMES,
+        PROVIDER_EXTERNAL_ISOLATION_ENV,
+    }
+)
+_PLAN_BOUND_LIFECYCLE_ENV_NAMES = frozenset(
+    {
+        RUN_ID_ENV,
+        PROFILE_ID_ENV,
+        TARGET_ID_ENV,
+        REPOSITORY_ROOT_ENV,
+        STATE_ROOT_ENV,
+        RUN_ROOT_ENV,
+        FENCING_EPOCH_ENV,
+        CONFIGURATION_ROOT_ENV,
+    }
+)
+
+
+def _plan_bound_positive_child_environment(
+    environment: Mapping[str, str],
+) -> dict[str, str]:
+    """Project only sealed lane-control bindings into an accepted child."""
+
+    allowed_names = {
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+        *_PLAN_BOUND_LIFECYCLE_ENV_NAMES,
+        *_PLAN_BOUND_PROFILE_ENV_NAMES,
+    }
+    projected = {
+        name: str(value)
+        for name, value in environment.items()
+        if name in allowed_names
+    }
+    projected["PATH"] = "/usr/bin:/bin"
+    return projected
+
+
+def _plan_bound_profile_environment(
+    environment: Mapping[str, str],
+) -> tuple[tuple[str, str], ...]:
+    """Bind every positive non-lifecycle lane value into a profile CID."""
+
+    return tuple(
+        sorted(
+            (name, str(environment[name]))
+            for name in _PLAN_BOUND_PROFILE_ENV_NAMES
+            if name in environment
+        )
+    )
 
 # Raw state credentials that must never reach implementation-provider children.
 STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
@@ -499,7 +569,6 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
         "DUCKDB_TOKEN",
         "DUCKDB_PASSWORD",
         "DUCKDB_SECRET",
-        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
         "IPFS_ACCELERATE_AGENT_QUACK_PASSWORD",
         "IPFS_ACCELERATE_AGENT_QUACK_SECRET",
         "IPFS_ACCELERATE_AGENT_STATE_TOKEN",
@@ -1041,6 +1110,8 @@ def provider_subprocess_environment(
     # bindings; they operate on worktree files only.
     for name in DATABASE_PROGRAM_ENV_NAMES:
         cleaned.pop(name, None)
+    cleaned.pop(REPOSITORY_ROOT_ENV, None)
+    cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
     return cleaned
 
 
@@ -4803,6 +4874,11 @@ def start_track(
     state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
     run_root = state_root / "lifecycle-runs" / resolved.name
     status_path = _inferred_supervisor_status_path(resolved)
+    profile_environment = (
+        _plan_bound_profile_environment(os.environ)
+        if plan_bound_dispatch
+        else ()
+    )
     profile = LifecycleProfile(
         target_id=f"supervisor-track:{resolved.name}",
         run_id=(
@@ -4817,6 +4893,7 @@ def start_track(
         run_root=str(run_root),
         argv=tuple(command),
         cwd=str(repo_root.resolve()),
+        environment=profile_environment,
         health_path=(
             str(status_path.resolve(strict=False))
             if status_path is not None
@@ -4843,35 +4920,16 @@ def start_track(
         # would be too late for LD_PRELOAD.  The sealed native dependency's
         # DT_NEEDED resolution is intentionally bounded to the host's default
         # system ABI, not caller-provided loader/search configuration.
-        ambient_names = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        lifecycle_names = {
-            RUN_ID_ENV,
-            PROFILE_ID_ENV,
-            TARGET_ID_ENV,
-            REPOSITORY_ROOT_ENV,
-            STATE_ROOT_ENV,
-            RUN_ROOT_ENV,
-            FENCING_EPOCH_ENV,
-            CONFIGURATION_ROOT_ENV,
-        }
-        route_names = {
-            *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
-            *_ROUTE_AUTHORIZATION_ENV_NAMES,
-            *_PROVIDER_EXECUTABLE_ENV_NAMES,
-        }
+        route_names = set(_PLAN_BOUND_PROFILE_ENV_NAMES)
         explicit_profile = dict(profile.environment)
         disallowed_profile_names = set(explicit_profile) - route_names
         if disallowed_profile_names:
             raise ValueError(
                 "plan-bound lifecycle profile contains non-route environment"
             )
-        positive_names = ambient_names | lifecycle_names | route_names
-        launch_environment = {
-            name: value
-            for name, value in launch_environment.items()
-            if name in positive_names
-        }
-        launch_environment["PATH"] = "/usr/bin:/bin"
+        launch_environment = _plan_bound_positive_child_environment(
+            launch_environment
+        )
     try:
         try:
             process = subprocess.Popen(
@@ -7966,12 +8024,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     ):
         return 78
     try:
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment["PATH"] = "/usr/bin:/bin"
+        environment = _plan_bound_positive_child_environment(os.environ)
         os.execvpe(child_command[0], child_command, environment)
     except OSError:
         return 78

@@ -601,9 +601,10 @@ def _task_block(
     depends_on: tuple[str, ...] = (),
     output: str | None = None,
     schedulable: bool = True,
+    no_change_completion: str | None = None,
+    validation: str = "python -m pytest -q",
 ) -> str:
-    return "\n".join(
-        (
+    fields = [
             f"## {task_id} {task_id} fixture",
             "",
             f"- Status: {status}",
@@ -613,11 +614,13 @@ def _task_block(
             "- Track: fixture",
             f"- Depends on: {', '.join(depends_on)}",
             f"- Outputs: {output or f'src/{task_id.lower()}.py'}",
-            "- Validation: python -m pytest -q",
+            f"- Validation: {validation}",
             "- Resource class: cpu-small",
-            "",
-        )
-    )
+    ]
+    if no_change_completion is not None:
+        fields.append(f"- No-change completion: {no_change_completion}")
+    fields.append("")
+    return "\n".join(fields)
 
 
 def _seed_v3_task_repo(
@@ -1036,6 +1039,23 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         "IPFS_ACCELERATE_AGENT_GROK_BIN",
         configured_grok,
     )
+    sealed_isolation = json.dumps(
+        {"schema": "test-sealed-external-isolation", "required": True},
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    monkeypatch.setenv(
+        multi_runner_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        sealed_isolation,
+    )
+    monkeypatch.setenv(
+        multi_runner_module.STATE_STORE_LIVE_GENERATION_ENV,
+        "17",
+    )
+    monkeypatch.setenv(
+        multi_runner_module.STATE_LIVE_SCHEMA_REVISION_ENV,
+        "9",
+    )
     observed_environment: dict[str, str] = {}
 
     def fail_identity(_self, _pid, _profile):
@@ -1106,14 +1126,31 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
             "IPFS_ACCELERATE_LIFECYCLE_CONFIGURATION_ROOT",
         }
         ambient_environment = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        route_environment = {
-            *multi_runner_module.ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
-            *multi_runner_module._ROUTE_AUTHORIZATION_ENV_NAMES,
-            *multi_runner_module._PROVIDER_EXECUTABLE_ENV_NAMES,
-        }
+        route_environment = set(
+            multi_runner_module._PLAN_BOUND_PROFILE_ENV_NAMES
+        )
         assert observed_environment["IPFS_ACCELERATE_AGENT_GROK_BIN"] == (
             configured_grok
         )
+        assert observed_environment[
+            multi_runner_module.PROVIDER_EXTERNAL_ISOLATION_ENV
+        ] == sealed_isolation
+        assert observed_environment[
+            multi_runner_module.STATE_STORE_LIVE_GENERATION_ENV
+        ] == "17"
+        assert observed_environment[
+            multi_runner_module.STATE_LIVE_SCHEMA_REVISION_ENV
+        ] == "9"
+        profile_environment = dict(failure.profile.environment)
+        assert profile_environment[
+            multi_runner_module.PROVIDER_EXTERNAL_ISOLATION_ENV
+        ] == sealed_isolation
+        assert profile_environment[
+            multi_runner_module.STATE_STORE_LIVE_GENERATION_ENV
+        ] == "17"
+        assert profile_environment[
+            multi_runner_module.STATE_LIVE_SCHEMA_REVISION_ENV
+        ] == "9"
         assert lifecycle_environment.issubset(observed_environment)
         assert set(observed_environment).issubset(
             lifecycle_environment | ambient_environment | route_environment
@@ -2620,6 +2657,7 @@ def test_v3_launch_uses_only_exact_plan_slices_and_empty_wave_has_no_child(
         "scope_drift",
         "no_change",
         "no_change_guard_denied",
+        "no_change_gate_unissued",
         "tamper",
         "mode_tamper",
         "effect_submodule_symlink",
@@ -2634,11 +2672,44 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
 ) -> None:
     repo, _config_path, board = _seed_v3_task_repo(
         tmp_path,
-        (_task_block("TEST-A"),),
+        (
+            _task_block(
+                "TEST-A",
+                no_change_completion=(
+                    "allowed"
+                    if bridge_scenario
+                    in {
+                        "no_change",
+                        "no_change_guard_denied",
+                        "no_change_gate_unissued",
+                    }
+                    else None
+                ),
+                validation=(
+                    "PYTHONDONTWRITEBYTECODE=1 python -m pytest -q "
+                    "-p no:cacheprovider"
+                    if bridge_scenario
+                    in {
+                        "no_change",
+                        "no_change_guard_denied",
+                        "no_change_gate_unissued",
+                    }
+                    else "python -m pytest -q"
+                ),
+            ),
+        ),
     )
-    if bridge_scenario in {"no_change", "no_change_guard_denied"}:
+    if bridge_scenario in {
+        "no_change",
+        "no_change_guard_denied",
+        "no_change_gate_unissued",
+    }:
         _write(repo / "src/test-a.py", "VALUE = 'already-present'\n")
-        _git(repo, "add", "src/test-a.py")
+        _write(
+            repo / "test/test_satisfied.py",
+            "def test_existing_contract():\n    assert True\n",
+        )
+        _git(repo, "add", "src/test-a.py", "test/test_satisfied.py")
         _git(repo, "commit", "-m", "seed already-satisfied declared output")
     receipt = materialize_configured_board_execution_plan(
         board,
@@ -2762,7 +2833,11 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         workspace = self.worktree_root / "execution-lease-bridge-workspace"
         workspace.parent.mkdir(parents=True, exist_ok=True)
         _git(repo, "worktree", "add", "--detach", str(workspace), "HEAD")
-        if bridge_scenario in {"no_change", "no_change_guard_denied"}:
+        if bridge_scenario in {
+            "no_change",
+            "no_change_guard_denied",
+            "no_change_gate_unissued",
+        }:
             _git(
                 workspace,
                 "checkout",
@@ -2896,10 +2971,38 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                     claim_path,
                     captured["claim"],
                 )
-        if bridge_scenario in {"no_change", "no_change_guard_denied"}:
+        if bridge_scenario in {
+            "no_change",
+            "no_change_guard_denied",
+            "no_change_gate_unissued",
+        }:
+            baseline = _git(repo, "rev-parse", "HEAD").stdout.strip()
             settling = self._mark_worktree_lifecycle_settling(workspace)
             assert settling is not None
-            baseline = _git(repo, "rev-parse", "HEAD").stdout.strip()
+            assert settling.state.value == "settling"
+            validation_result = self._run_clean_candidate_validation(
+                workspace,
+                tasks[0],
+                self.state_path.parent / "no-change-validation.log",
+                state=None,
+                baseline_ref=baseline,
+            )
+            assert validation_result is not None
+            assert validation_result["passed"] is True, (
+                validation_result.get("reason"),
+                validation_result.get("error"),
+                validation_result.get("proposal_gate"),
+                validation_result.get("no_change_policy_gate"),
+                validation_result.get("candidate_binding"),
+                validation_result.get("results"),
+            )
+            assert validation_result["no_change_policy_gate"]["accepted"] is True
+            assert validation_result["candidate_binding"]["verified"] is True
+            authoritative_gate = self._take_issued_no_change_policy_gate(
+                validation_result,
+                required=True,
+            )
+            assert authoritative_gate == validation_result["no_change_policy_gate"]
             commit_result = self._commit_worktree_changes(
                 workspace,
                 tasks[0],
@@ -2918,16 +3021,15 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                     ),
                     expected_branch=branch,
                     current_branch=branch,
-                    validation_result={
-                        "attempted": True,
-                        "passed": True,
-                        "returncode": 0,
-                        "results": [],
-                        "selection": {
-                            "scope": "pre_merge",
-                            "changed_files": [],
-                        },
-                    },
+                    validation_result=validation_result,
+                    require_no_change_policy_gate=True,
+                    expected_task_id=tasks[0].task_id,
+                    expected_task_cid=execution_slice.task_cids[0],
+                    authoritative_no_change_policy_gate=(
+                        None
+                        if bridge_scenario == "no_change_gate_unissued"
+                        else authoritative_gate
+                    ),
                 )
             )
         assert self._release_implementation_task_claim(
@@ -3138,6 +3240,7 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         "scope_drift": "scope_drift",
         "no_change": "merge_completed",
         "no_change_guard_denied": "provider_ready",
+        "no_change_gate_unissued": "provider_ready",
         "tamper": "workspace_prepared",
         "mode_tamper": "workspace_prepared",
         "effect_submodule_symlink": "provider_ready",
@@ -3150,6 +3253,21 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
     )
     assert current_execution[1].workspace_lease_id
     assert current_execution[1].workspace_fence >= 1
+    if bridge_scenario in {
+        "no_change",
+        "no_change_guard_denied",
+        "no_change_gate_unissued",
+    }:
+        no_change_guard = captured["no_change_guard"]
+        assert isinstance(no_change_guard, dict)
+        assert no_change_guard["allowed"] is (bridge_scenario == "no_change")
+        if bridge_scenario == "no_change_guard_denied":
+            assert "head_changed_before_commit" in no_change_guard["reasons"]
+        elif bridge_scenario == "no_change_gate_unissued":
+            assert (
+                "no_change_policy_gate_not_issued_for_attempt"
+                in no_change_guard["reasons"]
+            )
     if bridge_scenario == "scope_drift":
         assert current_execution[1].merge_enqueue_reached is False
         assert current_execution[1].proposal_id
@@ -3185,6 +3303,7 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                     "scope_drift",
                     "no_change",
                     "no_change_guard_denied",
+                    "no_change_gate_unissued",
                     "effect_submodule_symlink",
                     "effect_submodule_non_git",
                     "effect_submodule_escape",

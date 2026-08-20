@@ -27,6 +27,7 @@ from ...llm_router import (
     AgentImplementationSealedControlPlane,
     verify_agent_implementation_sealed_control_plane,
 )
+from ..control.lifecycle_orchestrator import REPOSITORY_ROOT_ENV
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -82,6 +83,8 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
+    STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     provider_subprocess_environment,
 )
@@ -106,6 +109,7 @@ from .implementation_daemon import (
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
+    PROVIDER_EXTERNAL_ISOLATION_ENV,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
     PortalTask,
@@ -132,6 +136,7 @@ from .implementation_daemon import (
     utc_now,
     write_json_atomic,
     write_text_atomic,
+    validate_external_provider_isolation_config,
 )
 from .supervisor import (
     active_codex_exec_workers,
@@ -1339,6 +1344,25 @@ def _managed_daemon_child_environment(
     env: dict[str, str] = {}
     if pythonpath:
         env["PYTHONPATH"] = pythonpath
+    external_isolation = str(
+        os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "") or ""
+    ).strip()
+    if external_isolation:
+        isolation_config = validate_external_provider_isolation_config(
+            external_isolation,
+            verify_host=False,
+        )
+        env[PROVIDER_EXTERNAL_ISOLATION_ENV] = (
+            isolation_config.environment_json()
+        )
+    for name in (
+        REPOSITORY_ROOT_ENV,
+        STATE_STORE_LIVE_GENERATION_ENV,
+        STATE_LIVE_SCHEMA_REVISION_ENV,
+    ):
+        value = str(os.environ.get(name, "") or "").strip()
+        if value:
+            env[name] = value
     if database_program is not None:
         env.update(database_program.environment())
     return env
@@ -3780,6 +3804,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             expected_branch: str,
             current_branch: str,
             validation_result: Mapping[str, Any],
+            require_no_change_policy_gate: bool = True,
+            expected_task_id: str = "",
+            expected_task_cid: str = "",
+            authoritative_no_change_policy_gate: Mapping[str, Any] | None = None,
         ) -> dict[str, Any]:
             """Publish no-change only after the canonical final guard allows it."""
 
@@ -3789,6 +3817,12 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 expected_branch=expected_branch,
                 current_branch=current_branch,
                 validation_result=validation_result,
+                require_no_change_policy_gate=require_no_change_policy_gate,
+                expected_task_id=expected_task_id,
+                expected_task_cid=expected_task_cid,
+                authoritative_no_change_policy_gate=(
+                    authoritative_no_change_policy_gate
+                ),
             )
             pending = getattr(self, "_plan_bound_pending_no_change", None)
             self._plan_bound_pending_no_change = None
@@ -5962,6 +5996,27 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             if bool(getattr(result, "accepted", False)):
                 return result
 
+            compact_result = self._compact_proposal_validation(result)
+            if (
+                getattr(
+                    self,
+                    "_plan_bound_no_change_policy_probe_depth",
+                    0,
+                )
+                and list(compact_result.get("changed_paths") or []) == []
+                and reason_codes == ("empty_patch", "missing_required_field")
+            ):
+                # The canonical clean-candidate path intentionally asks the
+                # proposal validator to produce this exact typed empty-patch
+                # rejection.  It is evidence for the separately issued,
+                # attempt-bound no-change gate; it is not the task's proposal
+                # disposition.  Any other rejection still takes the ordinary
+                # plan-bound disposition path below.  The base clean-candidate
+                # path additionally checks every finding, runs declared
+                # validation uncached, binds the empty candidate, and issues
+                # the one-shot gate consumed by the final guard.
+                return result
+
             proposal = getattr(result, "proposal", None)
             receipt = getattr(result, "receipt", None)
             proposal_id = str(getattr(proposal, "proposal_id", "") or "")
@@ -5990,6 +6045,32 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             raise PlanBoundDispatchError(
                 "rejected proposal unexpectedly received wave release"
             )
+
+        def _run_clean_candidate_validation(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            """Keep an empty-patch policy probe distinct from disposition."""
+
+            depth = int(
+                getattr(
+                    self,
+                    "_plan_bound_no_change_policy_probe_depth",
+                    0,
+                )
+            )
+            self._plan_bound_no_change_policy_probe_depth = depth + 1
+            try:
+                return super()._run_clean_candidate_validation(
+                    *args,
+                    **kwargs,
+                )
+            finally:
+                if depth:
+                    self._plan_bound_no_change_policy_probe_depth = depth
+                else:
+                    del self._plan_bound_no_change_policy_probe_depth
 
     def plan_bound_daemon_factory(**kwargs: Any) -> Any:
         if (
@@ -8310,6 +8391,9 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
+        managed_daemon_environment = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+        )
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -8349,9 +8433,7 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
-            launch_env=_managed_daemon_child_environment(
-                database_program=self.config.database_program,
-            ),
+            launch_env=managed_daemon_environment,
         )
         return SupervisorLoopConfig(
             spec=spec,
@@ -8372,6 +8454,7 @@ class PortalImplementationSupervisor:
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
+            child_env=managed_daemon_environment,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
