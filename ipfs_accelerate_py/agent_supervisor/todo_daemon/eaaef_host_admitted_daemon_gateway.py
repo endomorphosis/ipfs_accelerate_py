@@ -201,14 +201,30 @@ class _HostAdmittedCapability:
 
 
 class _Record:
+    _DEFAULTS: ClassVar[Mapping[str, Any]] = MappingProxyType(
+        {
+            "dependencies": (),
+            "body": MappingProxyType({}),
+            "title": "",
+            "priority": 0,
+            "revision": 0,
+            "task_alias": "",
+            "status": "",
+        }
+    )
+
     def __init__(self, payload: Mapping[str, Any]) -> None:
         self._payload = dict(payload)
 
     def __getattr__(self, name: str) -> Any:
-        try:
-            return self._payload[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+        if name in self._payload:
+            value = self._payload[name]
+            if name == "dependencies" and value is None:
+                return ()
+            return value
+        if name in self._DEFAULTS:
+            return self._DEFAULTS[name]
+        raise AttributeError(name)
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self._payload)

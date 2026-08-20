@@ -97,3 +97,14 @@ def test_factory_uses_daemon_execution_repository_property() -> None:
     # The closed execution component is what reserve/commit consume.
     assert hasattr(_Execution, "reserve_effect")
     assert hasattr(_Execution, "commit_effect")
+
+
+def test_record_defaults_missing_task_dependencies() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _Record,
+    )
+
+    task = _Record({"task_cid": "cid:1", "task_alias": "EAAEF-010", "status": "todo"})
+    assert tuple(task.dependencies) == ()
+    assert task.body == {}
+    assert task.task_cid == "cid:1"
