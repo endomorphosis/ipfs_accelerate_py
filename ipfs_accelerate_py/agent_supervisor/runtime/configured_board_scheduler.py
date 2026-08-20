@@ -476,6 +476,27 @@ def _sanitized_git_environment() -> dict[str, str]:
     return environment
 
 
+def _plan_bound_coordinator_environment(board: "ConfiguredBoard") -> dict[str, str]:
+    """Return the sealed coordinator environment, with EAAEF provider bins on PATH."""
+
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+    }
+    path_entries = ["/usr/bin", "/bin"]
+    if _eaaef_plan_bound_profile(board):
+        for command_name in ("grok", "codex"):
+            resolved = shutil.which(command_name)
+            if not resolved:
+                continue
+            directory = str(Path(resolved).resolve().parent)
+            if directory and directory not in path_entries:
+                path_entries.insert(0, directory)
+    environment["PATH"] = os.pathsep.join(path_entries)
+    return environment
+
+
 def _git_run(
     argv: Sequence[str],
     *,
@@ -3969,12 +3990,7 @@ def _launch_foreground_plan_bound_coordinator(
                 capsule_parent=capsule_parent,
             ),
         )
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment["PATH"] = "/usr/bin:/bin"
+        environment = _plan_bound_coordinator_environment(board)
         process = subprocess.Popen(
             command,
             cwd=board.repo_root,
@@ -4079,12 +4095,7 @@ def _launch_detached_plan_bound_coordinator(
             ),
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
-            launch_environment = {
-                name: value
-                for name, value in os.environ.items()
-                if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-            }
-            launch_environment["PATH"] = "/usr/bin:/bin"
+            launch_environment = _plan_bound_coordinator_environment(board)
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,
