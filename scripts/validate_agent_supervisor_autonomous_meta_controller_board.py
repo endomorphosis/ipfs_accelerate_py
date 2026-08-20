@@ -101,7 +101,9 @@ REQUIRED_CONTROL_FILES = (
     REPO_ROOT / "test/api/test_agent_supervisor_implementation_protected_paths.py",
     REPO_ROOT / "test/api/test_agent_supervisor_merge_resolver.py",
     REPO_ROOT / "test/api/test_agent_supervisor_quack_state_server.py",
+    REPO_ROOT / "test/api/test_agent_supervisor_task_revision_reconciliation.py",
     REPO_ROOT / "test/api/test_agent_supervisor_todo_llm.py",
+    REPO_ROOT / "test/api/test_implementation_daemon_stale_quarantined_merge.py",
     Path(__file__).resolve(),
 )
 P0_FILES = tuple(
