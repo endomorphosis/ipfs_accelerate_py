@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import copy
 import hashlib
+import importlib.machinery
 import importlib.util
 import inspect
 import json
@@ -21,6 +22,17 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+_GITLINK_IMPORT_CANDIDATES = (
+    "implementation.py",
+    "deep/implementation.py",
+    "deep/__pycache__/implementation.py",
+    "deep/__pycache__/implementation.pyc",
+    "deep/implementation.pyo",
+    "deep/native.so",
+    "deep/native.pyd",
+    "deep/native.dylib",
+    "deep/native" + importlib.machinery.EXTENSION_SUFFIXES[0],
+)
 
 
 def _load() -> ModuleType:
@@ -73,6 +85,33 @@ def _create_sealed_datasets_repository(repository: Path) -> Path:
     _git(nested, "add", ".")
     _git(nested, "commit", "-qm", "sealed datasets source")
     return nested
+
+
+def _add_sealed_stage_zero_gitlinks(
+    repository: Path,
+    relatives: tuple[str, ...],
+) -> str:
+    """Commit exact Gitlinks and leave only empty uninitialized placeholders."""
+
+    source = repository.parent / f"{repository.name}-gitlink-source"
+    source.mkdir()
+    _git(source, "init", "-q")
+    _git(source, "config", "user.email", "fixture@example.invalid")
+    _git(source, "config", "user.name", "LGCVF Fixture")
+    _git(source, "commit", "--allow-empty", "-qm", "sealed Gitlink target")
+    object_id = _git_output(source, "rev-parse", "HEAD")
+    for relative in relatives:
+        _git(
+            repository,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{object_id},{relative}",
+        )
+    _git(repository, "commit", "-qm", "bind stage-zero Gitlinks")
+    for relative in relatives:
+        (repository / relative).mkdir(parents=True)
+    return object_id
 
 
 def _sealed_qualifier_script(tmp_path: Path) -> Path:
@@ -1517,6 +1556,124 @@ def test_recovery_qualifier_rejects_git_object_substitution(
     )
     assert completed.returncode != 0
     assert "protected recovery" in completed.stderr
+
+
+@pytest.mark.parametrize("candidate", _GITLINK_IMPORT_CANDIDATES)
+def test_recovery_qualifier_gitlink_rejects_initialized_nested_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    candidate: str,
+) -> None:
+    repository = tmp_path / "outer"
+    package = repository / "package"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    _git(repository, "init", "-q")
+    _git(repository, "config", "user.email", "fixture@example.invalid")
+    _git(repository, "config", "user.name", "LGCVF Fixture")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-qm", "sealed outer source")
+    object_id = _add_sealed_stage_zero_gitlinks(repository, ("package/gitlink",))
+
+    module = _load()
+    monkeypatch.setattr(module, "_ISOLATED_RECOVERY_PYCACHE_DIRECTORY", object())
+    entries = module._tracked_recovery_import_entries(
+        repository, pathspecs=("package",)
+    )
+    assert entries["package/gitlink"] == ("160000", object_id)
+    module._scan_isolated_recovery_import_roots(
+        repository,
+        roots=("package",),
+        tracked_pathspecs=("package",),
+        root_import_candidates=False,
+    )
+
+    nested = repository / "package/gitlink"
+    candidate_path = nested / candidate
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
+    candidate_path.write_bytes(b"untrusted nested import candidate\n")
+    _git(nested, "init", "-q")
+    _git(nested, "config", "user.email", "fixture@example.invalid")
+    _git(nested, "config", "user.name", "LGCVF Fixture")
+    _git(nested, "add", ".")
+    _git(nested, "commit", "-qm", "initialized nested code")
+    with pytest.raises(RuntimeError, match="Gitlink contains an import candidate"):
+        module._scan_isolated_recovery_import_roots(
+            repository,
+            roots=("package",),
+            tracked_pathspecs=("package",),
+            root_import_candidates=False,
+        )
+
+
+def test_recovery_qualifier_gitlink_rejects_non_directory_placeholder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _sealed_qualifier_script(tmp_path)
+    repository = script.parents[1]
+    relative = "ipfs_accelerate_py/mcplusplus"
+    _add_sealed_stage_zero_gitlinks(repository, (relative,))
+    placeholder = repository / relative
+    placeholder.rmdir()
+    placeholder.write_bytes(b"not a Gitlink directory\n")
+    module = _load()
+    monkeypatch.setattr(module, "_ISOLATED_RECOVERY_PYCACHE_DIRECTORY", object())
+    with pytest.raises(RuntimeError, match="Gitlink placeholder is unsafe"):
+        module._scan_isolated_recovery_import_roots(
+            repository,
+            roots=("ipfs_accelerate_py",),
+            tracked_pathspecs=("ipfs_accelerate_py",),
+            root_import_candidates=False,
+        )
+
+
+@pytest.mark.parametrize("drift", ("mode", "object-id"))
+def test_recovery_qualifier_gitlink_rejects_index_identity_drift(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    repository = tmp_path / "outer"
+    repository.mkdir()
+    _git(repository, "init", "-q")
+    _git(repository, "config", "user.email", "fixture@example.invalid")
+    _git(repository, "config", "user.name", "LGCVF Fixture")
+    _git(repository, "commit", "--allow-empty", "-qm", "sealed outer source")
+    original = _add_sealed_stage_zero_gitlinks(repository, ("package/gitlink",))
+    if drift == "object-id":
+        replacement_source = tmp_path / "replacement"
+        replacement_source.mkdir()
+        _git(replacement_source, "init", "-q")
+        _git(replacement_source, "config", "user.email", "fixture@example.invalid")
+        _git(replacement_source, "config", "user.name", "LGCVF Fixture")
+        _git(
+            replacement_source,
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "replacement Gitlink target",
+        )
+        replacement = _git_output(replacement_source, "rev-parse", "HEAD")
+        replacement_mode = "160000"
+    else:
+        forged = tmp_path / "forged-ordinary-blob"
+        forged.write_text("forged ordinary blob\n", encoding="utf-8")
+        replacement = _git_output(
+            repository, "hash-object", "-w", str(forged)
+        )
+        replacement_mode = "100644"
+    assert replacement != original
+    _git(
+        repository,
+        "update-index",
+        "--cacheinfo",
+        f"{replacement_mode},{replacement},package/gitlink",
+    )
+    module = _load()
+    with pytest.raises(RuntimeError, match="ordinary index differs"):
+        module._tracked_recovery_import_entries(
+            repository, pathspecs=("package",)
+        )
 
 
 @pytest.mark.parametrize("repository_scope", ("accelerator", "datasets"))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import importlib.machinery
 import json
 import os
 import shutil
@@ -36,6 +37,23 @@ from scripts import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+_CANONICAL_OUTER_IMPORT_GITLINKS = (
+    "ipfs_accelerate_py/mcplusplus",
+    "test/doc-builder",
+    "test/huggingface_doc_builder",
+    "test/huggingface_transformers",
+)
+_GITLINK_IMPORT_CANDIDATES = (
+    "implementation.py",
+    "deep/implementation.py",
+    "deep/__pycache__/implementation.py",
+    "deep/__pycache__/implementation.pyc",
+    "deep/implementation.pyo",
+    "deep/native.so",
+    "deep/native.pyd",
+    "deep/native.dylib",
+    "deep/native" + importlib.machinery.EXTENSION_SUFFIXES[0],
+)
 
 
 def _create_sealed_datasets_repository(repository: Path) -> None:
@@ -65,6 +83,60 @@ def _create_sealed_datasets_repository(repository: Path) -> None:
             capture_output=True,
             text=True,
         )
+
+
+def _add_sealed_stage_zero_gitlinks(
+    repository: Path,
+    relatives: tuple[str, ...],
+) -> str:
+    """Commit exact Gitlink entries, then leave empty uninitialized placeholders."""
+
+    source = repository.parent / f"{repository.name}-gitlink-source"
+    source.mkdir()
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("commit", "--allow-empty", "-qm", "sealed Gitlink target"),
+    ):
+        subprocess.run(
+            ("git", *arguments),
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    object_id = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    for relative in relatives:
+        subprocess.run(
+            (
+                "git",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"160000,{object_id},{relative}",
+            ),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    subprocess.run(
+        ("git", "commit", "-qm", "bind stage-zero Gitlinks"),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    for relative in relatives:
+        (repository / relative).mkdir(parents=True)
+    return object_id
 
 
 def _sealed_materializer_script(tmp_path: Path) -> Path:
@@ -1789,6 +1861,222 @@ def test_recovery_direct_entry_rejects_git_object_substitution(
         repository
         / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
     ).exists()
+
+
+def test_recovery_preview_accepts_canonical_empty_gitlinks_without_writes(
+    tmp_path: Path,
+) -> None:
+    """The exact isolated CLI may cross inert stage-zero Gitlink placeholders."""
+
+    script = _sealed_materializer_script(tmp_path)
+    repository = script.parents[1]
+    object_id = _add_sealed_stage_zero_gitlinks(
+        repository, _CANONICAL_OUTER_IMPORT_GITLINKS
+    )
+    expected = {
+        relative: ("160000", object_id)
+        for relative in _CANONICAL_OUTER_IMPORT_GITLINKS
+    }
+    assert {
+        relative: entry
+        for relative, entry in materializer._tracked_recovery_import_entries(  # noqa: SLF001
+            repository,
+            pathspecs=("ipfs_accelerate_py", "test"),
+        ).items()
+        if relative in expected
+    } == expected
+
+    target = (
+        repository
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
+    )
+    staging = target.with_name("run-v17-fresh-recovery-staging")
+    completed = subprocess.run(
+        (
+            "/usr/bin/python3.12",
+            "-I",
+            "-S",
+            "-B",
+            str(script),
+            "recovery-preview",
+        ),
+        cwd=repository,
+        env={"HOME": str(repository), "LANG": "C", "PATH": "/usr/bin:/bin"},
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert completed.returncode == 2, completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["valid"] is False
+    assert "protected recovery import" not in str(result.get("error", ""))
+    assert completed.stderr == ""
+    assert target.exists() is False
+    assert staging.exists() is False
+
+
+@pytest.mark.parametrize("candidate", _GITLINK_IMPORT_CANDIDATES)
+def test_recovery_import_gitlink_rejects_initialized_nested_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    candidate: str,
+) -> None:
+    repository = tmp_path / "outer"
+    package = repository / "package"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("add", "."),
+        ("commit", "-qm", "sealed outer source"),
+    ):
+        subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    object_id = _add_sealed_stage_zero_gitlinks(repository, ("package/gitlink",))
+    monkeypatch.setattr(
+        materializer, "_ISOLATED_RECOVERY_PYCACHE_DIRECTORY", object()
+    )
+    entries = materializer._tracked_recovery_import_entries(  # noqa: SLF001
+        repository, pathspecs=("package",)
+    )
+    assert entries["package/gitlink"] == ("160000", object_id)
+    materializer._scan_isolated_recovery_import_roots(  # noqa: SLF001
+        repository,
+        roots=("package",),
+        tracked_pathspecs=("package",),
+        root_import_candidates=False,
+    )
+
+    nested = repository / "package/gitlink"
+    candidate_path = nested / candidate
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
+    candidate_path.write_bytes(b"untrusted nested import candidate\n")
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("add", "."),
+        ("commit", "-qm", "initialized nested code"),
+    ):
+        subprocess.run(
+            ("git", *arguments),
+            cwd=nested,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    with pytest.raises(RuntimeError, match="Gitlink contains an import candidate"):
+        materializer._scan_isolated_recovery_import_roots(  # noqa: SLF001
+            repository,
+            roots=("package",),
+            tracked_pathspecs=("package",),
+            root_import_candidates=False,
+        )
+
+
+def test_recovery_import_gitlink_rejects_non_directory_placeholder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _sealed_materializer_script(tmp_path)
+    repository = script.parents[1]
+    relative = "ipfs_accelerate_py/mcplusplus"
+    _add_sealed_stage_zero_gitlinks(repository, (relative,))
+    placeholder = repository / relative
+    placeholder.rmdir()
+    placeholder.write_bytes(b"not a Gitlink directory\n")
+    monkeypatch.setattr(
+        materializer, "_ISOLATED_RECOVERY_PYCACHE_DIRECTORY", object()
+    )
+    with pytest.raises(RuntimeError, match="Gitlink placeholder is unsafe"):
+        materializer._scan_isolated_recovery_import_roots(  # noqa: SLF001
+            repository,
+            roots=("ipfs_accelerate_py",),
+            tracked_pathspecs=("ipfs_accelerate_py",),
+            root_import_candidates=False,
+        )
+
+
+@pytest.mark.parametrize("drift", ("mode", "object-id"))
+def test_recovery_import_gitlink_rejects_index_identity_drift(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    repository = tmp_path / "outer"
+    repository.mkdir()
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("commit", "--allow-empty", "-qm", "sealed outer source"),
+    ):
+        subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    original = _add_sealed_stage_zero_gitlinks(repository, ("package/gitlink",))
+    if drift == "object-id":
+        replacement_source = tmp_path / "replacement"
+        replacement_source.mkdir()
+        for arguments in (
+            ("init", "-q"),
+            ("config", "user.email", "fixture@example.invalid"),
+            ("config", "user.name", "LGCVF Fixture"),
+            ("commit", "--allow-empty", "-qm", "replacement Gitlink target"),
+        ):
+            subprocess.run(
+                ("git", *arguments),
+                cwd=replacement_source,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        replacement = subprocess.run(
+            ("git", "rev-parse", "HEAD"),
+            cwd=replacement_source,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        replacement_mode = "160000"
+    else:
+        replacement = subprocess.run(
+            ("git", "hash-object", "-w", "--stdin"),
+            cwd=repository,
+            input="forged ordinary blob\n",
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        replacement_mode = "100644"
+    assert replacement != original
+    subprocess.run(
+        (
+            "git",
+            "update-index",
+            "--cacheinfo",
+            f"{replacement_mode},{replacement},package/gitlink",
+        ),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    with pytest.raises(RuntimeError, match="ordinary index differs"):
+        materializer._tracked_recovery_import_entries(  # noqa: SLF001
+            repository, pathspecs=("package",)
+        )
 
 
 @pytest.mark.parametrize("repository_scope", ("accelerator", "datasets"))

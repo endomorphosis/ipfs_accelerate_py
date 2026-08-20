@@ -179,7 +179,7 @@ def _tracked_recovery_import_entries(
                 if (
                     len(fields) != 3
                     or fields[1] not in {"blob", "commit"}
-                    or (fields[1] == "commit" and fields[0] != "160000")
+                    or (fields[0] == "160000") != (fields[1] == "commit")
                 ):
                     raise RuntimeError("protected recovery HEAD entry differs")
                 mode, object_id = fields[0], fields[2]
@@ -189,7 +189,6 @@ def _tracked_recovery_import_entries(
                 mode, object_id = fields[0], fields[1]
             if (
                 mode not in {"100644", "100755", "120000", "160000"}
-                or (not head and mode == "160000")
                 or len(object_id) not in {40, 64}
                 or any(character not in "0123456789abcdef" for character in object_id)
             ):
@@ -487,6 +486,9 @@ def _scan_isolated_recovery_import_roots(
         return None
     git_entries = _tracked_recovery_import_entries(root, pathspecs=tracked_pathspecs)
     tracked = frozenset(git_entries)
+    gitlink_paths = frozenset(
+        value for value, (mode, _object_id) in git_entries.items() if mode == "160000"
+    )
     uid, private_gid = _private_recovery_import_principal()
     records: list[
         tuple[str, str, int, int, int, int, int, int, int, int, str]
@@ -499,10 +501,18 @@ def _scan_isolated_recovery_import_roots(
     directory_flags |= getattr(os, "O_NOFOLLOW", 0)
     file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
 
+    native_suffixes = (
+        ".so",
+        ".pyd",
+        ".dylib",
+        *importlib.machinery.EXTENSION_SUFFIXES,
+    )
+
     def is_import_candidate(value: str) -> bool:
-        return value.endswith(".py") or value.endswith(
-            (".so", ".pyd", ".dylib", *importlib.machinery.EXTENSION_SUFFIXES)
-        )
+        return value.endswith(".py") or value.endswith(native_suffixes)
+
+    def is_gitlink_import_artifact(value: str) -> bool:
+        return value.endswith((".py", ".pyc", ".pyo", *native_suffixes))
 
     def verify_blob_file(
         directory_fd: int,
@@ -514,7 +524,7 @@ def _scan_isolated_recovery_import_roots(
 
         nonlocal total_file_bytes
         git_entry = git_entries.get(value)
-        if git_entry is None or git_entry[0] == "120000":
+        if git_entry is None or git_entry[0] in {"120000", "160000"}:
             raise RuntimeError(
                 f"protected recovery import candidate is untracked: {value}"
             )
@@ -627,7 +637,13 @@ def _scan_isolated_recovery_import_roots(
             )
         )
 
-    def visit(directory_fd: int, relative: PurePath, depth: int) -> None:
+    def visit(
+        directory_fd: int,
+        relative: PurePath,
+        depth: int,
+        *,
+        inside_gitlink: bool = False,
+    ) -> None:
         nonlocal entry_count
         if depth > _MAX_RECOVERY_IMPORT_DEPTH:
             raise RuntimeError("protected recovery import tree is too deep")
@@ -641,6 +657,20 @@ def _scan_isolated_recovery_import_roots(
                 child = relative / entry.name
                 value = child.as_posix()
                 status = entry.stat(follow_symlinks=False)
+                if value in gitlink_paths and not stat.S_ISDIR(status.st_mode):
+                    raise RuntimeError(
+                        f"protected recovery Gitlink placeholder is unsafe: {value}"
+                    )
+                child_inside_gitlink = inside_gitlink or value in gitlink_paths
+                if (
+                    child_inside_gitlink
+                    and not stat.S_ISDIR(status.st_mode)
+                    and is_gitlink_import_artifact(entry.name)
+                ):
+                    raise RuntimeError(
+                        "protected recovery Gitlink contains an import candidate: "
+                        f"{value}"
+                    )
                 if stat.S_ISLNK(status.st_mode):
                     target = os.readlink(entry.name, dir_fd=directory_fd)
                     importable_link = entry.name.endswith(
@@ -717,7 +747,7 @@ def _scan_isolated_recovery_import_roots(
                     observed_link_paths.add(value)
                     continue
                 if stat.S_ISDIR(status.st_mode):
-                    if entry.name == "__pycache__":
+                    if entry.name == "__pycache__" and not child_inside_gitlink:
                         continue
                     record(status, value, "directory")
                     child_fd = os.open(entry.name, directory_flags, dir_fd=directory_fd)
@@ -731,15 +761,18 @@ def _scan_isolated_recovery_import_roots(
                             raise RuntimeError(
                                 "protected recovery import directory changed"
                             )
-                        visit(child_fd, child, depth + 1)
+                        visit(
+                            child_fd,
+                            child,
+                            depth + 1,
+                            inside_gitlink=child_inside_gitlink,
+                        )
                     finally:
                         os.close(child_fd)
                     continue
                 python_source = entry.name.endswith(".py")
                 bytecode = entry.name.endswith((".pyc", ".pyo"))
-                native = entry.name.endswith(".so") or entry.name.endswith(
-                    tuple(importlib.machinery.EXTENSION_SUFFIXES)
-                )
+                native = entry.name.endswith(native_suffixes)
                 if bytecode and "__pycache__" not in child.parts:
                     raise RuntimeError(
                         f"protected recovery import tree contains bytecode: {value}"
@@ -783,9 +816,7 @@ def _scan_isolated_recovery_import_roots(
                     name = entry.name
                     python_source = name.endswith(".py")
                     bytecode = name.endswith((".pyc", ".pyo"))
-                    native = name.endswith(".so") or name.endswith(
-                        tuple(importlib.machinery.EXTENSION_SUFFIXES)
-                    )
+                    native = name.endswith(native_suffixes)
                     if not python_source and not bytecode and not native:
                         continue
                     status = entry.stat(follow_symlinks=False)
@@ -813,7 +844,7 @@ def _scan_isolated_recovery_import_roots(
     expected_blob_paths = {
         value
         for value, (mode, _object_id) in git_entries.items()
-        if mode != "120000" and is_import_candidate(value)
+        if mode in {"100644", "100755"} and is_import_candidate(value)
     }
     expected_link_paths = {
         value for value, (mode, _object_id) in git_entries.items() if mode == "120000"
