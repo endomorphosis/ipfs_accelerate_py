@@ -153,18 +153,18 @@ class PredictiveResourceManager:
 ```python
 class DistributedAccelerationNetwork:
     """Federated network for distributed ML inference."""
-    
+
     def __init__(self):
         self.network_topology = self._discover_network_topology()
         self.load_balancer = self._initialize_intelligent_load_balancer()
-        
+
     def setup_federated_nodes(self, node_configs: List[Dict]) -> Dict:
         """Setup federated inference nodes across network."""
         # Discover available compute nodes
-        # Assess node capabilities and reliability  
+        # Assess node capabilities and reliability
         # Setup secure communication channels
         # Implement fault tolerance and recovery
-        
+
     def distribute_inference(self, model_request: Dict, optimization_strategy: str) -> Dict:
         """Intelligently distribute inference across network nodes."""
         # Model sharding across nodes
@@ -307,14 +307,14 @@ class IntelligentSystemOrchestrator:
 ```python
 class NaturalLanguageInterface:
     """Natural language interface for system interaction."""
-    
+
     def process_natural_language_query(self, query: str) -> Dict:
         """Process natural language queries about system performance."""
         # "What's the fastest hardware for BERT?"
-        # "How can I optimize my model for mobile deployment?"  
+        # "How can I optimize my model for mobile deployment?"
         # "Show me performance trends for the last week"
         # "What would happen if I deploy model X on hardware Y?"
-        
+
     def generate_optimization_explanations(self, optimization: Dict) -> str:
         """Generate human-readable explanations for optimizations."""
         # Natural language explanations of why optimizations work
@@ -435,14 +435,14 @@ class BusinessImpactAnalyzer:
 class HardwareCapabilityDB:
     def __init__(self):
         self.connection = self._setup_timeseries_db()  # InfluxDB/TimescaleDB
-        
+
     def store_hardware_profile(self, hardware_id: str, profile: Dict):
         """Store real hardware performance measurements."""
         # GPU memory bandwidth measurements
-        # CPU cache hierarchy profiling  
+        # CPU cache hierarchy profiling
         # Network latency measurements
         # Power consumption profiling
-        
+
     def query_similar_hardware(self, hardware_spec: Dict) -> List[Dict]:
         """Find similar hardware for performance prediction."""
         # Vector similarity search for hardware specs
@@ -455,12 +455,12 @@ class HardwareCapabilityDB:
 class MLPerformancePrediction:
     def __init__(self):
         self.prediction_models = {
-            "latency": self._load_latency_model(),      # XGBoost regressor
+            "latency": self._load_latency_model(),  # XGBoost regressor
             "throughput": self._load_throughput_model(),  # Neural network
-            "memory": self._load_memory_model(),        # Random Forest
-            "power": self._load_power_model()           # Gradient boosting
+            "memory": self._load_memory_model(),  # Random Forest
+            "power": self._load_power_model(),  # Gradient boosting
         }
-        
+
     def train_prediction_models(self, performance_data: List[Dict]):
         """Train ML models for performance prediction."""
         # Feature engineering from model/hardware specs

@@ -126,10 +126,7 @@ def _descriptor(repo: Path):
 
 
 def _documents(repo: Path, paths: tuple[str, ...]) -> tuple[SourceDocument, ...]:
-    return tuple(
-        SourceDocument(path, (repo / path).read_text(encoding="utf-8"))
-        for path in paths
-    )
+    return tuple(SourceDocument(path, (repo / path).read_text(encoding="utf-8")) for path in paths)
 
 
 def test_incremental_ast_index_evidence_terms_are_bound() -> None:
@@ -164,9 +161,7 @@ def test_incremental_ast_index_evidence_terms_are_bound() -> None:
     assert LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID == "VFS-G143"
     assert LANGUAGE_EDGE_RESOLUTION_TASK_ID == "VFS-069"
     assert PACKET_GOAL_IDS == ("VFS-G138", "VFS-G139")
-    assert GOAL_PACKET_ID == (
-        "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
-    )
+    assert GOAL_PACKET_ID == ("goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9")
     assert PROVENANCE_LANGUAGES == frozenset(
         {
             "python",
@@ -264,8 +259,7 @@ def test_mixed_language_snapshot_has_provenance_and_binds_evidence() -> None:
         set(claim["languages"])
     )
     assert any(
-        language in {"json", "json-schema", "mcp-manifest"}
-        for language in claim["languages"]
+        language in {"json", "json-schema", "mcp-manifest"} for language in claim["languages"]
     )
     assert set(claim["packet_evidence_terms"]) == {
         "vfs/exhaustive-file-inventory@1",
@@ -339,16 +333,10 @@ def test_parser_failures_and_truncation_prevent_exhaustive_verdict() -> None:
         max_source_bytes=1,
     )
     assert oversized.status == "unsupported"
-    assert any(
-        item.code == "source_size_bound_exceeded" for item in oversized.diagnostics
-    )
+    assert any(item.code == "source_size_bound_exceeded" for item in oversized.diagnostics)
 
     # JSON emits one fact per member; bound to force fact_bound_exceeded.
-    rich_json = (
-        "{"
-        + ",".join(f'"field_{index}":{index}' for index in range(20))
-        + "}\n"
-    )
+    rich_json = "{" + ",".join(f'"field_{index}":{index}' for index in range(20)) + "}\n"
     truncated = build_program_evidence_index(
         (SourceDocument(path="src/facts.json", source=rich_json),),
         max_facts=2,
@@ -425,25 +413,17 @@ def test_packet_evidence_terms_align_with_corpus_inventory_surface() -> None:
 
 def test_cross_path_cache_reuses_only_canonical_path_independent_records() -> None:
     malformed_source = "def broken(:\n"
-    malformed_old = build_program_evidence_index(
-        (SourceDocument("src/old.py", malformed_source),)
-    )
+    malformed_old = build_program_evidence_index((SourceDocument("src/old.py", malformed_source),))
     malformed_warm = build_program_evidence_index(
         (SourceDocument("src/new.py", malformed_source),),
         previous=malformed_old,
     )
-    malformed_cold = build_program_evidence_index(
-        (SourceDocument("src/new.py", malformed_source),)
-    )
+    malformed_cold = build_program_evidence_index((SourceDocument("src/new.py", malformed_source),))
 
     assert malformed_warm.results[0].reused is True
     assert "new.py" in malformed_warm.results[0].diagnostics[0].message
-    assert replace(malformed_warm.results[0], reused=False) == (
-        malformed_cold.results[0]
-    )
-    assert malformed_warm.analysis_index.index_id == (
-        malformed_cold.analysis_index.index_id
-    )
+    assert replace(malformed_warm.results[0], reused=False) == (malformed_cold.results[0])
+    assert malformed_warm.analysis_index.index_id == (malformed_cold.analysis_index.index_id)
 
     typescript_source = "export const value: number = 1;\n"
     typescript_old = build_program_evidence_index(
@@ -478,12 +458,8 @@ def test_cross_path_cache_reuses_only_canonical_path_independent_records() -> No
     assert typescript_warm.results[0].reused is True
     assert typescript_warm.results[0].facts
     assert all(item.generated for item in typescript_warm.results[0].facts)
-    assert replace(typescript_warm.results[0], reused=False) == (
-        typescript_cold.results[0]
-    )
-    assert typescript_warm.analysis_index.index_id == (
-        typescript_cold.analysis_index.index_id
-    )
+    assert replace(typescript_warm.results[0], reused=False) == (typescript_cold.results[0])
+    assert typescript_warm.analysis_index.index_id == (typescript_cold.analysis_index.index_id)
 
 
 def test_inventory_bound_index_covers_supported_inputs_and_reuses_same_inventory(
@@ -531,10 +507,7 @@ def test_inventory_bound_index_covers_supported_inputs_and_reuses_same_inventory
         "tsx": 1,
         "typescript": 1,
     }
-    entries = {
-        item.canonical_path: item
-        for item in inventory.included_entries
-    }
+    entries = {item.canonical_path: item for item in inventory.included_entries}
     assert all(
         result.blob_identity == entries[result.path].blob_oid
         and result.source_sha256 == "sha256:" + entries[result.path].content_sha256
@@ -561,8 +534,7 @@ def test_inventory_bound_index_covers_supported_inputs_and_reuses_same_inventory
     _git(repo, "add", "src/service.ts")
     _git(repo, "commit", "-m", "change one blob and rename another")
     changed_paths = tuple(
-        "src/client-renamed.js" if path == "src/client.js" else path
-        for path in sources
+        "src/client-renamed.js" if path == "src/client.js" else path for path in sources
     )
     changed_inventory = inventory_repository_descriptor(_descriptor(repo))
     with pytest.raises(ValueError, match="does not match inventory CID"):
@@ -614,9 +586,7 @@ def test_inventory_bound_index_uses_inventory_generated_classification(
     repo = _init_repo(tmp_path / "repo", sources)
     inventory = inventory_repository_descriptor(_descriptor(repo))
 
-    with pytest.raises(
-        ValueError, match="generated classification conflicts with inventory"
-    ):
+    with pytest.raises(ValueError, match="generated classification conflicts with inventory"):
         build_inventory_program_evidence_index(
             inventory,
             (
@@ -656,9 +626,7 @@ def test_inventory_bound_reuse_rejects_bare_program_indexes(
         _documents(repo, ("src/main.py",)),
     )
 
-    with pytest.raises(
-        TypeError, match="verified InventoryProgramEvidenceReceipt"
-    ):
+    with pytest.raises(TypeError, match="verified InventoryProgramEvidenceReceipt"):
         build_inventory_program_evidence_index(
             inventory,
             _documents(repo, ("src/main.py",)),
@@ -719,10 +687,7 @@ def test_same_inventory_receipt_cannot_poison_fresh_canonical_records(
     assert rebuilt.exhaustive is False
     assert rebuilt.reason_codes == ("parser_failures",)
     assert all(item.reused is False for item in rebuilt.results)
-    assert all(
-        replace(item, reused=False) == cold_by_path[item.path]
-        for item in rebuilt.results
-    )
+    assert all(replace(item, reused=False) == cold_by_path[item.path] for item in rebuilt.results)
     assert rebuilt.analysis_index.index_id == cold.analysis_index.index_id
 
 
@@ -740,9 +705,7 @@ def test_inventory_receipt_cid_round_trip_and_structural_validation(
     )
 
     restored = InventoryProgramEvidenceReceipt.from_dict(receipt.to_dict())
-    portable_restored = InventoryProgramEvidenceReceipt.from_dict(
-        receipt.to_portable_dict()
-    )
+    portable_restored = InventoryProgramEvidenceReceipt.from_dict(receipt.to_portable_dict())
     assert restored == receipt
     assert restored.receipt_cid == receipt.receipt_cid
     assert portable_restored.receipt_cid == receipt.receipt_cid
@@ -828,9 +791,7 @@ def test_inventory_bound_index_fails_closed_for_coverage_and_parse_gaps(
         "src/broken.py": "def broken(:\n",
         "src/unsupported.go": "package main\nfunc main() {}\n",
         "schemas/required.json": '{"type":"object"}\n',
-        "docs/rules.md": (
-            "# Rules\n\nClients MUST call `one` and MUST call `two`.\n"
-        ),
+        "docs/rules.md": ("# Rules\n\nClients MUST call `one` and MUST call `two`.\n"),
     }
     repo = _init_repo(tmp_path / "repo", sources)
     inventory = inventory_repository_descriptor(_descriptor(repo))
@@ -854,9 +815,7 @@ def test_inventory_bound_index_fails_closed_for_coverage_and_parse_gaps(
     payload = result.to_dict()
     assert payload["coverage"]["expected_path_count"] == 4
     assert payload["coverage"]["adapted_path_count"] == 3
-    assert payload["coverage"]["missing_paths"] == [
-        "swissknife/schemas/required.json"
-    ]
+    assert payload["coverage"]["missing_paths"] == ["swissknife/schemas/required.json"]
     assert payload["coverage"]["status_counts"] == {
         "malformed": 1,
         "partial": 1,
@@ -867,18 +826,13 @@ def test_inventory_bound_index_fails_closed_for_coverage_and_parse_gaps(
 def test_truncated_inventory_blocks_inventory_bound_exhaustive_verdict(
     tmp_path: Path,
 ) -> None:
-    sources = {
-        f"src/file_{index}.py": f"VALUE_{index} = {index}\n"
-        for index in range(4)
-    }
+    sources = {f"src/file_{index}.py": f"VALUE_{index} = {index}\n" for index in range(4)}
     repo = _init_repo(tmp_path / "repo", sources)
     inventory = inventory_repository_descriptor(
         _descriptor(repo),
         limits=InventoryLimits(max_entries=2),
     )
-    emitted_paths = tuple(
-        item.relative_path for item in inventory.included_entries
-    )
+    emitted_paths = tuple(item.relative_path for item in inventory.included_entries)
     result = build_inventory_program_evidence_index(
         inventory,
         _documents(repo, emitted_paths),

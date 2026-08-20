@@ -9,20 +9,21 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger("ipfs_accelerate_mcp.prompts.distributed_inference")
 
+
 def register_prompts(mcp) -> None:
     """
     Register distributed inference prompts with MCP
-    
+
     Args:
         mcp: FastMCPServer instance
     """
     logger.info("Registering distributed inference prompts")
-    
+
     @mcp.prompt("distributed_inference_guide")
     def distributed_inference_guide() -> str:
         """
         Guide for distributed inference
-        
+
         This prompt provides guidance on using IPFS Accelerate's distributed inference capabilities.
         """
         return """
@@ -116,12 +117,12 @@ def register_prompts(mcp) -> None:
 
         For more detailed information, see the full IPFS Accelerate Distributed Inference documentation.
         """
-    
+
     @mcp.prompt("ipfs_model_parallelism")
     def ipfs_model_parallelism() -> str:
         """
         Guide for IPFS model parallelism
-        
+
         This prompt explains how IPFS Accelerate implements model parallelism.
         """
         return """
@@ -205,5 +206,5 @@ def register_prompts(mcp) -> None:
         
         Use `ipfs.evaluate_hardware_topology()` to analyze your hardware configuration and get recommendations for optimal parallelism strategies.
         """
-    
+
     logger.info("Distributed inference prompts registered successfully")

@@ -83,10 +83,7 @@ from duckdb_api.simulation_validation.db_performance_optimizer import DBPerforma
 
 # Initialize the optimizer with your database path
 optimizer = DBPerformanceOptimizer(
-    db_path="./benchmark_db.duckdb",
-    enable_caching=True,
-    cache_size=100,
-    cache_ttl=300
+    db_path="./benchmark_db.duckdb", enable_caching=True, cache_size=100, cache_ttl=300
 )
 ```
 
@@ -149,13 +146,15 @@ for table, stats in cleanup_result.items():
 ### 1. Set Up Dashboard Connection
 
 ```python
-from duckdb_api.simulation_validation.visualization.monitoring_dashboard_connector import MonitoringDashboardConnector
+from duckdb_api.simulation_validation.visualization.monitoring_dashboard_connector import (
+    MonitoringDashboardConnector,
+)
 
 # Create dashboard connector
 dashboard_connector = MonitoringDashboardConnector(
     dashboard_url="http://monitoring.example.com/api",
     dashboard_api_key="your_api_key",
-    db_optimizer=optimizer
+    db_optimizer=optimizer,
 )
 ```
 
@@ -165,16 +164,24 @@ dashboard_connector = MonitoringDashboardConnector(
 # Create a dedicated performance dashboard
 dashboard_result = dashboard_connector.create_database_performance_dashboard(
     dashboard_title="Database Performance Monitoring",
-    metrics=["query_time", "storage_size", "index_efficiency", "vacuum_status", "compression_ratio"],
+    metrics=[
+        "query_time",
+        "storage_size",
+        "index_efficiency",
+        "vacuum_status",
+        "compression_ratio",
+    ],
     refresh_interval=300,  # 5 minutes
     visualization_style="detailed",
     create_alerts=True,
     auto_update=True,
-    update_interval=3600  # 1 hour
+    update_interval=3600,  # 1 hour
 )
 
 print(f"Dashboard created at: {dashboard_result['dashboard_url']}")
-print(f"Created {dashboard_result['panels_created']} panels and {dashboard_result['alerts_created']} alerts")
+print(
+    f"Created {dashboard_result['panels_created']} panels and {dashboard_result['alerts_created']} alerts"
+)
 ```
 
 ### 3. Update Dashboard Metrics Manually
@@ -182,9 +189,7 @@ print(f"Created {dashboard_result['panels_created']} panels and {dashboard_resul
 ```python
 # Update dashboard metrics on demand
 update_result = dashboard_connector.update_database_performance_metrics(
-    dashboard_id=dashboard_result["dashboard_id"],
-    include_history=True,
-    format_values=True
+    dashboard_id=dashboard_result["dashboard_id"], include_history=True, format_values=True
 )
 
 print(f"Updated {update_result['updated_panels']} panels")
@@ -204,7 +209,7 @@ solution_result = dashboard_connector.create_complete_monitoring_solution(
     performance_metrics=["throughput_items_per_second", "average_latency_ms", "memory_peak_mb"],
     database_metrics=["query_time", "storage_size", "index_efficiency"],
     visualization_style="compact",
-    refresh_interval=300
+    refresh_interval=300,
 )
 
 print(f"Complete solution created at: {solution_result['dashboard_url']}")
@@ -398,7 +403,7 @@ dashboard_result = dashboard_connector.create_database_performance_dashboard(
     dashboard_title="Automated Monitoring Dashboard",
     auto_update=True,
     update_interval=1800,  # 30 minutes
-    create_alerts=True
+    create_alerts=True,
 )
 
 # The dashboard will now automatically update every 30 minutes

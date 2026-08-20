@@ -110,9 +110,7 @@ def test_packet_is_content_addressed_and_binds_required_fields() -> None:
         obligation_ids=("obligation:1",),
         assumption_ids=("assumption:a",),
         invalidation_reasons=("repository_tree_changed",),
-        predicted_files=(
-            "ipfs_accelerate_py/agent_supervisor/code_edit_packet.py",
-        ),
+        predicted_files=("ipfs_accelerate_py/agent_supervisor/code_edit_packet.py",),
         acceptance_ids=("accept:cbp-080",),
         property_ids=("prop:api",),
         claim_status=ClaimStatusRecord(
@@ -133,9 +131,7 @@ def test_packet_is_content_addressed_and_binds_required_fields() -> None:
     assert packet.assumption_ids == ("assumption:a",)
     assert packet.assumptions == ("assumption:a",)
     assert packet.invalidation_reasons == ("repository_tree_changed",)
-    assert packet.predicted_files == (
-        "ipfs_accelerate_py/agent_supervisor/code_edit_packet.py",
-    )
+    assert packet.predicted_files == ("ipfs_accelerate_py/agent_supervisor/code_edit_packet.py",)
     assert packet.acceptance_ids == ("accept:cbp-080",)
     assert packet.implementable is True
     assert packet.prover.semantic_authority is False
@@ -195,9 +191,7 @@ def test_prover_fields_always_semantic_authority_false() -> None:
     )
     assert binding.semantic_authority is False
     assert binding.to_dict()["semantic_authority"] is False
-    restored = ProverBinding.from_dict(
-        {"prover_id": "p", "semantic_authority": True}
-    )
+    restored = ProverBinding.from_dict({"prover_id": "p", "semantic_authority": True})
     assert restored.semantic_authority is False
 
 
@@ -232,10 +226,7 @@ def test_implementable_false_on_unsupported_not_measured_statuses() -> None:
         if status is ClaimStatus.UNSUPPORTED:
             assert NonImplementableReason.UNSUPPORTED.value in packet.non_implementable_reasons
         else:
-            assert (
-                NonImplementableReason.NOT_MEASURED.value
-                in packet.non_implementable_reasons
-            )
+            assert NonImplementableReason.NOT_MEASURED.value in packet.non_implementable_reasons
 
 
 def test_implementable_false_on_stale_required_input() -> None:
@@ -245,10 +236,7 @@ def test_implementable_false_on_stale_required_input() -> None:
         reason_codes=("stale_required_input",),
     )
     assert packet.implementable is False
-    assert (
-        NonImplementableReason.STALE_REQUIRED_INPUT.value
-        in packet.non_implementable_reasons
-    )
+    assert NonImplementableReason.STALE_REQUIRED_INPUT.value in packet.non_implementable_reasons
 
 
 def test_implementable_false_on_reject_and_timeout_cache() -> None:
@@ -351,9 +339,7 @@ def test_materializer_emits_validation_commands_for_open_obligations() -> None:
     open_claim = _claim(status=ClaimStatus.OPEN, property_id="prop:open")
     report = materialize_code_edit_packets(
         claims=[open_claim],
-        predicted_files=(
-            "ipfs_accelerate_py/agent_supervisor/code_edit_packet.py",
-        ),
+        predicted_files=("ipfs_accelerate_py/agent_supervisor/code_edit_packet.py",),
         acceptance_ids=("accept:cbp-080",),
         prover=ProverBinding(prover_id="prover:test"),
     )
@@ -369,10 +355,7 @@ def test_materializer_emits_validation_commands_for_open_obligations() -> None:
     assert "cache-aware" in joined
     assert task.packet.prover.semantic_authority is False
     assert task.packet.acceptance_ids == ("accept:cbp-080",)
-    assert (
-        "ipfs_accelerate_py/agent_supervisor/code_edit_packet.py"
-        in task.predicted_files
-    )
+    assert "ipfs_accelerate_py/agent_supervisor/code_edit_packet.py" in task.predicted_files
 
 
 def test_materializer_blocks_non_open_without_commands() -> None:
@@ -511,10 +494,7 @@ def test_missing_source_tree_not_implementable() -> None:
         claim_status=ClaimStatusRecord(status=ClaimStatus.OPEN.value),
     )
     assert packet.implementable is False
-    assert (
-        NonImplementableReason.MISSING_SOURCE_TREE.value
-        in packet.non_implementable_reasons
-    )
+    assert NonImplementableReason.MISSING_SOURCE_TREE.value in packet.non_implementable_reasons
 
 
 def test_satisfied_claim_not_implementable() -> None:

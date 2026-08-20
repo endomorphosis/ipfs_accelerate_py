@@ -79,7 +79,9 @@ def _start_service(*, queue_path: str, listen_port: int, announce_file: str) -> 
     )
 
 
-def _wait_for_service(*, proc: subprocess.Popen, announce_file: str, timeout_s: float = 15.0) -> Dict[str, str]:
+def _wait_for_service(
+    *, proc: subprocess.Popen, announce_file: str, timeout_s: float = 15.0
+) -> Dict[str, str]:
     deadline = time.time() + max(1.0, float(timeout_s))
     last_line: Optional[str] = None
 
@@ -87,10 +89,12 @@ def _wait_for_service(*, proc: subprocess.Popen, announce_file: str, timeout_s: 
         if proc.poll() is not None:
             out = ""
             try:
-                out = (proc.stdout.read() if proc.stdout is not None else "")
+                out = proc.stdout.read() if proc.stdout is not None else ""
             except Exception:
                 pass
-            raise RuntimeError(f"service exited early (code={proc.returncode}). Last line={last_line!r}\nOutput:\n{out}")
+            raise RuntimeError(
+                f"service exited early (code={proc.returncode}). Last line={last_line!r}\nOutput:\n{out}"
+            )
 
         # Prefer announce file existence for readiness.
         if os.path.exists(announce_file):
@@ -122,7 +126,9 @@ def main() -> int:
         announce_file = os.path.join(td, "task_p2p_announce.json")
         listen_port = _pick_free_port()
 
-        proc = _start_service(queue_path=queue_path, listen_port=listen_port, announce_file=announce_file)
+        proc = _start_service(
+            queue_path=queue_path, listen_port=listen_port, announce_file=announce_file
+        )
         try:
             info = _wait_for_service(proc=proc, announce_file=announce_file, timeout_s=20.0)
             multiaddr = info["multiaddr"]

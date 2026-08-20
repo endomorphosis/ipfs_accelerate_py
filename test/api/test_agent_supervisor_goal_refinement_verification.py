@@ -112,9 +112,7 @@ def _plan(*, equivalent: bool = False) -> FormalWorkPlan:
                 "goal:root",
                 subgoal_done.formula_id,
                 refinement_mode=(
-                    RefinementMode.EQUIVALENT
-                    if equivalent
-                    else RefinementMode.SUFFICIENT
+                    RefinementMode.EQUIVALENT if equivalent else RefinementMode.SUFFICIENT
                 ),
                 evidence_requirement_ids=("evidence:test",),
             ),
@@ -143,9 +141,7 @@ def _plan(*, equivalent: bool = False) -> FormalWorkPlan:
                 2,
             ),
         ),
-        fluents=(
-            Fluent("fluent:done", FluentValueType.BOOLEAN, initial_value=False),
-        ),
+        fluents=(Fluent("fluent:done", FluentValueType.BOOLEAN, initial_value=False),),
         preconditions=(),
         effects=(
             Effect(
@@ -179,12 +175,8 @@ def _plan(*, equivalent: bool = False) -> FormalWorkPlan:
 def test_derives_all_required_obligations_deterministically_and_classifies_them():
     plan = _plan(equivalent=True)
 
-    first = derive_refinement_obligations(
-        plan, assumption_ids=("assumption:b", "assumption:a")
-    )
-    second = derive_refinement_obligations(
-        plan, assumption_ids=("assumption:a", "assumption:b")
-    )
+    first = derive_refinement_obligations(plan, assumption_ids=("assumption:b", "assumption:a"))
+    second = derive_refinement_obligations(plan, assumption_ids=("assumption:a", "assumption:b"))
 
     assert first == second
     assert {item.kind for item in first} == set(RefinementObligationKind)
@@ -342,9 +334,7 @@ def test_two_repair_round_cap_and_frozen_root_assumption_receipts(tmp_path):
         repair_calls.append(request)
         return RefinementRepairCandidate(repaired, request.frozen_context)
 
-    result = GoalRefinementVerifier(
-        policy=policy, audit_store=store
-    ).verify(
+    result = GoalRefinementVerifier(policy=policy, audit_store=store).verify(
         plan,
         runner,
         assumption_ids=("assumption:reviewed",),
@@ -359,10 +349,7 @@ def test_two_repair_round_cap_and_frozen_root_assumption_receipts(tmp_path):
     receipt = result.repair_receipts[0]
     assert receipt.root_unchanged and receipt.assumptions_unchanged
     assert receipt.accepted
-    assert any(
-        item["schema"] == RepairImmutabilityReceipt.SCHEMA
-        for item in store.read_records()
-    )
+    assert any(item["schema"] == RepairImmutabilityReceipt.SCHEMA for item in store.read_records())
     with pytest.raises(ContractValidationError, match="must not exceed"):
         RefinementVerificationPolicy(
             allow_leanstral_repairs=True,
@@ -376,9 +363,7 @@ def test_repair_that_changes_root_or_assumptions_fails_closed_and_is_audited(
     plan = _plan()
     changed_goal = replace(plan.goals[0], metadata={"mutation": True})
     changed_plan = replace(plan, goals=(changed_goal,))
-    policy = RefinementVerificationPolicy(
-        allow_leanstral_repairs=True, max_repair_rounds=1
-    )
+    policy = RefinementVerificationPolicy(allow_leanstral_repairs=True, max_repair_rounds=1)
     store = JsonlRefinementAuditStore(tmp_path / "rejected-repair.jsonl")
 
     def repairer(request):
@@ -389,9 +374,7 @@ def test_repair_that_changes_root_or_assumptions_fails_closed_and_is_audited(
         )
         return RefinementRepairCandidate(changed_plan, changed_context)
 
-    result = GoalRefinementVerifier(
-        policy=policy, audit_store=store
-    ).verify(
+    result = GoalRefinementVerifier(policy=policy, audit_store=store).verify(
         plan,
         lambda request, cancellation: ProverOutput(AttemptOutcome.UNKNOWN),
         assumption_ids=("assumption:reviewed",),
@@ -404,9 +387,6 @@ def test_repair_that_changes_root_or_assumptions_fails_closed_and_is_audited(
     assert not result.repair_receipts[0].accepted
     assert not result.repair_receipts[0].root_unchanged
     assert not result.repair_receipts[0].assumptions_unchanged
-    journal = [
-        json.loads(line)
-        for line in store.path.read_text(encoding="utf-8").splitlines()
-    ]
+    journal = [json.loads(line) for line in store.path.read_text(encoding="utf-8").splitlines()]
     assert journal[-1]["schema"] == RepairImmutabilityReceipt.SCHEMA
     assert journal[-1]["accepted"] is False

@@ -24,7 +24,7 @@ class TestMCPServerUNI175StorageTools(unittest.TestCase):
         native_storage_tools.register_native_storage_tools(manager)
         schemas = {call["name"]: call["input_schema"] for call in manager.calls}
 
-        manage_props = (schemas["manage_collections"].get("properties") or {})
+        manage_props = schemas["manage_collections"].get("properties") or {}
         self.assertIn("backend_types", manage_props)
         self.assertIn("unavailable_backends", manage_props)
 
@@ -59,7 +59,9 @@ class TestMCPServerUNI175StorageTools(unittest.TestCase):
                 backend_types=["memory", "tape"],
             )
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("backend_types contains unknown storage backends", str(result.get("error", "")))
+            self.assertIn(
+                "backend_types contains unknown storage backends", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

@@ -78,7 +78,9 @@ class TestUnifiedFastAPIServiceFacade(unittest.TestCase):
     @patch("ipfs_accelerate_py.mcp_server.fastapi_service.create_server")
     def test_create_fastapi_app_creates_canonical_standalone_app(self, mock_create_server) -> None:
         mock_create_server.return_value = type("DummyServer", (), {"app": object()})()
-        cfg = UnifiedFastAPIConfig(name="svc", description="svc-desc", mount_path="/mcp", verbose=True)
+        cfg = UnifiedFastAPIConfig(
+            name="svc", description="svc-desc", mount_path="/mcp", verbose=True
+        )
 
         app = create_fastapi_app(cfg)
 
@@ -141,7 +143,9 @@ class TestUnifiedFastAPIServiceFacade(unittest.TestCase):
         fake_uvicorn = types.SimpleNamespace(run=mock_run)
 
         with patch.dict("sys.modules", {"uvicorn": fake_uvicorn}):
-            fastapi_service_module.run_standalone_app(app=object(), host="127.0.0.1", port=8899, verbose=True)
+            fastapi_service_module.run_standalone_app(
+                app=object(), host="127.0.0.1", port=8899, verbose=True
+            )
 
         mock_run.assert_called_once()
         kwargs = mock_run.call_args.kwargs

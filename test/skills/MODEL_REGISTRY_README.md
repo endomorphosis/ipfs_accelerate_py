@@ -64,7 +64,7 @@ The model lookup system has several components:
 3. **test_generator_fixed.py**: Integration with test generator through:
    ```python
    def get_model_from_registry(model_type):
-       '''Get the best default model for a model type, using dynamic lookup if available.'''
+       """Get the best default model for a model type, using dynamic lookup if available."""
        if HAS_MODEL_LOOKUP:
            try:
                default_model = get_recommended_default_model(model_type)
@@ -72,11 +72,11 @@ The model lookup system has several components:
            except Exception as e:
                # Fall back to registry lookup
                pass
-       
+
        # Use static registry as fallback
        if model_type in MODEL_REGISTRY:
            return MODEL_REGISTRY[model_type].get("default_model")
-       
+
        # For unknown models, use a heuristic approach
        return f"{model_type}-base" if "-base" not in model_type else model_type
    ```

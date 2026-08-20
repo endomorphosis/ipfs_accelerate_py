@@ -258,9 +258,7 @@ def test_exact_candidate_and_repository_snapshot_are_admitted_read_only(
             ProposalFindingCode.INVALID_SCHEMA,
         ),
         (
-            lambda payload: payload.__setitem__(
-                "completion_authoritative", True
-            ),
+            lambda payload: payload.__setitem__("completion_authoritative", True),
             ProposalFindingCode.INVALID_SCHEMA,
         ),
         (
@@ -355,9 +353,7 @@ def test_noncanonical_path_scope_confusion_and_output_bounds_fail_before_io(
     )
 
     assert not result.accepted
-    assert ProposalFindingCode.UNSAFE_PATH in {
-        finding.code for finding in result.findings
-    }
+    assert ProposalFindingCode.UNSAFE_PATH in {finding.code for finding in result.findings}
     assert result.expensive_checks_started == 0
     assert opened == 0
 
@@ -502,9 +498,7 @@ def test_inode_change_during_snapshot_is_a_typed_path_race(
     result = _admit(_proposal().to_dict(), tmp_path)
 
     assert not result.accepted
-    assert ProposalFindingCode.REPOSITORY_PATH_RACE in {
-        finding.code for finding in result.findings
-    }
+    assert ProposalFindingCode.REPOSITORY_PATH_RACE in {finding.code for finding in result.findings}
     assert result.expensive_checks_started == 0
 
 

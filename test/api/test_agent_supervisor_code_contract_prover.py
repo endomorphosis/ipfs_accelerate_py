@@ -273,18 +273,10 @@ def expected_contract(**kwargs: Any) -> ExpectedProgramContract:
                 policies=("path-scope-v1",),
             ),
         ),
-        idempotence=kwargs.pop(
-            "idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)
-        ),
-        ordering=kwargs.pop(
-            "ordering", OrderingSpec(mode=OrderingMode.UNORDERED)
-        ),
-        atomicity=kwargs.pop(
-            "atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)
-        ),
-        consistency=kwargs.pop(
-            "consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)
-        ),
+        idempotence=kwargs.pop("idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)),
+        ordering=kwargs.pop("ordering", OrderingSpec(mode=OrderingMode.UNORDERED)),
+        atomicity=kwargs.pop("atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)),
+        consistency=kwargs.pop("consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)),
         fallback=kwargs.pop(
             "fallback",
             FallbackSpec(
@@ -334,9 +326,7 @@ def fixture_prover(
 
     return CodeContractProver(
         solver_runner=make_solver_fixture(outcomes=outcomes),
-        executable_resolvers={
-            backend: resolver_for(backend) for backend in ADMITTED_BACKEND_IDS
-        },
+        executable_resolvers={backend: resolver_for(backend) for backend in ADMITTED_BACKEND_IDS},
         cache=cache if cache is not None else ProveResultCache(),
         smoke_check=True,
     )
@@ -411,9 +401,7 @@ def test_compile_deterministic_bounded_requests_through_ir_backends() -> None:
     assert "z3" in first.compiled_by_backend
     # Deterministic recompilation.
     compiled2 = compile_obligation_requests(translation)
-    assert [item.compiled_id for item in compiled2] == [
-        item.compiled_id for item in compiled
-    ]
+    assert [item.compiled_id for item in compiled2] == [item.compiled_id for item in compiled]
     assert [item.smt_source_digest for item in compiled2] == [
         item.smt_source_digest for item in compiled
     ]
@@ -479,9 +467,7 @@ def test_portfolio_runs_both_cvc5_and_z3() -> None:
             "z3": lambda: (True, "/fixture/z3", ""),
         },
     )
-    result = prover.prove_translation(
-        translation, cancel_on_first_conclusive=False
-    )
+    result = prover.prove_translation(translation, cancel_on_first_conclusive=False)
     assert set(seen) == {"cvc5", "z3"}
     assert {a.backend_id for a in result.attempts} == {"cvc5", "z3"}
     assert result.status is ProveStatus.PROVED
@@ -748,9 +734,7 @@ def test_omitted_effects_rejection_code_available() -> None:
     # The prove pipeline retains effect relation ids when present.
     translation = translated()
     effect_predicates = [
-        p
-        for p in translation.predicates
-        if p.relation is PredicateRelation.HAS_EFFECT
+        p for p in translation.predicates if p.relation is PredicateRelation.HAS_EFFECT
     ]
     assert effect_predicates
     compiled = compile_obligation_requests(translation)
@@ -758,8 +742,7 @@ def test_omitted_effects_rejection_code_available() -> None:
     effect_compiled = [
         item
         for item in compiled
-        if SupportedPredicateKind.EFFECT.value in item.predicate_kinds
-        or item.effect_relation_ids
+        if SupportedPredicateKind.EFFECT.value in item.predicate_kinds or item.effect_relation_ids
     ]
     assert effect_compiled or any(
         SupportedPredicateKind.EFFECT.value
@@ -838,8 +821,7 @@ def test_cancellation_before_portfolio_completes() -> None:
     assert result.status is ProveStatus.CANCELLED
     assert result.reason is NonConclusiveReason.CANCELLED
     assert all(
-        a.effective_outcome is AttemptOutcome.CANCELLED
-        or a.cancellation_requested
+        a.effective_outcome is AttemptOutcome.CANCELLED or a.cancellation_requested
         for a in result.attempts
     )
 
@@ -863,9 +845,7 @@ def test_cancel_on_first_conclusive_stops_remaining() -> None:
             "z3": lambda: (True, "/f/z3", ""),
         },
     )
-    result = prover.prove_translation(
-        translation, cancel_on_first_conclusive=True
-    )
+    result = prover.prove_translation(translation, cancel_on_first_conclusive=True)
     assert result.status is ProveStatus.PROVED
     # First conclusive backend cancels the rest; every planned lane is retained.
     assert len(result.attempts) == len(ADMITTED_BACKEND_IDS)
@@ -1095,9 +1075,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert LOGIC_OBJECTIVE_GOAL_ID == "VFS-G070"
     assert OBJECTIVE_PARENT_GOAL_ID == LOGIC_PARENT_GOAL_ID == "VFS-G070"
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-053"
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     assert logic_repair_terms() == ("objective validation repair",)
 
     # Domain envelope evidence remains stage-local (no repair term).
@@ -1372,6 +1350,4 @@ def test_authoritative_proof_validation_rejects_candidate_self_promotion() -> No
         NonConclusiveReason.PORTFOLIO_INCONCLUSIVE,
     )
     # Stage map still separates candidate search from kernel validation.
-    assert proof_stage_owners()["candidate_search"] != proof_stage_owners()[
-        "kernel_validation"
-    ]
+    assert proof_stage_owners()["candidate_search"] != proof_stage_owners()["kernel_validation"]

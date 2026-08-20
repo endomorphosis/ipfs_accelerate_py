@@ -142,9 +142,7 @@ def test_register_accepts_reviewed_duplicate_shape_with_new_id() -> None:
 
 def test_catalog_interface_constant() -> None:
     assert CODE_PROPERTY_CATALOG_INTERFACE == "CodePropertyCatalog@1"
-    assert DEFAULT_CODE_PROPERTY_CATALOG.to_dict()["interface"] == (
-        CODE_PROPERTY_CATALOG_INTERFACE
-    )
+    assert DEFAULT_CODE_PROPERTY_CATALOG.to_dict()["interface"] == (CODE_PROPERTY_CATALOG_INTERFACE)
 
 
 def test_seed_builder_is_deterministic() -> None:

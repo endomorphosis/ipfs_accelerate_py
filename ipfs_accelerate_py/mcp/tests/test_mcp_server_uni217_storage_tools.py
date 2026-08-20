@@ -45,7 +45,9 @@ class TestMCPServerUNI217StorageTools(unittest.TestCase):
     def test_collection_delete_alias_deletes_collection(self) -> None:
         async def _run() -> None:
             await manage_collections(action="create", collection_name="uni217-temp")
-            result = await delete_storage_collection(collection_name="uni217-temp", delete_items=True)
+            result = await delete_storage_collection(
+                collection_name="uni217-temp", delete_items=True
+            )
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("collection_name"), "uni217-temp")
             self.assertTrue(result.get("deleted"))

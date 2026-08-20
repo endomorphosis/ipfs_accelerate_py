@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 class ModelStatus(Enum):
     """Status of a loaded model."""
+
     LOADING = "loading"
     LOADED = "loaded"
     FAILED = "failed"
@@ -19,7 +20,7 @@ class ModelStatus(Enum):
 @dataclass
 class LoadedModel:
     """Container for a loaded model instance."""
-    
+
     model_id: str
     skill_instance: Any
     hardware: str
@@ -30,12 +31,12 @@ class LoadedModel:
     memory_mb: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
-    
+
     def mark_used(self):
         """Mark this model as recently used."""
         self.last_used_at = datetime.now(UTC)
         self.use_count += 1
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {

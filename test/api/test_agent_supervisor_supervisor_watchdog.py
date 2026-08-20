@@ -238,9 +238,7 @@ def test_dead_intentional_state_requests_control_recovery_without_raw_restart(
     monkeypatch.setattr(
         watchdog_module,
         "restart_lane",
-        lambda *_args, **_kwargs: pytest.fail(
-            "interrupted canonical state was raw restarted"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("interrupted canonical state was raw restarted"),
     )
 
     report = supervisor._check_cycle()
@@ -332,9 +330,7 @@ def test_live_stale_intentional_state_still_requires_fenced_stop(
     monkeypatch.setattr(
         watchdog_module,
         "restart_lane",
-        lambda *_args, **_kwargs: pytest.fail(
-            "stale live process was replaced without fencing"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("stale live process was replaced without fencing"),
     )
 
     report = supervisor._check_cycle()
@@ -362,9 +358,7 @@ def test_live_process_in_terminal_state_requires_fenced_stop(
     monkeypatch.setattr(
         watchdog_module,
         "restart_lane",
-        lambda *_args, **_kwargs: pytest.fail(
-            "terminal live process was replaced without fencing"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("terminal live process was replaced without fencing"),
     )
 
     report = supervisor._check_cycle()
@@ -414,7 +408,4 @@ def test_dead_starting_process_recovers_interrupted_transition_once(
     assert lane["status"]["state"] == "starting"
     assert report["status"]["schema"] == LIFECYCLE_STATUS_SCHEMA
     assert report["status"]["state"] == "starting"
-    assert (
-        LifecycleStatus.from_dict(report["status"]).to_dict()
-        == report["status"]
-    )
+    assert LifecycleStatus.from_dict(report["status"]).to_dict() == report["status"]

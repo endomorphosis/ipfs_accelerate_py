@@ -217,7 +217,9 @@ the processor.
 from transformers import LayoutLMv2Processor
 from PIL import Image
 
-processor = LayoutLMv2Processor.from_pretrained("microsoft/layoutlmv2-base-uncased", revision="no_ocr")
+processor = LayoutLMv2Processor.from_pretrained(
+    "microsoft/layoutlmv2-base-uncased", revision="no_ocr"
+)
 
 image = Image.open(
     "name_of_your_document - can be a png, jpg, etc. of your documents (PDFs must be converted to images)."
@@ -241,7 +243,9 @@ initialize the tokenizer with `only_label_first_subword` set to `False`.
 from transformers import LayoutLMv2Processor
 from PIL import Image
 
-processor = LayoutLMv2Processor.from_pretrained("microsoft/layoutlmv2-base-uncased", revision="no_ocr")
+processor = LayoutLMv2Processor.from_pretrained(
+    "microsoft/layoutlmv2-base-uncased", revision="no_ocr"
+)
 
 image = Image.open(
     "name_of_your_document - can be a png, jpg, etc. of your documents (PDFs must be converted to images)."
@@ -283,7 +287,9 @@ perform OCR yourself, you can provide your own words and (normalized) bounding b
 from transformers import LayoutLMv2Processor
 from PIL import Image
 
-processor = LayoutLMv2Processor.from_pretrained("microsoft/layoutlmv2-base-uncased", revision="no_ocr")
+processor = LayoutLMv2Processor.from_pretrained(
+    "microsoft/layoutlmv2-base-uncased", revision="no_ocr"
+)
 
 image = Image.open(
     "name_of_your_document - can be a png, jpg, etc. of your documents (PDFs must be converted to images)."

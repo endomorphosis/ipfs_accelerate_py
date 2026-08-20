@@ -218,22 +218,19 @@ def test_semantic_change_invalidates_exact_transitive_closure_and_is_idempotent(
         "plan:independent",
     }
     assert changed.artifact_states["merge:affected"] is ArtifactActivityState.STALE
+    assert changed.artifact_states["plan:independent"] is ArtifactActivityState.ACTIVE
     assert (
-        changed.artifact_states["plan:independent"]
-        is ArtifactActivityState.ACTIVE
+        changed.invalidate(
+            ["intent_action:intent_action:fixture"],
+            max_reason_chain=5,
+        )
+        == changed
     )
-    assert changed.invalidate(
-        ["intent_action:intent_action:fixture"],
-        max_reason_chain=5,
-    ) == changed
-    assert (
-        changed.dependents(
-            "decision_context",
-            "decision_context:independent",
-            active_only=True,
-        ).artifact_ids
-        == ("context:independent", "plan:independent")
-    )
+    assert changed.dependents(
+        "decision_context",
+        "decision_context:independent",
+        active_only=True,
+    ).artifact_ids == ("context:independent", "plan:independent")
 
 
 def test_exact_warm_reuse_and_restart_require_current_canonical_artifacts() -> None:
@@ -261,9 +258,9 @@ def test_exact_warm_reuse_and_restart_require_current_canonical_artifacts() -> N
         ProofScopeIndex.from_json(payload, canonical_artifacts=current)
 
     forged = json.loads(payload)
-    forged["artifact_states"]["merge:affected"] = "active" if (
-        forged["artifact_states"]["merge:affected"] == "stale"
-    ) else "stale"
+    forged["artifact_states"]["merge:affected"] = (
+        "active" if (forged["artifact_states"]["merge:affected"] == "stale") else "stale"
+    )
     forged.pop("index_id")
     with pytest.raises(ProofScopeIndexError, match="forged"):
         ProofScopeIndex.from_dict(forged, canonical_artifacts=warm.artifacts)
@@ -400,8 +397,7 @@ def test_semantic_graph_projection_reverses_proof_evidence_dependencies() -> Non
     dependents = index.dependents("legal_norm", "legal:obligation")
     assert dependents.obligation_ids == ("legal:obligation",)
     assert dependents.proof_ids == ("proof:legal",)
-    assert set(
-        index.invalidate(
-            ["legal_norm:legal:obligation"]
-        ).stale_artifact_ids
-    ) == {"legal:obligation", "proof:legal"}
+    assert set(index.invalidate(["legal_norm:legal:obligation"]).stale_artifact_ids) == {
+        "legal:obligation",
+        "proof:legal",
+    }

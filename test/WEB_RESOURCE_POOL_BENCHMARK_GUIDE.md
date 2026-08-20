@@ -364,7 +364,8 @@ CREATE TABLE browser_performance_comparison (
 ```python
 # Connect to database
 import duckdb
-conn = duckdb.connect('benchmark_db.duckdb')
+
+conn = duckdb.connect("benchmark_db.duckdb")
 
 # Query browser comparison results
 browser_comparison = conn.execute("""

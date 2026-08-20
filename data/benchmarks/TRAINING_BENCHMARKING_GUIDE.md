@@ -323,11 +323,7 @@ For benchmarking distributed training:
 
 ```python
 # Configure distributed benchmark
-distributed_config = {
-    "world_size": 2,
-    "backend": "nccl",
-    "rank": 0
-}
+distributed_config = {"world_size": 2, "backend": "nccl", "rank": 0}
 
 # Run benchmark
 result = runner.run_training_benchmark(
@@ -335,7 +331,7 @@ result = runner.run_training_benchmark(
     model_name="gpt2",
     hardware_type="cuda",
     batch_size=16,
-    distributed_config=distributed_config
+    distributed_config=distributed_config,
 )
 ```
 
@@ -354,14 +350,13 @@ def load_custom_model(model_path, device):
     # Custom model loading logic
     return model, tokenizer, optimizer_fn, loss_fn
 
+
 # Register custom model
 runner.register_custom_model("my_custom_model", load_custom_model)
 
 # Run benchmark with custom model
 runner.run_training_benchmark(
-    model_family="custom",
-    model_name="my_custom_model",
-    hardware_type="cuda"
+    model_family="custom", model_name="my_custom_model", hardware_type="cuda"
 )
 ```
 

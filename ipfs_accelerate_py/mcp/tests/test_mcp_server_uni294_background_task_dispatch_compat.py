@@ -30,7 +30,9 @@ class TestMCPServerUNI294BackgroundTaskDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -45,22 +47,25 @@ class TestMCPServerUNI294BackgroundTaskDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_background_task_tools._API,
-                {
-                    "check_task_status": _contradictory_failure,
-                    "manage_background_tasks": _contradictory_failure,
-                    "manage_task_queue": _contradictory_failure,
-                    "get_task_status": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_background_task_tools._API,
+                    {
+                        "check_task_status": _contradictory_failure,
+                        "manage_background_tasks": _contradictory_failure,
+                        "manage_task_queue": _contradictory_failure,
+                        "get_task_status": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="background-task-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -69,7 +74,12 @@ class TestMCPServerUNI294BackgroundTaskDispatchCompat(unittest.TestCase):
                     await dispatch(
                         "background_task_tools",
                         "check_task_status",
-                        {"task_id": "task-1", "task_type": "all", "status_filter": "all", "limit": 10},
+                        {
+                            "task_id": "task-1",
+                            "task_type": "all",
+                            "status_filter": "all",
+                            "limit": 10,
+                        },
                     )
                 )
                 self.assertEqual(checked.get("status"), "error")

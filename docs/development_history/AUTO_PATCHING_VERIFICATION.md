@@ -31,6 +31,7 @@ import ipfs_accelerate_py
 
 # Then in ANY worker file (NO CHANGES NEEDED)
 from transformers import AutoModel
+
 model = AutoModel.from_pretrained("bert-base")
 # ↑ This now uses distributed cache because from_pretrained is patched!
 ```
@@ -84,9 +85,11 @@ def create_patched_from_pretrained(original_from_pretrained, class_name):
 def apply():
     # Lines 188-222: List of 36 classes to patch
     classes_to_patch = [
-        'AutoModel', 'AutoModelForCausalLM', ...  # 36 total
+        "AutoModel",
+        "AutoModelForCausalLM",
+        ...,  # 36 total
     ]
-    
+
     # Lines 225-232: Apply patches
     for class_name in classes_to_patch:
         if hasattr(transformers, class_name):
@@ -104,6 +107,7 @@ File: `ipfs_accelerate_py/__init__.py`
 # Add auto-patching for transformers (applies automatically on import if enabled)
 try:
     from . import auto_patch_transformers
+
     export["auto_patch_transformers"] = auto_patch_transformers
 except ImportError:
     auto_patch_transformers = None
@@ -117,6 +121,7 @@ File: `worker/skillset/hf_bert.py` (Lines 254, 262, 273)
 ```python
 # NOT manually modified - still uses standard transformers
 from transformers import AutoModel, AutoTokenizer
+
 model = AutoModel.from_pretrained("bert-base", cache_dir=cache_dir)
 ```
 
@@ -124,6 +129,7 @@ model = AutoModel.from_pretrained("bert-base", cache_dir=cache_dir)
 ```python
 # SAME CODE - NO CHANGES NEEDED!
 from transformers import AutoModel, AutoTokenizer
+
 model = AutoModel.from_pretrained("bert-base", cache_dir=cache_dir)
 # ↑ from_pretrained is now patched to use distributed storage
 #   when cache_dir is not explicitly set, OR
@@ -182,14 +188,14 @@ File: `auto_patch_transformers.py` Lines 44-70
 ```python
 def should_patch():
     # Check explicit disable flags
-    if os.environ.get('TRANSFORMERS_PATCH_DISABLE') == '1':
+    if os.environ.get("TRANSFORMERS_PATCH_DISABLE") == "1":
         return False
-    if os.environ.get('IPFS_KIT_DISABLE') == '1':
+    if os.environ.get("IPFS_KIT_DISABLE") == "1":
         return False
-    if os.environ.get('STORAGE_FORCE_LOCAL') == '1':
+    if os.environ.get("STORAGE_FORCE_LOCAL") == "1":
         return False
     # Auto-detect CI/CD environment
-    if os.environ.get('CI'):
+    if os.environ.get("CI"):
         return False
     return True
 ```

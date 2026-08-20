@@ -20,15 +20,23 @@ FIXTURES = json.loads((Path(__file__).parent / "fixtures" / "protected_compute.j
 
 def payment(required):
     return PaymentContext(
-        {"x402Version": 2, "accepted": required.payment_required["accepts"][0],
-         "payload": {"signature": "private-wallet-material"}},
-        required.receipt_cid, required.quote["requestCid"],
+        {
+            "x402Version": 2,
+            "accepted": required.payment_required["accepts"][0],
+            "payload": {"signature": "private-wallet-material"},
+        },
+        required.receipt_cid,
+        required.quote["requestCid"],
     )
 
 
 def params(fixture):
-    return {"tier": fixture["tier"], "model": "text-small", "hardware": fixture["hardware"],
-            "units": fixture["units"]}
+    return {
+        "tier": fixture["tier"],
+        "model": "text-small",
+        "hardware": fixture["hardware"],
+        "units": fixture["units"],
+    }
 
 
 def test_signed_catalog_has_fixed_compute_tiers(service):
@@ -38,7 +46,9 @@ def test_signed_catalog_has_fixed_compute_tiers(service):
     assert catalog["signedCatalogCid"].startswith("baguq")
     entries = catalog["capabilities"]
     assert {item["metadata"]["operation"] for item in entries} == {
-        "inference/run", "jobs/submit", "reservations/create"
+        "inference/run",
+        "jobs/submit",
+        "reservations/create",
     }
     assert all(item["requirements"][0]["amount"].isdigit() for item in entries)
 
@@ -54,12 +64,17 @@ async def test_protected_work_starts_only_after_payment(service, request_context
         assert "signature" not in handoff and "payment" not in handoff
         return {"output": "redacted"}
 
-    context = RequestContext(cid_for({"request": fixture["name"]}), fixture["name"],
-                             attributes=request_context.attributes)
+    context = RequestContext(
+        cid_for({"request": fixture["name"]}),
+        fixture["name"],
+        attributes=request_context.attributes,
+    )
     required = await service.dispatch(fixture["name"], context, params(fixture), effect)
     assert required.decision.decision == Decision.PAYMENT_REQUIRED
     assert starts == [] and calls["verify"] == calls["settle"] == 0
-    accepted = await service.dispatch(fixture["name"], context, params(fixture), effect, payment=payment(required))
+    accepted = await service.dispatch(
+        fixture["name"], context, params(fixture), effect, payment=payment(required)
+    )
     assert accepted.decision.decision == Decision.PAID
     assert len(starts) == calls["verify"] == calls["settle"] == 1
     assert accepted.value["entitlementCid"] == starts[0]["entitlementCid"]
@@ -77,26 +92,41 @@ async def test_retry_does_not_duplicate_job(service, request_context, calls):
         return {"accepted": True}
 
     required = await service.dispatch(fixture["name"], request_context, params(fixture), effect)
-    paid = await service.dispatch(fixture["name"], request_context, params(fixture), effect, payment=payment(required))
-    replay = await service.dispatch(fixture["name"], request_context, params(fixture),
-                                    lambda _handoff: pytest.fail("duplicate job"))
+    paid = await service.dispatch(
+        fixture["name"], request_context, params(fixture), effect, payment=payment(required)
+    )
+    replay = await service.dispatch(
+        fixture["name"],
+        request_context,
+        params(fixture),
+        lambda _handoff: pytest.fail("duplicate job"),
+    )
     assert paid.value["jobId"].startswith("job-")
     assert replay.replayed and replay.receipt_cid == paid.receipt_cid
     assert starts == calls["settle"] == 1
 
 
 @pytest.mark.asyncio
-async def test_policy_and_fixed_tier_checks_precede_payment_and_capacity(service, request_context, calls):
+async def test_policy_and_fixed_tier_checks_precede_payment_and_capacity(
+    service, request_context, calls
+):
     fixture = FIXTURES["operations"][2]
-    denied = RequestContext(cid_for({"denied": 1}), "denied", authorized=False,
-                            attributes=request_context.attributes)
-    result = await service.dispatch(fixture["name"], denied, params(fixture), lambda: pytest.fail("reserved"))
+    denied = RequestContext(
+        cid_for({"denied": 1}), "denied", authorized=False, attributes=request_context.attributes
+    )
+    result = await service.dispatch(
+        fixture["name"], denied, params(fixture), lambda: pytest.fail("reserved")
+    )
     assert result.decision.decision == Decision.DENIED
     with pytest.raises(AcceleratorPaymentError) as variable:
-        await service.dispatch(fixture["name"], request_context, {**params(fixture), "units": 59}, lambda: None)
+        await service.dispatch(
+            fixture["name"], request_context, {**params(fixture), "units": 59}, lambda: None
+        )
     assert variable.value.code == "H_PAYMENT_POLICY_DENIED"
     with pytest.raises(AcceleratorPaymentError) as hardware:
-        await service.dispatch(fixture["name"], request_context, {**params(fixture), "hardware": "cpu"}, lambda: None)
+        await service.dispatch(
+            fixture["name"], request_context, {**params(fixture), "hardware": "cpu"}, lambda: None
+        )
     assert hardware.value.code == "H_PAYMENT_POLICY_DENIED"
     assert calls["verify"] == calls["settle"] == 0
 
@@ -104,10 +134,15 @@ async def test_policy_and_fixed_tier_checks_precede_payment_and_capacity(service
 @pytest.mark.asyncio
 async def test_partial_failure_cancellation_and_usage_are_explicit(service, request_context):
     fixture = FIXTURES["operations"][1]
-    required = await service.dispatch(fixture["name"], request_context, params(fixture), lambda: None)
+    required = await service.dispatch(
+        fixture["name"], request_context, params(fixture), lambda: None
+    )
     paid = await service.dispatch(
-        fixture["name"], request_context, params(fixture),
-        lambda _handoff: {"outcome": "partial", "completed": 20}, payment=payment(required),
+        fixture["name"],
+        request_context,
+        params(fixture),
+        lambda _handoff: {"outcome": "partial", "completed": 20},
+        payment=payment(required),
     )
     assert paid.value["outcome"] == "partial"
     record = service.executions.get(paid.value["jobId"])
@@ -118,13 +153,17 @@ async def test_partial_failure_cancellation_and_usage_are_explicit(service, requ
 @pytest.mark.asyncio
 async def test_failure_is_recorded_and_reconcilable(service, request_context):
     fixture = FIXTURES["operations"][0]
-    required = await service.dispatch(fixture["name"], request_context, params(fixture), lambda: None)
+    required = await service.dispatch(
+        fixture["name"], request_context, params(fixture), lambda: None
+    )
 
     def fail(_handoff):
         raise RuntimeError("worker failed with private result")
 
     with pytest.raises(RuntimeError):
-        await service.dispatch(fixture["name"], request_context, params(fixture), fail, payment=payment(required))
+        await service.dispatch(
+            fixture["name"], request_context, params(fixture), fail, payment=payment(required)
+        )
     record = service.executions.get_by_key(request_context.idempotency_key)
     assert record["status"] == "failed" and record["resultCid"]
     evidence = await service.reconcile()
@@ -133,17 +172,28 @@ async def test_failure_is_recorded_and_reconcilable(service, request_context):
 
 
 @pytest.mark.asyncio
-async def test_restart_recovers_receipt_and_catalog(tmp_path, config, facilitator, request_context, calls):
+async def test_restart_recovers_receipt_and_catalog(
+    tmp_path, config, facilitator, request_context, calls
+):
     state = tmp_path / "persistent"
     fixture = FIXTURES["operations"][2]
     first = PaidAcceleratorService(config, state, facilitator)
     required = await first.dispatch(fixture["name"], request_context, params(fixture), lambda: None)
-    paid = await first.dispatch(fixture["name"], request_context, params(fixture),
-                                lambda _handoff: {"reserved": True}, payment=payment(required))
+    paid = await first.dispatch(
+        fixture["name"],
+        request_context,
+        params(fixture),
+        lambda _handoff: {"reserved": True},
+        payment=payment(required),
+    )
     restarted = PaidAcceleratorService(config, state, facilitator)
     assert restarted.catalog() == first.catalog()
-    replay = await restarted.dispatch(fixture["name"], request_context, params(fixture),
-                                      lambda: pytest.fail("duplicate reservation"))
+    replay = await restarted.dispatch(
+        fixture["name"],
+        request_context,
+        params(fixture),
+        lambda: pytest.fail("duplicate reservation"),
+    )
     assert replay.replayed and replay.receipt_cid == paid.receipt_cid and calls["settle"] == 1
     diagnostics = await restarted.diagnostics()
     assert diagnostics["catalogSignatureValid"] is True
@@ -156,21 +206,40 @@ async def test_http_and_libp2p_payment_parity(service, request_context):
         "POST", "/mcp/accelerate/inference", request_context, params(fixture), lambda: {"ok": True}
     )
     assert status == 402 and "PAYMENT-REQUIRED" in headers
-    required = await service.dispatch(fixture["name"], request_context, params(fixture), lambda: None)
+    required = await service.dispatch(
+        fixture["name"], request_context, params(fixture), lambda: None
+    )
     pay = payment(required)
-    encoded = base64.b64encode(json.dumps({"payload": pay.payload, "quoteCid": pay.quote_cid,
-                                           "requestCid": pay.request_cid}).encode()).decode()
+    encoded = base64.b64encode(
+        json.dumps(
+            {"payload": pay.payload, "quoteCid": pay.quote_cid, "requestCid": pay.request_cid}
+        ).encode()
+    ).decode()
     status, headers, body = await service.handle_http(
-        "POST", "/mcp/accelerate/inference", request_context, params(fixture),
-        lambda _handoff: {"ok": True}, payment_header=encoded,
+        "POST",
+        "/mcp/accelerate/inference",
+        request_context,
+        params(fixture),
+        lambda _handoff: {"ok": True},
+        payment_header=encoded,
     )
     assert status == 200 and "PAYMENT-RESPONSE" in headers and body["outcome"] == "succeeded"
-    wire = await service.handle_libp2p({"operation": fixture["name"], "params": params(fixture)},
-                                      request_context, lambda: pytest.fail("duplicate inference"))
+    wire = await service.handle_libp2p(
+        {"operation": fixture["name"], "params": params(fixture)},
+        request_context,
+        lambda: pytest.fail("duplicate inference"),
+    )
     assert wire["receipt_cid"]
-    control = await service.handle_profile_h_libp2p({
-        "jsonrpc": "2.0", "id": 1, "method": "mcp++/payments/profile", "params": {},
-    })
+    control = await service.handle_profile_h_libp2p(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "mcp++/payments/profile",
+            "params": {},
+        }
+    )
     assert control["result"]["ready"] is True
-    http_status, _, http_profile = await service.profile_h_http_app.handle("GET", "/mcp/payments/profile")
+    http_status, _, http_profile = await service.profile_h_http_app.handle(
+        "GET", "/mcp/payments/profile"
+    )
     assert http_status == 200 and http_profile == control["result"]

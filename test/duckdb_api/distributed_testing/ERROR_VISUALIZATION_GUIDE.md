@@ -225,12 +225,13 @@ Example using Python:
 import aiohttp
 import json
 
+
 async def report_error(dashboard_url, error_data):
     async with aiohttp.ClientSession() as session:
         async with session.post(
             f"{dashboard_url}/api/report-error",
             json=error_data,
-            headers={'Content-Type': 'application/json'}
+            headers={"Content-Type": "application/json"},
         ) as response:
             result = await response.json()
             return result
@@ -1141,76 +1142,78 @@ The sound generation script uses scientific computing libraries to synthesize na
 import numpy as np
 from scipy.io import wavfile
 
+
 def generate_system_critical_sound(filename, duration=1.0):
     """Generate the highest priority alert sound for system-level critical errors."""
     # Use a more complex sound pattern with increasing urgency
     sample_rate = 44100
     t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    
+
     # Use multiple frequencies with a rising pattern
     frequency1 = 880  # A5
     frequency2 = 1046.5  # C6
     frequency3 = 1318.5  # E6
-    
+
     # Create rising tones with amplitude modulation
     segment_duration = duration / 3
     segment1 = t < segment_duration
     segment2 = (t >= segment_duration) & (t < 2 * segment_duration)
     segment3 = t >= 2 * segment_duration
-    
+
     # Create three tones that build in intensity
     tone1 = np.sin(2 * np.pi * frequency1 * t) * segment1
     tone2 = np.sin(2 * np.pi * frequency2 * t) * segment2
     tone3 = np.sin(2 * np.pi * frequency3 * t) * segment3
-    
+
     # Combine tones with crossfade
     signal = tone1 + tone2 + tone3
-    
+
     # Add an urgent pulsing effect that speeds up
-    pulse_rate = 4 + 12 * t/duration  # Pulse rate increases from 4Hz to 16Hz
+    pulse_rate = 4 + 12 * t / duration  # Pulse rate increases from 4Hz to 16Hz
     pulse = 0.7 + 0.3 * np.sin(2 * np.pi * pulse_rate * t)
     signal = signal * pulse
-    
+
     # Add a subtle harmonic for richness
-    harmonic = 0.2 * np.sin(2 * np.pi * 2 * frequency1 * t) * np.exp(-1 * t/duration)
+    harmonic = 0.2 * np.sin(2 * np.pi * 2 * frequency1 * t) * np.exp(-1 * t / duration)
     signal = signal + harmonic
-    
+
     # Normalize
     signal = 0.9 * signal / np.max(np.abs(signal))
-    
+
     # Convert to 16-bit PCM
     signal = (signal * 32767).astype(np.int16)
-    
+
     # Save to file
     wavfile.write(filename, sample_rate, signal)
+
 
 def generate_critical_sound(filename, duration=0.7):
     """Generate a high priority alert sound for critical errors."""
     # Use a higher frequency with amplitude modulation for urgency
     sample_rate = 44100
     t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    
+
     # Start with a higher frequency and then drop
     frequency1 = 880  # A5
     frequency2 = 440  # A4
-    
+
     # Create two tones with amplitude modulation
     tone1 = np.sin(2 * np.pi * frequency1 * t) * np.exp(-3 * t)
     tone2 = np.sin(2 * np.pi * frequency2 * t) * (1 - np.exp(-5 * t))
-    
+
     # Combine tones
     signal = 0.5 * tone1 + 0.5 * tone2
-    
+
     # Add a pulsing effect
     pulse = 0.5 + 0.5 * np.sin(2 * np.pi * 8 * t)
     signal = signal * pulse
-    
+
     # Normalize
     signal = 0.9 * signal / np.max(np.abs(signal))
-    
+
     # Convert to 16-bit PCM
     signal = (signal * 32767).astype(np.int16)
-    
+
     # Save to file
     wavfile.write(filename, sample_rate, signal)
 ```
@@ -1261,9 +1264,10 @@ import aiohttp
 import json
 import anyio
 
+
 async def report_custom_error(dashboard_url, error_data):
     """Report a custom error to the Error Visualization system.
-    
+
     Args:
         dashboard_url: URL of the dashboard API
         error_data: Custom error data dictionary
@@ -1272,40 +1276,35 @@ async def report_custom_error(dashboard_url, error_data):
         await session.post(
             f"{dashboard_url}/api/report-error",
             json=error_data,
-            headers={'Content-Type': 'application/json'}
+            headers={"Content-Type": "application/json"},
         )
+
 
 # Example of listening for error updates via WebSocket
 async def listen_for_errors(dashboard_url):
     """Listen for real-time error updates via WebSocket.
-    
+
     Args:
         dashboard_url: Base URL of the dashboard
     """
     # Convert HTTP URL to WebSocket URL
-    ws_url = dashboard_url.replace('http://', 'ws://').replace('https://', 'wss://')
+    ws_url = dashboard_url.replace("http://", "ws://").replace("https://", "wss://")
     ws_url = f"{ws_url}/ws/error-visualization"
-    
+
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(ws_url) as ws:
             # Subscribe to error visualization updates
-            await ws.send_json({
-                "type": "error_visualization_init",
-                "time_range": 24
-            })
-            
+            await ws.send_json({"type": "error_visualization_init", "time_range": 24})
+
             # Also subscribe to the general error topic
-            await ws.send_json({
-                "type": "subscribe",
-                "topic": "error_visualization"
-            })
-            
+            await ws.send_json({"type": "subscribe", "topic": "error_visualization"})
+
             # Process incoming messages
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     data = json.loads(msg.data)
-                    if data.get('type') == 'error_visualization_update':
-                        error = data.get('data', {}).get('error')
+                    if data.get("type") == "error_visualization_update":
+                        error = data.get("data", {}).get("error")
                         if error:
                             print(f"New error: {error.get('error_type')} - {error.get('message')}")
 ```

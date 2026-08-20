@@ -22,13 +22,17 @@ class TestMCPServerUNI270P2PWorkflowDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_p2p_workflow_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_p2p_workflow_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -43,17 +47,20 @@ class TestMCPServerUNI270P2PWorkflowDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_p2p_workflow_tools._API,
-                {"schedule_p2p_workflow": _contradictory_failure},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_p2p_workflow_tools._API,
+                    {"schedule_p2p_workflow": _contradictory_failure},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="p2p-workflow-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

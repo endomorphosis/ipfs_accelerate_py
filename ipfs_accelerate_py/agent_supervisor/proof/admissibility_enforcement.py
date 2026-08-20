@@ -48,9 +48,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 # Interface / schema constants
 # ---------------------------------------------------------------------------
 
-SUPERVISOR_PRE_INVOCATION_ENFORCEMENT_INTERFACE: Final = (
-    "SupervisorPreInvocationEnforcement@1"
-)
+SUPERVISOR_PRE_INVOCATION_ENFORCEMENT_INTERFACE: Final = "SupervisorPreInvocationEnforcement@1"
 SUPERVISOR_PRE_INVOCATION_ENFORCEMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/pre-invocation-enforcement@1"
 )
@@ -259,9 +257,7 @@ class InMemoryCapabilityConsumptionStore:
         self._lock = threading.Lock()
         self._consumed: dict[str, dict[str, Any]] = {}
 
-    def try_consume(
-        self, token_key: str, *, meta: Mapping[str, Any] | None = None
-    ) -> bool:
+    def try_consume(self, token_key: str, *, meta: Mapping[str, Any] | None = None) -> bool:
         key = _text(token_key, "token_key")
         with self._lock:
             if key in self._consumed:
@@ -316,13 +312,9 @@ class SupervisorInvocationContext:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "actor_id", _text(self.actor_id, "actor_id"))
-        object.__setattr__(
-            self, "audience_id", _text(self.audience_id, "audience_id")
-        )
+        object.__setattr__(self, "audience_id", _text(self.audience_id, "audience_id"))
         object.__setattr__(self, "tool_id", _text(self.tool_id, "tool_id"))
-        object.__setattr__(
-            self, "request_digest", _text(self.request_digest, "request_digest")
-        )
+        object.__setattr__(self, "request_digest", _text(self.request_digest, "request_digest"))
         object.__setattr__(
             self,
             "arguments_digest",
@@ -334,9 +326,7 @@ class SupervisorInvocationContext:
             _text(self.environment_digest, "environment_digest"),
         )
         effects = self.effect_ids
-        if isinstance(effects, (str, bytes, bytearray)) or not isinstance(
-            effects, Sequence
-        ):
+        if isinstance(effects, (str, bytes, bytearray)) or not isinstance(effects, Sequence):
             raise AdmissibilityEnforcementError(
                 "effect_ids must be a sequence of strings; fail closed"
             )
@@ -344,12 +334,8 @@ class SupervisorInvocationContext:
             _text(item, f"effect_ids[{index}]") for index, item in enumerate(effects)
         )
         object.__setattr__(self, "effect_ids", normalized_effects)
-        object.__setattr__(
-            self, "task_id", _text(self.task_id, "task_id", required=False)
-        )
-        object.__setattr__(
-            self, "plan_id", _text(self.plan_id, "plan_id", required=False)
-        )
+        object.__setattr__(self, "task_id", _text(self.task_id, "task_id", required=False))
+        object.__setattr__(self, "plan_id", _text(self.plan_id, "plan_id", required=False))
         object.__setattr__(
             self,
             "tool_version",
@@ -365,9 +351,7 @@ class SupervisorInvocationContext:
             "delegation_digest",
             _text(self.delegation_digest, "delegation_digest", required=False),
         )
-        object.__setattr__(
-            self, "nonce", _text(self.nonce, "nonce", required=False)
-        )
+        object.__setattr__(self, "nonce", _text(self.nonce, "nonce", required=False))
         if isinstance(self.delegation_ids, (str, bytes, bytearray)) or not isinstance(
             self.delegation_ids, Sequence
         ):
@@ -411,9 +395,7 @@ class SupervisorInvocationContext:
             ),
         )
         if not isinstance(self.metadata, Mapping):
-            raise AdmissibilityEnforcementError(
-                "metadata must be a mapping; fail closed"
-            )
+            raise AdmissibilityEnforcementError("metadata must be a mapping; fail closed")
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_dict(self) -> dict[str, Any]:
@@ -579,9 +561,7 @@ def _consumption_key(
         cap_id = str(getattr(capability, "capability_id", "") or "")
         nonce = str(getattr(capability, "nonce", "") or "")
         digest = str(
-            getattr(capability, "digest", None)
-            or getattr(capability, "content_digest", "")
-            or ""
+            getattr(capability, "digest", None) or getattr(capability, "content_digest", "") or ""
         )
         if cap_id:
             return f"capability:{cap_id}:{nonce}:{digest}"
@@ -589,17 +569,14 @@ def _consumption_key(
         receipt_id = str(getattr(receipt, "receipt_id", "") or "")
         nonce = str(getattr(receipt, "nonce", "") or context.nonce)
         digest = str(
-            getattr(receipt, "digest", None)
-            or getattr(receipt, "content_digest", "")
-            or ""
+            getattr(receipt, "digest", None) or getattr(receipt, "content_digest", "") or ""
         )
         if receipt_id:
             return f"receipt:{receipt_id}:{nonce}:{digest}"
     if context.nonce:
         return f"nonce:{context.nonce}:{context.request_digest}"
     raise AdmissibilityEnforcementError(
-        "cannot derive consumption key without capability, receipt, or nonce; "
-        "fail closed"
+        "cannot derive consumption key without capability, receipt, or nonce; fail closed"
     )
 
 
@@ -609,9 +586,7 @@ def _coerce_receipt(surface: _DatasetsAuthSurface, receipt: Any) -> Any:
         return receipt
     if isinstance(receipt, Mapping):
         return DecisionReceipt.from_dict(receipt)
-    raise AdmissibilityEnforcementError(
-        "receipt must be a DecisionReceipt or mapping; fail closed"
-    )
+    raise AdmissibilityEnforcementError("receipt must be a DecisionReceipt or mapping; fail closed")
 
 
 def _coerce_capability(surface: _DatasetsAuthSurface, capability: Any) -> Any:
@@ -636,9 +611,7 @@ def _effects_match(expected: Sequence[str], actual: Sequence[str]) -> bool:
     return tuple(sorted(expected)) == tuple(sorted(actual))
 
 
-def _delegation_match(
-    context: SupervisorInvocationContext, receipt_ctx: Any
-) -> bool:
+def _delegation_match(context: SupervisorInvocationContext, receipt_ctx: Any) -> bool:
     receipt_ids = tuple(getattr(receipt_ctx, "delegation_ids", ()) or ())
     if context.delegation_ids and tuple(context.delegation_ids) != tuple(receipt_ids):
         return False
@@ -810,13 +783,14 @@ class SupervisorPreInvocationEnforcement:
         outcome = getattr(receipt, "outcome", None)
         wire = getattr(receipt, "wire_status", None)
         if outcome is not InternalDecisionStatus.ALLOW:
-            if outcome is InternalDecisionStatus.DENY or (
-                wire is AdmissibilityStatus.REJECT
-            ):
+            if outcome is InternalDecisionStatus.DENY or (wire is AdmissibilityStatus.REJECT):
                 reasons.append(EnforcementDenialReason.REJECT.value)
-            elif wire is AdmissibilityStatus.ABSTAIN or str(
-                getattr(outcome, "value", outcome)
-            ) in {"abstain", "unknown", "error", "cancelled"}:
+            elif wire is AdmissibilityStatus.ABSTAIN or str(getattr(outcome, "value", outcome)) in {
+                "abstain",
+                "unknown",
+                "error",
+                "cancelled",
+            }:
                 # Map non-allow non-deny to abstain/error as appropriate.
                 status_value = str(getattr(outcome, "value", outcome) or "")
                 if status_value in {"error", "cancelled"}:
@@ -831,9 +805,7 @@ class SupervisorPreInvocationEnforcement:
             return tuple(reasons)
 
         receipt_ctx = receipt.context
-        if context.tool_id and context.tool_id != str(
-            getattr(receipt_ctx, "tool_id", "") or ""
-        ):
+        if context.tool_id and context.tool_id != str(getattr(receipt_ctx, "tool_id", "") or ""):
             reasons.append(EnforcementDenialReason.CONTEXT_MISMATCH.value)
         if context.tool_version and context.tool_version != str(
             getattr(receipt_ctx, "tool_version", "") or ""
@@ -855,16 +827,17 @@ class SupervisorPreInvocationEnforcement:
             reasons.append(EnforcementDenialReason.CONTEXT_MISMATCH.value)
 
         # Environment binding (TOCTOU-sensitive).
-        receipt_env = _normalize_digest(
-            str(getattr(receipt_ctx, "environment_digest", "") or "")
-        )
-        if context.environment_digest and receipt_env and (
-            _normalize_digest(context.environment_digest) != receipt_env
+        receipt_env = _normalize_digest(str(getattr(receipt_ctx, "environment_digest", "") or ""))
+        if (
+            context.environment_digest
+            and receipt_env
+            and (_normalize_digest(context.environment_digest) != receipt_env)
         ):
             reasons.append(EnforcementDenialReason.ENVIRONMENT_CHANGED.value)
-        if context.environment_id and str(
-            getattr(receipt_ctx, "environment_id", "") or ""
-        ) not in {"", context.environment_id}:
+        if context.environment_id and str(getattr(receipt_ctx, "environment_id", "") or "") not in {
+            "",
+            context.environment_id,
+        }:
             reasons.append(EnforcementDenialReason.ENVIRONMENT_CHANGED.value)
 
         # Root revalidation when expected roots were supplied at construction.
@@ -957,8 +930,7 @@ class SupervisorPreInvocationEnforcement:
                 capability = derive_capability(
                     receipt,
                     capability_id=(
-                        f"capability:supervisor:{context.task_id or 'anon'}:"
-                        f"{receipt.receipt_id}"
+                        f"capability:supervisor:{context.task_id or 'anon'}:{receipt.receipt_id}"
                     ),
                     allowed_effects=effects,
                     audience_id=context.audience_id,
@@ -1044,9 +1016,7 @@ class SupervisorPreInvocationEnforcement:
         """
 
         if not callable(delegate):
-            raise AdmissibilityEnforcementError(
-                "delegate must be callable; fail closed"
-            )
+            raise AdmissibilityEnforcementError("delegate must be callable; fail closed")
         if isinstance(context, Mapping):
             context = SupervisorInvocationContext.from_dict(context)
         elif not isinstance(context, SupervisorInvocationContext):
@@ -1114,13 +1084,11 @@ class SupervisorPreInvocationEnforcement:
                 delegate_called=True,
             )
 
-        resolved_receipt, resolved_capability, resolve_errors = (
-            self._resolve_receipt_capability(
-                surface,
-                context=context,
-                receipt=receipt,
-                capability=capability,
-            )
+        resolved_receipt, resolved_capability, resolve_errors = self._resolve_receipt_capability(
+            surface,
+            context=context,
+            receipt=receipt,
+            capability=capability,
         )
         denial_reasons: list[str] = list(resolve_errors)
         if not denial_reasons and resolved_receipt is not None:
@@ -1168,8 +1136,7 @@ class SupervisorPreInvocationEnforcement:
                 disposition=disposition,
                 allowed=True,
                 delegated=True,
-                reason_codes=tuple(denial_reasons)
-                or ("shadow.allow",),
+                reason_codes=tuple(denial_reasons) or ("shadow.allow",),
                 context=context,
                 receipt=resolved_receipt,
                 capability=resolved_capability,
@@ -1231,12 +1198,8 @@ class SupervisorPreInvocationEnforcement:
         consumed = self._store.try_consume(
             token_key,
             meta={
-                "receipt_id": str(
-                    getattr(resolved_receipt, "receipt_id", "") or ""
-                ),
-                "capability_id": str(
-                    getattr(resolved_capability, "capability_id", "") or ""
-                ),
+                "receipt_id": str(getattr(resolved_receipt, "receipt_id", "") or ""),
+                "capability_id": str(getattr(resolved_capability, "capability_id", "") or ""),
                 "actor_id": context.actor_id,
                 "audience_id": context.audience_id,
                 "task_id": context.task_id,

@@ -52,9 +52,7 @@ _SYNTHESIZE_OPERATION = "audio.synthesize"
 _MULTIMODAL_ROUTER = "multimodal_router"
 _VOICE_ROUTER = "voice_router"
 
-_IMAGE_MIME_TYPES = frozenset(
-    {"image/gif", "image/jpeg", "image/png", "image/webp"}
-)
+_IMAGE_MIME_TYPES = frozenset({"image/gif", "image/jpeg", "image/png", "image/webp"})
 _AUDIO_MIME_TYPES = frozenset(
     {
         "audio/aac",
@@ -200,11 +198,7 @@ def _bounded_timeout(value: Any) -> float:
 
 
 def _bounded_positive_int(value: Any, field_name: str, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or not 1 <= value <= maximum
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
         raise _RequestError(
             "invalid_request",
             "%s is outside the supported range." % field_name,
@@ -229,9 +223,7 @@ def _bounded_positive_number(value: Any, field_name: str, maximum: float) -> flo
 def _validate_streaming(stream: Any, max_stream_chunks: Any) -> None:
     if not isinstance(stream, bool):
         raise _RequestError("invalid_request", "stream must be a boolean.")
-    _bounded_positive_int(
-        max_stream_chunks, "max_stream_chunks", MAX_STREAM_CHUNKS
-    )
+    _bounded_positive_int(max_stream_chunks, "max_stream_chunks", MAX_STREAM_CHUNKS)
     if stream:
         raise _RequestError(
             "streaming_unsupported",
@@ -241,9 +233,7 @@ def _validate_streaming(stream: Any, max_stream_chunks: Any) -> None:
 
 def _validate_text(value: Any, field_name: str) -> Tuple[str, int]:
     if not isinstance(value, str) or not value.strip():
-        raise _RequestError(
-            "invalid_request", "%s must be a non-empty string." % field_name
-        )
+        raise _RequestError("invalid_request", "%s must be a non-empty string." % field_name)
     size = len(value.encode("utf-8"))
     if size > MAX_TEXT_BYTES:
         raise _RequestError(
@@ -258,9 +248,7 @@ def _validate_mime(value: Any, allowed: Iterable[str]) -> str:
         raise _RequestError("unsupported_mime", "A supported MIME type is required.")
     mime_type = value.strip().casefold()
     if not _MIME_RE.fullmatch(mime_type) or mime_type not in set(allowed):
-        raise _RequestError(
-            "unsupported_mime", "The requested media MIME type is not supported."
-        )
+        raise _RequestError("unsupported_mime", "The requested media MIME type is not supported.")
     return mime_type
 
 
@@ -301,9 +289,10 @@ def _validate_uri(value: Any) -> str:
     # even though ipaddress intentionally does not.  Reject those spellings
     # here so an allowlisted loader never receives an ambiguous numeric host.
     numeric_labels = host.split(".")
-    if address is None and numeric_labels and all(
-        re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)", label)
-        for label in numeric_labels
+    if (
+        address is None
+        and numeric_labels
+        and all(re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)", label) for label in numeric_labels)
     ):
         raise _RequestError("unsafe_media_uri", "The media URI is not allowed.")
     return uri
@@ -316,12 +305,8 @@ def _validate_metadata(
 ) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     if media_kind == "image":
-        width = _bounded_positive_int(
-            descriptor.get("width"), "width", MAX_IMAGE_WIDTH
-        )
-        height = _bounded_positive_int(
-            descriptor.get("height"), "height", MAX_IMAGE_HEIGHT
-        )
+        width = _bounded_positive_int(descriptor.get("width"), "width", MAX_IMAGE_WIDTH)
+        height = _bounded_positive_int(descriptor.get("height"), "height", MAX_IMAGE_HEIGHT)
         if width * height > MAX_IMAGE_PIXELS:
             raise _RequestError(
                 "dimension_limit_exceeded",
@@ -340,9 +325,7 @@ def _validate_metadata(
             MAX_SAMPLE_RATE_HZ,
         )
         if sample_rate < MIN_SAMPLE_RATE_HZ:
-            raise _RequestError(
-                "invalid_request", "sample_rate_hz is below the supported range."
-            )
+            raise _RequestError("invalid_request", "sample_rate_hz is below the supported range.")
         result["sample_rate_hz"] = sample_rate
     return result
 
@@ -374,15 +357,11 @@ def _validate_media_descriptor(
     if source == "inline":
         data = value.get("data_base64")
         if not isinstance(data, str) or not data:
-            raise _RequestError(
-                "invalid_media", "Inline media requires non-empty data_base64."
-            )
+            raise _RequestError("invalid_media", "Inline media requires non-empty data_base64.")
         # Base64 expands by 4/3.  Reject obviously oversized strings before
         # allocating the decoded representation.
         if len(data) > ((MAX_INLINE_MEDIA_BYTES + 2) // 3) * 4:
-            raise _RequestError(
-                "input_limit_exceeded", "Inline media exceeds the byte limit."
-            )
+            raise _RequestError("input_limit_exceeded", "Inline media exceeds the byte limit.")
         descriptor["data_base64"] = data
     elif source == "uri":
         descriptor["uri"] = _validate_uri(value.get("uri"))
@@ -395,9 +374,7 @@ def _validate_media_descriptor(
             )
         artifact_ref = artifact_ref.strip()
         if len(artifact_ref.encode("utf-8")) > MAX_ARTIFACT_REF_BYTES:
-            raise _RequestError(
-                "input_limit_exceeded", "artifact_ref exceeds the size limit."
-            )
+            raise _RequestError("input_limit_exceeded", "artifact_ref exceeds the size limit.")
         descriptor["artifact_ref"] = artifact_ref
     return descriptor
 
@@ -406,15 +383,11 @@ def _inline_bytes(descriptor: Mapping[str, Any]) -> bytes:
     try:
         data = base64.b64decode(descriptor["data_base64"], validate=True)
     except (binascii.Error, ValueError, TypeError) as exc:
-        raise _RequestError(
-            "invalid_media", "Inline media is not valid base64."
-        ) from exc
+        raise _RequestError("invalid_media", "Inline media is not valid base64.") from exc
     if not data:
         raise _RequestError("invalid_media", "Inline media must not be empty.")
     if len(data) > MAX_INLINE_MEDIA_BYTES:
-        raise _RequestError(
-            "input_limit_exceeded", "Inline media exceeds the byte limit."
-        )
+        raise _RequestError("input_limit_exceeded", "Inline media exceeds the byte limit.")
     declared = descriptor.get("byte_length")
     if declared is not None and declared != len(data):
         raise _RequestError(
@@ -447,9 +420,7 @@ async def _call_media_loader(
     with anyio.fail_after(timeout):
         run_sync_parameters = inspect.signature(anyio.to_thread.run_sync).parameters
         if "abandon_on_cancel" in run_sync_parameters:
-            result = await anyio.to_thread.run_sync(
-                invoke, abandon_on_cancel=True
-            )
+            result = await anyio.to_thread.run_sync(invoke, abandon_on_cancel=True)
         else:  # pragma: no cover - compatibility with AnyIO 3.
             result = await anyio.to_thread.run_sync(invoke, cancellable=True)
         if inspect.isawaitable(result):
@@ -522,9 +493,7 @@ async def _materialize_media(
         return data, {}
     if descriptor["source"] == "uri":
         if not isinstance(allow_remote_media, bool):
-            raise _RequestError(
-                "invalid_request", "allow_remote_media must be a boolean."
-            )
+            raise _RequestError("invalid_request", "allow_remote_media must be a boolean.")
         if not allow_remote_media:
             raise _RequestError(
                 "remote_media_disabled",
@@ -598,20 +567,14 @@ def _candidate_limit(candidate: Any, operation: str, field_name: str) -> Optiona
 def _candidate_supports_mime(candidate: Any, operation: str, mime_type: str) -> bool:
     major = mime_type.split("/", 1)[0] + "/*"
     declarations = [
-        {
-            str(item).casefold()
-            for item in tuple(getattr(capability, "media_types", ()) or ())
-        }
+        {str(item).casefold() for item in tuple(getattr(capability, "media_types", ()) or ())}
         for capability in _candidate_capabilities(candidate, operation)
     ]
     constrained = [declared for declared in declarations if declared]
     # Provider, model, and deployment constraints all apply.  Treating their
     # media types as a union could route a MIME accepted by a broad provider
     # to a model or deployment that explicitly excludes it.
-    return all(
-        mime_type in declared or major in declared
-        for declared in constrained
-    )
+    return all(mime_type in declared or major in declared for declared in constrained)
 
 
 def _invocation_provider(candidate: Any) -> str:
@@ -697,15 +660,11 @@ def _resolve_candidates(
         if str(getattr(candidate.binding, "router", "")).casefold() == router_value
         and _selector_matches(candidate.provider, service, "provider_id")
         and _selector_matches(candidate.provider, provider, "provider_id")
-        and (
-            mime_type is None
-            or _candidate_supports_mime(candidate, operation, mime_type)
-        )
+        and (mime_type is None or _candidate_supports_mime(candidate, operation, mime_type))
     ]
     if not candidates:
         constrained = any(
-            item is not None
-            for item in (policy, service, provider, model, device, mime_type)
+            item is not None for item in (policy, service, provider, model, device, mime_type)
         )
         code = "selection_denied" if constrained else "no_match"
         raise _RequestError(
@@ -733,9 +692,7 @@ async def _invoke_with_timeout(callback: Any, timeout: float) -> Any:
     with anyio.fail_after(timeout):
         run_sync_parameters = inspect.signature(anyio.to_thread.run_sync).parameters
         if "abandon_on_cancel" in run_sync_parameters:
-            result = await anyio.to_thread.run_sync(
-                invoke, abandon_on_cancel=True
-            )
+            result = await anyio.to_thread.run_sync(invoke, abandon_on_cancel=True)
         else:  # pragma: no cover - compatibility with AnyIO 3.
             result = await anyio.to_thread.run_sync(invoke, cancellable=True)
         if inspect.isawaitable(result):
@@ -792,8 +749,7 @@ def _receipt(
     output_summary: Dict[str, Any],
 ) -> Dict[str, Any]:
     candidate_ids = [
-        str(getattr(item.binding, "binding_id", ""))
-        for item in candidates[:MAX_RECEIPT_CANDIDATES]
+        str(getattr(item.binding, "binding_id", "")) for item in candidates[:MAX_RECEIPT_CANDIDATES]
     ]
     return {
         "schema_version": AI_ROUTER_RECEIPT_SCHEMA_VERSION,
@@ -905,18 +861,12 @@ async def multimodal_generate(
         policy_value = _bounded_policy(policy)
         timeout_value = _bounded_timeout(timeout)
         deadline = anyio.current_time() + timeout_value
-        output_limit = _bounded_positive_int(
-            max_output_bytes, "max_output_bytes", MAX_OUTPUT_BYTES
-        )
+        output_limit = _bounded_positive_int(max_output_bytes, "max_output_bytes", MAX_OUTPUT_BYTES)
         _validate_streaming(stream, max_stream_chunks)
         if not isinstance(allow_remote_media, bool):
-            raise _RequestError(
-                "invalid_request", "allow_remote_media must be a boolean."
-            )
+            raise _RequestError("invalid_request", "allow_remote_media must be a boolean.")
         if not isinstance(allow_fallback, bool):
-            raise _RequestError(
-                "invalid_request", "allow_fallback must be a boolean."
-            )
+            raise _RequestError("invalid_request", "allow_fallback must be a boolean.")
         _bounded_positive_int(max_tokens, "max_tokens", 1_000_000)
         if (
             isinstance(temperature, bool)
@@ -924,9 +874,7 @@ async def multimodal_generate(
             or not math.isfinite(float(temperature))
             or not 0 <= float(temperature) <= 2
         ):
-            raise _RequestError(
-                "invalid_request", "temperature must be between 0 and 2."
-            )
+            raise _RequestError("invalid_request", "temperature must be between 0 and 2.")
         schema_version, revision, candidates, total = _resolve_candidates(
             router_name=_MULTIMODAL_ROUTER,
             operation=_VISION_OPERATION,
@@ -947,9 +895,7 @@ async def multimodal_generate(
         input_bytes = prompt_bytes + len(data)
 
         def call(candidate: Any) -> Any:
-            catalog_input = _candidate_limit(
-                candidate, _VISION_OPERATION, "max_input_bytes"
-            )
+            catalog_input = _candidate_limit(candidate, _VISION_OPERATION, "max_input_bytes")
             if catalog_input is not None and input_bytes > catalog_input:
                 raise _RequestError(
                     "input_limit_exceeded",
@@ -977,13 +923,9 @@ async def multimodal_generate(
                 "The multimodal router returned a non-text result.",
             )
         output_bytes = len(generated.encode("utf-8"))
-        catalog_output = _candidate_limit(
-            selected, _VISION_OPERATION, "max_output_bytes"
-        )
+        catalog_output = _candidate_limit(selected, _VISION_OPERATION, "max_output_bytes")
         selected_output_limit = (
-            min(output_limit, catalog_output)
-            if catalog_output is not None
-            else output_limit
+            min(output_limit, catalog_output) if catalog_output is not None else output_limit
         )
         if output_bytes > selected_output_limit:
             raise _RequestError(
@@ -1066,18 +1008,12 @@ async def voice_transcribe(
         policy_value = _bounded_policy(policy)
         timeout_value = _bounded_timeout(timeout)
         deadline = anyio.current_time() + timeout_value
-        output_limit = _bounded_positive_int(
-            max_output_bytes, "max_output_bytes", MAX_OUTPUT_BYTES
-        )
+        output_limit = _bounded_positive_int(max_output_bytes, "max_output_bytes", MAX_OUTPUT_BYTES)
         _validate_streaming(stream, max_stream_chunks)
         if not isinstance(allow_remote_media, bool):
-            raise _RequestError(
-                "invalid_request", "allow_remote_media must be a boolean."
-            )
+            raise _RequestError("invalid_request", "allow_remote_media must be a boolean.")
         if not isinstance(allow_fallback, bool):
-            raise _RequestError(
-                "invalid_request", "allow_fallback must be a boolean."
-            )
+            raise _RequestError("invalid_request", "allow_fallback must be a boolean.")
         schema_version, revision, candidates, total = _resolve_candidates(
             router_name=_VOICE_ROUTER,
             operation=_TRANSCRIBE_OPERATION,
@@ -1097,9 +1033,7 @@ async def voice_transcribe(
         )
 
         def call(candidate: Any) -> Any:
-            catalog_input = _candidate_limit(
-                candidate, _TRANSCRIBE_OPERATION, "max_input_bytes"
-            )
+            catalog_input = _candidate_limit(candidate, _TRANSCRIBE_OPERATION, "max_input_bytes")
             if catalog_input is not None and len(data) > catalog_input:
                 raise _RequestError(
                     "input_limit_exceeded",
@@ -1125,9 +1059,7 @@ async def voice_transcribe(
                 "The voice router returned a non-text transcription.",
             )
         output_bytes = len(transcript.encode("utf-8"))
-        catalog_output = _candidate_limit(
-            selected, _TRANSCRIBE_OPERATION, "max_output_bytes"
-        )
+        catalog_output = _candidate_limit(selected, _TRANSCRIBE_OPERATION, "max_output_bytes")
         if catalog_output is not None:
             output_limit = min(output_limit, catalog_output)
         if output_bytes > output_limit:
@@ -1238,13 +1170,9 @@ async def voice_synthesize(
         device_value = _bounded_selector(device, "device")
         voice_value = _bounded_selector(voice, "voice")
         policy_value = _bounded_policy(policy)
-        sample_rate = _bounded_positive_int(
-            sample_rate_hz, "sample_rate_hz", MAX_SAMPLE_RATE_HZ
-        )
+        sample_rate = _bounded_positive_int(sample_rate_hz, "sample_rate_hz", MAX_SAMPLE_RATE_HZ)
         if sample_rate < MIN_SAMPLE_RATE_HZ:
-            raise _RequestError(
-                "invalid_request", "sample_rate_hz is below the supported range."
-            )
+            raise _RequestError("invalid_request", "sample_rate_hz is below the supported range.")
         duration_limit = _bounded_positive_number(
             max_duration_seconds,
             "max_duration_seconds",
@@ -1252,14 +1180,10 @@ async def voice_synthesize(
         )
         timeout_value = _bounded_timeout(timeout)
         deadline = anyio.current_time() + timeout_value
-        output_limit = _bounded_positive_int(
-            max_output_bytes, "max_output_bytes", MAX_OUTPUT_BYTES
-        )
+        output_limit = _bounded_positive_int(max_output_bytes, "max_output_bytes", MAX_OUTPUT_BYTES)
         _validate_streaming(stream, max_stream_chunks)
         if not isinstance(allow_fallback, bool):
-            raise _RequestError(
-                "invalid_request", "allow_fallback must be a boolean."
-            )
+            raise _RequestError("invalid_request", "allow_fallback must be a boolean.")
         schema_version, revision, candidates, total = _resolve_candidates(
             router_name=_VOICE_ROUTER,
             operation=_SYNTHESIZE_OPERATION,
@@ -1274,9 +1198,7 @@ async def voice_synthesize(
         selected = candidates[0]
 
         def call(candidate: Any) -> Any:
-            catalog_input = _candidate_limit(
-                candidate, _SYNTHESIZE_OPERATION, "max_input_bytes"
-            )
+            catalog_input = _candidate_limit(candidate, _SYNTHESIZE_OPERATION, "max_input_bytes")
             if catalog_input is not None and text_bytes > catalog_input:
                 raise _RequestError(
                     "input_limit_exceeded",
@@ -1306,16 +1228,10 @@ async def voice_synthesize(
             )
         audio = bytes(raw_audio)
         if not audio:
-            raise _RequestError(
-                "invalid_router_output", "The voice router returned empty audio."
-            )
-        catalog_output = _candidate_limit(
-            selected, _SYNTHESIZE_OPERATION, "max_output_bytes"
-        )
+            raise _RequestError("invalid_router_output", "The voice router returned empty audio.")
+        catalog_output = _candidate_limit(selected, _SYNTHESIZE_OPERATION, "max_output_bytes")
         selected_output_limit = (
-            min(output_limit, catalog_output)
-            if catalog_output is not None
-            else output_limit
+            min(output_limit, catalog_output) if catalog_output is not None else output_limit
         )
         if len(audio) > selected_output_limit:
             raise _RequestError(

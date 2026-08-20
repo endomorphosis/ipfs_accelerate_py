@@ -188,15 +188,8 @@ def _text(
 
 
 def _positive_int(value: Any, name: str, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 1
-        or value > maximum
-    ):
-        raise AnalysisConsensusError(
-            f"{name} must be an integer from 1 through {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
+        raise AnalysisConsensusError(f"{name} must be an integer from 1 through {maximum}")
     return value
 
 
@@ -215,19 +208,14 @@ def _canonical(value: Any, *, name: str = "value", depth: int = 0) -> Any:
         if any(not isinstance(key, str) for key in value):
             raise AnalysisConsensusError(f"{name} keys must be strings")
         return {
-            key: _canonical(item, name=name, depth=depth + 1)
-            for key, item in sorted(value.items())
+            key: _canonical(item, name=name, depth=depth + 1) for key, item in sorted(value.items())
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_canonical(item, name=name, depth=depth + 1) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
         return _canonical(converter(), name=name, depth=depth + 1)
-    raise AnalysisConsensusError(
-        f"{name} contains unsupported {type(value).__name__}"
-    )
+    raise AnalysisConsensusError(f"{name} contains unsupported {type(value).__name__}")
 
 
 def canonical_consensus_json(value: Any) -> str:
@@ -259,18 +247,13 @@ def _normalize_reference(
     forbidden = lowered.intersection(_FORBIDDEN_REFERENCE_FIELDS)
     if forbidden:
         raise AnalysisConsensusError(
-            "analysis reference embeds forbidden payload fields: "
-            + ", ".join(sorted(forbidden))
+            "analysis reference embeds forbidden payload fields: " + ", ".join(sorted(forbidden))
         )
-    canonical_keys = {
-        _REFERENCE_ALIASES.get(str(raw_key), str(raw_key))
-        for raw_key in value
-    }
+    canonical_keys = {_REFERENCE_ALIASES.get(str(raw_key), str(raw_key)) for raw_key in value}
     unsupported = canonical_keys.difference(_REFERENCE_FIELDS)
     if unsupported:
         raise AnalysisConsensusError(
-            "analysis reference contains unsupported fields: "
-            + ", ".join(sorted(unsupported))
+            "analysis reference contains unsupported fields: " + ", ".join(sorted(unsupported))
         )
     normalized: dict[str, Any] = {}
     for raw_key, raw_value in value.items():
@@ -278,16 +261,10 @@ def _normalize_reference(
         if key not in _REFERENCE_FIELDS or raw_value in (None, ""):
             continue
         if key in {"byte_count", "score_millionths"}:
-            if (
-                isinstance(raw_value, bool)
-                or not isinstance(raw_value, int)
-                or raw_value < 0
-            ):
+            if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
                 raise AnalysisConsensusError(f"reference {key} must be non-negative")
             if key == "score_millionths" and raw_value > 1_000_000:
-                raise AnalysisConsensusError(
-                    "reference score_millionths exceeds one million"
-                )
+                raise AnalysisConsensusError("reference score_millionths exceeds one million")
             normalized[key] = raw_value
         else:
             normalized[key] = _text(
@@ -313,16 +290,10 @@ def _normalize_reference(
             "uri",
         )
     ):
-        normalized["reference_id"] = _content_id(
-            "analysis-consensus-reference", normalized
-        )
-    ordered = {
-        key: normalized[key] for key in _REFERENCE_FIELDS if key in normalized
-    }
+        normalized["reference_id"] = _content_id("analysis-consensus-reference", normalized)
+    ordered = {key: normalized[key] for key in _REFERENCE_FIELDS if key in normalized}
     if len(canonical_consensus_json(ordered).encode("utf-8")) > max_reference_bytes:
-        raise AnalysisConsensusError(
-            "analysis reference exceeds max_reference_bytes"
-        )
+        raise AnalysisConsensusError("analysis reference exceeds max_reference_bytes")
     return MappingProxyType(ordered)
 
 
@@ -332,17 +303,13 @@ def _normalize_references(
     maximum: int,
     max_reference_bytes: int,
 ) -> tuple[Mapping[str, Any], ...]:
-    if isinstance(values, (str, bytes, bytearray, memoryview)) or not isinstance(
-        values, Sequence
-    ):
+    if isinstance(values, (str, bytes, bytearray, memoryview)) or not isinstance(values, Sequence):
         raise AnalysisConsensusError("analysis references must be a sequence")
     if len(values) > maximum:
         raise AnalysisConsensusError("analysis references exceed policy bound")
     unique: dict[str, Mapping[str, Any]] = {}
     for value in values:
-        normalized = _normalize_reference(
-            value, max_reference_bytes=max_reference_bytes
-        )
+        normalized = _normalize_reference(value, max_reference_bytes=max_reference_bytes)
         encoded = canonical_consensus_json(normalized)
         unique[encoded] = normalized
     return tuple(unique[key] for key in sorted(unique))
@@ -365,9 +332,7 @@ class AnalysisConsensusPolicy:
 
     def __post_init__(self) -> None:
         for name in ("policy_id", "policy_revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
         object.__setattr__(
             self,
             "disagreement_policy",
@@ -387,9 +352,7 @@ class AnalysisConsensusPolicy:
                 _positive_int(getattr(self, name), name, maximum),
             )
         if self.max_reference_bytes > self.max_receipt_bytes:
-            raise AnalysisConsensusError(
-                "max_reference_bytes cannot exceed max_receipt_bytes"
-            )
+            raise AnalysisConsensusError("max_reference_bytes cannot exceed max_receipt_bytes")
 
     @property
     def content_id(self) -> str:
@@ -437,17 +400,9 @@ class AnalysisConsensusPolicy:
             ANALYSIS_CONSENSUS_POLICY_SCHEMA
         ):
             raise AnalysisConsensusError("unsupported consensus policy schema")
-        if value.get("version", ANALYSIS_CONSENSUS_VERSION) != (
-            ANALYSIS_CONSENSUS_VERSION
-        ):
+        if value.get("version", ANALYSIS_CONSENSUS_VERSION) != (ANALYSIS_CONSENSUS_VERSION):
             raise AnalysisConsensusError("unsupported consensus policy version")
-        result = cls(
-            **{
-                name: value[name]
-                for name in cls.__dataclass_fields__
-                if name in value
-            }
-        )
+        result = cls(**{name: value[name] for name in cls.__dataclass_fields__ if name in value})
         if value.get("content_id") not in (None, result.content_id):
             raise AnalysisConsensusError("consensus policy identity does not match")
         return result
@@ -475,9 +430,7 @@ class AnalysisClaimProvenance:
             "capability_id",
             "tree_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=2048)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=2048))
         for name in (
             "dataset_id",
             "graph_id",
@@ -554,16 +507,9 @@ class AnalysisClaimProvenance:
             ANALYSIS_CONSENSUS_PROVENANCE_SCHEMA
         ):
             raise AnalysisConsensusError("unsupported claim provenance schema")
-        if aliases.get("version", ANALYSIS_CONSENSUS_VERSION) != (
-            ANALYSIS_CONSENSUS_VERSION
-        ):
+        if aliases.get("version", ANALYSIS_CONSENSUS_VERSION) != (ANALYSIS_CONSENSUS_VERSION):
             raise AnalysisConsensusError("unsupported claim provenance version")
-        result = cls(
-            **{
-                name: aliases.get(name, "")
-                for name in cls.__dataclass_fields__
-            }
-        )
+        result = cls(**{name: aliases.get(name, "") for name in cls.__dataclass_fields__})
         if aliases.get("content_id") not in (None, result.content_id):
             raise AnalysisConsensusError("claim provenance identity does not match")
         return result
@@ -590,22 +536,14 @@ class AnalysisConsensusClaim:
     claim_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "producer_kind", AnalysisProducerKind(self.producer_kind)
-        )
+        object.__setattr__(self, "producer_kind", AnalysisProducerKind(self.producer_kind))
         object.__setattr__(self, "status", AnalysisClaimStatus(self.status))
         for name in ("result_id", "verdict"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=4096)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=4096))
         provenance = AnalysisClaimProvenance.from_value(self.provenance)
         object.__setattr__(self, "provenance", provenance)
-        if not isinstance(self.proposal_only, bool) or not isinstance(
-            self.truncated, bool
-        ):
-            raise AnalysisConsensusError(
-                "proposal_only and truncated must be booleans"
-            )
+        if not isinstance(self.proposal_only, bool) or not isinstance(self.truncated, bool):
+            raise AnalysisConsensusError("proposal_only and truncated must be booleans")
         if (
             isinstance(self.confidence_millionths, bool)
             or not isinstance(self.confidence_millionths, int)
@@ -626,9 +564,7 @@ class AnalysisConsensusClaim:
                     "validator claims must identify the claim they validate"
                 )
         elif validates:
-            raise AnalysisConsensusError(
-                "only independent validators may validate another claim"
-            )
+            raise AnalysisConsensusError("only independent validators may validate another claim")
         object.__setattr__(self, "validates_claim_id", validates)
         references = _normalize_references(
             self.evidence_references,
@@ -687,9 +623,7 @@ class AnalysisConsensusClaim:
             "verdict": self.verdict,
             "status": self.status.value,
             "provenance": self.provenance.to_dict(),
-            "evidence_references": [
-                dict(item) for item in self.evidence_references
-            ],
+            "evidence_references": [dict(item) for item in self.evidence_references],
             "proposal_only": self.proposal_only,
             "truncated": self.truncated,
             # Retained only for audit.  It is excluded from semantic identity,
@@ -723,9 +657,7 @@ class AnalysisConsensusClaim:
             ANALYSIS_CONSENSUS_CLAIM_SCHEMA
         ):
             raise AnalysisConsensusError("unsupported consensus claim schema")
-        if value.get("version", ANALYSIS_CONSENSUS_VERSION) != (
-            ANALYSIS_CONSENSUS_VERSION
-        ):
+        if value.get("version", ANALYSIS_CONSENSUS_VERSION) != (ANALYSIS_CONSENSUS_VERSION):
             raise AnalysisConsensusError("unsupported consensus claim version")
         return cls(
             producer_kind=value.get("producer_kind", ""),
@@ -770,20 +702,12 @@ class AnalysisConsensusReceipt:
             "objective_revision",
             "operation",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=2048)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=2048))
         policy = AnalysisConsensusPolicy.from_value(self.policy)
         object.__setattr__(self, "policy", policy)
-        object.__setattr__(
-            self, "outcome", AnalysisConsensusOutcome(self.outcome)
-        )
-        object.__setattr__(
-            self, "resolution", AnalysisConsensusResolution(self.resolution)
-        )
-        if isinstance(self.claims, (str, bytes)) or not isinstance(
-            self.claims, Sequence
-        ):
+        object.__setattr__(self, "outcome", AnalysisConsensusOutcome(self.outcome))
+        object.__setattr__(self, "resolution", AnalysisConsensusResolution(self.resolution))
+        if isinstance(self.claims, (str, bytes)) or not isinstance(self.claims, Sequence):
             raise AnalysisConsensusError("claims must be a sequence")
         claims = tuple(AnalysisConsensusClaim.from_value(item) for item in self.claims)
         if not claims or len(claims) > policy.max_claims:
@@ -794,13 +718,11 @@ class AnalysisConsensusReceipt:
         claims = tuple(by_id[key] for key in sorted(by_id))
         object.__setattr__(self, "claims", claims)
         producer_kinds = tuple(item.producer_kind for item in claims)
-        if (
-            AnalysisProducerKind.LOCAL not in producer_kinds
-            or len(set(producer_kinds)) != len(producer_kinds)
+        if AnalysisProducerKind.LOCAL not in producer_kinds or len(set(producer_kinds)) != len(
+            producer_kinds
         ):
             raise AnalysisConsensusError(
-                "receipt requires one local claim and at most one claim per "
-                "producer kind"
+                "receipt requires one local claim and at most one claim per producer kind"
             )
         for claim in claims:
             if claim.provenance.tree_id != self.tree_id:
@@ -808,9 +730,7 @@ class AnalysisConsensusReceipt:
                     "claim provenance tree_id is detached from the receipt"
                 )
             if len(claim.evidence_references) > policy.max_references_per_claim:
-                raise AnalysisConsensusError(
-                    "claim references exceed consensus policy bound"
-                )
+                raise AnalysisConsensusError("claim references exceed consensus policy bound")
             for reference in claim.evidence_references:
                 if (
                     len(canonical_consensus_json(reference).encode("utf-8"))
@@ -831,9 +751,7 @@ class AnalysisConsensusReceipt:
             maximum=256,
         )
         if selected and selected not in by_id:
-            raise AnalysisConsensusError(
-                "selected_claim_id is not embedded in the receipt"
-            )
+            raise AnalysisConsensusError("selected_claim_id is not embedded in the receipt")
         object.__setattr__(self, "selected_claim_id", selected)
         reason = _text(
             self.fallback_reason_code,
@@ -857,9 +775,7 @@ class AnalysisConsensusReceipt:
             )
         )
         if len(uncertainty) > policy.max_residual_uncertainties:
-            raise AnalysisConsensusError(
-                "residual uncertainty exceeds consensus policy bound"
-            )
+            raise AnalysisConsensusError("residual uncertainty exceeds consensus policy bound")
         object.__setattr__(self, "residual_uncertainty", uncertainty)
         self._validate_outcome(by_id)
         derived = _content_id("analysis-consensus-receipt", self._payload())
@@ -867,23 +783,15 @@ class AnalysisConsensusReceipt:
             raise AnalysisConsensusError("receipt identity does not match content")
         object.__setattr__(self, "receipt_id", derived)
         if self.serialized_byte_count > policy.max_receipt_bytes:
-            raise AnalysisConsensusError(
-                "analysis consensus receipt exceeds max_receipt_bytes"
-            )
+            raise AnalysisConsensusError("analysis consensus receipt exceeds max_receipt_bytes")
 
-    def _validate_outcome(
-        self, by_id: Mapping[str, AnalysisConsensusClaim]
-    ) -> None:
+    def _validate_outcome(self, by_id: Mapping[str, AnalysisConsensusClaim]) -> None:
         ordinary = tuple(
-            item
-            for item in self.claims
-            if item.producer_kind is not AnalysisProducerKind.VALIDATOR
+            item for item in self.claims if item.producer_kind is not AnalysisProducerKind.VALIDATOR
         )
         eligible = tuple(item for item in ordinary if item.consensus_eligible)
         validator = tuple(
-            item
-            for item in self.claims
-            if item.producer_kind is AnalysisProducerKind.VALIDATOR
+            item for item in self.claims if item.producer_kind is AnalysisProducerKind.VALIDATOR
         )
         if self.outcome is AnalysisConsensusOutcome.AGREEMENT:
             if (
@@ -900,12 +808,8 @@ class AnalysisConsensusReceipt:
                     "agreement requires matching conclusive producer claims"
                 )
         elif self.outcome is AnalysisConsensusOutcome.DISAGREEMENT:
-            if len(eligible) < 2 or len(
-                {item.semantic_id for item in eligible}
-            ) < 2:
-                raise AnalysisConsensusError(
-                    "disagreement requires distinct conclusive claims"
-                )
+            if len(eligible) < 2 or len({item.semantic_id for item in eligible}) < 2:
+                raise AnalysisConsensusError("disagreement requires distinct conclusive claims")
             if self.resolution is AnalysisConsensusResolution.EXPLICIT_UNCERTAINTY:
                 if self.selected_claim_id or not self.residual_uncertainty:
                     raise AnalysisConsensusError(
@@ -926,17 +830,11 @@ class AnalysisConsensusReceipt:
                     "disagreement can only use uncertainty or deterministic policy"
                 )
             if self.fallback_explicit or self.fallback_reason_code:
-                raise AnalysisConsensusError(
-                    "disagreement cannot claim degraded fallback"
-                )
+                raise AnalysisConsensusError("disagreement cannot claim degraded fallback")
         elif self.outcome is AnalysisConsensusOutcome.DEGRADED_FALLBACK:
             selected = by_id.get(self.selected_claim_id)
             datasets = next(
-                (
-                    item
-                    for item in ordinary
-                    if item.producer_kind is AnalysisProducerKind.DATASETS
-                ),
+                (item for item in ordinary if item.producer_kind is AnalysisProducerKind.DATASETS),
                 None,
             )
             if (
@@ -944,10 +842,7 @@ class AnalysisConsensusReceipt:
                 or selected is None
                 or selected.producer_kind is not AnalysisProducerKind.LOCAL
                 or not selected.consensus_eligible
-                or (
-                    datasets is not None
-                    and datasets.status is not AnalysisClaimStatus.FAILED
-                )
+                or (datasets is not None and datasets.status is not AnalysisClaimStatus.FAILED)
                 or not self.fallback_explicit
                 or not self.fallback_reason_code
             ):
@@ -977,8 +872,7 @@ class AnalysisConsensusReceipt:
             )
             producers = {item.provenance.producer_id for item in ordinary}
             if (
-                self.resolution
-                is not AnalysisConsensusResolution.INDEPENDENT_VALIDATOR
+                self.resolution is not AnalysisConsensusResolution.INDEPENDENT_VALIDATOR
                 or selected is None
                 or not selected.consensus_eligible
                 or len(matching) != 1
@@ -1001,20 +895,14 @@ class AnalysisConsensusReceipt:
     @property
     def selected_claim(self) -> AnalysisConsensusClaim | None:
         return next(
-            (
-                item
-                for item in self.claims
-                if item.claim_id == self.selected_claim_id
-            ),
+            (item for item in self.claims if item.claim_id == self.selected_claim_id),
             None,
         )
 
     @property
     def excluded_claim_ids(self) -> tuple[str, ...]:
         return tuple(
-            item.claim_id
-            for item in self.claims
-            if item.excluded_from_completion_reasoning
+            item.claim_id for item in self.claims if item.excluded_from_completion_reasoning
         )
 
     @property
@@ -1022,9 +910,7 @@ class AnalysisConsensusReceipt:
         """Claims accepted for downstream *analysis*, never completion."""
 
         if self.outcome is AnalysisConsensusOutcome.AGREEMENT:
-            return tuple(
-                item.claim_id for item in self.claims if item.consensus_eligible
-            )
+            return tuple(item.claim_id for item in self.claims if item.consensus_eligible)
         return (self.selected_claim_id,) if self.selected_claim_id else ()
 
     @property
@@ -1137,9 +1023,7 @@ class AnalysisConsensusReceipt:
             claims=tuple(value.get("claims") or ()),
             selected_claim_id=value.get("selected_claim_id", ""),
             fallback_reason_code=value.get("fallback_reason_code", ""),
-            residual_uncertainty=tuple(
-                value.get("residual_uncertainty") or ()
-            ),
+            residual_uncertainty=tuple(value.get("residual_uncertainty") or ()),
             fallback_explicit=value.get("fallback_explicit", False),
             receipt_id=value.get("receipt_id", ""),
         )
@@ -1150,9 +1034,7 @@ class AnalysisConsensusReceipt:
         }
         for name, expected in expected_derived.items():
             if value.get(name) != expected:
-                raise AnalysisConsensusError(
-                    f"receipt derived field {name} does not match"
-                )
+                raise AnalysisConsensusError(f"receipt derived field {name} does not match")
         return result
 
     def equivalent_to(self, other: Any) -> bool:
@@ -1170,16 +1052,12 @@ def _deterministic_selection(
     policy: AnalysisConsensusPolicy,
 ) -> AnalysisConsensusClaim | None:
     eligible = tuple(item for item in claims if item.consensus_eligible)
-    if policy.disagreement_policy is (
-        DeterministicDisagreementPolicy.EXPLICIT_UNCERTAINTY
-    ):
+    if policy.disagreement_policy is (DeterministicDisagreementPolicy.EXPLICIT_UNCERTAINTY):
         return None
     if policy.disagreement_policy is DeterministicDisagreementPolicy.PREFER_LOCAL:
         kind = AnalysisProducerKind.LOCAL
         candidates = tuple(item for item in eligible if item.producer_kind is kind)
-    elif policy.disagreement_policy is (
-        DeterministicDisagreementPolicy.PREFER_DATASETS
-    ):
+    elif policy.disagreement_policy is (DeterministicDisagreementPolicy.PREFER_DATASETS):
         kind = AnalysisProducerKind.DATASETS
         candidates = tuple(item for item in eligible if item.producer_kind is kind)
     else:
@@ -1209,30 +1087,16 @@ def build_analysis_consensus_receipt(
     if local.producer_kind is not AnalysisProducerKind.LOCAL:
         raise AnalysisConsensusError("local_claim must have producer_kind=local")
     datasets = (
-        AnalysisConsensusClaim.from_value(datasets_claim)
-        if datasets_claim is not None
-        else None
+        AnalysisConsensusClaim.from_value(datasets_claim) if datasets_claim is not None else None
     )
-    if datasets is not None and datasets.producer_kind is not (
-        AnalysisProducerKind.DATASETS
-    ):
-        raise AnalysisConsensusError(
-            "datasets_claim must have producer_kind=datasets"
-        )
+    if datasets is not None and datasets.producer_kind is not (AnalysisProducerKind.DATASETS):
+        raise AnalysisConsensusError("datasets_claim must have producer_kind=datasets")
     validator = (
-        AnalysisConsensusClaim.from_value(validator_claim)
-        if validator_claim is not None
-        else None
+        AnalysisConsensusClaim.from_value(validator_claim) if validator_claim is not None else None
     )
-    if validator is not None and validator.producer_kind is not (
-        AnalysisProducerKind.VALIDATOR
-    ):
-        raise AnalysisConsensusError(
-            "validator_claim must have producer_kind=validator"
-        )
-    claims = tuple(
-        item for item in (local, datasets, validator) if item is not None
-    )
+    if validator is not None and validator.producer_kind is not (AnalysisProducerKind.VALIDATOR):
+        raise AnalysisConsensusError("validator_claim must have producer_kind=validator")
+    claims = tuple(item for item in (local, datasets, validator) if item is not None)
     if validator is not None:
         selected = next(
             (
@@ -1245,9 +1109,7 @@ def build_analysis_consensus_receipt(
             None,
         )
         producer_ids = {
-            item.provenance.producer_id
-            for item in (local, datasets)
-            if item is not None
+            item.provenance.producer_id for item in (local, datasets) if item is not None
         }
         if (
             selected is not None
@@ -1270,9 +1132,7 @@ def build_analysis_consensus_receipt(
     if datasets is None or datasets.status is AnalysisClaimStatus.FAILED:
         if local.consensus_eligible:
             reason = fallback_reason_code or (
-                "datasets_result_missing"
-                if datasets is None
-                else "datasets_result_failed"
+                "datasets_result_missing" if datasets is None else "datasets_result_failed"
             )
             return AnalysisConsensusReceipt(
                 repository_id=repository_id,
@@ -1315,8 +1175,7 @@ def build_analysis_consensus_receipt(
                 claims=claims,
                 selected_claim_id=selected.claim_id,
                 residual_uncertainty=(
-                    "producer claims disagree; deterministic policy selected "
-                    "one diagnostic claim",
+                    "producer claims disagree; deterministic policy selected one diagnostic claim",
                 ),
             )
         return AnalysisConsensusReceipt(

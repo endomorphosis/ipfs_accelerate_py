@@ -21,7 +21,9 @@ def _load_ipfs_cluster_api() -> Dict[str, Any]:
             "manage_ipfs_content": _manage_ipfs_content,
         }
     except Exception:
-        logger.warning("Source ipfs_cluster_tools import unavailable, using fallback cluster functions")
+        logger.warning(
+            "Source ipfs_cluster_tools import unavailable, using fallback cluster functions"
+        )
 
         async def _manage_cluster_fallback(
             action: str,
@@ -319,7 +321,13 @@ def register_native_ipfs_cluster_tools(manager: Any) -> None:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["upload", "download", "get_metadata", "verify_integrity", "list_content"],
+                    "enum": [
+                        "upload",
+                        "download",
+                        "get_metadata",
+                        "verify_integrity",
+                        "list_content",
+                    ],
                 },
                 "cid": {"type": ["string", "null"]},
                 "content": {"type": ["string", "null"]},

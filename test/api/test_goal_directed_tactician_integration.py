@@ -29,12 +29,17 @@ from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
     TACTICIAN_RESULT_SCHEMA,
     TACTICIAN_ZKP_BINDING_SCHEMA,
     AdmissionDecision,
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
     ExactTacticianCacheKey,
     GoalDirectedProofTactician,
     GoalDirectedTacticianError,
     GoalDirectedTacticianRequest,
     GoalDirectedTacticianResult,
     PhaseStatus,
+    ProofStateClass,
+    RankedKind,
     TacticianCheckpoint,
     TacticianPhase,
     TacticianStopReason,
@@ -43,11 +48,23 @@ from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
     ZkpReceiptBinding,
     bind_zkp_to_trusted_receipt,
     build_exact_tactician_cache_key,
+    build_tactic_premise_trace,
     claims_authority,
+    classify_proof_state,
     create_goal_directed_proof_tactician,
+    decompose_goal,
     default_utility_bindings,
+    expand_goal_branches,
+    predict_branch_cost_failure,
+    project_curriculum,
+    rank_tactics_and_premises,
+    recall_at_k,
     reject_authority_bypass,
     run_goal_directed_tactician,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.proof_directed_retrieval import (
+    ProofDirectedRetrievalBudgetError,
+    rank_proof_premises,
 )
 
 
@@ -118,9 +135,7 @@ def _prove_ok(context: dict[str, Any]) -> dict[str, Any]:
 
 def test_interface_identity_and_default_utilities() -> None:
     assert GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE == "GoalDirectedProofTactician@1"
-    assert GoalDirectedProofTactician.interface == (
-        GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE
-    )
+    assert GoalDirectedProofTactician.interface == (GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE)
     assert GoalDirectedProofTactician.schema == GOAL_DIRECTED_PROOF_TACTICIAN_SCHEMA
     roles = {item.role for item in default_utility_bindings()}
     assert UtilityRole.FORMALIZATION in roles
@@ -267,16 +282,13 @@ def test_model_draft_claiming_authority_cannot_bypass_validation() -> None:
         independently_validated=True,
     )
 
-    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(
-        _request(model_draft=draft)
-    )
+    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(_request(model_draft=draft))
     # Model draft with authority claims is rejected before kernel path can admit.
     assert result.stop_reason is TacticianStopReason.MODEL_BYPASS_REJECTED
     assert not result.admitted
     assert not result.independently_validated
     assert any(
-        phase.phase is TacticianPhase.VALIDATE
-        and phase.status is PhaseStatus.REJECTED
+        phase.phase is TacticianPhase.VALIDATE and phase.status is PhaseStatus.REJECTED
         for phase in result.phases
     )
 
@@ -345,14 +357,11 @@ def test_validated_cache_hit_is_admissible() -> None:
 
 
 def test_prose_cannot_bypass_formalization() -> None:
-    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(
-        _request(formal_goal_id="")
-    )
+    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(_request(formal_goal_id=""))
     assert result.stop_reason is TacticianStopReason.FORMALIZATION_REQUIRED
     assert not result.admitted
     assert any(
-        phase.phase is TacticianPhase.FORMALIZE
-        and phase.status is PhaseStatus.REJECTED
+        phase.phase is TacticianPhase.FORMALIZE and phase.status is PhaseStatus.REJECTED
         for phase in result.phases
     )
 
@@ -467,8 +476,7 @@ def test_proof_carrying_execution_is_resumable(tmp_path: Path) -> None:
     )
     assert second.admitted
     assert any(
-        phase.phase is TacticianPhase.LOAD_CHECKPOINT
-        and phase.status is PhaseStatus.RESUMED
+        phase.phase is TacticianPhase.LOAD_CHECKPOINT and phase.status is PhaseStatus.RESUMED
         for phase in second.phases
     )
 
@@ -585,3 +593,249 @@ def test_cancellation_is_fail_closed() -> None:
     )
     assert result.stop_reason is TacticianStopReason.CANCELLED
     assert not result.admitted
+
+
+# ---------------------------------------------------------------------------
+# PGIR-051: proof-state classification, ranking, decomposition, curriculum
+# ---------------------------------------------------------------------------
+
+
+def test_kernel_success_projects_verified_success_curriculum() -> None:
+    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(_request())
+    assert result.admitted
+    assert result.proof_state is not None
+    assert result.proof_state.state_class is ProofStateClass.CLOSED
+    assert result.proof_state.curriculum_class is CurriculumClass.VERIFIED_SUCCESS
+    assert result.curriculum is not None
+    assert result.curriculum.curriculum_class is CurriculumClass.VERIFIED_SUCCESS
+    assert result.curriculum.authority is CurriculumAuthority.HIGH
+    assert result.curriculum.independently_validated is True
+    assert result.curriculum.timeout_is_falsehood is False
+    assert result.curriculum.source_faithful is False
+    assert any(phase.phase is TacticianPhase.CURRICULUM for phase in result.phases)
+    restored = GoalDirectedTacticianResult.from_dict(result.to_dict())
+    assert restored.curriculum is not None
+    assert restored.curriculum.authority is CurriculumAuthority.HIGH
+
+
+def test_timeout_is_not_falsehood_and_cannot_upgrade_curriculum() -> None:
+    classification = classify_proof_state(
+        {"timeout": {"occurred": True, "status": "timed_out"}},
+        independently_validated=True,
+        kernel_verified=True,
+    )
+    assert classification.state_class is ProofStateClass.TIMEOUT
+    assert classification.curriculum_class is CurriculumClass.TIMEOUT
+    assert classification.timeout_is_falsehood is False
+    projection = project_curriculum(classification, independently_validated=True)
+    assert projection.curriculum_class is CurriculumClass.TIMEOUT
+    assert projection.authority is CurriculumAuthority.CANDIDATE
+    assert projection.timeout_is_falsehood is False
+    assert not projection.upgrades_curriculum_authority
+
+    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(
+        _request(),
+        context={"timeout": {"occurred": True}},
+    )
+    assert result.curriculum is not None
+    assert result.curriculum.curriculum_class is CurriculumClass.TIMEOUT
+    assert result.curriculum.authority is not CurriculumAuthority.HIGH
+    assert result.curriculum.timeout_is_falsehood is False
+
+
+def test_parse_type_curriculum_is_not_high_authority() -> None:
+    classification = classify_proof_state(
+        {
+            "parse_outcome": {"status": "parse_failed"},
+            "elaboration_outcome": {"status": "not_attempted"},
+        }
+    )
+    assert classification.state_class is ProofStateClass.PARSE_ERROR
+    assert classification.curriculum_class is CurriculumClass.PARSE_TYPE
+    projection = project_curriculum(classification, independently_validated=True)
+    assert projection.authority is CurriculumAuthority.CANDIDATE
+    with pytest.raises(GoalDirectedTacticianError, match="cannot upgrade"):
+        CurriculumProjection(
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            authority=CurriculumAuthority.HIGH,
+            independently_validated=True,
+        )
+
+
+def test_counterexample_curriculum_requires_independent_check() -> None:
+    candidate = classify_proof_state(
+        {"counterexamples": [{"witness_id": "cex:1"}]},
+        independently_validated=False,
+    )
+    assert candidate.curriculum_class is CurriculumClass.COUNTEREXAMPLE
+    candidate_proj = project_curriculum(candidate, independently_validated=False)
+    assert candidate_proj.authority is CurriculumAuthority.CANDIDATE
+
+    checked = classify_proof_state(
+        {"counterexamples": [{"witness_id": "cex:1"}]},
+        independently_validated=True,
+    )
+    checked_proj = project_curriculum(checked, independently_validated=True)
+    assert checked_proj.authority is CurriculumAuthority.HIGH
+    assert checked_proj.curriculum_class is CurriculumClass.COUNTEREXAMPLE
+
+
+def test_unvalidated_success_cannot_upgrade_curriculum_authority() -> None:
+    forged = classify_proof_state(
+        {
+            "kernel_outcome": {"status": "accepted"},
+            "independently_validated": False,
+        },
+        independently_validated=False,
+        kernel_verified=False,
+    )
+    projection = project_curriculum(forged, independently_validated=False)
+    assert projection.authority is not CurriculumAuthority.HIGH
+    with pytest.raises(GoalDirectedTacticianError, match="independently validated"):
+        CurriculumProjection(
+            curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+            authority=CurriculumAuthority.HIGH,
+            independently_validated=False,
+        )
+
+
+def test_tactic_success_is_not_source_faithfulness() -> None:
+    trace = build_tactic_premise_trace(
+        kind=RankedKind.TACTIC,
+        goal_id="goal:lease-safety",
+        item_ids=("intro", "exact"),
+        outcome="verified_success",
+        independently_validated=True,
+        metadata={"source_faithful": True},
+    )
+    assert trace.source_faithful is False
+    assert trace.to_dict()["source_faithful"] is False
+    classification = classify_proof_state(
+        {"kernel_outcome": {"status": "accepted"}},
+        independently_validated=True,
+        kernel_verified=True,
+    )
+    projection = project_curriculum(
+        classification,
+        traces=(trace,),
+        independently_validated=True,
+    )
+    assert projection.source_faithful is False
+
+
+def test_tactic_premise_ranking_topk_recall_and_cost() -> None:
+    candidates = (
+        {"item_id": "premise:a", "score": 0.9, "predicted_cost_ms": 10},
+        {"item_id": "premise:b", "score": 0.4, "predicted_cost_ms": 5},
+        {"item_id": "premise:c", "score": 0.8, "predicted_cost_ms": 7},
+        {"item_id": "premise:d", "score": 0.1, "predicted_cost_ms": 2},
+    )
+    ranking = rank_tactics_and_premises(
+        candidates,
+        k=2,
+        relevant_ids=("premise:a", "premise:c", "premise:z"),
+        kind=RankedKind.PREMISE,
+    )
+    assert ranking.ranked_ids == ("premise:a", "premise:c")
+    assert ranking.k == 2
+    assert ranking.recall_at_k_bps == recall_at_k(ranking.ranked_ids, ranking.relevant_ids, 2)
+    assert ranking.recall_at_k_bps == (2 * 10_000) // 3
+    assert ranking.cost_ms == 17
+    assert ranking.truncated is True
+    assert ranking.proof_authority is False
+    retrieval = rank_proof_premises(candidates, k=2, relevant_ids=("premise:a",))
+    assert retrieval.recall_at_k_bps == 10_000
+
+
+def test_bounded_goal_decomposition_rejects_overbranch() -> None:
+    children = [
+        {"subgoal_id": f"g:{index}", "statement": f"subgoal {index}"} for index in range(3)
+    ]
+    decomposition = decompose_goal("goal:root", children, max_branch_factor=4)
+    assert len(decomposition.children) == 3
+    assert decomposition.proof_authority is False
+    with pytest.raises(GoalDirectedTacticianError, match="max_branch_factor"):
+        decompose_goal("goal:root", children, max_branch_factor=2)
+    with pytest.raises(ProofDirectedRetrievalBudgetError, match="max_branch_factor"):
+        expand_goal_branches(
+            {"goal:root": ("g:1", "g:2", "g:3")},
+            ("goal:root",),
+            max_branch_factor=2,
+            fail_closed=True,
+        )
+
+
+def test_branch_cost_failure_prediction_is_guidance_only() -> None:
+    ranking = rank_tactics_and_premises(
+        (
+            {
+                "item_id": "tac:intro",
+                "score": 0.5,
+                "predicted_cost_ms": 12,
+                "predicted_failure_bps": 2500,
+                "predicted_branch_factor": 2,
+            },
+        ),
+        k=1,
+        kind=RankedKind.TACTIC,
+    )
+    decomposition = decompose_goal(
+        "goal:root",
+        (
+            {
+                "subgoal_id": "g:1",
+                "statement": "first",
+                "predicted_cost_ms": 8,
+                "predicted_failure_bps": 1000,
+            },
+        ),
+    )
+    prediction = predict_branch_cost_failure(
+        ranking=ranking,
+        decomposition=decomposition,
+        max_branch_factor=8,
+    )
+    assert prediction.proof_authority is False
+    assert prediction.to_dict()["authority"] == UtilityAuthority.GUIDANCE.value
+    assert prediction.predicted_cost_ms == 20
+    assert prediction.predicted_failure_bps == 2500
+    assert prediction.predicted_branch_factor <= 8
+
+
+def test_run_ranks_and_decomposes_from_context() -> None:
+    def retrieve(context: dict[str, Any]) -> dict[str, Any]:
+        del context
+        return {
+            "status": "ok",
+            "reason_code": "retrieved",
+            "candidates": [
+                {"item_id": "premise:h", "score": 0.95, "predicted_cost_ms": 3},
+                {"item_id": "premise:unused", "score": 0.1, "predicted_cost_ms": 1},
+            ],
+        }
+
+    result = GoalDirectedProofTactician(kernel=_kernel_ok, retrieve=retrieve).run(
+        _request(),
+        context={
+            "relevant_ids": ("premise:h",),
+            "top_k": 1,
+            "decomposition": {
+                "parent_goal_id": "goal:lease-safety",
+                "children": [
+                    {"subgoal_id": "g:intro", "statement": "introduce h"},
+                    {"subgoal_id": "g:exact", "statement": "exact h"},
+                ],
+                "max_branch_factor": 4,
+            },
+        },
+    )
+    assert result.admitted
+    assert result.ranking is not None
+    assert result.ranking.ranked_ids == ("premise:h",)
+    assert result.ranking.recall_at_k_bps == 10_000
+    assert result.decomposition is not None
+    assert len(result.decomposition.children) == 2
+    assert result.prediction is not None
+    assert result.traces
+    assert result.curriculum is not None
+    assert result.curriculum.authority is CurriculumAuthority.HIGH

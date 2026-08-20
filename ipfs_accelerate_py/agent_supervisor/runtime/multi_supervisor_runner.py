@@ -228,6 +228,9 @@ _ROUTE_AUTHORIZATION_ENV_NAMES = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE",
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID",
 )
+_PROVIDER_EXECUTABLE_ENV_NAMES = (
+    "IPFS_ACCELERATE_AGENT_GROK_BIN",
+)
 
 
 class _SupportsFileno(Protocol):
@@ -5293,6 +5296,7 @@ def start_track(
         route_names = {
             *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
             *_ROUTE_AUTHORIZATION_ENV_NAMES,
+            *_PROVIDER_EXECUTABLE_ENV_NAMES,
         }
         explicit_profile = dict(profile.environment)
         disallowed_profile_names = set(explicit_profile) - route_names

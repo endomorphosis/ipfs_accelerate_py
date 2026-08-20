@@ -156,7 +156,9 @@ SDPA is used by default for `torch>=2.1.1` when an implementation is available, 
 ```python
 from transformers import CLIPModel
 
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", torch_dtype=torch.float16, attn_implementation="sdpa")
+model = CLIPModel.from_pretrained(
+    "openai/clip-vit-base-patch32", torch_dtype=torch.float16, attn_implementation="sdpa"
+)
 ```
 
 For the best speedups, we recommend loading the model in half-precision (e.g. `torch.float16` or `torch.bfloat16`).

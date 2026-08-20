@@ -45,9 +45,7 @@ CODEBASE_PROOF_BENCHMARK_CORPUS_VERSION: Final = "codebase-proof-efficiency@1"
 CODEBASE_PROOF_CLAIM_OUTCOME_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/code-proof-claim-outcome@1"
 )
-CODEBASE_PROOF_ARM_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-proof-benchmark-arm@1"
-)
+CODEBASE_PROOF_ARM_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-proof-benchmark-arm@1"
 CODEBASE_PROOF_PAIRED_CASE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/code-proof-paired-case@1"
 )
@@ -73,9 +71,7 @@ CODEBASE_PROOF_OBJECTIVE_REVISION: Final = (
 
 # Frozen envelope identities.  Changing any requires a corpus-version bump.
 CBP_FROZEN_REPOSITORY_ID: Final = "repository:codebase-proof-benchmark@1"
-CBP_FROZEN_TREE_ID: Final = (
-    "sha256:67e297d6cf296c60593fa3617b84f9f17abf6df8cbp130baseline000000000"
-)
+CBP_FROZEN_TREE_ID: Final = "sha256:67e297d6cf296c60593fa3617b84f9f17abf6df8cbp130baseline000000000"
 CBP_FROZEN_POLICY_ID: Final = "policy:codebase-proof-benchmark@1"
 CBP_FROZEN_POLICY_REVISION: Final = (
     "sha256:e9f9146533b39e99ceb8ca1e41a6ce92765dc4a3a627f1737d4951e52e4dca54"
@@ -203,15 +199,11 @@ def _canonical_json(value: Any) -> str:
             allow_nan=False,
         )
     except (TypeError, ValueError) as exc:
-        raise CodebaseProofBenchmarkError(
-            "benchmark data must be canonical JSON"
-        ) from exc
+        raise CodebaseProofBenchmarkError("benchmark data must be canonical JSON") from exc
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _fixture_digest(label: str) -> str:
@@ -222,12 +214,8 @@ def _reject_forbidden(value: Any) -> None:
     if isinstance(value, Mapping):
         for key, item in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
-            if normalized in _FORBIDDEN_PAYLOAD_KEYS or normalized.endswith(
-                "_body"
-            ):
-                raise CodebaseProofBenchmarkError(
-                    f"benchmark payload cannot contain {key!r}"
-                )
+            if normalized in _FORBIDDEN_PAYLOAD_KEYS or normalized.endswith("_body"):
+                raise CodebaseProofBenchmarkError(f"benchmark payload cannot contain {key!r}")
             _reject_forbidden(item)
     elif isinstance(value, (list, tuple)):
         for item in value:
@@ -241,9 +229,7 @@ def _text(value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES) -> str:
         raise CodebaseProofBenchmarkError(f"{name} must be non-empty text")
     result = value.strip()
     if "\x00" in result or len(result.encode("utf-8")) > maximum:
-        raise CodebaseProofBenchmarkError(
-            f"{name} is unsafe or exceeds its {maximum}-byte bound"
-        )
+        raise CodebaseProofBenchmarkError(f"{name} is unsafe or exceeds its {maximum}-byte bound")
     return result
 
 
@@ -257,9 +243,7 @@ def _code(value: Any, name: str) -> str:
 def _content_id(value: Any, name: str) -> str:
     result = _text(value, name, maximum=71).lower()
     if not _CONTENT_ID.fullmatch(result):
-        raise CodebaseProofBenchmarkError(
-            f"{name} must be a lowercase sha256 content ID"
-        )
+        raise CodebaseProofBenchmarkError(f"{name} must be a lowercase sha256 content ID")
     return result
 
 
@@ -270,12 +254,7 @@ def _integer(
     maximum: int = MAX_COUNTER,
     minimum: int = 0,
 ) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < minimum
-        or value > maximum
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum or value > maximum:
         raise CodebaseProofBenchmarkError(
             f"{name} must be an integer from {minimum} through {maximum}"
         )
@@ -296,9 +275,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise CodebaseProofBenchmarkError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise CodebaseProofBenchmarkError(f"{name} must be one of: {allowed}") from exc
 
 
 def _rate_bps(numerator: int, denominator: int) -> int:
@@ -331,9 +308,7 @@ def _strict_keys(
             details.append("missing " + ", ".join(missing))
         if extras:
             details.append("unexpected " + ", ".join(extras))
-        raise CodebaseProofBenchmarkError(
-            f"{name} has invalid fields: {'; '.join(details)}"
-        )
+        raise CodebaseProofBenchmarkError(f"{name} has invalid fields: {'; '.join(details)}")
 
 
 # ---------------------------------------------------------------------------
@@ -382,22 +357,16 @@ class ClaimOutcomeObservation:
             _boolean(self.authoritative_admission, "authoritative_admission"),
         )
         object.__setattr__(self, "false_admit", _boolean(self.false_admit, "false_admit"))
-        object.__setattr__(
-            self, "false_refute", _boolean(self.false_refute, "false_refute")
-        )
+        object.__setattr__(self, "false_refute", _boolean(self.false_refute, "false_refute"))
         object.__setattr__(
             self,
             "required_for_coverage",
             _boolean(self.required_for_coverage, "required_for_coverage"),
         )
         if self.false_admit and not self.authoritative_admission:
-            raise CodebaseProofBenchmarkError(
-                "false_admit requires authoritative_admission"
-            )
+            raise CodebaseProofBenchmarkError("false_admit requires authoritative_admission")
         if self.false_refute and self.status is not ClaimStatus.REFUTED:
-            raise CodebaseProofBenchmarkError(
-                "false_refute requires status=refuted"
-            )
+            raise CodebaseProofBenchmarkError("false_refute requires status=refuted")
         # Authoritative admissions that are false admits must not be marked
         # satisfied without the mutation flag; fixture honesty check.
         if (
@@ -474,9 +443,7 @@ class CodeProofArmObservation:
             _text(self.task_reference, "task_reference", maximum=MAX_REFERENCE_BYTES),
         )
         object.__setattr__(self, "path", _enum(self.path, ContextPath, "path"))
-        object.__setattr__(
-            self, "channel", _enum(self.channel, ResultChannel, "channel")
-        )
+        object.__setattr__(self, "channel", _enum(self.channel, ResultChannel, "channel"))
         object.__setattr__(
             self, "claim_family", _enum(self.claim_family, ClaimFamily, "claim_family")
         )
@@ -490,9 +457,7 @@ class CodeProofArmObservation:
             "cache_rejects",
             "accepted_criteria",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         object.__setattr__(
             self,
             "wall_time_ms",
@@ -519,9 +484,7 @@ class CodeProofArmObservation:
             _boolean(self.accepted_patch_regression, "accepted_patch_regression"),
         )
         if self.cache_hits + self.cache_rejects > self.cache_lookups:
-            raise CodebaseProofBenchmarkError(
-                "cache hits and rejects cannot exceed lookups"
-            )
+            raise CodebaseProofBenchmarkError("cache hits and rejects cannot exceed lookups")
         if self.retry_tokens > self.input_tokens + self.retry_tokens:
             raise CodebaseProofBenchmarkError("retry_tokens accounting overflow")
         claims = tuple(self.claims)
@@ -569,9 +532,7 @@ class CodeProofArmObservation:
     @property
     def required_satisfied_count(self) -> int:
         return sum(
-            1
-            for c in self.claims
-            if c.required_for_coverage and c.status is ClaimStatus.SATISFIED
+            1 for c in self.claims if c.required_for_coverage and c.status is ClaimStatus.SATISFIED
         )
 
     @property
@@ -610,9 +571,7 @@ class CodeProofArmObservation:
             "eventual_repair_success": self.eventual_repair_success,
             "accepted_patch_regression": self.accepted_patch_regression,
             "claims": [c.to_dict() for c in self.claims],
-            "input_tokens_per_accepted_criterion": (
-                self.input_tokens_per_accepted_criterion
-            ),
+            "input_tokens_per_accepted_criterion": (self.input_tokens_per_accepted_criterion),
             "cache_hit_rate_bps": self.cache_hit_rate_bps,
             "cache_reject_rate_bps": self.cache_reject_rate_bps,
         }
@@ -640,9 +599,7 @@ class CodeProofArmObservation:
             accepted_criteria=payload.get("accepted_criteria", 0),
             first_pass_success=payload.get("first_pass_success", False),
             eventual_repair_success=payload.get("eventual_repair_success", False),
-            accepted_patch_regression=payload.get(
-                "accepted_patch_regression", False
-            ),
+            accepted_patch_regression=payload.get("accepted_patch_regression", False),
             claims=tuple(payload.get("claims") or ()),
         )
 
@@ -679,21 +636,15 @@ class CodeProofPairedCase:
         if bulk.task_reference != self.task_reference:
             raise CodebaseProofBenchmarkError("bulk task_reference mismatch")
         if obligation.task_reference != self.task_reference:
-            raise CodebaseProofBenchmarkError(
-                "obligation_first task_reference mismatch"
-            )
+            raise CodebaseProofBenchmarkError("obligation_first task_reference mismatch")
         if bulk.path is not ContextPath.BULK_SOURCE:
             raise CodebaseProofBenchmarkError("bulk arm path must be bulk_source")
         if obligation.path is not ContextPath.OBLIGATION_FIRST:
-            raise CodebaseProofBenchmarkError(
-                "obligation arm path must be obligation_first"
-            )
+            raise CodebaseProofBenchmarkError("obligation arm path must be obligation_first")
         if bulk.claim_family is not self.claim_family:
             raise CodebaseProofBenchmarkError("bulk claim_family mismatch")
         if obligation.claim_family is not self.claim_family:
-            raise CodebaseProofBenchmarkError(
-                "obligation_first claim_family mismatch"
-            )
+            raise CodebaseProofBenchmarkError("obligation_first claim_family mismatch")
         object.__setattr__(self, "bulk", bulk)
         object.__setattr__(self, "obligation_first", obligation)
         object.__setattr__(
@@ -715,9 +666,7 @@ class CodeProofPairedCase:
 
     @property
     def retry_token_reduction_bps(self) -> int:
-        return _reduction_bps(
-            self.bulk.retry_tokens, self.obligation_first.retry_tokens
-        )
+        return _reduction_bps(self.bulk.retry_tokens, self.obligation_first.retry_tokens)
 
     @property
     def proof_cost_reduction_bps(self) -> int:
@@ -754,9 +703,7 @@ class CodeProofPairedCase:
             "obligation_first": self.obligation_first.to_dict(),
             "warm_cache_dominated": self.warm_cache_dominated,
             "input_token_reduction_bps": self.input_token_reduction_bps,
-            "tokens_per_criterion_reduction_bps": (
-                self.tokens_per_criterion_reduction_bps
-            ),
+            "tokens_per_criterion_reduction_bps": (self.tokens_per_criterion_reduction_bps),
             "retry_token_reduction_bps": self.retry_token_reduction_bps,
             "proof_cost_reduction_bps": self.proof_cost_reduction_bps,
             "required_coverage_preserved": self.required_coverage_preserved,
@@ -799,9 +746,7 @@ class MutationSeedCase:
     observed_accepted_patch_regression: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "seed_id", _code(self.seed_id, "seed_id")
-        )
+        object.__setattr__(self, "seed_id", _code(self.seed_id, "seed_id"))
         object.__setattr__(self, "kind", _enum(self.kind, MutationSeedKind, "kind"))
         object.__setattr__(
             self, "claim_family", _enum(self.claim_family, ClaimFamily, "claim_family")
@@ -825,9 +770,7 @@ class MutationSeedCase:
             "observed_eventual_repair_success",
             "observed_accepted_patch_regression",
         ):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
 
     @property
     def seed_matched(self) -> bool:
@@ -836,10 +779,8 @@ class MutationSeedCase:
             and self.expected_false_refute == self.observed_false_refute
             and self.expected_stale_detection == self.observed_stale_detection
             and self.expected_first_pass_success == self.observed_first_pass_success
-            and self.expected_eventual_repair_success
-            == self.observed_eventual_repair_success
-            and self.expected_accepted_patch_regression
-            == self.observed_accepted_patch_regression
+            and self.expected_eventual_repair_success == self.observed_eventual_repair_success
+            and self.expected_accepted_patch_regression == self.observed_accepted_patch_regression
         )
 
     @property
@@ -857,22 +798,14 @@ class MutationSeedCase:
             "expected_false_refute": self.expected_false_refute,
             "expected_stale_detection": self.expected_stale_detection,
             "expected_first_pass_success": self.expected_first_pass_success,
-            "expected_eventual_repair_success": (
-                self.expected_eventual_repair_success
-            ),
-            "expected_accepted_patch_regression": (
-                self.expected_accepted_patch_regression
-            ),
+            "expected_eventual_repair_success": (self.expected_eventual_repair_success),
+            "expected_accepted_patch_regression": (self.expected_accepted_patch_regression),
             "observed_false_admit": self.observed_false_admit,
             "observed_false_refute": self.observed_false_refute,
             "observed_stale_detection": self.observed_stale_detection,
             "observed_first_pass_success": self.observed_first_pass_success,
-            "observed_eventual_repair_success": (
-                self.observed_eventual_repair_success
-            ),
-            "observed_accepted_patch_regression": (
-                self.observed_accepted_patch_regression
-            ),
+            "observed_eventual_repair_success": (self.observed_eventual_repair_success),
+            "observed_accepted_patch_regression": (self.observed_accepted_patch_regression),
             "seed_matched": self.seed_matched,
         }
 
@@ -890,24 +823,16 @@ class MutationSeedCase:
             expected_false_admit=payload.get("expected_false_admit", False),
             expected_false_refute=payload.get("expected_false_refute", False),
             expected_stale_detection=payload.get("expected_stale_detection", False),
-            expected_first_pass_success=payload.get(
-                "expected_first_pass_success", False
-            ),
-            expected_eventual_repair_success=payload.get(
-                "expected_eventual_repair_success", False
-            ),
+            expected_first_pass_success=payload.get("expected_first_pass_success", False),
+            expected_eventual_repair_success=payload.get("expected_eventual_repair_success", False),
             expected_accepted_patch_regression=payload.get(
                 "expected_accepted_patch_regression", False
             ),
             observed_false_admit=payload.get("observed_false_admit", False),
             observed_false_refute=payload.get("observed_false_refute", False),
             observed_stale_detection=payload.get("observed_stale_detection", False),
-            observed_first_pass_success=payload.get(
-                "observed_first_pass_success", False
-            ),
-            observed_eventual_repair_success=payload.get(
-                "observed_eventual_repair_success", False
-            ),
+            observed_first_pass_success=payload.get("observed_first_pass_success", False),
+            observed_eventual_repair_success=payload.get("observed_eventual_repair_success", False),
             observed_accepted_patch_regression=payload.get(
                 "observed_accepted_patch_regression", False
             ),
@@ -924,9 +849,7 @@ class LiveModelChannelObservation:
     notes_digest: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "channel_id", _code(self.channel_id, "channel_id")
-        )
+        object.__setattr__(self, "channel_id", _code(self.channel_id, "channel_id"))
         object.__setattr__(
             self,
             "provider_reference",
@@ -955,9 +878,7 @@ class LiveModelChannelObservation:
                 )
         object.__setattr__(self, "paired_cases", tuple(cases))
         if self.notes_digest:
-            object.__setattr__(
-                self, "notes_digest", _content_id(self.notes_digest, "notes_digest")
-            )
+            object.__setattr__(self, "notes_digest", _content_id(self.notes_digest, "notes_digest"))
         else:
             object.__setattr__(self, "notes_digest", "")
 
@@ -1049,10 +970,7 @@ class CodebaseProofBenchmarkSuite:
                 raise CodebaseProofBenchmarkError(
                     "suite paired bulk arms must be deterministic_fixture"
                 )
-            if (
-                case.obligation_first.channel
-                is not ResultChannel.DETERMINISTIC_FIXTURE
-            ):
+            if case.obligation_first.channel is not ResultChannel.DETERMINISTIC_FIXTURE:
                 raise CodebaseProofBenchmarkError(
                     "suite paired obligation arms must be deterministic_fixture"
                 )
@@ -1101,9 +1019,7 @@ class CodebaseProofBenchmarkSuite:
         material = self._preregistration_material()
         digest = _digest(material)
         if self.preregistration_digest:
-            claimed = _content_id(
-                self.preregistration_digest, "preregistration_digest"
-            )
+            claimed = _content_id(self.preregistration_digest, "preregistration_digest")
             if claimed != digest:
                 raise CodebaseProofBenchmarkError(
                     "preregistration_digest does not match suite population"
@@ -1149,9 +1065,7 @@ class CodebaseProofBenchmarkSuite:
             "paired_cases": [c.to_dict() for c in self.paired_cases],
             "mutation_seeds": [s.to_dict() for s in self.mutation_seeds],
             "live_model_channel": (
-                self.live_model_channel.to_dict()
-                if self.live_model_channel is not None
-                else None
+                self.live_model_channel.to_dict() if self.live_model_channel is not None else None
             ),
             "preregistration_digest": self.preregistration_digest,
             "suite_id": self.suite_id,
@@ -1260,17 +1174,13 @@ class CodebaseProofBenchmarkReport:
     report_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "suite_id", _content_id(self.suite_id, "suite_id")
-        )
+        object.__setattr__(self, "suite_id", _content_id(self.suite_id, "suite_id"))
         object.__setattr__(
             self,
             "corpus_version",
             _text(self.corpus_version, "corpus_version", maximum=128),
         )
-        object.__setattr__(
-            self, "channel", _enum(self.channel, ResultChannel, "channel")
-        )
+        object.__setattr__(self, "channel", _enum(self.channel, ResultChannel, "channel"))
         for name in (
             "false_admit_count",
             "false_refute_count",
@@ -1316,9 +1226,7 @@ class CodebaseProofBenchmarkReport:
             "mutation_seed_match_count",
             "mutation_seed_total",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, maximum=MAX_COUNTER)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, maximum=MAX_COUNTER))
         gates = tuple(self.gates)
         object.__setattr__(self, "gates", gates)
         if not isinstance(self.status_counts, Mapping):
@@ -1326,9 +1234,7 @@ class CodebaseProofBenchmarkReport:
         if not isinstance(self.family_coverage, Mapping):
             raise CodebaseProofBenchmarkError("family_coverage must be a mapping")
         if not isinstance(self.evidence_tier_counts, Mapping):
-            raise CodebaseProofBenchmarkError(
-                "evidence_tier_counts must be a mapping"
-            )
+            raise CodebaseProofBenchmarkError("evidence_tier_counts must be a mapping")
         if not isinstance(self.assurance_counts, Mapping):
             raise CodebaseProofBenchmarkError("assurance_counts must be a mapping")
         if not isinstance(self.live_model_summary, Mapping):
@@ -1338,9 +1244,7 @@ class CodebaseProofBenchmarkReport:
         if self.report_id:
             claimed = _content_id(self.report_id, "report_id")
             if claimed != digest:
-                raise CodebaseProofBenchmarkError(
-                    "report_id does not match recomputed identity"
-                )
+                raise CodebaseProofBenchmarkError("report_id does not match recomputed identity")
         object.__setattr__(self, "report_id", digest)
         encoded = _canonical_json(self.to_dict()).encode("utf-8")
         if len(encoded) > MAX_REPORT_BYTES:
@@ -1352,9 +1256,7 @@ class CodebaseProofBenchmarkReport:
             "corpus_version": self.corpus_version,
             "channel": self.channel.value,
             "status_counts": dict(self.status_counts),
-            "family_coverage": {
-                k: dict(v) for k, v in self.family_coverage.items()
-            },
+            "family_coverage": {k: dict(v) for k, v in self.family_coverage.items()},
             "evidence_tier_counts": dict(self.evidence_tier_counts),
             "assurance_counts": dict(self.assurance_counts),
             "false_admit_count": self.false_admit_count,
@@ -1368,17 +1270,13 @@ class CodebaseProofBenchmarkReport:
             "obligation_input_tokens": self.obligation_input_tokens,
             "bulk_retry_tokens": self.bulk_retry_tokens,
             "obligation_retry_tokens": self.obligation_retry_tokens,
-            "tokens_per_criterion_reduction_bps": (
-                self.tokens_per_criterion_reduction_bps
-            ),
+            "tokens_per_criterion_reduction_bps": (self.tokens_per_criterion_reduction_bps),
             "retry_token_reduction_bps": self.retry_token_reduction_bps,
             "warm_prove_cost_reduction_bps": self.warm_prove_cost_reduction_bps,
             "required_coverage_loss_count": self.required_coverage_loss_count,
             "gates": [g.to_dict() for g in self.gates],
             "efficiency_report_id": (
-                self.efficiency_report.report_id
-                if self.efficiency_report is not None
-                else ""
+                self.efficiency_report.report_id if self.efficiency_report is not None else ""
             ),
             "live_model_summary": dict(self.live_model_summary),
         }
@@ -1410,9 +1308,7 @@ class CodebaseProofBenchmarkReport:
             "corpus_version": self.corpus_version,
             "channel": self.channel.value,
             "status_counts": dict(self.status_counts),
-            "family_coverage": {
-                k: dict(v) for k, v in self.family_coverage.items()
-            },
+            "family_coverage": {k: dict(v) for k, v in self.family_coverage.items()},
             "evidence_tier_counts": dict(self.evidence_tier_counts),
             "assurance_counts": dict(self.assurance_counts),
             "false_admit_count": self.false_admit_count,
@@ -1426,15 +1322,9 @@ class CodebaseProofBenchmarkReport:
             "first_pass_success_rate_bps": self.first_pass_success_rate_bps,
             "eventual_repair_success_count": self.eventual_repair_success_count,
             "eventual_repair_attempt_count": self.eventual_repair_attempt_count,
-            "eventual_repair_success_rate_bps": (
-                self.eventual_repair_success_rate_bps
-            ),
-            "accepted_patch_regression_count": (
-                self.accepted_patch_regression_count
-            ),
-            "accepted_patch_regression_rate_bps": (
-                self.accepted_patch_regression_rate_bps
-            ),
+            "eventual_repair_success_rate_bps": (self.eventual_repair_success_rate_bps),
+            "accepted_patch_regression_count": (self.accepted_patch_regression_count),
+            "accepted_patch_regression_rate_bps": (self.accepted_patch_regression_rate_bps),
             "bulk_input_tokens": self.bulk_input_tokens,
             "obligation_input_tokens": self.obligation_input_tokens,
             "bulk_retry_tokens": self.bulk_retry_tokens,
@@ -1450,9 +1340,7 @@ class CodebaseProofBenchmarkReport:
             "bulk_wall_time_ms": self.bulk_wall_time_ms,
             "obligation_wall_time_ms": self.obligation_wall_time_ms,
             "bulk_proof_cost_microunits": self.bulk_proof_cost_microunits,
-            "obligation_proof_cost_microunits": (
-                self.obligation_proof_cost_microunits
-            ),
+            "obligation_proof_cost_microunits": (self.obligation_proof_cost_microunits),
             "bulk_accepted_criteria": self.bulk_accepted_criteria,
             "obligation_accepted_criteria": self.obligation_accepted_criteria,
             "input_tokens_per_accepted_criterion_bulk": (
@@ -1462,15 +1350,11 @@ class CodebaseProofBenchmarkReport:
                 self.input_tokens_per_accepted_criterion_obligation
             ),
             "input_token_reduction_bps": self.input_token_reduction_bps,
-            "tokens_per_criterion_reduction_bps": (
-                self.tokens_per_criterion_reduction_bps
-            ),
+            "tokens_per_criterion_reduction_bps": (self.tokens_per_criterion_reduction_bps),
             "retry_token_reduction_bps": self.retry_token_reduction_bps,
             "warm_prove_cost_reduction_bps": self.warm_prove_cost_reduction_bps,
             "cache_hit_rate_bps_obligation": self.cache_hit_rate_bps_obligation,
-            "cache_reject_rate_bps_obligation": (
-                self.cache_reject_rate_bps_obligation
-            ),
+            "cache_reject_rate_bps_obligation": (self.cache_reject_rate_bps_obligation),
             "required_coverage_loss_count": self.required_coverage_loss_count,
             "mutation_seed_match_count": self.mutation_seed_match_count,
             "mutation_seed_total": self.mutation_seed_total,
@@ -1480,9 +1364,7 @@ class CodebaseProofBenchmarkReport:
             "passed": self.passed,
             "evidence_claim_references": list(self.evidence_claim_references),
             "efficiency_report": (
-                self.efficiency_report.to_dict()
-                if self.efficiency_report is not None
-                else None
+                self.efficiency_report.to_dict() if self.efficiency_report is not None else None
             ),
             "live_model_summary": dict(self.live_model_summary),
             "report_id": self.report_id,
@@ -1563,9 +1445,7 @@ def evaluate_codebase_proof_benchmark(
                 regressions += 1
             for claim in arm.claims:
                 claim_total += 1
-                status_counts[claim.status.value] = (
-                    status_counts.get(claim.status.value, 0) + 1
-                )
+                status_counts[claim.status.value] = status_counts.get(claim.status.value, 0) + 1
                 evidence_tier_counts[claim.evidence_tier.value] = (
                     evidence_tier_counts.get(claim.evidence_tier.value, 0) + 1
                 )
@@ -1627,9 +1507,7 @@ def evaluate_codebase_proof_benchmark(
     token_reduction = _reduction_bps(bulk_input, obl_input)
     criterion_reduction = _reduction_bps(tokens_per_bulk, tokens_per_obl)
     retry_reduction = _reduction_bps(bulk_retry, obl_retry)
-    warm_prove_reduction = (
-        _reduction_bps(warm_bulk_proof, warm_obl_proof) if warm_cases else 0
-    )
+    warm_prove_reduction = _reduction_bps(warm_bulk_proof, warm_obl_proof) if warm_cases else 0
 
     # Efficiency extension over typed receipts (fail-closed measurement).
     efficiency = build_code_proof_efficiency_report(
@@ -1658,9 +1536,7 @@ def evaluate_codebase_proof_benchmark(
     }
     if suite.live_model_channel is not None:
         live_summary["channel_id"] = suite.live_model_channel.channel_id
-        live_summary["provider_reference"] = (
-            suite.live_model_channel.provider_reference
-        )
+        live_summary["provider_reference"] = suite.live_model_channel.provider_reference
 
     return CodebaseProofBenchmarkReport(
         suite_id=suite.suite_id,
@@ -1678,18 +1554,12 @@ def evaluate_codebase_proof_benchmark(
         stale_evidence_expected=stale_expected,
         first_pass_success_count=first_pass_success,
         first_pass_attempt_count=first_pass_attempts,
-        first_pass_success_rate_bps=_rate_bps(
-            first_pass_success, first_pass_attempts
-        ),
+        first_pass_success_rate_bps=_rate_bps(first_pass_success, first_pass_attempts),
         eventual_repair_success_count=eventual_success,
         eventual_repair_attempt_count=eventual_attempts,
-        eventual_repair_success_rate_bps=_rate_bps(
-            eventual_success, eventual_attempts
-        ),
+        eventual_repair_success_rate_bps=_rate_bps(eventual_success, eventual_attempts),
         accepted_patch_regression_count=regressions,
-        accepted_patch_regression_rate_bps=_rate_bps(
-            regressions, regression_denom
-        ),
+        accepted_patch_regression_rate_bps=_rate_bps(regressions, regression_denom),
         bulk_input_tokens=bulk_input,
         obligation_input_tokens=obl_input,
         bulk_retry_tokens=bulk_retry,
@@ -1755,10 +1625,7 @@ def _evaluate_gates(
         ),
         CodeProofGateResult(
             name=CodeProofGateName.INPUT_TOKEN_REDUCTION,
-            passed=(
-                tokens_per_criterion_reduction_bps
-                >= MIN_INPUT_TOKEN_REDUCTION_BPS
-            ),
+            passed=(tokens_per_criterion_reduction_bps >= MIN_INPUT_TOKEN_REDUCTION_BPS),
             measured_bps=tokens_per_criterion_reduction_bps,
             threshold_bps=MIN_INPUT_TOKEN_REDUCTION_BPS,
             detail="input tokens per accepted criterion reduction",

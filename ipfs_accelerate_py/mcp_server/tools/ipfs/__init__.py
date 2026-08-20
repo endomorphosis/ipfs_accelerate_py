@@ -21,6 +21,7 @@ def _load_mock_ipfs_client():
     """Resolve MockIPFSClient from the canonical or legacy location."""
     try:
         from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient as _MockIPFSClient  # type: ignore
+
         return _MockIPFSClient
     except Exception:
         pass

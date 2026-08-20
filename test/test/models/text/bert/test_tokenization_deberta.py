@@ -113,7 +113,10 @@ class DebertaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             "sequence builders", add_special_tokens=True, add_prefix_space=False
         )
         encoded_pair_from_decode = tokenizer.encode(
-            "sequence builders", "multi-sequence build", add_special_tokens=True, add_prefix_space=False
+            "sequence builders",
+            "multi-sequence build",
+            add_special_tokens=True,
+            add_prefix_space=False,
         )
 
         encoded_sentence = tokenizer.build_inputs_with_special_tokens(text)
@@ -140,7 +143,9 @@ class DebertaTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             ]
 
             encoding = tokenizer(sequences, padding=True)
-            decoded_sequences = [tokenizer.decode(seq, skip_special_tokens=True) for seq in encoding["input_ids"]]
+            decoded_sequences = [
+                tokenizer.decode(seq, skip_special_tokens=True) for seq in encoding["input_ids"]
+            ]
 
             # fmt: off
             expected_encoding = {

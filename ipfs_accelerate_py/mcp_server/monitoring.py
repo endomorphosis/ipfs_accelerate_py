@@ -75,7 +75,9 @@ class EnhancedMetricsCollector:
         """
         self._started_monitoring = True
 
-    def increment_counter(self, name: str, value: float = 1.0, labels: Optional[Dict[str, str]] = None) -> None:
+    def increment_counter(
+        self, name: str, value: float = 1.0, labels: Optional[Dict[str, str]] = None
+    ) -> None:
         if not self.enabled:
             return
         metric_name = self._metric_name_with_labels(name, labels)
@@ -89,7 +91,9 @@ class EnhancedMetricsCollector:
         with self._lock:
             self.gauges[metric_name] = float(value)
 
-    def observe_histogram(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+    def observe_histogram(
+        self, name: str, value: float, labels: Optional[Dict[str, str]] = None
+    ) -> None:
         if not self.enabled:
             return
         metric_name = self._metric_name_with_labels(name, labels)
@@ -154,7 +158,11 @@ class EnhancedMetricsCollector:
 
             request_total = int(self.request_count)
             error_total = int(self.error_count)
-            avg_response_ms = float(sum(self.request_times_ms) / len(self.request_times_ms)) if self.request_times_ms else 0.0
+            avg_response_ms = (
+                float(sum(self.request_times_ms) / len(self.request_times_ms))
+                if self.request_times_ms
+                else 0.0
+            )
             error_rate = float(error_total / request_total) if request_total else 0.0
 
             return {
@@ -206,7 +214,11 @@ class EnhancedMetricsCollector:
         cutoff = now - timedelta(hours=hours)
         with self._lock:
             samples: Iterable[float] = list(self.request_times_ms)
-        points = [{"timestamp": cutoff.isoformat(), "value": float(sum(samples) / len(samples))}] if samples else []
+        points = (
+            [{"timestamp": cutoff.isoformat(), "value": float(sum(samples) / len(samples))}]
+            if samples
+            else []
+        )
         return {
             "response_time_trend": points,
             "cpu_trend": [],
@@ -238,25 +250,43 @@ class P2PMetricsCollector:
         self.workflow_events = 0
         self.bootstrap_events = 0
 
-    def track_peer_discovery(self, source: str, peers_found: int, success: bool, duration_ms: Optional[float] = None) -> None:
+    def track_peer_discovery(
+        self, source: str, peers_found: int, success: bool, duration_ms: Optional[float] = None
+    ) -> None:
         self.peer_discoveries += 1
-        self.base_collector.increment_counter("p2p.peer_discovery.total", 1.0, {"source": source, "success": str(success).lower()})
-        self.base_collector.increment_counter("p2p.peer_discovery.peers_found", float(max(0, int(peers_found))), {"source": source})
+        self.base_collector.increment_counter(
+            "p2p.peer_discovery.total", 1.0, {"source": source, "success": str(success).lower()}
+        )
+        self.base_collector.increment_counter(
+            "p2p.peer_discovery.peers_found", float(max(0, int(peers_found))), {"source": source}
+        )
         if duration_ms is not None:
-            self.base_collector.observe_histogram("p2p.peer_discovery.duration_ms", float(duration_ms), {"source": source})
+            self.base_collector.observe_histogram(
+                "p2p.peer_discovery.duration_ms", float(duration_ms), {"source": source}
+            )
 
-    def track_workflow_execution(self, workflow_id: str, status: str, execution_time_ms: Optional[float] = None) -> None:
+    def track_workflow_execution(
+        self, workflow_id: str, status: str, execution_time_ms: Optional[float] = None
+    ) -> None:
         _ = workflow_id
         self.workflow_events += 1
         self.base_collector.increment_counter("p2p.workflow.events", 1.0, {"status": status})
         if execution_time_ms is not None:
-            self.base_collector.observe_histogram("p2p.workflow.execution_ms", float(execution_time_ms), {"status": status})
+            self.base_collector.observe_histogram(
+                "p2p.workflow.execution_ms", float(execution_time_ms), {"status": status}
+            )
 
-    def track_bootstrap_operation(self, method: str, success: bool, duration_ms: Optional[float] = None) -> None:
+    def track_bootstrap_operation(
+        self, method: str, success: bool, duration_ms: Optional[float] = None
+    ) -> None:
         self.bootstrap_events += 1
-        self.base_collector.increment_counter("p2p.bootstrap.total", 1.0, {"method": method, "success": str(success).lower()})
+        self.base_collector.increment_counter(
+            "p2p.bootstrap.total", 1.0, {"method": method, "success": str(success).lower()}
+        )
         if duration_ms is not None:
-            self.base_collector.observe_histogram("p2p.bootstrap.duration_ms", float(duration_ms), {"method": method})
+            self.base_collector.observe_histogram(
+                "p2p.bootstrap.duration_ms", float(duration_ms), {"method": method}
+            )
 
     def get_dashboard_data(self) -> Dict[str, Any]:
         return {

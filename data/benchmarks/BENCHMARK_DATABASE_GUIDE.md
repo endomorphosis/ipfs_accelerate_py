@@ -362,14 +362,11 @@ api.store_performance_result(
     precision="fp16",
     throughput=250.5,
     latency_avg=4.2,
-    memory_peak=2048.0
+    memory_peak=2048.0,
 )
 
 # Get performance metrics
-df = api.get_performance_metrics(
-    model_name="bert-base-uncased",
-    hardware_type="cuda"
-)
+df = api.get_performance_metrics(model_name="bert-base-uncased", hardware_type="cuda")
 
 # Execute custom query
 df = api.query(
@@ -396,7 +393,7 @@ test_run = TestRuns(
     test_name="model_benchmarks",
     test_type="performance",
     started_at=datetime.datetime.now(),
-    success=True
+    success=True,
 )
 run_id = db.insert_test_runs(test_run)
 
@@ -410,7 +407,7 @@ perf_result = PerformanceResults(
     precision="fp16",
     throughput_items_per_second=250.5,
     average_latency_ms=4.2,
-    memory_peak_mb=2048.0
+    memory_peak_mb=2048.0,
 )
 db.insert_performance_results(perf_result)
 ```
@@ -533,7 +530,7 @@ api.store_performance_result(
     model_name=result["model"],
     hardware_type=result["hardware"],
     throughput=result["throughput"],
-    latency_avg=result["latency"]
+    latency_avg=result["latency"],
 )
 ```
 
@@ -768,12 +765,10 @@ When writing benchmark or test results:
 ```python
 # RECOMMENDED: Store directly in database
 from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+
 api = BenchmarkDBAPI()
 api.store_performance_result(
-    model_name="bert-base-uncased",
-    hardware_type="cuda",
-    throughput=125.7,
-    latency_avg=8.2
+    model_name="bert-base-uncased", hardware_type="cuda", throughput=125.7, latency_avg=8.2
 )
 
 # FOR BACKWARD COMPATIBILITY ONLY: Writing to JSON files
@@ -785,7 +780,7 @@ if json_output_required:
     file_path = os.path.join("benchmark_results", f"{model_name}_{hardware_type}_benchmark.json")
     with open(file_path, "w") as f:
         json.dump(results, f, indent=2)
-    
+
     # Ensure old results are cleaned up after successful runs
     # This can be done by adding cleanup logic after successful database storage
 ```
@@ -798,11 +793,12 @@ def save_benchmark_results(results, model_name, hardware_type):
     # Don't create nested directories like this:
     # output_dir = f"./benchmark_results/{model_name}_{hardware_type}"
     # os.makedirs(output_dir, exist_ok=True)
-    
+
     # Instead, write directly to benchmark_results with descriptive filenames
     file_path = f"./benchmark_results/{model_name}_{hardware_type}_result.json"
     with open(file_path, "w") as f:
         json.dump(results, f, indent=2)
+
 
 # New approach (recommended)
 def save_benchmark_results(results, model_name, hardware_type):
@@ -813,15 +809,15 @@ def save_benchmark_results(results, model_name, hardware_type):
         hardware_type=hardware_type,
         throughput=results.get("throughput"),
         latency_avg=results.get("latency_avg"),
-        memory_peak_mb=results.get("memory_peak_mb")
+        memory_peak_mb=results.get("memory_peak_mb"),
     )
-    
+
     # If JSON output is still needed for backward compatibility:
     if json_output_required:
         file_path = f"./benchmark_results/{model_name}_{hardware_type}_result.json"
         with open(file_path, "w") as f:
             json.dump(results, f, indent=2)
-        
+
         # Add logic to clean up old results after successful runs
         cleanup_old_benchmark_files()
 ```

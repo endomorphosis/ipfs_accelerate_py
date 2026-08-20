@@ -173,14 +173,10 @@ def test_terminal_projection_deduplicates_provider_history_and_clears_live_backp
                                 "scheduled": 12,
                                 "admitted": 8,
                                 "backpressured": 4,
-                                "backpressure_reasons": {
-                                    "provider_concurrency": 4
-                                },
+                                "backpressure_reasons": {"provider_concurrency": 4},
                             }
                         ],
-                        "backpressure_reasons": {
-                            "provider_concurrency": 4
-                        },
+                        "backpressure_reasons": {"provider_concurrency": 4},
                     },
                 },
             },
@@ -194,12 +190,7 @@ def test_terminal_projection_deduplicates_provider_history_and_clears_live_backp
     assert snapshot["resource_admission"]["backpressured_count"] == 0
     assert snapshot["resource_admission"]["backpressure_reasons"] == []
     assert snapshot["resource_admission"]["backpressure_reason_counts"] == {}
-    assert (
-        snapshot["resource_admission"]["by_stage"]["inference"][
-            "backpressured"
-        ]
-        == 4
-    )
+    assert snapshot["resource_admission"]["by_stage"]["inference"]["backpressured"] == 4
 
 
 def test_authoritative_projection_replaces_historical_child_task_identities() -> None:
@@ -232,10 +223,9 @@ def test_authoritative_projection_replaces_historical_child_task_identities() ->
     assert len(snapshot["metrics"]) == 2
     assert snapshot["phase_counts"]["active"] == 0
     assert snapshot["phase_counts"]["idle"] == 1
-    assert [
-        (state["task_cid"], state["status"])
-        for state in snapshot["task_states"]
-    ] == [("task:bundle-projection", "completed")]
+    assert [(state["task_cid"], state["status"]) for state in snapshot["task_states"]] == [
+        ("task:bundle-projection", "completed")
+    ]
 
 
 def test_empty_authoritative_projection_clears_historical_live_state() -> None:
@@ -366,11 +356,7 @@ def test_refill_receipt_metrics_distinguish_terminal_outcomes_and_dedupe_cids() 
     scans = snapshot["scan_metrics"]
 
     assert (
-        scans["attempts"]
-        == scans["attempted"]
-        == scans["receipts"]
-        == scans["receipt_count"]
-        == 9
+        scans["attempts"] == scans["attempted"] == scans["receipts"] == scans["receipt_count"] == 9
     )
     assert scans["skipped"] == 3
     assert scans["failed_total"] == 2
@@ -521,7 +507,9 @@ def test_scheduler_decisions_reference_the_exposed_event_snapshot(tmp_path: Path
     manifest = scheduler.reconcile_once()
 
     assert started
-    decision = next(item for item in manifest["scheduler_decisions"] if item["decision"] == "launched")
+    decision = next(
+        item for item in manifest["scheduler_decisions"] if item["decision"] == "launched"
+    )
     assert decision["snapshot_id"] == manifest["scheduler_decision_snapshot_id"]
     assert manifest["scheduler_decision_snapshot"]["snapshot_id"] == decision["snapshot_id"]
     assert manifest["scheduler_snapshot"]["authoritative"] is True
@@ -811,9 +799,7 @@ def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof()
                 },
                 "diagnostics": {
                     "confidence": 0.25,
-                    "stale_evidence": [
-                        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
-                    ],
+                    "stale_evidence": [{"receipt_cid": "bafy-old", "reason": "tree_changed"}],
                     "analyzer_health": {"status": "unknown"},
                 },
             },
@@ -835,9 +821,7 @@ def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof()
     assert migrated["lifecycle_state"] == "provisionally_complete"
     assert migrated["confidence"] == 0.25
     assert migrated["uncovered_criteria"] == ["Current validation"]
-    assert migrated["stale_evidence"] == [
-        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
-    ]
+    assert migrated["stale_evidence"] == [{"receipt_cid": "bafy-old", "reason": "tree_changed"}]
     assert projection["by_goal_id"]["G2"]["lifecycle_state"] == "verified_complete"
     assert projection["by_goal_id"]["G2"]["exhaustion_quorum"]["satisfied"] is True
 
@@ -877,3 +861,90 @@ def test_snapshot_reader_accepts_v1_and_adds_diagnostics_without_rewriting_schem
     current = build_scheduler_snapshot([])
     assert current["schema"] == SCHEDULER_SNAPSHOT_SCHEMA
     assert current["schema_version"] == SCHEDULER_SNAPSHOT_SCHEMA_VERSION
+
+
+def test_resource_admission_projection_preserves_overlap_receipts_and_timeouts() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        ResourcePolicy,
+        ResourceScheduler,
+        lane_requirements_for_resource_profile,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
+        RESOURCE_ADMISSION_METRICS_SCHEMA,
+        build_scheduler_snapshot,
+        project_resource_admission_metrics,
+    )
+
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=2))
+    host = {
+        "observed_at_ms": 9_000,
+        "cpu_percent": 10,
+        "memory_percent": 10,
+        "disk_percent": 10,
+        "memory_available_bytes": 48 * 1024 * 1024 * 1024,
+        "disk_available_bytes": 100 * 1024 * 1024 * 1024,
+        "gpu_memory_total_bytes": 24 * 1024 * 1024 * 1024,
+        "gpu_memory_available_bytes": 20 * 1024 * 1024 * 1024,
+        "active_workers": 0,
+        "worker_limit": 4,
+        "available_worker_capacity": 4,
+        "capabilities": ("cpu", "gpu", "prover"),
+        "resource_classes": (
+            "cpu-medium",
+            "cpu-proof-solver",
+            "llm-proof-draft",
+            "io-artifact",
+        ),
+    }
+    schedule = scheduler.schedule(
+        [
+            lane_requirements_for_resource_profile(
+                "safe-cpu",
+                "RP-CPU-M",
+                stage="analysis",
+                memory_bytes=0,
+                disk_bytes=0,
+            ),
+            lane_requirements_for_resource_profile(
+                "late-eval",
+                "RP-CPU-M",
+                stage="evaluation",
+                memory_bytes=0,
+                disk_bytes=0,
+                timeout_ms=10,
+                queue_age_ms=100,
+            ),
+            lane_requirements_for_resource_profile(
+                "unsealed-train",
+                "RP-GPU",
+                stage="training",
+                memory_bytes=0,
+                disk_bytes=0,
+                gpu_memory_bytes=1024,
+                input_sealed=False,
+            ),
+        ],
+        host=host,
+    )
+    projected = project_resource_admission_metrics(schedule.to_dict())
+    assert projected is not None
+    assert projected["schema"] == RESOURCE_ADMISSION_METRICS_SCHEMA
+    assert projected["timed_out_count"] >= 1
+    assert projected["hazard_counts"]["unsealed_data"] >= 1
+    assert projected["hazard_counts"]["timed_out"] >= 1
+    assert any(row["stage"] == "evaluation" for row in projected["overlap_receipts"])
+    assert any(row["stage"] == "training" for row in projected["stage_admission_profiles"])
+
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "resource_schedule_observed",
+                "timestamp": "2026-01-01T00:02:00Z",
+                "resource_schedule": schedule.to_dict(),
+            }
+        ]
+    )
+    admission = snapshot["resource_admission"]
+    assert admission["timed_out_count"] >= 1
+    assert "unsealed_data" in admission["hazard_counts"]
+    assert admission["fairness_order"]

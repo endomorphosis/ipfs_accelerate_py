@@ -57,7 +57,17 @@ def load_workflow_tools(manager: HierarchicalToolManager) -> None:
             manager,
             collector.tools,
             category="workflow",
-            skip_names={"get_workflow_templates", "list_workflows", "get_workflow", "create_workflow", "update_workflow", "delete_workflow", "start_workflow", "pause_workflow", "stop_workflow"},
+            skip_names={
+                "get_workflow_templates",
+                "list_workflows",
+                "get_workflow",
+                "create_workflow",
+                "update_workflow",
+                "delete_workflow",
+                "start_workflow",
+                "pause_workflow",
+                "stop_workflow",
+            },
         )
 
     # Native tools are registered last so they override legacy-captured tools
@@ -75,13 +85,28 @@ def load_p2p_tools(manager: HierarchicalToolManager) -> None:
         register_native_p2p_tools_category(collector)
     except Exception as exc:
         logger.warning("Unable to load canonical p2p tools category: %s", exc)
-    
+
     if collector.tools:
         _register_collected(
             manager,
             collector.tools,
             category="p2p",
-            skip_names={"p2p_taskqueue_status", "p2p_taskqueue_submit", "p2p_taskqueue_claim_next", "p2p_taskqueue_call_tool", "p2p_taskqueue_list_tasks", "p2p_taskqueue_get_task", "p2p_taskqueue_wait_task", "p2p_taskqueue_complete_task", "p2p_taskqueue_heartbeat", "p2p_taskqueue_cache_get", "p2p_taskqueue_cache_set", "p2p_taskqueue_submit_docker_hub", "p2p_taskqueue_submit_docker_github", "list_peers"},
+            skip_names={
+                "p2p_taskqueue_status",
+                "p2p_taskqueue_submit",
+                "p2p_taskqueue_claim_next",
+                "p2p_taskqueue_call_tool",
+                "p2p_taskqueue_list_tasks",
+                "p2p_taskqueue_get_task",
+                "p2p_taskqueue_wait_task",
+                "p2p_taskqueue_complete_task",
+                "p2p_taskqueue_heartbeat",
+                "p2p_taskqueue_cache_get",
+                "p2p_taskqueue_cache_set",
+                "p2p_taskqueue_submit_docker_hub",
+                "p2p_taskqueue_submit_docker_github",
+                "list_peers",
+            },
         )
 
     # Native tools are registered last so they override legacy-captured tools

@@ -59,11 +59,7 @@ The system implements a `ModelShardingManager` with these capabilities:
 ```python
 # Create model sharding manager
 sharding_manager = ModelShardingManager(
-    model_name="llama-7b",
-    num_shards=4,
-    shard_type="layer",
-    model_type="text",
-    max_connections=4
+    model_name="llama-7b", num_shards=4, shard_type="layer", model_type="text", max_connections=4
 )
 
 # Initialize model with automatic browser allocation
@@ -71,13 +67,14 @@ await sharding_manager.initialize_sharding()
 
 # Run inference with fault tolerance
 result = await sharding_manager.run_inference_sharded(
-    inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
-    max_retries=2
+    inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]}, max_retries=2
 )
 
 # Access detailed performance metrics
 print(f"Inference time: {result['metrics']['inference_time_ms']}ms")
-print(f"Success rate: {result['metrics']['successful_components']}/{result['metrics']['component_count']}")
+print(
+    f"Success rate: {result['metrics']['successful_components']}/{result['metrics']['component_count']}"
+)
 ```
 
 ### Implementation Status
@@ -129,19 +126,19 @@ Performance metrics tracked include:
 
 ```python
 # Create resource pool with browser history enabled
-from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+from fixed_web_platform.resource_pool_bridge_integration import (
+    ResourcePoolBridgeIntegrationWithRecovery,
+)
 
 pool = ResourcePoolBridgeIntegrationWithRecovery(
-    max_connections=4,
-    enable_browser_history=True,
-    db_path="./browser_performance.duckdb"
+    max_connections=4, enable_browser_history=True, db_path="./browser_performance.duckdb"
 )
 pool.initialize()
 
 # Use performance-aware browser selection
 model = pool.get_model(
     model_type="audio",
-    model_name="whisper-tiny"
+    model_name="whisper-tiny",
     # No browser specified - will be automatically selected
 )
 
@@ -210,7 +207,7 @@ browser_history = pool.browser_history
 history = browser_history.get_performance_history(
     browser="firefox",
     model_type="audio",
-    days=30  # Last 30 days
+    days=30,  # Last 30 days
 )
 
 # Check for anomalies in current execution metrics
@@ -219,17 +216,13 @@ anomalies = browser_history.detect_anomalies(
     model_type="vision",
     model_name="vit-base-patch16-224",
     platform="webgpu",
-    metrics={
-        "latency_ms": 150.5,
-        "memory_mb": 420.3,
-        "throughput_tokens_per_sec": 1200.8
-    }
+    metrics={"latency_ms": 150.5, "memory_mb": 420.3, "throughput_tokens_per_sec": 1200.8},
 )
 
 # Export performance data for external analysis
 browser_history.export_data(
     filepath="performance_report.json",
-    format="json"  # or "csv"
+    format="json",  # or "csv"
 )
 ```
 
@@ -294,7 +287,7 @@ The system implements a `ResourcePoolErrorRecovery` class that provides:
 model = accelerator.accelerate_model(
     model_name="bert-base-uncased",
     platform="webgpu",
-    error_recovery={"max_retries": 3, "performance_aware": True}
+    error_recovery={"max_retries": 3, "performance_aware": True},
 )
 
 # Get telemetry with performance history

@@ -73,8 +73,7 @@ def _attempt_limit(value: Any) -> int:
 
 
 _ATTEMPTS_AVAILABLE_SQL = (
-    "(coalesce(max_attempts, 3) = 0 "
-    "OR coalesce(attempt, 0) < coalesce(max_attempts, 3))"
+    "(coalesce(max_attempts, 3) = 0 OR coalesce(attempt, 0) < coalesce(max_attempts, 3))"
 )
 
 
@@ -105,7 +104,9 @@ def default_queue_path() -> str:
         "IPFS_ACCELERATE_PY_TASK_QUEUE_PATH",
         os.environ.get(
             "IPFS_DATASETS_PY_TASK_QUEUE_PATH",
-            os.path.join(os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb"),
+            os.path.join(
+                os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb"
+            ),
         ),
     )
 
@@ -241,9 +242,7 @@ class TaskQueue:
                     for statement in migrations:
                         conn.execute(statement)
                     if had_priority_column:
-                        conn.execute(
-                            "UPDATE tasks SET priority=5 WHERE priority IS NULL"
-                        )
+                        conn.execute("UPDATE tasks SET priority=5 WHERE priority IS NULL")
                     else:
                         # Older queues carried priority only in payload JSON.
                         # Preserve that ordering/cap behavior during migration.
@@ -265,16 +264,12 @@ class TaskQueue:
                             )
                             """
                         )
+                    conn.execute("UPDATE tasks SET attempt=0 WHERE attempt IS NULL")
+                    conn.execute("UPDATE tasks SET max_attempts=3 WHERE max_attempts IS NULL")
+                    conn.execute("UPDATE tasks SET next_attempt_at=0 WHERE next_attempt_at IS NULL")
                     conn.execute(
-                        "UPDATE tasks SET attempt=0 WHERE attempt IS NULL"
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)"
                     )
-                    conn.execute(
-                        "UPDATE tasks SET max_attempts=3 WHERE max_attempts IS NULL"
-                    )
-                    conn.execute(
-                        "UPDATE tasks SET next_attempt_at=0 WHERE next_attempt_at IS NULL"
-                    )
-                    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
                     conn.execute(
                         "CREATE INDEX IF NOT EXISTS idx_tasks_claim "
                         "ON tasks(status, priority, next_attempt_at, created_at)"
@@ -850,9 +845,7 @@ class TaskQueue:
             conn = self._get_conn()
             conn.execute("BEGIN TRANSACTION")
             try:
-                count = self._recover_expired_in_transaction(
-                    conn, recovered_at, bounded_limit
-                )
+                count = self._recover_expired_in_transaction(conn, recovered_at, bounded_limit)
                 conn.execute("COMMIT")
                 return count
             except Exception:
@@ -877,8 +870,8 @@ class TaskQueue:
         if not tid or not wid:
             return False
         heartbeat_at = time.time() if now is None else float(now)
-        duration = self.default_lease_seconds if lease_seconds is None else max(
-            1.0, float(lease_seconds)
+        duration = (
+            self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
         with self._conn_lock:
             conn = self._get_conn()
@@ -976,8 +969,8 @@ class TaskQueue:
         task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
         session = str(session_id or "").strip()
         now = time.time()
-        lease_duration = self.default_lease_seconds if lease_seconds is None else max(
-            1.0, float(lease_seconds)
+        lease_duration = (
+            self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
 
         required_expr = (
@@ -1141,8 +1134,8 @@ class TaskQueue:
         task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
         session = str(session_id or "").strip()
         now = time.time()
-        lease_duration = self.default_lease_seconds if lease_seconds is None else max(
-            1.0, float(lease_seconds)
+        lease_duration = (
+            self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
 
         required_expr = (
@@ -1351,8 +1344,8 @@ class TaskQueue:
             raise ValueError("worker_id is required")
 
         now = time.time()
-        lease_duration = self.default_lease_seconds if lease_seconds is None else max(
-            1.0, float(lease_seconds)
+        lease_duration = (
+            self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
         session = str(session_id or "").strip()
         required_expr = (
@@ -1764,7 +1757,13 @@ class TaskQueue:
             return False
 
         status_norm = str(status).strip().lower() if status is not None else ""
-        if status_norm and status_norm not in {"queued", "running", "completed", "failed", "cancelled"}:
+        if status_norm and status_norm not in {
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+        }:
             status_norm = ""
 
         def _json_dict(value: Any) -> Dict[str, Any]:

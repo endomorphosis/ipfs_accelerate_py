@@ -42,9 +42,7 @@ from enum import Enum
 from typing import Any, Final
 
 
-PARTIAL_CANCELLATION_REQUIREMENT_ID: Final = (
-    "124037811551945145648172208272779822741"
-)
+PARTIAL_CANCELLATION_REQUIREMENT_ID: Final = "124037811551945145648172208272779822741"
 PROVIDER_BATCH_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/provider-batch-receipt@1"
 )
@@ -416,9 +414,7 @@ class ProviderBatchCapacity:
             raise ValueError("token_budget_remaining must be -1 or non-negative")
 
     @classmethod
-    def from_value(
-        cls, provider_id: str, value: Any
-    ) -> "ProviderBatchCapacity":
+    def from_value(cls, provider_id: str, value: Any) -> "ProviderBatchCapacity":
         if isinstance(value, cls):
             if value.provider_id != provider_id:
                 raise ValueError("capacity provider does not match requested provider")
@@ -445,9 +441,7 @@ class ProviderBatchCapacity:
                 maximum = int(getattr(value, "max_concurrency"))
                 active = int(getattr(value, "active_requests", 0))
                 fields.setdefault("max_concurrent_batches", maximum)
-                fields.setdefault(
-                    "available_concurrent_batches", max(0, maximum - active)
-                )
+                fields.setdefault("available_concurrent_batches", max(0, maximum - active))
         fields["provider_id"] = provider_id
         return cls(**fields)
 
@@ -466,6 +460,8 @@ class ProviderBatchSchedulerConfig:
     admission_retry_ms: int = 10
     receipt_history: int = 256
     fallback_on_dispatch_error: bool = True
+    network_allowlist: tuple[str, ...] = ()
+    require_sealed_inputs: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -486,10 +482,20 @@ class ProviderBatchSchedulerConfig:
             provider = str(provider_id).strip()
             if not provider:
                 raise ValueError("provider limit id must not be empty")
-            normalized[provider] = _positive_integer(
-                raw_limit, "provider limit"
-            )
+            normalized[provider] = _positive_integer(raw_limit, "provider limit")
         object.__setattr__(self, "provider_limits", normalized)
+        object.__setattr__(
+            self,
+            "network_allowlist",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip()
+                    for item in (self.network_allowlist or ())
+                    if str(item).strip()
+                )
+            ),
+        )
+        object.__setattr__(self, "require_sealed_inputs", bool(self.require_sealed_inputs))
 
 
 @dataclass(frozen=True)
@@ -564,9 +570,7 @@ class ProviderBatchResult(Mapping[str, Any]):
         }
         unknown = sorted(str(key) for key in value if key not in allowed)
         if unknown:
-            raise ValueError(
-                "unknown provider batch result fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown provider batch result fields: " + ", ".join(unknown))
         return cls(
             request_id=str(value.get("request_id") or ""),
             status=ProviderBatchStatus(str(value.get("status") or "")),
@@ -581,9 +585,7 @@ class ProviderBatchResult(Mapping[str, Any]):
             queue_wait_ms=int(value.get("queue_wait_ms") or 0),
             execution_ms=int(value.get("execution_ms") or 0),
             provenance=(
-                value.get("provenance")
-                if isinstance(value.get("provenance"), Mapping)
-                else {}
+                value.get("provenance") if isinstance(value.get("provenance"), Mapping) else {}
             ),
             singleflight_shared=bool(value.get("singleflight_shared", False)),
         )
@@ -713,12 +715,8 @@ class ProviderBatchEvidenceReceipt:
     @property
     def proves_partial_cancellation(self) -> bool:
         statuses = {item.status for item in self.members}
-        return (
-            ProviderBatchStatus.CANCELLED in statuses
-            and bool(
-                statuses
-                & {ProviderBatchStatus.SUCCEEDED, ProviderBatchStatus.FALLBACK}
-            )
+        return ProviderBatchStatus.CANCELLED in statuses and bool(
+            statuses & {ProviderBatchStatus.SUCCEEDED, ProviderBatchStatus.FALLBACK}
         )
 
     @property
@@ -774,6 +772,7 @@ class ProviderBatchMetrics:
     admission_deferrals: int
     capacity_errors: int
     admission_errors: int
+    overlap_rejections: int
     max_queue_depth: int
     max_observed_batch_size: int
     peak_active_batches: int
@@ -800,11 +799,7 @@ class ProviderBatchMetrics:
     def duplicate_compute_percent_millionths(self) -> int:
         if self.physical_executions <= 0:
             return 0
-        return (
-            self.duplicate_executions
-            * 100_000_000
-            // self.physical_executions
-        )
+        return self.duplicate_executions * 100_000_000 // self.physical_executions
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -829,6 +824,7 @@ class ProviderBatchMetrics:
                 "admission_deferrals",
                 "capacity_errors",
                 "admission_errors",
+                "overlap_rejections",
                 "max_queue_depth",
                 "max_observed_batch_size",
                 "peak_active_batches",
@@ -845,12 +841,8 @@ class ProviderBatchMetrics:
                 "completion_throughput_millionths_per_second": (
                     self.completion_throughput_millionths_per_second
                 ),
-                "average_members_per_call_millionths": (
-                    self.average_members_per_call_millionths
-                ),
-                "duplicate_compute_percent_millionths": (
-                    self.duplicate_compute_percent_millionths
-                ),
+                "average_members_per_call_millionths": (self.average_members_per_call_millionths),
+                "duplicate_compute_percent_millionths": (self.duplicate_compute_percent_millionths),
             }
         )
         return result
@@ -887,6 +879,36 @@ ProviderAdmission = Callable[
 ]
 
 
+@dataclass(frozen=True)
+class ProviderBatchOverlapReceipt:
+    """Observable overlap/hazard projection for one physical provider batch."""
+
+    batch_id: str
+    provider_id: str
+    admitted: bool
+    reason: str = ""
+    resource_kinds: tuple[str, ...] = ("provider", "token")
+    hazards: tuple[str, ...] = ()
+    cancelled_request_ids: tuple[str, ...] = ()
+    timed_out_request_ids: tuple[str, ...] = ()
+    member_count: int = 0
+    observed_at_ms: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "batch_id": self.batch_id,
+            "provider_id": self.provider_id,
+            "admitted": self.admitted,
+            "reason": self.reason,
+            "resource_kinds": list(self.resource_kinds),
+            "hazards": list(self.hazards),
+            "cancelled_request_ids": list(self.cancelled_request_ids),
+            "timed_out_request_ids": list(self.timed_out_request_ids),
+            "member_count": self.member_count,
+            "observed_at_ms": self.observed_at_ms,
+        }
+
+
 class ResourceSchedulerBatchAdmission:
     """Adapt the supervisor resource scheduler to physical provider batches.
 
@@ -908,6 +930,8 @@ class ResourceSchedulerBatchAdmission:
         memory_bytes: int = 0,
         gpu_memory_bytes: int = 0,
         required_capabilities: Sequence[str] = (),
+        network_allowlist: Sequence[str] = (),
+        requires_network: bool = False,
     ) -> None:
         acquire = getattr(scheduler, "acquire", None)
         release = getattr(scheduler, "release", None)
@@ -919,15 +943,17 @@ class ResourceSchedulerBatchAdmission:
         self.budget = budget
         self.path = path
         self.resource_class = str(resource_class or "llm-proof-draft")
-        self.memory_bytes = _positive_integer(
-            memory_bytes, "memory_bytes", allow_zero=True
-        )
+        self.memory_bytes = _positive_integer(memory_bytes, "memory_bytes", allow_zero=True)
         self.gpu_memory_bytes = _positive_integer(
             gpu_memory_bytes, "gpu_memory_bytes", allow_zero=True
         )
         self.required_capabilities = tuple(
             str(item).strip() for item in required_capabilities if str(item).strip()
         )
+        self.network_allowlist = tuple(
+            str(item).strip() for item in network_allowlist if str(item).strip()
+        )
+        self.requires_network = bool(requires_network)
 
     @staticmethod
     def _sample(source: Any, provider_id: str = "") -> Any:
@@ -946,22 +972,41 @@ class ResourceSchedulerBatchAdmission:
     ) -> ProviderBatchAdmissionGrant:
         from .resource_scheduler import LaneResourceRequirements
 
+        provenance: dict[str, Any] = {}
+        for request in requests:
+            if isinstance(request.provenance, Mapping):
+                provenance.update(dict(request.provenance))
         requirement = LaneResourceRequirements(
             lane_id=f"provider-batch:{uuid.uuid4().hex}",
-            stage="inference",
+            stage=str(provenance.get("stage") or "inference"),
             resource_class=self.resource_class,
             required_capabilities=self.required_capabilities,
             provider_id=key.provider_id,
             requires_provider=True,
-            context_tokens=max(
-                (request.context_limit for request in requests), default=0
-            ),
+            context_tokens=max((request.context_limit for request in requests), default=0),
             token_budget=sum(request.token_budget for request in requests),
             quota_units=1,
             memory_bytes=self.memory_bytes,
             gpu_memory_bytes=self.gpu_memory_bytes,
             process_slots=1,
             fairness_key=key.provider_id,
+            input_sealed=bool(provenance.get("input_sealed", True)),
+            trace_identity=str(provenance.get("trace_identity") or ""),
+            expected_trace_identity=str(provenance.get("expected_trace_identity") or ""),
+            checkpoint_key=str(provenance.get("checkpoint_key") or ""),
+            tokenizer_identity=str(provenance.get("tokenizer_identity") or ""),
+            expected_tokenizer_identity=str(
+                provenance.get("expected_tokenizer_identity") or ""
+            ),
+            exclusive_authorities=tuple(provenance.get("exclusive_authorities") or ()),
+            network_allowlist=self.network_allowlist
+            or tuple(provenance.get("network_allowlist") or ()),
+            requires_network=self.requires_network
+            or bool(provenance.get("requires_network", False)),
+            requires_gpu=bool(provenance.get("requires_gpu", False)),
+            mutates_tokenizer=bool(provenance.get("mutates_tokenizer", False)),
+            mutates_checkpoint=bool(provenance.get("mutates_checkpoint", False)),
+            claimed_resource_kinds=("provider", "token"),
         )
         decision, lease = self.scheduler.acquire(
             requirement,
@@ -979,9 +1024,7 @@ class ResourceSchedulerBatchAdmission:
             admitted=bool(getattr(decision, "admitted", False)),
             reason=str(getattr(decision, "reason", "") or ""),
             lease=lease,
-            release=lambda: self.scheduler.release(
-                lease, reason="provider_batch_completed"
-            ),
+            release=lambda: self.scheduler.release(lease, reason="provider_batch_completed"),
         )
 
 
@@ -1009,9 +1052,7 @@ class ProviderBatchScheduler:
         self._fallback = fallback
         self._clock_ms = clock_ms or (lambda: time.monotonic_ns() // 1_000_000)
         self._condition = threading.Condition(threading.RLock())
-        self._queues: "OrderedDict[ProviderBatchKey, deque[_ExecutionGroup]]" = (
-            OrderedDict()
-        )
+        self._queues: "OrderedDict[ProviderBatchKey, deque[_ExecutionGroup]]" = OrderedDict()
         self._singleflight: dict[str, _ExecutionGroup] = {}
         self._running_fingerprints: set[str] = set()
         self._request_subscribers: dict[str, _Subscriber] = {}
@@ -1020,6 +1061,9 @@ class ProviderBatchScheduler:
         self._closed = False
         self._started_at_ms = self._clock_ms()
         self._receipts: deque[ProviderBatchEvidenceReceipt] = deque(
+            maxlen=self.config.receipt_history
+        )
+        self._overlap_receipts: deque[ProviderBatchOverlapReceipt] = deque(
             maxlen=self.config.receipt_history
         )
         self._adaptive_sizes: dict[str, int] = {}
@@ -1042,6 +1086,7 @@ class ProviderBatchScheduler:
             "admission_deferrals": 0,
             "capacity_errors": 0,
             "admission_errors": 0,
+            "overlap_rejections": 0,
             "max_queue_depth": 0,
             "max_observed_batch_size": 0,
             "peak_active_batches": 0,
@@ -1061,9 +1106,7 @@ class ProviderBatchScheduler:
     def __exit__(self, *_args: Any) -> None:
         self.shutdown(wait=True)
 
-    def register_provider(
-        self, provider_id: str, dispatch: ProviderBatchDispatch
-    ) -> None:
+    def register_provider(self, provider_id: str, dispatch: ProviderBatchDispatch) -> None:
         provider = str(provider_id).strip()
         if not provider or not callable(dispatch):
             raise ValueError("provider id and callable dispatch are required")
@@ -1084,9 +1127,7 @@ class ProviderBatchScheduler:
             if self._closed:
                 raise RuntimeError("provider batch scheduler is closed")
             if normalized.request_id in self._request_subscribers:
-                raise ValueError(
-                    f"request_id is already active: {normalized.request_id}"
-                )
+                raise ValueError(f"request_id is already active: {normalized.request_id}")
             if len(self._request_subscribers) >= self.config.max_queue_size:
                 raise RuntimeError("provider batch queue is full")
             fingerprint = normalized.execution_fingerprint
@@ -1207,6 +1248,7 @@ class ProviderBatchScheduler:
                 admission_deferrals=counters["admission_deferrals"],
                 capacity_errors=counters["capacity_errors"],
                 admission_errors=counters["admission_errors"],
+                overlap_rejections=counters.get("overlap_rejections", 0),
                 max_queue_depth=counters["max_queue_depth"],
                 max_observed_batch_size=counters["max_observed_batch_size"],
                 peak_active_batches=counters["peak_active_batches"],
@@ -1214,9 +1256,7 @@ class ProviderBatchScheduler:
                 total_execution_ms=counters["total_execution_ms"],
                 elapsed_ms=max(0, self._clock_ms() - self._started_at_ms),
                 adaptive_batch_sizes=dict(sorted(self._adaptive_sizes.items())),
-                provider_calls_by_id=dict(
-                    sorted(self._provider_calls_by_id.items())
-                ),
+                provider_calls_by_id=dict(sorted(self._provider_calls_by_id.items())),
             )
 
     snapshot = metrics
@@ -1232,15 +1272,44 @@ class ProviderBatchScheduler:
         return tuple(
             receipt
             for receipt in self.evidence_receipts()
-            if receipt.proved_requirement_ids
-            == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
+            if receipt.proved_requirement_ids == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
         )
+
+    def overlap_receipts(self) -> tuple[ProviderBatchOverlapReceipt, ...]:
+        with self._condition:
+            return tuple(self._overlap_receipts)
+
+    def _record_overlap_receipt(
+        self,
+        *,
+        batch_id: str,
+        provider_id: str,
+        admitted: bool,
+        reason: str = "",
+        hazards: Sequence[str] = (),
+        cancelled_request_ids: Sequence[str] = (),
+        timed_out_request_ids: Sequence[str] = (),
+        member_count: int = 0,
+    ) -> ProviderBatchOverlapReceipt:
+        receipt = ProviderBatchOverlapReceipt(
+            batch_id=batch_id,
+            provider_id=provider_id,
+            admitted=admitted,
+            reason=reason,
+            hazards=tuple(dict.fromkeys(str(item) for item in hazards if str(item))),
+            cancelled_request_ids=tuple(cancelled_request_ids),
+            timed_out_request_ids=tuple(timed_out_request_ids),
+            member_count=member_count,
+            observed_at_ms=self._clock_ms(),
+        )
+        self._overlap_receipts.append(receipt)
+        if not admitted:
+            self._counters["overlap_rejections"] += 1
+        return receipt
 
     def _capacity(self, provider_id: str) -> ProviderBatchCapacity:
         if self._capacity_supplier is None:
-            limit = self.config.provider_limits.get(
-                provider_id, self.config.max_parallel_batches
-            )
+            limit = self.config.provider_limits.get(provider_id, self.config.max_parallel_batches)
             return ProviderBatchCapacity(
                 provider_id=provider_id,
                 max_concurrent_batches=limit,
@@ -1248,33 +1317,23 @@ class ProviderBatchScheduler:
                     0, limit - self._active_by_provider.get(provider_id, 0)
                 ),
             )
-        return ProviderBatchCapacity.from_value(
-            provider_id, self._capacity_supplier(provider_id)
-        )
+        return ProviderBatchCapacity.from_value(provider_id, self._capacity_supplier(provider_id))
 
-    def _effective_size(
-        self, provider_id: str, capacity: ProviderBatchCapacity
-    ) -> int:
+    def _effective_size(self, provider_id: str, capacity: ProviderBatchCapacity) -> int:
         # Keep providers without a proved batch wire contract at one physical
         # member.  Identical logical subscribers can still share that member
         # through single-flight.
         if _requires_single_member_batch(provider_id):
             self._adaptive_sizes[provider_id] = 1
             return 1
-        adaptive = self._adaptive_sizes.setdefault(
-            provider_id, self.config.max_batch_size
-        )
+        adaptive = self._adaptive_sizes.setdefault(provider_id, self.config.max_batch_size)
         limits = [self.config.max_batch_size, adaptive]
         if capacity.max_batch_size:
             limits.append(capacity.max_batch_size)
         return max(self.config.min_batch_size, min(limits))
 
-    def _provider_has_slot(
-        self, provider_id: str, capacity: ProviderBatchCapacity
-    ) -> bool:
-        configured = self.config.provider_limits.get(
-            provider_id, self.config.max_parallel_batches
-        )
+    def _provider_has_slot(self, provider_id: str, capacity: ProviderBatchCapacity) -> bool:
+        configured = self.config.provider_limits.get(provider_id, self.config.max_parallel_batches)
         active = self._active_by_provider.get(provider_id, 0)
         live_limit = capacity.max_concurrent_batches or configured
         return (
@@ -1284,9 +1343,7 @@ class ProviderBatchScheduler:
             and active < min(configured, live_limit)
         )
 
-    def _release_admission(
-        self, grant: ProviderBatchAdmissionGrant
-    ) -> None:
+    def _release_admission(self, grant: ProviderBatchAdmissionGrant) -> None:
         """Release a provider lease without destabilizing coordination."""
 
         try:
@@ -1349,11 +1406,7 @@ class ProviderBatchScheduler:
                 now = self._clock_ms()
                 self._expire_subscribers(now)
                 self._remove_empty_groups()
-                if (
-                    self._closed
-                    and not self._request_subscribers
-                    and self._active_batches == 0
-                ):
+                if self._closed and not self._request_subscribers and self._active_batches == 0:
                     return
                 launched = self._launch_ready(now)
                 if launched:
@@ -1393,8 +1446,7 @@ class ProviderBatchScheduler:
                 if (
                     capacity.token_budget_remaining >= 0
                     and groups
-                    and token_total + candidate_budget
-                    > capacity.token_budget_remaining
+                    and token_total + candidate_budget > capacity.token_budget_remaining
                 ):
                     break
                 if (
@@ -1408,6 +1460,35 @@ class ProviderBatchScheduler:
             if not groups:
                 self._counters["admission_deferrals"] += 1
                 continue
+            if self.config.require_sealed_inputs:
+                sealed_groups: list[_ExecutionGroup] = []
+                unsealed_groups: list[_ExecutionGroup] = []
+                for group in groups:
+                    provenance = group.representative.provenance
+                    if (
+                        isinstance(provenance, Mapping)
+                        and provenance.get("input_sealed") is False
+                    ):
+                        unsealed_groups.append(group)
+                    else:
+                        sealed_groups.append(group)
+                if unsealed_groups:
+                    self._record_overlap_receipt(
+                        batch_id=f"provider-batch-reject:{uuid.uuid4().hex}",
+                        provider_id=key.provider_id,
+                        admitted=False,
+                        reason="unsealed_data",
+                        hazards=("unsealed_data",),
+                        member_count=sum(
+                            len(group.subscribers) for group in unsealed_groups
+                        ),
+                    )
+                    for group in reversed(unsealed_groups):
+                        queue.appendleft(group)
+                    self._counters["admission_deferrals"] += 1
+                groups = sealed_groups
+                if not groups:
+                    continue
             requests = tuple(group.representative.dispatch_copy() for group in groups)
             admission_grant = ProviderBatchAdmissionGrant(admitted=True)
             if self._admission is not None:
@@ -1422,6 +1503,27 @@ class ProviderBatchScheduler:
                         reason="admission_error",
                     )
                 if not admission_grant.admitted:
+                    reason = str(admission_grant.reason or "admission_rejected")
+                    hazards = tuple(
+                        item
+                        for item in (
+                            "unsealed_data",
+                            "stale_trace",
+                            "checkpoint_collision",
+                            "incompatible_tokenizer_mutation",
+                            "network_denied",
+                            "gpu_telemetry_missing",
+                        )
+                        if item in reason
+                    )
+                    self._record_overlap_receipt(
+                        batch_id=f"provider-batch-reject:{uuid.uuid4().hex}",
+                        provider_id=key.provider_id,
+                        admitted=False,
+                        reason=reason,
+                        hazards=hazards or ((reason,) if reason else ()),
+                        member_count=len(requests),
+                    )
                     self._release_admission(admission_grant)
                     for group in reversed(groups):
                         queue.appendleft(group)
@@ -1485,23 +1587,13 @@ class ProviderBatchScheduler:
         self, requests: Sequence[ProviderBatchRequest], raw: Any
     ) -> tuple[Any, ...]:
         if isinstance(raw, Mapping):
-            missing = [
-                request.request_id
-                for request in requests
-                if request.request_id not in raw
-            ]
+            missing = [request.request_id for request in requests if request.request_id not in raw]
             if missing:
-                raise ValueError(
-                    "provider omitted batch members: " + ", ".join(missing)
-                )
+                raise ValueError("provider omitted batch members: " + ", ".join(missing))
             return tuple(raw[request.request_id] for request in requests)
-        if isinstance(raw, Sequence) and not isinstance(
-            raw, (str, bytes, bytearray)
-        ):
+        if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
             if len(raw) != len(requests):
-                raise ValueError(
-                    "provider result count does not match batch request count"
-                )
+                raise ValueError("provider result count does not match batch request count")
             return tuple(raw)
         if len(requests) == 1:
             return (raw,)
@@ -1537,10 +1629,7 @@ class ProviderBatchScheduler:
                     if self._singleflight.get(group.fingerprint) is group:
                         self._singleflight.pop(group.fingerprint, None)
                     for subscriber in tuple(group.subscribers):
-                        if (
-                            subscriber.request.request_id
-                            not in self._request_subscribers
-                        ):
+                        if subscriber.request.request_id not in self._request_subscribers:
                             continue
                         self._set_member_result(
                             subscriber,
@@ -1556,13 +1645,9 @@ class ProviderBatchScheduler:
                                 execution_id=group.execution_id,
                                 token_budget=subscriber.request.token_budget,
                                 timeout_ms=subscriber.request.timeout_ms,
-                                queue_wait_ms=max(
-                                    0, now - subscriber.submitted_at_ms
-                                ),
+                                queue_wait_ms=max(0, now - subscriber.submitted_at_ms),
                                 provenance=subscriber.request.provenance,
-                                singleflight_shared=(
-                                    len(group.subscribers) > 1
-                                ),
+                                singleflight_shared=(len(group.subscribers) > 1),
                             ),
                         )
                     group.completed = True
@@ -1622,9 +1707,7 @@ class ProviderBatchScheduler:
                     self._singleflight.pop(group.fingerprint, None)
                 subscriber_groups.append(tuple(group.subscribers))
         result_entries: list[tuple[_Subscriber, ProviderBatchResult]] = []
-        for group, subscribers, output in zip(
-            groups, subscriber_groups, outputs
-        ):
+        for group, subscribers, output in zip(groups, subscriber_groups, outputs):
             used_fallback = False
             if (
                 isinstance(output, BaseException)
@@ -1638,9 +1721,8 @@ class ProviderBatchScheduler:
                     output = fallback_error
             for subscriber in subscribers:
                 now = self._clock_ms()
-                if (
-                    subscriber.future.cancelled()
-                    or _cancelled(subscriber.request.cancellation_token)
+                if subscriber.future.cancelled() or _cancelled(
+                    subscriber.request.cancellation_token
                 ):
                     status = ProviderBatchStatus.CANCELLED
                     value = None
@@ -1674,60 +1756,59 @@ class ProviderBatchScheduler:
                             execution_id=group.execution_id,
                             token_budget=subscriber.request.token_budget,
                             timeout_ms=subscriber.request.timeout_ms,
-                            queue_wait_ms=max(
-                                0, call_started - subscriber.submitted_at_ms
-                            ),
+                            queue_wait_ms=max(0, call_started - subscriber.submitted_at_ms),
                             execution_ms=duration,
                             provenance=subscriber.request.provenance,
                             singleflight_shared=len(group.subscribers) > 1,
                         ),
                     )
                 )
-        receipt = self._build_receipt(
-            batch_id, key, result_entries, call_started, completed_at_ms
-        )
+        receipt = self._build_receipt(batch_id, key, result_entries, call_started, completed_at_ms)
         with self._condition:
             for subscriber, result in result_entries:
-                self._set_member_result(
-                    subscriber, replace(result, receipt_id=receipt.evidence_id)
-                )
+                self._set_member_result(subscriber, replace(result, receipt_id=receipt.evidence_id))
             for group in groups:
                 self._running_fingerprints.discard(group.fingerprint)
                 group.completed = True
             self._receipts.append(receipt)
+            self._record_overlap_receipt(
+                batch_id=batch_id,
+                provider_id=key.provider_id,
+                admitted=True,
+                cancelled_request_ids=tuple(
+                    result.request_id
+                    for _subscriber, result in result_entries
+                    if result.status is ProviderBatchStatus.CANCELLED
+                ),
+                timed_out_request_ids=tuple(
+                    result.request_id
+                    for _subscriber, result in result_entries
+                    if result.status is ProviderBatchStatus.TIMED_OUT
+                ),
+                member_count=len(result_entries),
+            )
             self._active_batches -= 1
             self._active_by_provider[key.provider_id] -= 1
             self._counters["completed_batches"] += 1
             self._counters["total_execution_ms"] += duration
-            current = self._adaptive_sizes.get(
-                key.provider_id, self.config.max_batch_size
-            )
+            current = self._adaptive_sizes.get(key.provider_id, self.config.max_batch_size)
             if _requires_single_member_batch(key.provider_id):
                 current = 1
-            elif (
-                dispatch_error is not None
-                or duration > self.config.target_batch_latency_ms
-            ):
+            elif dispatch_error is not None or duration > self.config.target_batch_latency_ms:
                 current = max(self.config.min_batch_size, current // 2)
             elif len(groups) >= current and current < self.config.max_batch_size:
                 current += 1
             self._adaptive_sizes[key.provider_id] = current
             self._condition.notify_all()
 
-    def _set_member_result(
-        self, subscriber: _Subscriber, result: ProviderBatchResult
-    ) -> None:
+    def _set_member_result(self, subscriber: _Subscriber, result: ProviderBatchResult) -> None:
         if not subscriber.future.done():
             subscriber.future.set_result(result)
         self._record_done(subscriber, result.status)
         self._counters["total_queue_wait_ms"] += result.queue_wait_ms
 
-    def _record_done(
-        self, subscriber: _Subscriber, status: ProviderBatchStatus
-    ) -> None:
-        removed = self._request_subscribers.pop(
-            subscriber.request.request_id, None
-        )
+    def _record_done(self, subscriber: _Subscriber, status: ProviderBatchStatus) -> None:
+        removed = self._request_subscribers.pop(subscriber.request.request_id, None)
         if removed is None:
             return
         if status.successful:

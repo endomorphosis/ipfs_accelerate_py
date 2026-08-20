@@ -22,6 +22,7 @@ if str(test_dir) not in sys.path:
 # Conditionally import OpenAI client
 try:
     import openai
+
     has_openai = True
 except ImportError:
     has_openai = False
@@ -34,11 +35,11 @@ def openai_client():
     """Create an OpenAI client for testing."""
     if not has_openai:
         pytest.skip("OpenAI package not installed")
-        
+
     api_key_env = os.environ.get("OPENAI_API_KEY")
     if not api_key_env:
         pytest.skip("OPENAI_API_KEY environment variable not set")
-        
+
     return openai.OpenAI(api_key=api_key_env)
 
 
@@ -46,7 +47,7 @@ def openai_client():
 @pytest.mark.openai
 class TestOpenAIAPI:
     """Test suite for OpenAI API integration."""
-    
+
     @pytest.mark.skipif(not has_openai, reason="OpenAI package not installed")
     def test_client_initialization(self, openai_client):
         """Test that the OpenAI client initializes properly."""
@@ -63,17 +64,17 @@ class TestOpenAIAPI:
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "Hello, who are you?"}
+                    {"role": "user", "content": "Hello, who are you?"},
                 ],
-                max_tokens=50
+                max_tokens=50,
             )
-            
+
             assert response is not None
             assert hasattr(response, "choices")
             assert len(response.choices) > 0
             assert hasattr(response.choices[0], "message")
             assert response.choices[0].message.content != ""
-            
+
         except openai.APIError as e:
             pytest.skip(f"OpenAI API error: {str(e)}")
 
@@ -83,16 +84,15 @@ class TestOpenAIAPI:
         """Test embeddings API."""
         try:
             response = openai_client.embeddings.create(
-                model="text-embedding-ada-002",
-                input="Hello world"
+                model="text-embedding-ada-002", input="Hello world"
             )
-            
+
             assert response is not None
             assert hasattr(response, "data")
             assert len(response.data) > 0
             assert hasattr(response.data[0], "embedding")
             assert len(response.data[0].embedding) > 0
-            
+
         except openai.APIError as e:
             pytest.skip(f"OpenAI API error: {str(e)}")
 
@@ -101,11 +101,10 @@ class TestOpenAIAPI:
         """Test API error handling."""
         # Invalid API key should raise an error
         client = openai.OpenAI(api_key="invalid_key")
-        
+
         with pytest.raises((openai.AuthenticationError, openai.APIError)):
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "Hello"}]
+                model="gpt-3.5-turbo", messages=[{"role": "user", "content": "Hello"}]
             )
 
     @pytest.mark.skipif(not has_openai, reason="OpenAI package not installed")
@@ -114,15 +113,13 @@ class TestOpenAIAPI:
         """Test different models if available."""
         try:
             response = openai_client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=10
+                model=model, messages=[{"role": "user", "content": "Hello"}], max_tokens=10
             )
-            
+
             assert response is not None
             assert hasattr(response, "model")
             assert model in response.model
-            
+
         except openai.APIError as e:
             if "model not found" in str(e).lower():
                 pytest.skip(f"Model {model} not available")
@@ -135,26 +132,22 @@ class TestOpenAIAPI:
         mock_data = {
             "choices": [
                 {
-                    "message": {
-                        "content": "This is a mock response",
-                        "role": "assistant"
-                    },
+                    "message": {"content": "This is a mock response", "role": "assistant"},
                     "finish_reason": "stop",
-                    "index": 0
+                    "index": 0,
                 }
             ],
             "created": int(time.time()),
             "id": "mock-id",
             "model": "gpt-3.5-turbo",
-            "object": "chat.completion"
+            "object": "chat.completion",
         }
-        
-        with mock.patch('openai.resources.chat.Completions.create', return_value=mock_data):
+
+        with mock.patch("openai.resources.chat.Completions.create", return_value=mock_data):
             client = openai.OpenAI(api_key="mock_key")
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "Hello"}]
+                model="gpt-3.5-turbo", messages=[{"role": "user", "content": "Hello"}]
             )
-            
+
             assert response is not None
             assert response["choices"][0]["message"]["content"] == "This is a mock response"

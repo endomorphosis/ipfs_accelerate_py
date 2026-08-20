@@ -32,7 +32,9 @@ def _make_queue(tmp_path):
     return TaskQueue(path=path)
 
 
-def _submit_with_priority(queue, *, priority: int, task_type: str = "test", model: str = "m") -> str:
+def _submit_with_priority(
+    queue, *, priority: int, task_type: str = "test", model: str = "m"
+) -> str:
     return queue.submit(
         task_type=task_type,
         model_name=model,
@@ -76,8 +78,10 @@ class TestResolvePeerTrustLevel:
     def test_compat_token_env_match_returns_trusted(self, monkeypatch):
         monkeypatch.setenv("IPFS_DATASETS_PY_TASK_P2P_TOKEN", "compat-token")
         from ipfs_accelerate_py.p2p_tasks import peer_trust
+
         # Reimport to pick up new env
         import importlib
+
         importlib.reload(peer_trust)
         from ipfs_accelerate_py.p2p_tasks.peer_trust import resolve_peer_trust_level, PeerTrustLevel
 

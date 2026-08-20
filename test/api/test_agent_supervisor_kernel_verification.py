@@ -30,8 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.kernel_verification import (
 def _source_and_output(target: str) -> tuple[str, str, str, str]:
     if target == "lean":
         return (
-            "theorem exact_statement : True := by trivial\n"
-            "#print axioms exact_statement\n",
+            "theorem exact_statement : True := by trivial\n#print axioms exact_statement\n",
             "by trivial",
             json.dumps(
                 {
@@ -50,9 +49,7 @@ def _source_and_output(target: str) -> tuple[str, str, str, str]:
             "",
         )
     return (
-        'theory Exact imports Main begin\n'
-        'theorem exact_statement: "True" by simp\n'
-        "end\n",
+        'theory Exact imports Main begin\ntheorem exact_statement: "True" by simp\nend\n',
         "by simp",
         "Finished theory Exact\n",
         "",
@@ -248,16 +245,12 @@ def test_timeout_mismatch_forbidden_and_corrupt_fixtures_fail_closed(
     elif mutation == "digest_mismatch":
         evidence["checked_source"] = str(evidence["checked_source"]) + "\n"
     elif mutation == "changed_statement":
-        evidence["checked_source"] = str(evidence["checked_source"]).replace(
-            ": True", ": False"
-        )
+        evidence["checked_source"] = str(evidence["checked_source"]).replace(": True", ": False")
         evidence["checked_source_digest"] = _upstream_content_digest(
             {"checked_source": evidence["checked_source"]}
         )
     elif mutation == "forbidden_declaration":
-        evidence["checked_source"] = (
-            "axiom forged : False\n" + str(evidence["checked_source"])
-        )
+        evidence["checked_source"] = "axiom forged : False\n" + str(evidence["checked_source"])
         evidence["checked_source_digest"] = _upstream_content_digest(
             {"checked_source": evidence["checked_source"]}
         )
@@ -362,6 +355,33 @@ def test_kernel_unavailability_is_typed_and_never_verified() -> None:
     assert result.verdict is ProofVerdict.UNSUPPORTED
     assert result.assurance is AssuranceLevel.UNVERIFIED
     assert not _receipt(result).is_kernel_verified
+
+
+def test_wrong_kernel_version_and_stale_environment_fail_closed() -> None:
+    record, evidence, lock = _packet("lean")
+    version = verify_kernel_reconstruction(
+        record,
+        evidence,
+        lock,
+        bindings=_bindings("lean"),
+        expected_kernel_version="4.19.0",
+        independent=True,
+    )
+    stale = verify_kernel_reconstruction(
+        record,
+        evidence,
+        lock,
+        bindings=_bindings("lean"),
+        expected_environment_lock_id="lock:current-campaign",
+        independent=True,
+    )
+
+    assert version.failure_code is KernelFailureCode.VERSION_MISMATCH
+    assert not version.accepted
+    assert version.verdict is not ProofVerdict.PROVED
+    assert stale.failure_code is KernelFailureCode.ENVIRONMENT_MISMATCH
+    assert not stale.accepted
+    assert stale.verdict is not ProofVerdict.PROVED
 
 
 def test_authoritative_verdict_is_checked_during_receipt_round_trip() -> None:

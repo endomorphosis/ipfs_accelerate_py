@@ -61,7 +61,9 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
 
             bad_clusters = await cluster_analysis(algorithm="kmeans", n_clusters="bad")  # type: ignore[arg-type]
             self.assertEqual(bad_clusters.get("status"), "error")
-            self.assertIn("n_clusters must be a positive integer", str(bad_clusters.get("message", "")))
+            self.assertIn(
+                "n_clusters must be a positive integer", str(bad_clusters.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -91,7 +93,9 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
 
     def test_detect_outliers_success_shape(self) -> None:
         async def _run() -> None:
-            result = await detect_outliers(data=[[0.1, 0.2], [0.2, 0.3], [10.0, 12.0]], threshold=1.5)
+            result = await detect_outliers(
+                data=[[0.1, 0.2], [0.2, 0.3], [10.0, 12.0]], threshold=1.5
+            )
             self.assertEqual(result.get("status"), "success")
             self.assertIn("outlier_indices", result)
             self.assertIn("outlier_count", result)
@@ -122,11 +126,15 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
 
             bad_components = await dimensionality_reduction(method="pca", n_components="bad")  # type: ignore[arg-type]
             self.assertEqual(bad_components.get("status"), "error")
-            self.assertIn("n_components must be a positive integer", str(bad_components.get("message", "")))
+            self.assertIn(
+                "n_components must be a positive integer", str(bad_components.get("message", ""))
+            )
 
         anyio.run(_run)
 
-    def test_analysis_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_analysis_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

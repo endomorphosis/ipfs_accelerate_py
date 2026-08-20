@@ -23,11 +23,11 @@ from pathlib import Path
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(f"cleanup_integration_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
+        logging.FileHandler(f"cleanup_integration_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ TEMPLATES_DIR = os.path.join(ROOT_DIR, "templates")
 FIXED_TESTS_DIR = os.path.join(ROOT_DIR, "fixed_tests")
 COLLECTED_RESULTS_DIR = os.path.join(FIXED_TESTS_DIR, "collected_results")
 
+
 def ensure_directory(directory):
     """Create directory if it doesn't exist."""
     if not os.path.exists(directory):
@@ -44,6 +45,7 @@ def ensure_directory(directory):
         logger.info(f"Created directory: {directory}")
     else:
         logger.info(f"Directory already exists: {directory}")
+
 
 def create_basic_templates(force=False):
     """Create basic templates for different architecture types."""
@@ -55,18 +57,18 @@ def create_basic_templates(force=False):
         "vision": "Vision (ViT, Swin, etc.)",
         "vision_text": "Vision-Text (CLIP, BLIP, etc.)",
         "speech": "Speech (Whisper, Wav2Vec2, etc.)",
-        "multimodal": "Multimodal (LLaVA, etc.)"
+        "multimodal": "Multimodal (LLaVA, etc.)",
     }
-    
+
     # Create template files
     for arch_type, description in architecture_types.items():
         template_path = os.path.join(TEMPLATES_DIR, f"{arch_type}_template.py")
-        
+
         # Skip if file exists and not forcing
         if os.path.exists(template_path) and not force:
             logger.info(f"Template already exists (skipping): {template_path}")
             continue
-        
+
         # Create basic template content
         content = f"""#!/usr/bin/env python3
 # Template for {description} models
@@ -231,41 +233,46 @@ def main():
 if __name__ == "__main__":
     main()
 """
-        
+
         # Write template file
-        with open(template_path, 'w') as f:
+        with open(template_path, "w") as f:
             f.write(content)
-        
+
         logger.info(f"Created template: {template_path}")
+
 
 def copy_fixed_tests(source_dir=None, force=False):
     """Copy fixed test files to the fixed_tests directory."""
     if source_dir is None:
         # Look for fixed test files in current directory
-        source_files = [f for f in os.listdir(ROOT_DIR) if f.startswith("test_hf_") and f.endswith(".py")]
+        source_files = [
+            f for f in os.listdir(ROOT_DIR) if f.startswith("test_hf_") and f.endswith(".py")
+        ]
         source_dir = ROOT_DIR
     else:
         # Use specified source directory
-        source_files = [f for f in os.listdir(source_dir) if f.startswith("test_hf_") and f.endswith(".py")]
-    
+        source_files = [
+            f for f in os.listdir(source_dir) if f.startswith("test_hf_") and f.endswith(".py")
+        ]
+
     if not source_files:
         logger.warning(f"No test files found in {source_dir}")
         return
-    
+
     # Copy each file
     for filename in source_files:
         source_path = os.path.join(source_dir, filename)
         dest_path = os.path.join(FIXED_TESTS_DIR, filename)
-        
+
         # Skip if file exists and not forcing
         if os.path.exists(dest_path) and not force:
             logger.info(f"File already exists (skipping): {dest_path}")
             continue
-        
+
         # Copy file
         shutil.copy2(source_path, dest_path)
         logger.info(f"Copied test file: {dest_path}")
-        
+
         # If original has a .fixed version, copy that too
         fixed_source = source_path + ".fixed"
         if os.path.exists(fixed_source):
@@ -273,20 +280,22 @@ def copy_fixed_tests(source_dir=None, force=False):
             shutil.copy2(fixed_source, fixed_dest)
             logger.info(f"Copied fixed version: {fixed_dest}")
 
+
 def clean_existing_files(directory, pattern="*"):
     """Clean existing files in a directory matching pattern."""
     import glob
-    
+
     files = glob.glob(os.path.join(directory, pattern))
     if not files:
         logger.info(f"No files matching '{pattern}' found in {directory}")
         return
-    
+
     # Remove each file
     for file_path in files:
         if os.path.isfile(file_path):
             os.remove(file_path)
             logger.info(f"Removed file: {file_path}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Cleanup and prepare HuggingFace test integration")
@@ -294,36 +303,37 @@ def main():
     parser.add_argument("--copy-tests", type=str, help="Copy tests from specified directory")
     parser.add_argument("--clean", action="store_true", help="Clean existing files")
     parser.add_argument("--force", action="store_true", help="Force overwrite of existing files")
-    
+
     args = parser.parse_args()
-    
+
     # Create required directories
     ensure_directory(TEMPLATES_DIR)
     ensure_directory(FIXED_TESTS_DIR)
     ensure_directory(COLLECTED_RESULTS_DIR)
-    
+
     # Clean existing files if requested
     if args.clean:
-        if input("Clean all existing files? (y/n): ").lower() == 'y':
+        if input("Clean all existing files? (y/n): ").lower() == "y":
             clean_existing_files(TEMPLATES_DIR, "*.py")
             clean_existing_files(FIXED_TESTS_DIR, "*.py")
             clean_existing_files(COLLECTED_RESULTS_DIR, "*.json")
             logger.info("Cleaned existing files")
-    
+
     # Create basic templates if requested
     if args.templates:
         create_basic_templates(force=args.force)
-    
+
     # Copy fixed tests if requested
     if args.copy_tests:
         copy_fixed_tests(source_dir=args.copy_tests, force=args.force)
     elif not args.templates:
         # Default behavior: copy tests from current directory
         copy_fixed_tests(force=args.force)
-    
+
     logger.info("Environment prepared for test integration")
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

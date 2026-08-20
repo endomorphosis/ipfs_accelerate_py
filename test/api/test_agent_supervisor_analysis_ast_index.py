@@ -189,9 +189,7 @@ def test_symbol_definition_import_call_and_reference_relationship_lookup() -> No
 def test_objective_term_ranking_is_stable_explainable_and_compact() -> None:
     index = build_analysis_ast_index(_snapshot())
 
-    first = index.query_objective_terms(
-        ["service", "dispatch"], max_results=10, max_bytes=16_000
-    )
+    first = index.query_objective_terms(["service", "dispatch"], max_results=10, max_bytes=16_000)
     second = build_analysis_ast_index(reversed(_snapshot())).query_objective_terms(
         ["service", "dispatch"], max_results=10, max_bytes=16_000
     )
@@ -228,18 +226,14 @@ def test_queries_enforce_strict_result_and_utf8_byte_bounds() -> None:
     ]
     index = build_analysis_ast_index(records)
 
-    count_limited = index.query_definitions(
-        "dispatch", max_results=2, max_bytes=32_000
-    )
+    count_limited = index.query_definitions("dispatch", max_results=2, max_bytes=32_000)
     assert len(count_limited.evidence) == 2
     assert count_limited.total_matches == 8
     assert count_limited.truncation.result_limit_reached is True
     assert count_limited.truncation.byte_limit_reached is False
     assert count_limited.truncation.omitted_results == 6
 
-    byte_limited = index.query_objective_terms(
-        "service dispatch", max_results=1000, max_bytes=900
-    )
+    byte_limited = index.query_objective_terms("service dispatch", max_results=1000, max_bytes=900)
     encoded = byte_limited.to_json().encode("utf-8")
     assert 0 < len(byte_limited.evidence) < byte_limited.total_matches
     assert byte_limited.truncation.byte_limit_reached is True

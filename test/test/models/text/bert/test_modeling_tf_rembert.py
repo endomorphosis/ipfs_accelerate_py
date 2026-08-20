@@ -30,7 +30,12 @@ from transformers import RemBertConfig, is_tf_available
 from transformers.testing_utils import require_tf, slow
 
 from test.test_configuration_common import ConfigTester
-from test.test_modeling_tf_common import TFModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
+from test.test_modeling_tf_common import (
+    TFModelTesterMixin,
+    floats_tensor,
+    ids_tensor,
+    random_attention_mask,
+)
 from test.test_pipeline_mixin import PipelineTesterMixin
 
 
@@ -137,7 +142,15 @@ class TFRemBertModelTester:
             return_dict=True,
         )
 
-        return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        return (
+            config,
+            input_ids,
+            token_type_ids,
+            input_mask,
+            sequence_labels,
+            token_labels,
+            choice_labels,
+        )
 
     def prepare_config_and_inputs_for_decoder(self):
         (
@@ -167,25 +180,49 @@ class TFRemBertModelTester:
         )
 
     def create_and_check_model(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = TFRemBertModel(config=config)
-        inputs = {"input_ids": input_ids, "attention_mask": input_mask, "token_type_ids": token_type_ids}
+        inputs = {
+            "input_ids": input_ids,
+            "attention_mask": input_mask,
+            "token_type_ids": token_type_ids,
+        }
 
         inputs = [input_ids, input_mask]
         result = model(inputs)
 
         result = model(input_ids)
 
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
 
     def create_and_check_causal_lm_base_model(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.is_decoder = True
 
         model = TFRemBertModel(config=config)
-        inputs = {"input_ids": input_ids, "attention_mask": input_mask, "token_type_ids": token_type_ids}
+        inputs = {
+            "input_ids": input_ids,
+            "attention_mask": input_mask,
+            "token_type_ids": token_type_ids,
+        }
         result = model(inputs)
 
         inputs = [input_ids, input_mask]
@@ -193,7 +230,9 @@ class TFRemBertModelTester:
 
         result = model(input_ids)
 
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
 
     def create_and_check_model_as_decoder(
         self,
@@ -220,15 +259,26 @@ class TFRemBertModelTester:
         result = model(inputs)
 
         inputs = [input_ids, input_mask]
-        result = model(inputs, token_type_ids=token_type_ids, encoder_hidden_states=encoder_hidden_states)
+        result = model(
+            inputs, token_type_ids=token_type_ids, encoder_hidden_states=encoder_hidden_states
+        )
 
         # Also check the case where encoder outputs are not passed
         result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids)
 
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
 
     def create_and_check_causal_lm_model(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.is_decoder = True
         model = TFRemBertForCausalLM(config=config)
@@ -239,7 +289,8 @@ class TFRemBertModelTester:
         }
         prediction_scores = model(inputs)["logits"]
         self.parent.assertListEqual(
-            list(prediction_scores.numpy().shape), [self.batch_size, self.seq_length, self.vocab_size]
+            list(prediction_scores.numpy().shape),
+            [self.batch_size, self.seq_length, self.vocab_size],
         )
 
     def create_and_check_causal_lm_model_as_decoder(
@@ -267,11 +318,14 @@ class TFRemBertModelTester:
         result = model(inputs)
 
         inputs = [input_ids, input_mask]
-        result = model(inputs, token_type_ids=token_type_ids, encoder_hidden_states=encoder_hidden_states)
+        result = model(
+            inputs, token_type_ids=token_type_ids, encoder_hidden_states=encoder_hidden_states
+        )
 
         prediction_scores = result["logits"]
         self.parent.assertListEqual(
-            list(prediction_scores.numpy().shape), [self.batch_size, self.seq_length, self.vocab_size]
+            list(prediction_scores.numpy().shape),
+            [self.batch_size, self.seq_length, self.vocab_size],
         )
 
     def create_and_check_causal_lm_model_past(
@@ -334,7 +388,9 @@ class TFRemBertModelTester:
         # create attention mask
         half_seq_length = self.seq_length // 2
         attn_mask_begin = tf.ones((self.batch_size, half_seq_length), dtype=tf.int32)
-        attn_mask_end = tf.zeros((self.batch_size, self.seq_length - half_seq_length), dtype=tf.int32)
+        attn_mask_end = tf.zeros(
+            (self.batch_size, self.seq_length - half_seq_length), dtype=tf.int32
+        )
         attn_mask = tf.concat([attn_mask_begin, attn_mask_end], axis=1)
 
         # first forward pass
@@ -350,7 +406,9 @@ class TFRemBertModelTester:
         random_other_next_tokens = ids_tensor((self.batch_size, self.seq_length), config.vocab_size)
         vector_condition = tf.range(self.seq_length) == (self.seq_length - random_seq_idx_to_change)
         condition = tf.transpose(
-            tf.broadcast_to(tf.expand_dims(vector_condition, -1), (self.seq_length, self.batch_size))
+            tf.broadcast_to(
+                tf.expand_dims(vector_condition, -1), (self.seq_length, self.batch_size)
+            )
         )
         input_ids = tf.where(condition, random_other_next_tokens, input_ids)
 
@@ -367,7 +425,10 @@ class TFRemBertModelTester:
             output_hidden_states=True,
         ).hidden_states[0]
         output_from_past = model(
-            next_tokens, past_key_values=past_key_values, attention_mask=attn_mask, output_hidden_states=True
+            next_tokens,
+            past_key_values=past_key_values,
+            attention_mask=attn_mask,
+            output_hidden_states=True,
         ).hidden_states[0]
 
         # select random slice
@@ -497,7 +558,14 @@ class TFRemBertModelTester:
         tf.debugging.assert_near(output_from_past_slice, output_from_no_past_slice, rtol=1e-3)
 
     def create_and_check_for_masked_lm(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = TFRemBertForMaskedLM(config=config)
         inputs = {
@@ -506,10 +574,19 @@ class TFRemBertModelTester:
             "token_type_ids": token_type_ids,
         }
         result = model(inputs)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size)
+        )
 
     def create_and_check_for_sequence_classification(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_labels = self.num_labels
         model = TFRemBertForSequenceClassification(config=config)
@@ -523,13 +600,24 @@ class TFRemBertModelTester:
         self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_labels))
 
     def create_and_check_for_multiple_choice(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_choices = self.num_choices
         model = TFRemBertForMultipleChoice(config=config)
         multiple_choice_inputs_ids = tf.tile(tf.expand_dims(input_ids, 1), (1, self.num_choices, 1))
-        multiple_choice_input_mask = tf.tile(tf.expand_dims(input_mask, 1), (1, self.num_choices, 1))
-        multiple_choice_token_type_ids = tf.tile(tf.expand_dims(token_type_ids, 1), (1, self.num_choices, 1))
+        multiple_choice_input_mask = tf.tile(
+            tf.expand_dims(input_mask, 1), (1, self.num_choices, 1)
+        )
+        multiple_choice_token_type_ids = tf.tile(
+            tf.expand_dims(token_type_ids, 1), (1, self.num_choices, 1)
+        )
         inputs = {
             "input_ids": multiple_choice_inputs_ids,
             "attention_mask": multiple_choice_input_mask,
@@ -539,7 +627,14 @@ class TFRemBertModelTester:
         self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_choices))
 
     def create_and_check_for_token_classification(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_labels = self.num_labels
         model = TFRemBertForTokenClassification(config=config)
@@ -549,10 +644,19 @@ class TFRemBertModelTester:
             "token_type_ids": token_type_ids,
         }
         result = model(inputs)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.num_labels))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.num_labels)
+        )
 
     def create_and_check_for_question_answering(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = TFRemBertForQuestionAnswering(config=config)
         inputs = {
@@ -576,7 +680,11 @@ class TFRemBertModelTester:
             token_labels,
             choice_labels,
         ) = config_and_inputs
-        inputs_dict = {"input_ids": input_ids, "token_type_ids": token_type_ids, "attention_mask": input_mask}
+        inputs_dict = {
+            "input_ids": input_ids,
+            "token_type_ids": token_type_ids,
+            "attention_mask": input_mask,
+        }
         return config, inputs_dict
 
 
@@ -722,7 +830,9 @@ class TFRemBertModelIntegrationTest(unittest.TestCase):
                 ]
             ]
         )
-        tf.debugging.assert_near(output["last_hidden_state"][:, :, :3], expected_implementation, atol=1e-4)
+        tf.debugging.assert_near(
+            output["last_hidden_state"][:, :, :3], expected_implementation, atol=1e-4
+        )
 
         # Running on the original tf implementation gives slightly different results here.
         # Not clear why this variations is present

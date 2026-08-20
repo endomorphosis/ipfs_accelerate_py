@@ -24,7 +24,7 @@ class TestMCPServerUNI177StorageTools(unittest.TestCase):
         native_storage_tools.register_native_storage_tools(manager)
         schemas = {call["name"]: call["input_schema"] for call in manager.calls}
 
-        manage_props = (schemas["manage_collections"].get("properties") or {})
+        manage_props = schemas["manage_collections"].get("properties") or {}
         self.assertIn("availability_filter", manage_props)
         filter_schema = manage_props["availability_filter"]
         self.assertEqual(filter_schema.get("default"), "all")

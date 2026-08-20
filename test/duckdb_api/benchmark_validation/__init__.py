@@ -25,7 +25,7 @@ from data.duckdb.benchmark_validation.core.base import (
     BenchmarkCertifier,
     ValidationReporter,
     ValidationRepository,
-    BenchmarkValidationFramework
+    BenchmarkValidationFramework,
 )
 
 __version__ = "0.1.0"

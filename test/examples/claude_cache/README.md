@@ -54,18 +54,16 @@ cached_client = SemanticCacheClaudeClient(
     base_client=client,
     similarity_threshold=0.85,
     max_cache_size=1000,
-    ttl=3600  # 1 hour
+    ttl=3600,  # 1 hour
 )
 
 # Use like the regular client
-messages = [
-    {"role": "user", "content": "What is the capital of France?"}
-]
+messages = [{"role": "user", "content": "What is the capital of France?"}]
 
 # For deterministic responses that can be cached
 response = await cached_client.chat(
-    messages=messages, 
-    temperature=0.0  # Important: zero temperature for caching
+    messages=messages,
+    temperature=0.0,  # Important: zero temperature for caching
 )
 
 # Get cache statistics
@@ -98,13 +96,11 @@ print(f"Estimated token savings: {stats['token_savings']}")
 from sentence_transformers import SentenceTransformer
 
 # Load a sentence transformer model
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Use with Claude cache
 cached_client = SemanticCacheClaudeClient(
-    base_client=client,
-    embedding_model=embedding_model,
-    similarity_threshold=0.85
+    base_client=client, embedding_model=embedding_model, similarity_threshold=0.85
 )
 ```
 

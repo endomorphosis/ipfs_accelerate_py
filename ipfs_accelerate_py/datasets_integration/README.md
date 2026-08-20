@@ -24,22 +24,22 @@ High-level orchestrator for all ipfs_datasets_py services:
 ```python
 from ipfs_accelerate_py.datasets_integration import DatasetsManager
 
-manager = DatasetsManager({
-    'cache_dir': '~/.cache/ipfs_accelerate',
-    'enable_audit': True,
-    'enable_provenance': True,
-    'enable_p2p': False  # Disabled by default for safety
-})
+manager = DatasetsManager(
+    {
+        "cache_dir": "~/.cache/ipfs_accelerate",
+        "enable_audit": True,
+        "enable_provenance": True,
+        "enable_p2p": False,  # Disabled by default for safety
+    }
+)
 
 # Log events
 manager.log_event("model_loaded", {"model": "bert-base", "size_mb": 420})
 
 # Track provenance
-cid = manager.track_provenance("inference", {
-    "model": "bert-base",
-    "input_cid": "Qm...",
-    "output_cid": "Qm..."
-})
+cid = manager.track_provenance(
+    "inference", {"model": "bert-base", "input_cid": "Qm...", "output_cid": "Qm..."}
+)
 
 # Check status
 status = manager.get_status()
@@ -81,31 +81,33 @@ from ipfs_accelerate_py.datasets_integration import ProvenanceLogger
 logger = ProvenanceLogger()
 
 # Log model inference
-logger.log_inference("bert-base", {
-    "input": "Hello world",
-    "output_embedding": [0.1, 0.2, ...],
-    "duration_ms": 150,
-    "hardware": "CUDA"
-})
+logger.log_inference(
+    "bert-base",
+    {
+        "input": "Hello world",
+        "output_embedding": [0.1, 0.2, ...],
+        "duration_ms": 150,
+        "hardware": "CUDA",
+    },
+)
 
 # Log data transformation
-logger.log_transformation("tokenization", {
-    "tokenizer": "bert-tokenizer",
-    "max_length": 512
-}, input_cid="Qm...", output_cid="Qm...")
+logger.log_transformation(
+    "tokenization",
+    {"tokenizer": "bert-tokenizer", "max_length": 512},
+    input_cid="Qm...",
+    output_cid="Qm...",
+)
 
 # Log worker execution
-logger.log_worker_execution("worker-001", "task-123", {
-    "status": "completed",
-    "duration_ms": 5000
-})
+logger.log_worker_execution("worker-001", "task-123", {"status": "completed", "duration_ms": 5000})
 
 # Log pull request activity
-logger.log_pr_activity(123, "copilot_suggestion", {
-    "file": "model.py",
-    "suggestion": "Add error handling",
-    "accepted": True
-})
+logger.log_pr_activity(
+    123,
+    "copilot_suggestion",
+    {"file": "model.py", "suggestion": "Add error handling", "accepted": True},
+)
 
 # Query logs
 logs = logger.query_logs({"type": "inference", "model": "bert-base"})
@@ -118,7 +120,7 @@ P2P workflow scheduling and task distribution:
 ```python
 from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator
 
-coordinator = WorkflowCoordinator({'enable_p2p': True})
+coordinator = WorkflowCoordinator({"enable_p2p": True})
 
 # Submit task
 coordinator.submit_task(
@@ -126,21 +128,16 @@ coordinator.submit_task(
     task_type="inference",
     data={"model": "bert", "batch_size": 32},
     priority=8,
-    tags=["P2P_ELIGIBLE", "GPU_PREFERRED"]
+    tags=["P2P_ELIGIBLE", "GPU_PREFERRED"],
 )
 
 # Get next task (for workers)
-task = coordinator.get_next_task(
-    worker_id="worker-001",
-    capabilities=["GPU", "CUDA"]
-)
+task = coordinator.get_next_task(worker_id="worker-001", capabilities=["GPU", "CUDA"])
 
 # Complete task
-coordinator.complete_task("infer-001", {
-    "status": "success",
-    "output_cid": "Qm...",
-    "duration_ms": 5000
-})
+coordinator.complete_task(
+    "infer-001", {"status": "success", "output_cid": "Qm...", "duration_ms": 5000}
+)
 
 # Check status
 status = coordinator.get_task_status("infer-001")
@@ -208,6 +205,7 @@ from ipfs_accelerate_py.datasets_integration import is_datasets_available
 
 if is_datasets_available():
     from ipfs_accelerate_py.datasets_integration import DatasetsManager
+
     manager = DatasetsManager()
     manager.log_event("app_started", {})
 else:
@@ -254,18 +252,12 @@ fs = FilesystemHandler()
 model_cid = fs.add_file("/models/bert-base.bin", pin=True)
 
 # Track provenance
-manager.track_provenance("model_upload", {
-    "model": "bert-base",
-    "version": "1.0",
-    "cid": model_cid,
-    "size_mb": 420
-})
+manager.track_provenance(
+    "model_upload", {"model": "bert-base", "version": "1.0", "cid": model_cid, "size_mb": 420}
+)
 
 # Log event
-manager.log_event("model_stored", {
-    "model": "bert-base",
-    "cid": model_cid
-})
+manager.log_event("model_stored", {"model": "bert-base", "cid": model_cid})
 ```
 
 ### 2. Distributed Inference Logging
@@ -276,21 +268,21 @@ from ipfs_accelerate_py.datasets_integration import ProvenanceLogger
 logger = ProvenanceLogger()
 
 # Log inference operation
-logger.log_inference("bert-base", {
-    "input_text": "What is IPFS?",
-    "input_tokens": 5,
-    "output_embedding": [0.1, 0.2, ...],
-    "output_dim": 768,
-    "duration_ms": 150,
-    "hardware": "CUDA",
-    "batch_size": 1
-})
+logger.log_inference(
+    "bert-base",
+    {
+        "input_text": "What is IPFS?",
+        "input_tokens": 5,
+        "output_embedding": [0.1, 0.2, ...],
+        "output_dim": 768,
+        "duration_ms": 150,
+        "hardware": "CUDA",
+        "batch_size": 1,
+    },
+)
 
 # Query inference history
-history = logger.query_logs({
-    "type": "inference",
-    "model": "bert-base"
-}, limit=100)
+history = logger.query_logs({"type": "inference", "model": "bert-base"}, limit=100)
 ```
 
 ### 3. Worker Coordination
@@ -298,31 +290,32 @@ history = logger.query_logs({
 ```python
 from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator, ProvenanceLogger
 
-coordinator = WorkflowCoordinator({'enable_p2p': True})
+coordinator = WorkflowCoordinator({"enable_p2p": True})
 logger = ProvenanceLogger()
 
 # Coordinator submits work
-coordinator.submit_task("batch-001", "batch_inference", {
-    "model": "bert-base",
-    "inputs": ["text1", "text2", ...],
-    "batch_size": 32
-}, priority=7)
+coordinator.submit_task(
+    "batch-001",
+    "batch_inference",
+    {"model": "bert-base", "inputs": ["text1", "text2", ...], "batch_size": 32},
+    priority=7,
+)
 
 # Worker picks up task
 task = coordinator.get_next_task("worker-001", ["GPU"])
 if task:
     # Execute task
-    result = execute_inference(task['data'])
-    
+    result = execute_inference(task["data"])
+
     # Log execution
-    logger.log_worker_execution("worker-001", task['task_id'], {
-        "status": "completed",
-        "outputs": result,
-        "duration_ms": 5000
-    })
-    
+    logger.log_worker_execution(
+        "worker-001",
+        task["task_id"],
+        {"status": "completed", "outputs": result, "duration_ms": 5000},
+    )
+
     # Mark complete
-    coordinator.complete_task(task['task_id'], result)
+    coordinator.complete_task(task["task_id"], result)
 ```
 
 ### 4. GitHub Copilot Activity Tracking
@@ -333,27 +326,25 @@ from ipfs_accelerate_py.datasets_integration import ProvenanceLogger
 logger = ProvenanceLogger()
 
 # Track Copilot suggestion
-logger.log_pr_activity(123, "copilot_suggestion", {
-    "file": "model.py",
-    "line": 42,
-    "suggestion": "Add type hints",
-    "accepted": True,
-    "timestamp": "2024-01-28T10:30:00Z"
-})
+logger.log_pr_activity(
+    123,
+    "copilot_suggestion",
+    {
+        "file": "model.py",
+        "line": 42,
+        "suggestion": "Add type hints",
+        "accepted": True,
+        "timestamp": "2024-01-28T10:30:00Z",
+    },
+)
 
 # Track PR merge
-logger.log_pr_activity(123, "merge", {
-    "commit": "abc123",
-    "files_changed": 5,
-    "lines_added": 100,
-    "lines_removed": 20
-})
+logger.log_pr_activity(
+    123, "merge", {"commit": "abc123", "files_changed": 5, "lines_added": 100, "lines_removed": 20}
+)
 
 # Query PR activity
-activity = logger.query_logs({
-    "type": "pr_activity",
-    "pr_number": 123
-})
+activity = logger.query_logs({"type": "pr_activity", "pr_number": 123})
 ```
 
 ## CI/CD Integration
@@ -432,6 +423,7 @@ git submodule update --init external/ipfs_datasets_py
 **Solution**: The integration handles this gracefully. Check status:
 ```python
 from ipfs_accelerate_py.datasets_integration import get_datasets_status
+
 print(get_datasets_status())
 ```
 
@@ -439,7 +431,7 @@ print(get_datasets_status())
 
 **Solution**: P2P is disabled by default. Enable explicitly:
 ```python
-coordinator = WorkflowCoordinator({'enable_p2p': True})
+coordinator = WorkflowCoordinator({"enable_p2p": True})
 ```
 
 ### Issue: IPFS daemon not running

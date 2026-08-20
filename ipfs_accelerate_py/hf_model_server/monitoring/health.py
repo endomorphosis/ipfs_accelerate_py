@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 class HealthChecker:
     """Health checker for model server."""
-    
+
     def __init__(self, model_loader=None, hardware_detector=None):
         """
         Initialize health checker.
-        
+
         Args:
             model_loader: ModelLoader instance
             hardware_detector: HardwareDetector instance
@@ -23,11 +23,11 @@ class HealthChecker:
         self.model_loader = model_loader
         self.hardware_detector = hardware_detector
         self.start_time = datetime.now(UTC)
-    
+
     async def check_health(self) -> Dict[str, Any]:
         """
         Perform basic health check.
-        
+
         Returns:
             Health status dictionary
         """
@@ -37,11 +37,11 @@ class HealthChecker:
             "timestamp": now.isoformat(),
             "uptime_seconds": (now - self.start_time).total_seconds(),
         }
-    
+
     async def check_readiness(self) -> Dict[str, Any]:
         """
         Perform readiness check (can serve requests).
-        
+
         Returns:
             Readiness status dictionary
         """
@@ -50,7 +50,7 @@ class HealthChecker:
             "timestamp": datetime.now(UTC).isoformat(),
             "checks": {},
         }
-        
+
         # Check if any models loaded
         if self.model_loader:
             try:
@@ -65,7 +65,7 @@ class HealthChecker:
                     "error": str(e),
                 }
                 checks["status"] = "not_ready"
-        
+
         # Check hardware
         if self.hardware_detector:
             try:
@@ -79,13 +79,13 @@ class HealthChecker:
                     "status": "error",
                     "error": str(e),
                 }
-        
+
         return checks
-    
+
     async def check_detailed(self) -> Dict[str, Any]:
         """
         Perform detailed health check.
-        
+
         Returns:
             Detailed health status
         """
@@ -96,7 +96,7 @@ class HealthChecker:
             "uptime_seconds": (now - self.start_time).total_seconds(),
             "components": {},
         }
-        
+
         # Model loader status
         if self.model_loader:
             try:
@@ -113,7 +113,7 @@ class HealthChecker:
                     "error": str(e),
                 }
                 detailed["status"] = "degraded"
-        
+
         # Hardware status
         if self.hardware_detector:
             try:
@@ -127,5 +127,5 @@ class HealthChecker:
                     "status": "error",
                     "error": str(e),
                 }
-        
+
         return detailed

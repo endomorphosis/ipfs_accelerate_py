@@ -59,9 +59,7 @@ def _trusted_receipt(**result_changes: Any):
         "assumptions": ASSUMPTIONS,
         "bounds": ExecutionBounds(timeout_ms=500, max_steps=50),
         "translation_ceiling": EvidenceAuthority.INDEPENDENTLY_CHECKABLE,
-        "metadata": FrozenMap(
-            {"bounds": dict(BOUNDS), "expires_at": EXPIRES, "issued_at": NOW}
-        ),
+        "metadata": FrozenMap({"bounds": dict(BOUNDS), "expires_at": EXPIRES, "issued_at": NOW}),
     }
     fields.update(result_changes)
     source = TheoremResult(**fields)

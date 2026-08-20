@@ -312,7 +312,7 @@ model = pool.get_model(
     model_type=family,
     model_name=model_name,
     constructor=create_model,
-    hardware_preferences=hardware_preferences
+    hardware_preferences=hardware_preferences,
 )
 ```
 
@@ -519,7 +519,7 @@ The centralized hardware detection system has also been updated to properly trac
     "webnn": True,
     "webnn_simulation": True,
     "webgpu": True,
-    "webgpu_simulation": False
+    "webgpu_simulation": False,
 }
 ```
 

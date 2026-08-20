@@ -82,9 +82,8 @@ These benchmarks are integrated with the unified benchmark framework and can be 
 from benchmark_core import BenchmarkRunner
 
 runner = BenchmarkRunner()
-result = runner.execute("skillset_inference_benchmark", {
-    "hardware": "cpu",
-    "model": "bert",
-    "batch_sizes": [1, 2, 4, 8]
-})
+result = runner.execute(
+    "skillset_inference_benchmark",
+    {"hardware": "cpu", "model": "bert", "batch_sizes": [1, 2, 4, 8]},
+)
 ```

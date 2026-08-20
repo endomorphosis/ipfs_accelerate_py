@@ -17,6 +17,8 @@ Pre-merge and proposal validation: schedulers, runtimes, commands, and scope adj
 
 | Module | Path |
 | --- | --- |
+| `integrated_security` | `validation/integrated_security.py` |
+| `promotion_comparison` | `validation/promotion_comparison.py` |
 | `proposal_validation` | `validation/proposal_validation.py` |
 | `scope_adjudication` | `validation/scope_adjudication.py` |
 | `validation_commands` | `validation/validation_commands.py` |

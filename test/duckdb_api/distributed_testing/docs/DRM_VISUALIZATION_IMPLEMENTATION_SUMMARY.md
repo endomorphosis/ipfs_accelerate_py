@@ -76,16 +76,16 @@ The visualization module integrates with several existing components of the Dist
 
 ```python
 from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
-from duckdb_api.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
+from duckdb_api.distributed_testing.dynamic_resource_management_visualization import (
+    DRMVisualization,
+)
 
 # Create a DRM instance
 drm = DynamicResourceManager()
 
 # Create a visualization instance
 visualization = DRMVisualization(
-    dynamic_resource_manager=drm,
-    output_dir="./visualizations",
-    interactive=True
+    dynamic_resource_manager=drm, output_dir="./visualizations", interactive=True
 )
 
 # Generate visualizations

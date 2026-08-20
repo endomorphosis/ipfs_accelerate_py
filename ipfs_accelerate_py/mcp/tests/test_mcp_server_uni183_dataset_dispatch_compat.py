@@ -28,7 +28,9 @@ class TestMCPServerUNI183DatasetDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -45,7 +47,9 @@ class TestMCPServerUNI183DatasetDispatchCompat(unittest.TestCase):
                 "status": "success",
                 "dataset_id": kwargs.get("output_id") or "processed-1",
                 "num_operations": len(operations),
-                "operations_summary": [item.get("type", "unknown") for item in operations if isinstance(item, dict)],
+                "operations_summary": [
+                    item.get("type", "unknown") for item in operations if isinstance(item, dict)
+                ],
             }
 
         async def _convert_dataset_format(**kwargs: object) -> dict:
@@ -59,20 +63,23 @@ class TestMCPServerUNI183DatasetDispatchCompat(unittest.TestCase):
             }
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_dataset_tools._API,
-                {
-                    "process_dataset": _process_dataset,
-                    "convert_dataset_format": _convert_dataset_format,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_dataset_tools._API,
+                    {
+                        "process_dataset": _process_dataset,
+                        "convert_dataset_format": _convert_dataset_format,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="dataset-dispatch-compat")
 
@@ -120,13 +127,17 @@ class TestMCPServerUNI183DatasetDispatchCompat(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_dataset_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper) -> None:
+    def test_dataset_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -141,17 +152,20 @@ class TestMCPServerUNI183DatasetDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_dataset_tools._API,
-                {"process_dataset": _process_dataset},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_dataset_tools._API,
+                    {"process_dataset": _process_dataset},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="dataset-dispatch-failed-payload")
                 dispatch = server.tools["tools_dispatch"]["function"]

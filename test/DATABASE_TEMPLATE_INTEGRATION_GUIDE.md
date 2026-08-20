@@ -26,27 +26,27 @@ The database is organized with the following primary tables:
 Templates are loaded from the database through a sophisticated retrieval mechanism:
 
 ```python
-def load_template_from_db(model_type, template_type='base', platform=None):
+def load_template_from_db(model_type, template_type="base", platform=None):
     if not HAS_DUCKDB or not os.path.exists(TEMPLATE_DB_PATH):
         return None
-    
+
     try:
         conn = duckdb.connect(TEMPLATE_DB_PATH)
-        
+
         # Build query based on parameters
         query = "SELECT template_content FROM model_templates WHERE model_id = ?"
         params = [model_type]
-        
+
         if platform:
             query += " AND platform = ?"
             params.append(platform)
-        
+
         # Try exact match first
         result = conn.execute(query, params).fetchone()
-        
+
         # Fallback mechanisms if no direct match
         # ... [fallback logic here]
-        
+
         return result[0] if result else None
     except Exception as e:
         logger.error(f"Error loading template from database: {e}")

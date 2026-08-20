@@ -13,6 +13,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
+    J2_PROOF_ATTEMPT_FIELDS,
+    admit_proof_attempt_trace,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.kernel_verification import (
     KernelFailureCode,
     KernelVerificationBindings,
@@ -60,11 +64,14 @@ def _draft(proof_text: str) -> LeanstralProofDraft:
         "prompt_sha256": "a" * 64,
         "output_sha256": output_sha256,
     }
-    artifact_id = "leanstral-draft-" + hashlib.sha256(
-        json.dumps(
-            identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-        ).encode("utf-8")
-    ).hexdigest()
+    artifact_id = (
+        "leanstral-draft-"
+        + hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+    )
     return LeanstralProofDraft(
         artifact_id=artifact_id,
         draft_text=proof_text,
@@ -94,16 +101,12 @@ def _bindings() -> KernelVerificationBindings:
     )
 
 
-NATIVE_SOURCE = (
-    "theorem Fixed.identity (h : P) : P := sorry\n"
-    "#print axioms Fixed.identity\n"
-)
+NATIVE_SOURCE = "theorem Fixed.identity (h : P) : P := sorry\n#print axioms Fixed.identity\n"
 
 
 def _accepting_kernel_runner(**kwargs):
     assert kwargs["source"] == (
-        "theorem Fixed.identity (h : P) : P := by exact h\n"
-        "#print axioms Fixed.identity\n"
+        "theorem Fixed.identity (h : P) : P := by exact h\n#print axioms Fixed.identity\n"
     )
     return {
         "command": ["/tools/lean", "--json", "Reconstruction.lean"],
@@ -185,8 +188,7 @@ def test_accepted_draft_uses_independent_reconstruction_and_separate_provenance(
     assert payload["kernel_artifact"]["authoritative_assurance"] == "kernel_verified"
     assert payload["provenance"]["model"]["artifact_id"] == draft.artifact_id
     assert (
-        payload["provenance"]["kernel"]["artifact_id"]
-        == result.kernel_verification.verification_id
+        payload["provenance"]["kernel"]["artifact_id"] == result.kernel_verification.verification_id
     )
     assert payload["provenance"]["model"]["resource_class"] == "model"
     assert payload["provenance"]["kernel"]["resource_class"] == "kernel"
@@ -350,9 +352,7 @@ def test_patch_string_validation_scrubs_bash_env_and_uses_guarded_python(
         model_artifact_id="leanstral-patch-safe-runtime",
         repo_root=repo,
         task_declared_paths=("allowed.txt",),
-        validation_commands=(
-            "python -c 'import sys; assert sys.executable'",
-        ),
+        validation_commands=("python -c 'import sys; assert sys.executable'",),
     )
 
     assert result.accepted
@@ -380,9 +380,7 @@ def test_patch_argv_validation_normalizes_explicit_login_shell(
         model_artifact_id="leanstral-patch-normalized-shell",
         repo_root=repo,
         task_declared_paths=("allowed.txt",),
-        validation_commands=(
-            ("/bin/bash", "-lc", "python -c 'raise SystemExit(0)'"),
-        ),
+        validation_commands=(("/bin/bash", "-lc", "python -c 'raise SystemExit(0)'"),),
         command_runner=runner,
     )
 
@@ -421,9 +419,7 @@ def test_patch_custom_runner_receives_only_sanitized_environment(
         environment=None,
     ):
         assert environment is not None
-        child_environment = {
-            str(key): str(value) for key, value in environment.items()
-        }
+        child_environment = {str(key): str(value) for key, value in environment.items()}
         observed_environments.append(child_environment)
         return subprocess.run(
             list(command),
@@ -450,8 +446,81 @@ def test_patch_custom_runner_receives_only_sanitized_environment(
     assert result.accepted
     assert observed_environments
     assert all("BASH_ENV" not in item for item in observed_environments)
-    assert all(
-        "LEANSTRAL_RUNNER_SECRET" not in item
-        for item in observed_environments
-    )
+    assert all("LEANSTRAL_RUNNER_SECRET" not in item for item in observed_environments)
     assert not marker.exists()
+
+
+def test_gate_trace_binds_j2_fields_and_keeps_candidate_non_authority() -> None:
+    result = verify_leanstral_draft(
+        _draft("by exact h"),
+        _theorem(),
+        native_source=NATIVE_SOURCE,
+        bindings=_bindings(),
+        kernel_runner=_accepting_kernel_runner,
+    )
+    payload = result.to_dict()
+    trace = admit_proof_attempt_trace(payload["proof_attempt_trace"])
+
+    assert set(J2_PROOF_ATTEMPT_FIELDS) <= set(trace)
+    assert trace["obligation"]["obligation_id"] == "obligation-1"
+    assert trace["obligation"]["theorem_id"] == "Fixed.identity"
+    assert trace["proposals"]["artifact_id"] == result.model_artifact.artifact_id
+    assert trace["parse_outcome"]["status"] == "parsed"
+    assert trace["elaboration_outcome"]["status"] == "elaborated"
+    assert trace["kernel_outcome"]["status"] == "accepted"
+    assert trace["model_tool_versions"]["kernel_id"] == "kernel:lean@test"
+    assert trace["model_tool_versions"]["toolchain_id"] == "toolchain:lean@test"
+    assert trace["candidate_authority"] is False
+    assert trace["authoritative"] is False
+    assert trace["verified"] is False
+    assert payload["model_artifact"]["authoritative"] is False
+    assert result.authoritative is True
+
+
+def test_rejected_gate_trace_records_parse_failure_not_model_authority() -> None:
+    result = verify_leanstral_draft(
+        _draft("by sorry"),
+        _theorem(),
+        native_source=NATIVE_SOURCE,
+        bindings=_bindings(),
+        kernel_runner=lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("rejected proof must not reach the kernel")
+        ),
+    )
+    trace = admit_proof_attempt_trace(result.to_dict()["proof_attempt_trace"])
+
+    assert result.status is LeanstralGateStatus.REJECTED
+    assert trace["parse_outcome"]["status"] == "parse_failed"
+    assert KernelFailureCode.INCOMPLETE_PROOF.value in trace["parse_outcome"]["reason_codes"]
+    assert trace["kernel_outcome"]["status"] == "not_attempted"
+    assert trace["candidate_authority"] is False
+    assert result.authoritative is False
+
+
+def test_gate_trace_records_checked_counterexample_without_candidate_authority() -> None:
+    def kernel_runner(**_kwargs):
+        return {
+            "command": ["/tools/lean", "--json", "Reconstruction.lean"],
+            "stdout": json.dumps({"severity": "error", "data": "counterexample: P := false"}),
+            "stderr": "",
+            "returncode": 1,
+            "version": "Lean 4.test",
+            "executable": "/tools/lean",
+            "diagnostics": {"counterexample": {"assignment": {"P": False}}},
+        }
+
+    result = verify_leanstral_draft(
+        _draft("by exact h"),
+        _theorem(),
+        native_source=NATIVE_SOURCE,
+        bindings=_bindings(),
+        kernel_runner=kernel_runner,
+    )
+    trace = admit_proof_attempt_trace(result.to_dict()["proof_attempt_trace"])
+
+    assert not result.accepted
+    assert trace["kernel_outcome"]["status"] in {"rejected", "counterexample"}
+    assert trace["candidate_authority"] is False
+    assert trace["proof_success"] is False
+    if trace["kernel_outcome"]["status"] == "counterexample":
+        assert trace["counterexamples"]

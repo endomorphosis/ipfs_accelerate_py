@@ -74,9 +74,7 @@ def test_initial_registry_has_every_reviewed_invariant_and_complete_declarations
 
 def test_registry_serialization_round_trip_verifies_all_claimed_identities() -> None:
     payload = DEFAULT_TEMPLATE_REGISTRY.to_dict()
-    restored = ProofObligationTemplateRegistry.from_json(
-        DEFAULT_TEMPLATE_REGISTRY.to_json()
-    )
+    restored = ProofObligationTemplateRegistry.from_json(DEFAULT_TEMPLATE_REGISTRY.to_json())
 
     assert restored.registry_id == DEFAULT_TEMPLATE_REGISTRY.registry_id
     assert [item.semantic_hash for item in restored.templates] == [
@@ -131,15 +129,11 @@ def test_reference_predicates_reject_malformed_inputs_and_mutated_invariants() -
 
 
 def test_exact_shape_selection_never_uses_near_name_heuristics() -> None:
-    exact = DEFAULT_TEMPLATE_REGISTRY.select_for_code_shape(
-        ReviewedCodeShape.DAG_ACYCLICITY
-    )
+    exact = DEFAULT_TEMPLATE_REGISTRY.select_for_code_shape(ReviewedCodeShape.DAG_ACYCLICITY)
     near_miss = DEFAULT_TEMPLATE_REGISTRY.select_for_code_shape(
         "directed_acyclic_graph.edge_updates"
     )
-    unknown = DEFAULT_TEMPLATE_REGISTRY.select_for_code_shape(
-        "custom.graph.edge_update"
-    )
+    unknown = DEFAULT_TEMPLATE_REGISTRY.select_for_code_shape("custom.graph.edge_update")
 
     assert exact.supported
     assert exact.template.template_id == "dag-acyclicity"
@@ -157,12 +151,8 @@ def test_ambiguous_shape_and_template_versions_fail_closed() -> None:
         template_id="another-reviewed-dag-template",
         canonical_statement="A separately reviewed DAG statement.",
     )
-    ambiguous_shape_registry = ProofObligationTemplateRegistry(
-        (original, competing)
-    )
-    selection = ambiguous_shape_registry.select_for_code_shape(
-        ReviewedCodeShape.DAG_ACYCLICITY
-    )
+    ambiguous_shape_registry = ProofObligationTemplateRegistry((original, competing))
+    selection = ambiguous_shape_registry.select_for_code_shape(ReviewedCodeShape.DAG_ACYCLICITY)
 
     assert selection.status is TemplateSelectionStatus.AMBIGUOUS
     assert len(selection.candidate_template_ids) == 2
@@ -170,23 +160,16 @@ def test_ambiguous_shape_and_template_versions_fail_closed() -> None:
         selection.require_supported()
 
     second_version = replace(original, version="2.0.0")
-    ambiguous_version_registry = ProofObligationTemplateRegistry(
-        (original, second_version)
-    )
+    ambiguous_version_registry = ProofObligationTemplateRegistry((original, second_version))
     assert ambiguous_version_registry.get(original.template_id) is None
     with pytest.raises(AmbiguousProofTemplateError, match="multiple versions"):
         ambiguous_version_registry.require(original.template_id)
-    assert (
-        ambiguous_version_registry.require(original.template_id, "2.0.0")
-        == second_version
-    )
+    assert ambiguous_version_registry.require(original.template_id, "2.0.0") == second_version
 
 
 def test_materialization_uses_only_registry_statement_semantics_and_exact_scopes() -> None:
     scopes = _scope_set()
-    state_scope = next(
-        scope for scope in scopes.scopes if scope.kind.value == "state_transition"
-    )
+    state_scope = next(scope for scope in scopes.scopes if scope.kind.value == "state_transition")
     request = CodeObligationRequest(
         template_id="legal-state-transitions",
         template_version="1.0.0",
@@ -196,9 +179,7 @@ def test_materialization_uses_only_registry_statement_semantics_and_exact_scopes
         task_id="REF-249",
     )
     assert CodeObligationRequest.from_json(request.to_json()) == request
-    template = DEFAULT_TEMPLATE_REGISTRY.require(
-        request.template_id, request.template_version
-    )
+    template = DEFAULT_TEMPLATE_REGISTRY.require(request.template_id, request.template_version)
     obligation = materialize_code_proof_obligation(
         scopes,
         repository_id="repo:test",
@@ -260,20 +241,26 @@ def test_template_version_and_semantic_hash_change_obligation_and_cache_identity
 
     assert original.semantic_hash != changed_version.semantic_hash
     assert original.semantic_hash != changed_semantics.semantic_hash
-    assert len(
-        {
-            base_obligation.obligation_id,
-            version_obligation.obligation_id,
-            semantics_obligation.obligation_id,
-        }
-    ) == 3
-    assert len(
-        {
-            obligation_cache_identity(base_obligation, backend_id="lean4"),
-            obligation_cache_identity(version_obligation, backend_id="lean4"),
-            obligation_cache_identity(semantics_obligation, backend_id="lean4"),
-        }
-    ) == 3
+    assert (
+        len(
+            {
+                base_obligation.obligation_id,
+                version_obligation.obligation_id,
+                semantics_obligation.obligation_id,
+            }
+        )
+        == 3
+    )
+    assert (
+        len(
+            {
+                obligation_cache_identity(base_obligation, backend_id="lean4"),
+                obligation_cache_identity(version_obligation, backend_id="lean4"),
+                obligation_cache_identity(semantics_obligation, backend_id="lean4"),
+            }
+        )
+        == 3
+    )
     assert obligation_cache_identity(
         base_obligation, backend_id="lean4"
     ) != obligation_cache_identity(base_obligation, backend_id="smtlib2")
@@ -306,9 +293,7 @@ def test_conservative_or_unsupported_code_cannot_become_a_proof_obligation() -> 
 
 
 def test_unsupported_proof_template_encodes_fail_closed_gate_behavior() -> None:
-    template = DEFAULT_TEMPLATE_REGISTRY.require(
-        "unsupported-proof-fail-closed"
-    )
+    template = DEFAULT_TEMPLATE_REGISTRY.require("unsupported-proof-fail-closed")
 
     assert template.evaluate(
         support_status="unsupported",

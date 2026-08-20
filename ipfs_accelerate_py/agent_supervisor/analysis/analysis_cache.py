@@ -30,12 +30,8 @@ from pathlib import Path
 from typing import Any, Final, Iterator
 
 
-ANALYSIS_CACHE_KEY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-cache-key@1"
-)
-ANALYSIS_CACHE_ENTRY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-cache-entry@1"
-)
+ANALYSIS_CACHE_KEY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/analysis-cache-key@1"
+ANALYSIS_CACHE_ENTRY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/analysis-cache-entry@1"
 ANALYSIS_CACHE_SCHEMA: Final = ANALYSIS_CACHE_ENTRY_SCHEMA
 
 DEFAULT_MAX_ENTRIES: Final = 512
@@ -76,9 +72,7 @@ _FORBIDDEN_RECEIPT_FIELDS = frozenset(
         "graph",
     }
 )
-_ARTIFACT_REFERENCE_FIELDS = frozenset(
-    {"artifact_id", "cid", "digest", "uri", "path", "ref"}
-)
+_ARTIFACT_REFERENCE_FIELDS = frozenset({"artifact_id", "cid", "digest", "uri", "path", "ref"})
 
 
 class AnalysisCacheError(RuntimeError):
@@ -118,9 +112,7 @@ class AnalysisOutcome(str, Enum):
             return aliases.get(normalized, cls(normalized))
         except ValueError as exc:
             choices = ", ".join(item.value for item in cls)
-            raise ReceiptValidationError(
-                f"analysis status must be one of: {choices}"
-            ) from exc
+            raise ReceiptValidationError(f"analysis status must be one of: {choices}") from exc
 
     @property
     def is_completion_evidence(self) -> bool:
@@ -192,9 +184,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
         converter = getattr(item, "to_dict", None)
         if callable(converter):
             return normalize(converter())
-        raise ValueError(
-            f"unsupported canonical JSON value: {type(item).__name__}"
-        )
+        raise ValueError(f"unsupported canonical JSON value: {type(item).__name__}")
 
     return json.dumps(
         normalize(value),
@@ -271,21 +261,14 @@ class AnalysisCacheKey:
         else:
             tree = tree_values[0]
             canonical_tree = canonical_analysis_json(tree)
-            if any(
-                canonical_analysis_json(item) != canonical_tree
-                for item in tree_values[1:]
-            ):
+            if any(canonical_analysis_json(item) != canonical_tree for item in tree_values[1:]):
                 raise ValueError("repository tree identity aliases disagree")
         if configuration_digest is not None and config_digest is not None:
-            if canonical_analysis_json(
-                configuration_digest
-            ) != canonical_analysis_json(config_digest):
+            if canonical_analysis_json(configuration_digest) != canonical_analysis_json(
+                config_digest
+            ):
                 raise ValueError("configuration digest aliases disagree")
-        configuration = (
-            configuration_digest
-            if configuration_digest is not None
-            else config_digest
-        )
+        configuration = configuration_digest if configuration_digest is not None else config_digest
         values = {
             "repository_tree_identity": tree,
             "objective_revision": objective_revision,
@@ -344,9 +327,7 @@ class AnalysisCacheKey:
             objective_revision=value.get("objective_revision"),
             analyzer_version=value.get("analyzer_version"),
             schema_version=value.get("schema_version"),
-            configuration_digest=value.get(
-                "configuration_digest", value.get("config_digest")
-            ),
+            configuration_digest=value.get("configuration_digest", value.get("config_digest")),
             query_digest=value.get("query_digest"),
             policy_digest=value.get("policy_digest"),
         )
@@ -397,9 +378,7 @@ def _compact_value(
     max_string_bytes: int,
 ) -> Any:
     if depth > max_depth:
-        raise ReceiptValidationError(
-            f"{path} exceeds maximum receipt nesting depth {max_depth}"
-        )
+        raise ReceiptValidationError(f"{path} exceeds maximum receipt nesting depth {max_depth}")
     if value is None or isinstance(value, (bool, int)):
         return value
     if isinstance(value, float):
@@ -446,9 +425,7 @@ def _compact_value(
                 max_string_bytes=max_string_bytes,
             )
         return result
-    if isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
         return [
             _compact_value(
                 child,
@@ -468,9 +445,7 @@ def _compact_value(
             max_depth=max_depth,
             max_string_bytes=max_string_bytes,
         )
-    raise ReceiptValidationError(
-        f"{path} contains unsupported value {type(value).__name__}"
-    )
+    raise ReceiptValidationError(f"{path} contains unsupported value {type(value).__name__}")
 
 
 def _normalize_artifact_reference(
@@ -491,9 +466,7 @@ def _normalize_artifact_reference(
     result: dict[str, Any] = {}
     for raw_key, child in value.items():
         if not isinstance(raw_key, str):
-            raise ReceiptValidationError(
-                f"artifact_refs[{index}] keys must be strings"
-            )
+            raise ReceiptValidationError(f"artifact_refs[{index}] keys must be strings")
         normalized_key = _normalized_field_name(raw_key)
         if (
             normalized_key in _FORBIDDEN_RECEIPT_FIELDS
@@ -508,9 +481,7 @@ def _normalize_artifact_reference(
         if isinstance(child, Path):
             child = str(child)
         if child is not None and not isinstance(child, (str, bool, int, float)):
-            raise ReceiptValidationError(
-                f"artifact_refs[{index}].{raw_key} must be a scalar"
-            )
+            raise ReceiptValidationError(f"artifact_refs[{index}].{raw_key} must be a scalar")
         result[raw_key] = _compact_value(
             child,
             path=f"artifact_refs[{index}].{raw_key}",
@@ -519,8 +490,7 @@ def _normalize_artifact_reference(
             max_string_bytes=max_string_bytes,
         )
     if not any(
-        _normalized_field_name(key) in _ARTIFACT_REFERENCE_FIELDS
-        and value not in (None, "")
+        _normalized_field_name(key) in _ARTIFACT_REFERENCE_FIELDS and value not in (None, "")
         for key, value in result.items()
     ):
         raise ReceiptValidationError(
@@ -576,9 +546,7 @@ def compact_analysis_receipt(
     references = artifact_refs if artifact_refs is not None else artifacts
     if references is None:
         references = ()
-    if isinstance(references, (str, bytes, bytearray)) or not isinstance(
-        references, Sequence
-    ):
+    if isinstance(references, (str, bytes, bytearray)) or not isinstance(references, Sequence):
         raise ReceiptValidationError("artifact_refs must be an array")
 
     raw["status"] = typed_status.value
@@ -590,9 +558,7 @@ def compact_analysis_receipt(
         max_string_bytes=max_string_bytes,
     )
     normalized["artifact_refs"] = [
-        _normalize_artifact_reference(
-            item, index=index, max_string_bytes=max_string_bytes
-        )
+        _normalize_artifact_reference(item, index=index, max_string_bytes=max_string_bytes)
         for index, item in enumerate(references)
     ]
     encoded = _canonical_json_bytes(normalized)
@@ -620,9 +586,7 @@ class AnalysisReceipt:
         normalized = compact_analysis_receipt(self.to_dict_unchecked())
         object.__setattr__(self, "receipt_id", str(normalized.get("receipt_id") or ""))
         object.__setattr__(self, "summary", normalized.get("summary", {}))
-        object.__setattr__(
-            self, "artifact_refs", tuple(normalized.get("artifact_refs", ()))
-        )
+        object.__setattr__(self, "artifact_refs", tuple(normalized.get("artifact_refs", ())))
         object.__setattr__(
             self,
             "diagnostics",
@@ -756,11 +720,7 @@ class AnalysisCacheLookupResult:
 
     @property
     def is_completion_evidence(self) -> bool:
-        return bool(
-            self.hit
-            and self.entry is not None
-            and self.entry.is_completion_evidence
-        )
+        return bool(self.hit and self.entry is not None and self.entry.is_completion_evidence)
 
     @property
     def completion_evidence(self) -> bool:
@@ -840,9 +800,7 @@ def _thread_lock(path: Path) -> threading.RLock:
 
 
 @contextmanager
-def _exclusive_cache_lock(
-    path: Path, *, timeout_seconds: float
-) -> Iterator[None]:
+def _exclusive_cache_lock(path: Path, *, timeout_seconds: float) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     lock = _thread_lock(path)
     deadline = time.monotonic() + timeout_seconds
@@ -858,9 +816,7 @@ def _exclusive_cache_lock(
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"timed out acquiring analysis cache process lock: {path}"
-                    )
+                    raise TimeoutError(f"timed out acquiring analysis cache process lock: {path}")
                 time.sleep(0.01)
         yield
     finally:
@@ -919,17 +875,13 @@ class AnalysisCache:
         if max_receipt_bytes > max_entry_bytes:
             raise ValueError("max_receipt_bytes cannot exceed max_entry_bytes")
         if default_negative_ttl_seconds > max_negative_ttl_seconds:
-            raise ValueError(
-                "default_negative_ttl_seconds cannot exceed max_negative_ttl_seconds"
-            )
+            raise ValueError("default_negative_ttl_seconds cannot exceed max_negative_ttl_seconds")
         if default_success_ttl_seconds is not None and (
             isinstance(default_success_ttl_seconds, bool)
             or not isinstance(default_success_ttl_seconds, int)
             or default_success_ttl_seconds <= 0
         ):
-            raise ValueError(
-                "default_success_ttl_seconds must be a positive integer or None"
-            )
+            raise ValueError("default_success_ttl_seconds must be a positive integer or None")
         if lock_timeout_seconds <= 0:
             raise ValueError("lock_timeout_seconds must be positive")
         if path is None:
@@ -956,27 +908,14 @@ class AnalysisCache:
     def _now_ms(self) -> int:
         return int(self._clock() * 1000)
 
-    def _coerce_key(
-        self, key: AnalysisCacheKey | Mapping[str, Any]
-    ) -> AnalysisCacheKey:
-        return (
-            key
-            if isinstance(key, AnalysisCacheKey)
-            else AnalysisCacheKey.from_dict(key)
-        )
+    def _coerce_key(self, key: AnalysisCacheKey | Mapping[str, Any]) -> AnalysisCacheKey:
+        return key if isinstance(key, AnalysisCacheKey) else AnalysisCacheKey.from_dict(key)
 
-    def entry_path(
-        self, key: AnalysisCacheKey | Mapping[str, Any] | str
-    ) -> Path:
+    def entry_path(self, key: AnalysisCacheKey | Mapping[str, Any] | str) -> Path:
         if isinstance(key, str):
-            digest = (
-                key[len(_DIGEST_PREFIX) :]
-                if key.startswith(_DIGEST_PREFIX)
-                else key
-            )
+            digest = key[len(_DIGEST_PREFIX) :] if key.startswith(_DIGEST_PREFIX) else key
             if not (
-                len(digest) == 64
-                and all(character in "0123456789abcdef" for character in digest)
+                len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
             ):
                 raise ValueError("analysis cache key digest must be 64 lowercase hex chars")
         else:
@@ -1048,10 +987,7 @@ class AnalysisCache:
         return entry
 
     def _is_stale(self, entry: AnalysisCacheEntry, now_ms: int) -> bool:
-        return (
-            entry.expires_at_ms is not None
-            and now_ms >= entry.expires_at_ms
-        )
+        return entry.expires_at_ms is not None and now_ms >= entry.expires_at_ms
 
     def lookup(
         self,
@@ -1091,9 +1027,7 @@ class AnalysisCache:
                     AnalysisCacheLookupStatus.INVALIDATED,
                     cache_key,
                     entry=entry,
-                    reason_codes=(
-                        AnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,
-                    ),
+                    reason_codes=(AnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,),
                 )
             return AnalysisCacheLookupResult(
                 AnalysisCacheLookupStatus.HIT,
@@ -1117,8 +1051,7 @@ class AnalysisCache:
         return AnalysisCacheLookupResult(
             AnalysisCacheLookupStatus.INVALIDATED,
             cache_key,
-            reason_codes=differences
-            or (AnalysisCacheReason.CACHE_MISS.value,),
+            reason_codes=differences or (AnalysisCacheReason.CACHE_MISS.value,),
         )
 
     def get(
@@ -1127,9 +1060,7 @@ class AnalysisCache:
         *,
         require_completion_evidence: bool = False,
     ) -> AnalysisCacheLookupResult:
-        return self.lookup(
-            key, require_completion_evidence=require_completion_evidence
-        )
+        return self.lookup(key, require_completion_evidence=require_completion_evidence)
 
     def _closest_candidate(
         self, key: AnalysisCacheKey, *, now_ms: int
@@ -1143,16 +1074,13 @@ class AnalysisCache:
             if self._is_stale(entry, now_ms):
                 continue
             distance = sum(
-                getattr(entry.key, name) != getattr(key, name)
-                for name, _reason in _KEY_DIMENSIONS
+                getattr(entry.key, name) != getattr(key, name) for name, _reason in _KEY_DIMENSIONS
             )
             # A completely unrelated entry is a miss, not evidence that this
             # specific analysis was invalidated in every dimension.
             if distance == len(_KEY_DIMENSIONS):
                 continue
-            candidates.append(
-                (distance, -entry.created_at_ms, entry.key.key_id, entry)
-            )
+            candidates.append((distance, -entry.created_at_ms, entry.key.key_id, entry))
         return min(candidates)[-1] if candidates else None
 
     def put(
@@ -1195,14 +1123,10 @@ class AnalysisCache:
             )
 
         path = self.entry_path(cache_key)
-        with _exclusive_cache_lock(
-            self.lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with _exclusive_cache_lock(self.lock_path, timeout_seconds=self.lock_timeout_seconds):
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             self._atomic_write(path, encoded)
-            evicted = self._prune_locked(
-                now_ms=now_ms, keep_path=path
-            )
+            evicted = self._prune_locked(now_ms=now_ms, keep_path=path)
             # Verify after replacement while still holding the writer lock.
             try:
                 persisted = self._read_path(path, expected_key=cache_key)
@@ -1219,26 +1143,14 @@ class AnalysisCache:
 
     store = put
 
-    def _effective_ttl(
-        self, outcome: AnalysisOutcome, ttl_seconds: int | None
-    ) -> int | None:
+    def _effective_ttl(self, outcome: AnalysisOutcome, ttl_seconds: int | None) -> int | None:
         if ttl_seconds is not None and (
-            isinstance(ttl_seconds, bool)
-            or not isinstance(ttl_seconds, int)
-            or ttl_seconds <= 0
+            isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or ttl_seconds <= 0
         ):
             raise ValueError("ttl_seconds must be a positive integer or None")
         if outcome.is_completion_evidence:
-            return (
-                self.default_success_ttl_seconds
-                if ttl_seconds is None
-                else ttl_seconds
-            )
-        requested = (
-            self.default_negative_ttl_seconds
-            if ttl_seconds is None
-            else ttl_seconds
-        )
+            return self.default_success_ttl_seconds if ttl_seconds is None else ttl_seconds
+        requested = self.default_negative_ttl_seconds if ttl_seconds is None else ttl_seconds
         return min(requested, self.max_negative_ttl_seconds)
 
     def _atomic_write(self, path: Path, encoded: bytes) -> None:
@@ -1274,14 +1186,10 @@ class AnalysisCache:
     def prune(self) -> int:
         """Remove corrupt, expired, and oldest excess entries."""
 
-        with _exclusive_cache_lock(
-            self.lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with _exclusive_cache_lock(self.lock_path, timeout_seconds=self.lock_timeout_seconds):
             return self._prune_locked(now_ms=self._now_ms())
 
-    def _prune_locked(
-        self, *, now_ms: int, keep_path: Path | None = None
-    ) -> int:
+    def _prune_locked(self, *, now_ms: int, keep_path: Path | None = None) -> int:
         removed = 0
         records: list[tuple[Path, AnalysisCacheEntry, int]] = []
         for path in self._entry_paths():
@@ -1373,9 +1281,7 @@ class AnalysisCache:
         """Remove all cache entries, preserving the cache directory and lock."""
 
         removed = 0
-        with _exclusive_cache_lock(
-            self.lock_path, timeout_seconds=self.lock_timeout_seconds
-        ):
+        with _exclusive_cache_lock(self.lock_path, timeout_seconds=self.lock_timeout_seconds):
             for path in self._entry_paths():
                 try:
                     path.unlink()

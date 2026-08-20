@@ -133,9 +133,7 @@ def test_native_register_uses_concrete_factory_not_abstract(
 
     monkeypatch.setattr(CLIEndpointAdapter, "__init__", tracking_init)
 
-    result = _run(
-        native_register(tool="claude", endpoint_id="mcp_claude_1", config={})
-    )
+    result = _run(native_register(tool="claude", endpoint_id="mcp_claude_1", config={}))
     assert result.get("status") == "success", result
     assert result.get("registered") is not False
     assert abstract_calls == []
@@ -298,9 +296,7 @@ def test_register_native_tools_surface() -> None:
 
 
 def test_native_execute_error_never_includes_prompt() -> None:
-    result = _run(
-        native_execute("missing_endpoint_xyz", "THIS_IS_THE_PROMPT_VALUE")
-    )
+    result = _run(native_execute("missing_endpoint_xyz", "THIS_IS_THE_PROMPT_VALUE"))
     assert result["status"] == "error"
     assert "prompt" not in result
     assert "THIS_IS_THE_PROMPT_VALUE" not in str(result)
@@ -320,9 +316,7 @@ def test_public_exports_match_package() -> None:
 
 
 def test_native_register_goose_tool() -> None:
-    result = _run(
-        native_register(tool="goose", endpoint_id="mcp_goose_1", config={})
-    )
+    result = _run(native_register(tool="goose", endpoint_id="mcp_goose_1", config={}))
     assert result.get("status") == "success", result
     assert result.get("registered") is not False
     adapter = py_get("mcp_goose_1")
@@ -333,9 +327,7 @@ def test_native_register_goose_tool() -> None:
 
 
 def test_native_register_goose_cli_alias() -> None:
-    result = _run(
-        native_register(tool="goose_cli", endpoint_id="mcp_goose_cli", config={})
-    )
+    result = _run(native_register(tool="goose_cli", endpoint_id="mcp_goose_cli", config={}))
     assert result.get("status") == "success", result
 
 
@@ -383,9 +375,7 @@ def test_mcp_execute_schema_exposes_goose_authority_fields() -> None:
         assert field in props, f"missing MCP schema field {field}"
     assert execute_tool["input_schema"].get("additionalProperties") is False
 
-    register_tool = next(
-        t for t in manager.tools if t["name"] == "cli_endpoint_register"
-    )
+    register_tool = next(t for t in manager.tools if t["name"] == "cli_endpoint_register")
     tool_desc = register_tool["input_schema"]["properties"]["tool"]["description"]
     assert "goose" in tool_desc.lower()
 

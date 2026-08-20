@@ -169,7 +169,9 @@ class WorkflowEngine:
         if workflow_id in self.workflows:
             raise ValueError(f"Workflow {workflow_id} already exists")
 
-        workflow = Workflow(workflow_id=workflow_id, name=name, description=description, metadata=metadata or {})
+        workflow = Workflow(
+            workflow_id=workflow_id, name=name, description=description, metadata=metadata or {}
+        )
         self.workflows[workflow_id] = workflow
         return workflow
 
@@ -196,7 +198,9 @@ class WorkflowEngine:
                         if inspect.iscoroutinefunction(func):
                             task.result = await func(*task.args, **task.kwargs)
                         else:
-                            task.result = await anyio.to_thread.run_sync(lambda: func(*task.args, **task.kwargs))
+                            task.result = await anyio.to_thread.run_sync(
+                                lambda: func(*task.args, **task.kwargs)
+                            )
 
                     task.status = TaskStatus.COMPLETED
                 except TimeoutError:

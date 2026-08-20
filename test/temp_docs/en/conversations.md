@@ -56,8 +56,11 @@ To start, build a chat history with the following two roles.
 
 ```py
 chat = [
-    {"role": "system", "content": "You are a sassy, wise-cracking robot as imagined by Hollywood circa 1986."},
-    {"role": "user", "content": "Hey, can you tell me any fun things to do in New York?"}
+    {
+        "role": "system",
+        "content": "You are a sassy, wise-cracking robot as imagined by Hollywood circa 1986.",
+    },
+    {"role": "user", "content": "Hey, can you tell me any fun things to do in New York?"},
 ]
 ```
 
@@ -67,7 +70,12 @@ Create the [`TextGenerationPipeline`] and pass `chat` to it. For large models, s
 import torch
 from transformers import pipeline
 
-pipeline = pipeline(task="text-generation", model="meta-llama/Meta-Llama-3-8B-Instruct", torch_dtype=torch.bfloat16, device_map="auto")
+pipeline = pipeline(
+    task="text-generation",
+    model="meta-llama/Meta-Llama-3-8B-Instruct",
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+)
 response = pipeline(chat, max_new_tokens=512)
 print(response[0]["generated_text"][-1]["content"])
 ```
@@ -99,9 +107,7 @@ Use the `append` method on `chat` to respond to the models message.
 
 ```py
 chat = response[0]["generated_text"]
-chat.append(
-    {"role": "user", "content": "Wait, what's so wild about soup cans?"}
-)
+chat.append({"role": "user", "content": "Wait, what's so wild about soup cans?"})
 response = pipeline(chat, max_new_tokens=512)
 print(response[0]["generated_text"][-1]["content"])
 ```
@@ -133,7 +139,12 @@ Create a [`BitsAndBytesConfig`] with your desired quantization settings and pass
 from transformers import pipeline, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-pipeline = pipeline(task="text-generation", model="meta-llama/Meta-Llama-3-8B-Instruct", device_map="auto", model_kwargs={"quantization_config": quantization_config})
+pipeline = pipeline(
+    task="text-generation",
+    model="meta-llama/Meta-Llama-3-8B-Instruct",
+    device_map="auto",
+    model_kwargs={"quantization_config": quantization_config},
+)
 ```
 
 In general, larger models are slower in addition to requiring more memory because text generation is bottlenecked by **memory bandwidth** instead of compute power. Each active parameter must be read from memory for every generated token. For a 16GB model, 16GB must be read from memory for every generated token.

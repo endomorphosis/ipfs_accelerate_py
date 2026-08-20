@@ -94,9 +94,7 @@ def test_binding_or_safety_regression_returns_affected_behavior_to_shadow():
     assert "stale-binding:tree_id" in decision.reason_codes
 
     escaped = next(
-        item
-        for item in current.benchmark.receipts
-        if item.adversarial_fixture is not None
+        item for item in current.benchmark.receipts if item.adversarial_fixture is not None
     )
     unsafe_benchmark = PromptWorkflowBenchmark(
         tuple(
@@ -118,10 +116,7 @@ def test_binding_or_safety_regression_returns_affected_behavior_to_shadow():
         current_evaluation=unsafe_current,
     )
     assert unsafe.effective_mode is PromptWorkflowRolloutMode.SHADOW
-    assert any(
-        code.startswith("current:adversarial-escape:")
-        for code in unsafe.reason_codes
-    )
+    assert any(code.startswith("current:adversarial-escape:") for code in unsafe.reason_codes)
 
 
 def test_off_shadow_assist_and_population_narrowing():
@@ -171,8 +166,7 @@ def test_off_shadow_assist_and_population_narrowing():
     )
     assert blocked.effective_mode is PromptWorkflowRolloutMode.SHADOW
     assert "benchmark-population-narrowed" in blocked.reason_codes or any(
-        code.startswith("current:missing-adversarial-fixture:")
-        for code in blocked.reason_codes
+        code.startswith("current:missing-adversarial-fixture:") for code in blocked.reason_codes
     )
 
 
@@ -186,12 +180,10 @@ def test_metric_regression_rolls_back_without_waiving_safety():
                 metrics=replace(
                     receipt.metrics,
                     model_calls=receipt.metrics.model_calls + 5,
-                    provider_input_tokens=receipt.metrics.provider_input_tokens
-                    + 100,
+                    provider_input_tokens=receipt.metrics.provider_input_tokens + 100,
                 ),
             )
-            if receipt.is_paired_path
-            and receipt.planning_mode.value == "model"
+            if receipt.is_paired_path and receipt.planning_mode.value == "model"
             else receipt
             for receipt in current.benchmark.receipts
         )
@@ -206,9 +198,7 @@ def test_metric_regression_rolls_back_without_waiving_safety():
     )
     assert decision.effective_mode is PromptWorkflowRolloutMode.SHADOW
     assert decision.rollback_applied
-    assert any(
-        code.startswith("metric-regression:") for code in decision.reason_codes
-    )
+    assert any(code.startswith("metric-regression:") for code in decision.reason_codes)
 
     no_rollback_policy = PromptWorkflowRolloutPolicy(
         policy_id=policy.policy_id,
@@ -220,9 +210,7 @@ def test_metric_regression_rolls_back_without_waiving_safety():
     )
     # Even without metric rollback, safety failure still returns to shadow.
     unsafe_item = next(
-        item
-        for item in regressed.benchmark.receipts
-        if item.adversarial_fixture is not None
+        item for item in regressed.benchmark.receipts if item.adversarial_fixture is not None
     )
     unsafe = PromptWorkflowBenchmark(
         tuple(

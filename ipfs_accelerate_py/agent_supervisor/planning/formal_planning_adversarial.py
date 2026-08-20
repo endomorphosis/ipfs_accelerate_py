@@ -45,9 +45,7 @@ from ..proof.prover_evidence_store import (
 
 
 FORMAL_PLANNING_ADVERSARIAL_VERSION: Final = 1
-PLAN_TRUST_BINDING_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/plan-trust-binding@1"
-)
+PLAN_TRUST_BINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/plan-trust-binding@1"
 PROVER_BOUNDARY_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/prover-boundary-evidence@1"
 )
@@ -233,9 +231,7 @@ def _json(value: Any, name: str) -> Any:
     try:
         return _canonical_value(value)
     except (TypeError, ValueError, ContractValidationError) as exc:
-        raise AdversarialValidationError(
-            f"{name} must contain canonical JSON values"
-        ) from exc
+        raise AdversarialValidationError(f"{name} must contain canonical JSON values") from exc
 
 
 def _mapping(value: Any, name: str, *, nonempty: bool = False) -> dict[str, Any]:
@@ -294,9 +290,7 @@ def _nonnegative(value: Any, name: str) -> int:
 def _digest(value: Any) -> str:
     return (
         "sha256:"
-        + hashlib.sha256(
-            canonical_json(_canonical_value(value)).encode("utf-8")
-        ).hexdigest()
+        + hashlib.sha256(canonical_json(_canonical_value(value)).encode("utf-8")).hexdigest()
     )
 
 
@@ -345,8 +339,7 @@ def _contains_private_material(
         return False
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return any(
-            _contains_private_material(item, forbidden_values=forbidden_values)
-            for item in value
+            _contains_private_material(item, forbidden_values=forbidden_values) for item in value
         )
     return isinstance(value, str) and value in forbidden_values
 
@@ -395,12 +388,8 @@ class PlanTrustBinding:
             "authority_ids",
             _strings(self.authority_ids, "authority_ids", required=True),
         )
-        object.__setattr__(
-            self, "dependency_ids", _strings(self.dependency_ids, "dependency_ids")
-        )
-        object.__setattr__(
-            self, "premise_ids", _strings(self.premise_ids, "premise_ids")
-        )
+        object.__setattr__(self, "dependency_ids", _strings(self.dependency_ids, "dependency_ids"))
+        object.__setattr__(self, "premise_ids", _strings(self.premise_ids, "premise_ids"))
         object.__setattr__(
             self, "temporal_bounds", _mapping(self.temporal_bounds, "temporal_bounds")
         )
@@ -460,9 +449,7 @@ class PlanTrustBinding:
         )
         claimed = value.get("content_id")
         if claimed and claimed != result.content_id:
-            raise AdversarialValidationError(
-                "plan trust binding content identity mismatch"
-            )
+            raise AdversarialValidationError("plan trust binding content identity mismatch")
         return result
 
 
@@ -580,9 +567,7 @@ class ProverBoundaryEvidence:
             ("solver_verdicts", False),
             ("hypertrace", False),
         ):
-            object.__setattr__(
-                self, name, _mapping(getattr(self, name), name, nonempty=nonempty)
-            )
+            object.__setattr__(self, name, _mapping(getattr(self, name), name, nonempty=nonempty))
         for name in (
             "actor_authorized",
             "tool_available",
@@ -613,16 +598,10 @@ class ProverBoundaryEvidence:
             "cache_expires_at_ms",
             _nonnegative(self.cache_expires_at_ms, "cache_expires_at_ms"),
         )
-        if self.origin is not None and not isinstance(
-            self.origin, ProverBoundaryEvidence
-        ):
-            raise AdversarialValidationError(
-                "origin must be typed prover boundary evidence"
-            )
+        if self.origin is not None and not isinstance(self.origin, ProverBoundaryEvidence):
+            raise AdversarialValidationError("origin must be typed prover boundary evidence")
         if self.source is not EvidenceSource.CACHE and self.origin is not None:
-            raise AdversarialValidationError(
-                "only cache evidence may contain origin evidence"
-            )
+            raise AdversarialValidationError("only cache evidence may contain origin evidence")
         if self.source is EvidenceSource.CACHE and self.origin is self:
             raise AdversarialValidationError("cache evidence cannot contain itself")
 
@@ -659,13 +638,9 @@ class ProverBoundaryEvidence:
         if _depth > 1:
             raise AdversarialValidationError("nested cache origins are not allowed")
         if not isinstance(value, Mapping):
-            raise AdversarialValidationError(
-                "prover boundary evidence must be an object"
-            )
+            raise AdversarialValidationError("prover boundary evidence must be an object")
         if value.get("schema") not in (None, "", PROVER_BOUNDARY_EVIDENCE_SCHEMA):
-            raise AdversarialValidationError(
-                "unsupported prover boundary evidence schema"
-            )
+            raise AdversarialValidationError("unsupported prover boundary evidence schema")
         origin_value = value.get("origin")
         origin = None
         if origin_value is not None:
@@ -698,9 +673,7 @@ class ProverBoundaryEvidence:
             claimed_assurance=value.get("claimed_assurance", AssuranceLevel.UNVERIFIED),
             actor_authorized=value.get("actor_authorized", True),
             tool_available=value.get("tool_available", True),
-            executable_versions_verified=value.get(
-                "executable_versions_verified", True
-            ),
+            executable_versions_verified=value.get("executable_versions_verified", True),
             conformance_passed=value.get("conformance_passed", True),
             authoritative=value.get("authoritative", True),
             bounded=value.get("bounded", False),
@@ -726,9 +699,7 @@ class ProverBoundaryEvidence:
         )
         claimed = value.get("content_id")
         if claimed and claimed != result.content_id:
-            raise AdversarialValidationError(
-                "prover boundary evidence content identity mismatch"
-            )
+            raise AdversarialValidationError("prover boundary evidence content identity mismatch")
         return result
 
 
@@ -786,10 +757,7 @@ class AdversarialPolicy:
             "accepted_evidence_classes",
             tuple(
                 sorted(
-                    {
-                        _enum(item, EvidenceClass, "accepted_evidence_classes")
-                        for item in classes
-                    },
+                    {_enum(item, EvidenceClass, "accepted_evidence_classes") for item in classes},
                     key=lambda item: item.value,
                 )
             ),
@@ -814,17 +782,13 @@ class AdversarialPolicy:
             "version": FORMAL_PLANNING_ADVERSARIAL_VERSION,
             "property_class": self.property_class.value,
             "required_assurance": self.required_assurance.value,
-            "accepted_evidence_classes": [
-                item.value for item in self.accepted_evidence_classes
-            ],
+            "accepted_evidence_classes": [item.value for item in self.accepted_evidence_classes],
             "require_conformance": self.require_conformance,
             "max_cache_age_ms": self.max_cache_age_ms,
             "now_ms": self.now_ms,
             # Values are identities for local leakage detection and must not be
             # copied into durable public outcomes.
-            "forbidden_public_value_ids": [
-                _digest(item) for item in self.forbidden_public_values
-            ],
+            "forbidden_public_value_ids": [_digest(item) for item in self.forbidden_public_values],
         }
 
 
@@ -836,12 +800,8 @@ class AdversarialFinding:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "code", _enum(self.code, FindingCode, "code"))
-        object.__setattr__(
-            self, "boundary", _enum(self.boundary, BoundaryKind, "boundary")
-        )
-        object.__setattr__(
-            self, "message", _public_message(_text(self.message, "message"))
-        )
+        object.__setattr__(self, "boundary", _enum(self.boundary, BoundaryKind, "boundary"))
+        object.__setattr__(self, "message", _public_message(_text(self.message, "message")))
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -900,14 +860,10 @@ class AdversarialAdmission:
             _enum(self.conclusion, EvidenceConclusion, "conclusion"),
         )
         if any(not isinstance(item, AdversarialFinding) for item in self.findings):
-            raise AdversarialValidationError(
-                "findings must contain typed adversarial findings"
-            )
+            raise AdversarialValidationError("findings must contain typed adversarial findings")
         object.__setattr__(self, "findings", tuple(self.findings))
         if self.disposition is AdmissionDisposition.ADMITTED and self.findings:
-            raise AdversarialValidationError(
-                "an admitted result cannot contain rejection findings"
-            )
+            raise AdversarialValidationError("an admitted result cannot contain rejection findings")
 
     @property
     def admitted(self) -> bool:
@@ -956,12 +912,8 @@ class AdversarialAdmission:
             binding_id=_text(value.get("binding_id"), "binding_id"),
             evidence_id=_text(value.get("evidence_id"), "evidence_id"),
             policy_id=_text(value.get("policy_id"), "policy_id"),
-            disposition=_enum(
-                value.get("disposition"), AdmissionDisposition, "disposition"
-            ),
-            evidence_class=_enum(
-                value.get("evidence_class"), EvidenceClass, "evidence_class"
-            ),
+            disposition=_enum(value.get("disposition"), AdmissionDisposition, "disposition"),
+            evidence_class=_enum(value.get("evidence_class"), EvidenceClass, "evidence_class"),
             authoritative_assurance=_enum(
                 value.get("authoritative_assurance"),
                 AssuranceLevel,
@@ -969,8 +921,7 @@ class AdversarialAdmission:
             ),
             conclusion=_enum(value.get("conclusion"), EvidenceConclusion, "conclusion"),
             findings=tuple(
-                AdversarialFinding.from_dict(item)
-                for item in value.get("findings") or ()
+                AdversarialFinding.from_dict(item) for item in value.get("findings") or ()
             ),
         )
         claimed = value.get("content_id")
@@ -1114,10 +1065,7 @@ class FormalPlanningAdversarialGate:
                     "the exact executable path did not pass its fixture set",
                 )
             )
-        if (
-            not evidence.receipt_digest_verified
-            or not evidence.receipt_bindings_verified
-        ):
+        if not evidence.receipt_digest_verified or not evidence.receipt_bindings_verified:
             findings.append(
                 _finding(
                     FindingCode.RECEIPT_NOT_VERIFIED,
@@ -1134,9 +1082,7 @@ class FormalPlanningAdversarialGate:
                 )
             )
 
-        evidence_class, assurance = self._derive_source_trust(
-            binding, evidence, policy, findings
-        )
+        evidence_class, assurance = self._derive_source_trust(binding, evidence, policy, findings)
 
         if evidence.claimed_assurance.rank > assurance.rank:
             findings.append(
@@ -1225,9 +1171,7 @@ class FormalPlanningAdversarialGate:
             return EvidenceClass.UNVERIFIED, AssuranceLevel.CANDIDATE
 
         if source in _BOUNDED_SOURCES:
-            if not evidence.bounded or not _has_explicit_bounds(
-                evidence.temporal_bounds
-            ):
+            if not evidence.bounded or not _has_explicit_bounds(evidence.temporal_bounds):
                 findings.append(
                     _finding(
                         FindingCode.BOUNDS_MISSING,
@@ -1285,11 +1229,7 @@ class FormalPlanningAdversarialGate:
                 evidence.hypertrace,
                 forbidden_values=frozenset(policy.forbidden_public_values),
             )
-            if (
-                leaked
-                or not evidence.hypertrace_redacted
-                or not evidence.hypertrace_isolated
-            ):
+            if leaked or not evidence.hypertrace_redacted or not evidence.hypertrace_isolated:
                 findings.append(
                     _finding(
                         FindingCode.HYPERTRACE_LEAKAGE,
@@ -1337,9 +1277,7 @@ class FormalPlanningAdversarialGate:
             if (
                 evidence.claimed_assurance is not AssuranceLevel.ATTESTED
                 or not evidence.receipt_bindings_verified
-                or not evidence.attested_receipt_assurance.satisfies(
-                    AssuranceLevel.KERNEL_VERIFIED
-                )
+                or not evidence.attested_receipt_assurance.satisfies(AssuranceLevel.KERNEL_VERIFIED)
             ):
                 findings.append(
                     _finding(

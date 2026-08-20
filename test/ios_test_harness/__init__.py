@@ -16,8 +16,4 @@ Status: Phase 2 (Alpha) Implementation
 
 from .ios_test_harness import IOSDevice, IOSModelRunner, IOSTestHarness
 
-__all__ = [
-    'IOSDevice',
-    'IOSModelRunner', 
-    'IOSTestHarness'
-]
+__all__ = ["IOSDevice", "IOSModelRunner", "IOSTestHarness"]

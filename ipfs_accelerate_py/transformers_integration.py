@@ -73,6 +73,7 @@ def _get_automodel():
 try:
     import ipfs_kit_py
     from ipfs_kit_py.high_level_api import IPFSSimpleAPI
+
     HAS_IPFS_KIT = True
 except ImportError:
     HAS_IPFS_KIT = False
@@ -81,6 +82,7 @@ except ImportError:
 # Try to import storage wrapper
 try:
     from .common.storage_wrapper import get_storage_wrapper
+
     HAS_STORAGE_WRAPPER = True
 except ImportError:
     HAS_STORAGE_WRAPPER = False
@@ -131,16 +133,16 @@ class IPFSKitBridge:
                     # Create output directory and write file
                     if output_dir is None:
                         output_dir = tempfile.mkdtemp()
-                    
+
                     output_path = os.path.join(output_dir, "content")
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    with open(output_path, 'wb') as f:
+                    with open(output_path, "wb") as f:
                         f.write(data)
-                    
+
                     return {"success": True, "path": output_path, "source": "distributed_storage"}
             except Exception as e:
                 logging.debug(f"Failed to get from distributed storage: {e}")
-        
+
         # Try IPFS API fallback
         if not HAS_IPFS_KIT or not self.ipfs_api:
             return {"success": False, "error": "IPFS functionality not available"}
@@ -164,17 +166,15 @@ class IPFSKitBridge:
         if self._storage_wrapper and self._storage_wrapper.is_distributed:
             try:
                 if os.path.isfile(path):
-                    with open(path, 'rb') as f:
+                    with open(path, "rb") as f:
                         data = f.read()
                     cid = self._storage_wrapper.write_file(
-                        data,
-                        filename=os.path.basename(path),
-                        pin=True
+                        data, filename=os.path.basename(path), pin=True
                     )
                     return {"success": True, "cid": cid, "source": "distributed_storage"}
             except Exception as e:
                 logging.debug(f"Failed to add to distributed storage: {e}")
-        
+
         # Try IPFS API fallback
         if not HAS_IPFS_KIT or not self.ipfs_api:
             return {"success": False, "error": "IPFS functionality not available"}
@@ -222,7 +222,7 @@ class TransformersModelProvider:
         ipfs_cid: Optional[str] = None,
         s3_config: Optional[Dict[str, str]] = None,
         device: str = "auto",
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Load a model using ipfs_transformers_py with hardware acceleration.
@@ -240,15 +240,13 @@ class TransformersModelProvider:
             Dictionary with loaded model and metadata
         """
         if not self.is_available():
-            return {
-                "success": False,
-                "error": "No transformers library available"
-            }
+            return {"success": False, "error": "No transformers library available"}
 
         try:
             # Configure hardware-specific options
             if device == "auto":
                 import torch
+
                 device = "cuda" if torch.cuda.is_available() else "cpu"
 
             # Add device to kwargs
@@ -257,6 +255,7 @@ class TransformersModelProvider:
             # For MPS (Apple Silicon), set torch dtype
             if device == "mps":
                 import torch
+
                 kwargs["torch_dtype"] = torch.float16
 
             AutoModel = _get_automodel()
@@ -267,12 +266,15 @@ class TransformersModelProvider:
             if ipfs_cid and hasattr(AutoModel, "from_ipfs"):
                 model = AutoModel.from_ipfs(ipfs_cid, **kwargs)
             elif hasattr(AutoModel, "from_auto_download"):
-                model = AutoModel.from_auto_download(model_name=model_name, s3cfg=s3_config, **kwargs)
+                model = AutoModel.from_auto_download(
+                    model_name=model_name, s3cfg=s3_config, **kwargs
+                )
             else:
                 model = AutoModel.from_pretrained(model_name, **kwargs)
 
             # Generate a unique ID for this model
             import uuid
+
             model_id = str(uuid.uuid4())
 
             # Store the model for future reference
@@ -280,33 +282,23 @@ class TransformersModelProvider:
                 "model": model,
                 "name": model_name,
                 "type": model_type,
-                "device": device
+                "device": device,
             }
 
             # Return success result
-            return {
-                "success": True,
-                "model_id": model_id,
-                "model": model,
-                "device": device
-            }
+            return {"success": True, "model_id": model_id, "model": model, "device": device}
 
         except Exception as e:
             logging.error(f"Error loading model {model_name}: {e}")
             import traceback
+
             traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def run_inference_new(self, model_id: str, inputs: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Run inference on a loaded model with improved error handling."""
         if model_id not in self.loaded_models:
-            return {
-                "success": False,
-                "error": f"Model with ID {model_id} not found"
-            }
+            return {"success": False, "error": f"Model with ID {model_id} not found"}
 
         try:
             model_info = self.loaded_models[model_id]
@@ -318,6 +310,7 @@ class TransformersModelProvider:
 
             # Run inference
             import torch
+
             with torch.no_grad():
                 outputs = model(**inputs)
 
@@ -329,11 +322,7 @@ class TransformersModelProvider:
                     print(f"  Item {i} type: {type(item)}")
 
             # Create result with success flag
-            result = {
-                "success": True,
-                "model_id": model_id,
-                "outputs": {}
-            }
+            result = {"success": True, "model_id": model_id, "outputs": {}}
 
             # Handle different output types
             if hasattr(outputs, "last_hidden_state"):
@@ -387,18 +376,11 @@ class TransformersModelProvider:
         except Exception as e:
             logging.error(f"Error running inference: {e}")
             import traceback
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e)
-            }
 
-    def run_inference(
-        self,
-        model_id: str,
-        inputs: Dict[str, Any],
-        **kwargs
-    ) -> Dict[str, Any]:
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+    def run_inference(self, model_id: str, inputs: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
         Run inference on a loaded model.
 
@@ -411,10 +393,7 @@ class TransformersModelProvider:
             Dictionary with inference results
         """
         if model_id not in self.loaded_models:
-            return {
-                "success": False,
-                "error": f"Model with ID {model_id} not found"
-            }
+            return {"success": False, "error": f"Model with ID {model_id} not found"}
 
         try:
             model_info = self.loaded_models[model_id]
@@ -423,6 +402,7 @@ class TransformersModelProvider:
 
             # Run inference
             import torch
+
             with torch.no_grad():
                 outputs = model(**inputs, **kwargs)
 
@@ -477,18 +457,12 @@ class TransformersModelProvider:
 
         except Exception as e:
             logging.error(f"Error running inference: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def unload_model(self, model_id: str) -> Dict[str, Any]:
         """Unload a model to free up memory."""
         if model_id not in self.loaded_models:
-            return {
-                "success": False,
-                "error": f"Model with ID {model_id} not found"
-            }
+            return {"success": False, "error": f"Model with ID {model_id} not found"}
 
         try:
             # Get the model info
@@ -506,14 +480,8 @@ class TransformersModelProvider:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            return {
-                "success": True,
-                "message": f"Model {model_id} unloaded successfully"
-            }
+            return {"success": True, "message": f"Model {model_id} unloaded successfully"}
 
         except Exception as e:
             logging.error(f"Error unloading model: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}

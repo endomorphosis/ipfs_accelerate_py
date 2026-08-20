@@ -403,15 +403,11 @@ def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(
     (
         lambda claimed: replace(claimed, consumer_id="merge-train:impostor"),
         lambda claimed: replace(claimed, claim_token="stale-token"),
-        lambda claimed: replace(
-            claimed, claim_generation=max(0, claimed.claim_generation - 1)
-        ),
+        lambda claimed: replace(claimed, claim_generation=max(0, claimed.claim_generation - 1)),
     ),
     ids=("wrong-owner", "wrong-token", "stale-generation"),
 )
-def test_completion_requires_the_exact_current_claim_fence(
-    tmp_path: Path, stale_request
-) -> None:
+def test_completion_requires_the_exact_current_claim_fence(tmp_path: Path, stale_request) -> None:
     queue = MergeQueue(tmp_path / "queue")
     pending = _enqueue(queue, 0)
     claimed = queue.dequeue(consumer_id="merge-train:owner")
@@ -525,9 +521,7 @@ def test_merge_debt_stops_additional_claims_until_a_slot_is_released(
     queue.complete(claimed[0])
     replacement = queue.dequeue(consumer_id="merge-train:other")
     assert replacement is not None
-    assert replacement.request_id not in {
-        request.request_id for request in claimed
-    }
+    assert replacement.request_id not in {request.request_id for request in claimed}
     assert queue.status()["merge_debt"] == 2
 
 
@@ -631,9 +625,7 @@ def test_failed_validation_is_quarantined_with_a_durable_receipt(
     assert payload["status"] == "quarantined"
     assert payload["failure_reason"] == "post-merge validation failed"
     assert payload["receipt_type"] == "merge_quarantine"
-    assert payload["metadata"]["quarantine"] == {
-        "validation_receipt_id": "sha256:failed"
-    }
+    assert payload["metadata"]["quarantine"] == {"validation_receipt_id": "sha256:failed"}
 
     restarted = MergeQueue(queue_path)
     stored = restarted.get(pending.request_id)
@@ -720,9 +712,7 @@ def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
         consumer_id="merge-train:main",
     )
 
-    assert [request.request_id for request in claimed_by_main] == [
-        main.request_id
-    ]
+    assert [request.request_id for request in claimed_by_main] == [main.request_id]
     assert main_queue.pending_count() == 0
     assert main_queue.processing_count() == 1
     assert main_queue.active_canonical_task_ids() == {"canonical-main"}
@@ -732,9 +722,7 @@ def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
     assert benchmark_queue.get(legacy.request_id).status == "pending"  # type: ignore[union-attr]
     with pytest.raises(MergeQueueFenceError, match="target differs"):
         main_queue.cancel(benchmark.request_id)
-    claimed_by_benchmark = benchmark_queue.dequeue(
-        consumer_id="merge-train:benchmark"
-    )
+    claimed_by_benchmark = benchmark_queue.dequeue(consumer_id="merge-train:benchmark")
     assert claimed_by_benchmark is not None
     assert claimed_by_benchmark.request_id == benchmark.request_id
     assert main_queue.owns_claim(claimed_by_benchmark) is False

@@ -76,8 +76,7 @@ def _catalog_operations(snapshot: Any) -> List[str]:
                 )
     for binding in tuple(getattr(snapshot, "bindings", ())):
         operations.update(
-            getattr(item, "value", str(item))
-            for item in tuple(getattr(binding, "operations", ()))
+            getattr(item, "value", str(item)) for item in tuple(getattr(binding, "operations", ()))
         )
     return sorted(operations)[:MAX_OPERATION_SUMMARY]
 
@@ -137,10 +136,7 @@ class ServiceRecord:
                 )
             ):
                 raise ValueError("%s must be a bounded text list" % name)
-        if (
-            not isinstance(self.metadata, Mapping)
-            or len(self.metadata) > MAX_METADATA_ITEMS
-        ):
+        if not isinstance(self.metadata, Mapping) or len(self.metadata) > MAX_METADATA_ITEMS:
             raise ValueError("metadata must be a bounded object")
         CatalogInputPolicy().validate_record(self.metadata)
         if self.schema_version != SCHEMA_VERSION:
@@ -156,20 +152,11 @@ class ServiceRecord:
             or len(self.issuer.encode("utf-8")) > MAX_RECORD_TEXT_BYTES
         ):
             raise ValueError("issuer must be bounded non-empty text")
-        self.service_id = self.service_id or _service_identity(
-            self.service_name, self.issuer
-        )
-        if (
-            not isinstance(self.service_id, str)
-            or len(self.service_id.encode("utf-8")) > 256
-        ):
+        self.service_id = self.service_id or _service_identity(self.service_name, self.issuer)
+        if not isinstance(self.service_id, str) or len(self.service_id.encode("utf-8")) > 256:
             raise ValueError("service_id must be bounded text")
         self.issued_at = self.timestamp if self.issued_at is None else self.issued_at
-        self.expires_at = (
-            self.issued_at + self.ttl
-            if self.expires_at is None
-            else self.expires_at
-        )
+        self.expires_at = self.issued_at + self.ttl if self.expires_at is None else self.expires_at
         if any(
             isinstance(value, bool)
             or not isinstance(value, (int, float))
@@ -237,38 +224,26 @@ class ServiceRecord:
     def signing_payload(self) -> bytes:
         return canonical_json_bytes(self._unsigned_dict())
 
-    def sign(
-        self, key: Optional[bytes | str] = None, *, rotate_nonce: bool = False
-    ) -> None:
+    def sign(self, key: Optional[bytes | str] = None, *, rotate_nonce: bool = False) -> None:
         """Sign using the existing HMAC compatibility mechanism."""
 
         if rotate_nonce:
             self.nonce = secrets.token_urlsafe(24)
         signing_key = (
-            key.encode("utf-8")
-            if isinstance(key, str)
-            else key or self.peer_id.encode("utf-8")
+            key.encode("utf-8") if isinstance(key, str) else key or self.peer_id.encode("utf-8")
         )
         if not signing_key:
             raise ValueError("signing key must not be empty")
-        self.signature = hmac.new(
-            signing_key, self.signing_payload(), hashlib.sha256
-        ).hexdigest()
+        self.signature = hmac.new(signing_key, self.signing_payload(), hashlib.sha256).hexdigest()
 
     def verify_signature(self, key: Optional[bytes | str] = None) -> bool:
-        if not isinstance(self.signature, str) or not _SIGNATURE.fullmatch(
-            self.signature
-        ):
+        if not isinstance(self.signature, str) or not _SIGNATURE.fullmatch(self.signature):
             return False
         signing_key = (
-            key.encode("utf-8")
-            if isinstance(key, str)
-            else key or self.peer_id.encode("utf-8")
+            key.encode("utf-8") if isinstance(key, str) else key or self.peer_id.encode("utf-8")
         )
         try:
-            expected = hmac.new(
-                signing_key, self.signing_payload(), hashlib.sha256
-            ).hexdigest()
+            expected = hmac.new(signing_key, self.signing_payload(), hashlib.sha256).hexdigest()
         except (TypeError, ValueError):
             return False
         return hmac.compare_digest(self.signature, expected)
@@ -343,9 +318,7 @@ class ServiceRegistry:
         # ``None`` retains authenticated-peer compatibility: the peer identity
         # is the trust anchor for its own announcement.  Passing a mapping,
         # including an empty one, enables an explicit authoritative trust store.
-        self._trusted_issuers = (
-            None if trusted_issuers is None else dict(trusted_issuers)
-        )
+        self._trusted_issuers = None if trusted_issuers is None else dict(trusted_issuers)
         if local_signing_key is None:
             self._local_signing_key: Optional[bytes] = None
         elif isinstance(local_signing_key, str):
@@ -366,9 +339,7 @@ class ServiceRegistry:
         self._max_advertisement_lifetime = max_advertisement_lifetime
         self._replay_cache = ReplayCache()
 
-    def _sign_local_record(
-        self, record: ServiceRecord, *, rotate_nonce: bool = False
-    ) -> None:
+    def _sign_local_record(self, record: ServiceRecord, *, rotate_nonce: bool = False) -> None:
         """Sign a local advertisement with the configured trust material."""
 
         if self._local_signing_key is not None:
@@ -397,11 +368,7 @@ class ServiceRegistry:
 
         if self._authorization_policy is None:
             return
-        ability = (
-            capability.value
-            if isinstance(capability, CatalogCapability)
-            else capability
-        )
+        ability = capability.value if isinstance(capability, CatalogCapability) else capability
         self._authorization_policy.require(actor, resource, ability)
 
     def _advertisement_verifier(
@@ -418,9 +385,7 @@ class ServiceRegistry:
                     "issuer_untrusted",
                     "advertisement issuer is not the authenticated sender",
                 )
-            keys: Mapping[str, bytes | str] = {
-                sender_peer_id: sender_peer_id.encode("utf-8")
-            }
+            keys: Mapping[str, bytes | str] = {sender_peer_id: sender_peer_id.encode("utf-8")}
         else:
             keys = self._trusted_issuers
         return AdvertisementVerifier(
@@ -474,9 +439,7 @@ class ServiceRegistry:
             len(record.operation_summary or record.tools),
         )
 
-    def unregister_local(
-        self, service_name: str, *, peer_id: Optional[str] = None
-    ) -> bool:
+    def unregister_local(self, service_name: str, *, peer_id: Optional[str] = None) -> bool:
         with self._lock:
             record = self._local_records.get(service_name)
             if record is None or (peer_id is not None and record.peer_id != peer_id):
@@ -509,9 +472,7 @@ class ServiceRegistry:
             record.catalog_revision = revision
             if not record.operation_summary:
                 record.operation_summary = _catalog_operations(snapshot)
-            record.endpoint_protocol = (
-                record.endpoint_protocol or CATALOG_ENDPOINT_PROTOCOL
-            )
+            record.endpoint_protocol = record.endpoint_protocol or CATALOG_ENDPOINT_PROTOCOL
             lifetime = max(record.ttl, SERVICE_TTL)
             record.issued_at = selected_now
             record.expires_at = selected_now + lifetime
@@ -572,9 +533,7 @@ class ServiceRegistry:
         selected_now = time.time() if now is None else float(now)
         if record.is_expired_at(selected_now):
             return False
-        catalog_candidate = (
-            record.catalog_cid is not None or record.catalog_revision is not None
-        )
+        catalog_candidate = record.catalog_cid is not None or record.catalog_revision is not None
         if catalog_candidate and not _verified:
             try:
                 self._verify_remote(
@@ -594,24 +553,16 @@ class ServiceRegistry:
             if previous is not None and previous.to_dict() == record.to_dict():
                 return False
             if previous is None and len(bucket) >= self.MAX_REMOTE_RECORDS_PER_SERVICE:
-                oldest_pid = min(
-                    bucket, key=lambda pid: float(bucket[pid].issued_at or 0)
-                )
+                oldest_pid = min(bucket, key=lambda pid: float(bucket[pid].issued_at or 0))
                 del bucket[oldest_pid]
             bucket[record.peer_id] = record
         self._notify_change("add" if previous is None else "update", record)
         return True
 
-    def remove_remote(
-        self, peer_id: str, *, service_name: Optional[str] = None
-    ) -> int:
+    def remove_remote(self, peer_id: str, *, service_name: Optional[str] = None) -> int:
         removed: List[ServiceRecord] = []
         with self._lock:
-            names = (
-                (service_name,)
-                if service_name is not None
-                else tuple(self._remote_records)
-            )
+            names = (service_name,) if service_name is not None else tuple(self._remote_records)
             for name in names:
                 bucket = self._remote_records.get(name)
                 if not bucket:
@@ -642,9 +593,7 @@ class ServiceRegistry:
             except Exception as exc:
                 logger.debug("Service change callback error: %s", exc)
 
-    def get_services(
-        self, service_name: Optional[str] = None
-    ) -> List[ServiceRecord]:
+    def get_services(self, service_name: Optional[str] = None) -> List[ServiceRecord]:
         with self._lock:
             buckets = (
                 (self._remote_records.get(service_name, {}),)
@@ -652,10 +601,7 @@ class ServiceRegistry:
                 else tuple(self._remote_records.values())
             )
             return [
-                record
-                for bucket in buckets
-                for record in bucket.values()
-                if not record.is_expired
+                record for bucket in buckets for record in bucket.values() if not record.is_expired
             ]
 
     def get_local(self, service_name: str) -> Optional[ServiceRecord]:
@@ -723,9 +669,7 @@ class ServiceRegistry:
                 logger.debug("Service advertise error: %s", exc)
                 await trio.sleep(READVERTISE_INTERVAL)
 
-    async def catalog_watch_loop(
-        self, p2p_node: Any, *, poll_interval: float = 1.0
-    ) -> None:
+    async def catalog_watch_loop(self, p2p_node: Any, *, poll_interval: float = 1.0) -> None:
         import trio
 
         interval = max(0.05, min(float(poll_interval), READVERTISE_INTERVAL))
@@ -756,8 +700,7 @@ class ServiceRegistry:
         if (
             not isinstance(service_name, str)
             or not isinstance(revision, str)
-            or record_type
-            not in {"providers", "models", "deployments", "bindings"}
+            or record_type not in {"providers", "models", "deployments", "bindings"}
             or isinstance(limit, bool)
             or not isinstance(limit, int)
             or not 1 <= limit <= MAX_PAGE_SIZE
@@ -775,9 +718,7 @@ class ServiceRegistry:
         )
         if revision != record.catalog_revision or revision != snapshot.revision:
             raise ValueError("catalog revision is stale or unavailable")
-        return paginate_snapshot(
-            snapshot, record_type, limit=limit, cursor=cursor
-        ).to_dict()
+        return paginate_snapshot(snapshot, record_type, limit=limit, cursor=cursor).to_dict()
 
     def handle_announce(
         self, params: Mapping[str, Any], sender_peer_id: str = ""
@@ -803,9 +744,7 @@ class ServiceRegistry:
             or record.catalog_revision is not None
             or os.environ.get("MCPPP_REQUIRE_SERVICE_SIGNATURES", "0") == "1"
         )
-        catalog_candidate = (
-            record.catalog_cid is not None or record.catalog_revision is not None
-        )
+        catalog_candidate = record.catalog_cid is not None or record.catalog_revision is not None
         if catalog_candidate and not record.is_catalog_advertisement:
             return {"status": "rejected", "reason": "invalid_catalog_advertisement"}
         if catalog_candidate:
@@ -836,14 +775,11 @@ class ServiceRegistry:
         with self._lock:
             return {
                 "local_services": {
-                    key: value.to_dict()
-                    for key, value in self._local_records.items()
+                    key: value.to_dict() for key, value in self._local_records.items()
                 },
                 "remote_services": {
                     service: [
-                        record.to_dict()
-                        for record in records.values()
-                        if not record.is_expired
+                        record.to_dict() for record in records.values() if not record.is_expired
                     ]
                     for service, records in self._remote_records.items()
                 },

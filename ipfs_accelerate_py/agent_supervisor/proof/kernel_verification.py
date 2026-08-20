@@ -58,17 +58,13 @@ from .formal_verification_contracts import (
 
 
 KERNEL_VERIFICATION_SCHEMA_VERSION: Final = 1
-KERNEL_VERIFICATION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/kernel-verification@1"
-)
+KERNEL_VERIFICATION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/kernel-verification@1"
 SUPPORTED_RECONSTRUCTION_SCHEMA_VERSIONS: Final = frozenset({"1.0.0"})
 SUPPORTED_KERNEL_TARGETS: Final = ("lean", "coq", "isabelle")
 DEFAULT_MAX_CHECKED_SOURCE_BYTES: Final = 4 * 1024 * 1024
 DEFAULT_MAX_KERNEL_OUTPUT_BYTES: Final = 4 * 1024 * 1024
 DEFAULT_MAX_LEAN_PROOF_BYTES: Final = 512 * 1024
-LEAN_PROOF_ADMISSION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lean-proof-admission@1"
-)
+LEAN_PROOF_ADMISSION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/lean-proof-admission@1"
 
 
 class KernelVerificationError(ContractValidationError):
@@ -105,6 +101,7 @@ class KernelFailureCode(str, Enum):
     KERNEL_REJECTED = "kernel_rejected"
     BINDING_MISMATCH = "binding_mismatch"
     ENVIRONMENT_MISMATCH = "environment_mismatch"
+    VERSION_MISMATCH = "version_mismatch"
     DIGEST_MISMATCH = "digest_mismatch"
     STATEMENT_MISMATCH = "statement_mismatch"
     FORBIDDEN_DECLARATION = "forbidden_declaration"
@@ -147,9 +144,7 @@ class LeanProofAdmission:
             _enum_value(self.failure_code, KernelFailureCode, "failure_code"),
         )
         if self.accepted != (self.failure_code is KernelFailureCode.NONE):
-            raise KernelVerificationError(
-                "Lean proof admission status and failure code disagree"
-            )
+            raise KernelVerificationError("Lean proof admission status and failure code disagree")
         for name in (
             "reason",
             "proof_sha256",
@@ -159,13 +154,9 @@ class LeanProofAdmission:
             "declaration_name",
             "model_artifact_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         if self.accepted and (
-            not self.proof_sha256
-            or not self.checked_source_sha256
-            or not self.checked_source
+            not self.proof_sha256 or not self.checked_source_sha256 or not self.checked_source
         ):
             raise KernelVerificationError(
                 "accepted Lean proof admission requires source and digest bindings"
@@ -215,17 +206,12 @@ class KernelVerificationPolicy:
     def __post_init__(self) -> None:
         targets = tuple(
             sorted(
-                {
-                    _target(item, field_name="allowed_targets")
-                    for item in self.allowed_targets
-                },
+                {_target(item, field_name="allowed_targets") for item in self.allowed_targets},
                 key=lambda item: item.value,
             )
         )
         if not targets or KernelTarget.UNKNOWN in targets:
-            raise KernelVerificationError(
-                "allowed_targets must contain supported kernels"
-            )
+            raise KernelVerificationError("allowed_targets must contain supported kernels")
         object.__setattr__(self, "allowed_targets", targets)
         for name in (
             "require_environment_lock",
@@ -253,6 +239,9 @@ class KernelVerificationBindings:
     expected_statement_digest: str = ""
     expected_checked_source_digest: str = ""
     expected_native_source: str = ""
+    expected_kernel_version: str = ""
+    expected_itp_version: str = ""
+    expected_environment_lock_id: str = ""
 
     def __post_init__(self) -> None:
         for name in (
@@ -269,6 +258,9 @@ class KernelVerificationBindings:
             "expected_statement_digest",
             "expected_checked_source_digest",
             "expected_native_source",
+            "expected_kernel_version",
+            "expected_itp_version",
+            "expected_environment_lock_id",
         ):
             object.__setattr__(
                 self,
@@ -339,9 +331,7 @@ class KernelVerificationResult:
             "kernel_output_digest",
             "provider_status",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         if not isinstance(self.evidence, ProofEvidence):
             raise KernelVerificationError("evidence must be ProofEvidence")
         if not isinstance(self.diagnostics, Mapping):
@@ -350,17 +340,11 @@ class KernelVerificationResult:
         object.__setattr__(self, "diagnostics", diagnostics)
         if self.status is KernelVerificationStatus.ACCEPTED:
             if self.failure_code is not KernelFailureCode.NONE:
-                raise KernelVerificationError(
-                    "accepted verification cannot carry a failure code"
-                )
+                raise KernelVerificationError("accepted verification cannot carry a failure code")
             if self.evidence.verdict is not EvidenceVerdict.ACCEPTED:
-                raise KernelVerificationError(
-                    "accepted verification requires accepted evidence"
-                )
+                raise KernelVerificationError("accepted verification requires accepted evidence")
         elif self.failure_code is KernelFailureCode.NONE:
-            raise KernelVerificationError(
-                "non-accepted verification requires a failure code"
-            )
+            raise KernelVerificationError("non-accepted verification requires a failure code")
 
     @property
     def verdict(self) -> ProofVerdict:
@@ -437,17 +421,13 @@ class KernelVerificationResult:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "KernelVerificationResult":
         if not isinstance(payload, Mapping):
-            raise KernelVerificationError(
-                "kernel verification payload must be a mapping"
-            )
+            raise KernelVerificationError("kernel verification payload must be a mapping")
         if payload.get("schema") not in (None, KERNEL_VERIFICATION_SCHEMA):
             raise KernelVerificationError("unsupported kernel verification schema")
         result = cls(
             target=payload.get("target", KernelTarget.UNKNOWN),
             status=payload.get("status", KernelVerificationStatus.ERROR),
-            failure_code=payload.get(
-                "failure_code", KernelFailureCode.MALFORMED_RECONSTRUCTION
-            ),
+            failure_code=payload.get("failure_code", KernelFailureCode.MALFORMED_RECONSTRUCTION),
             reason_codes=tuple(payload.get("reason_codes") or ()),
             obligation_id=payload.get("obligation_id", ""),
             request_id=payload.get("request_id", ""),
@@ -523,9 +503,7 @@ def _record(value: Any, *, field_name: str) -> dict[str, Any]:
             validator()
         converter = getattr(value, "to_dict", None)
         if not callable(converter):
-            raise KernelVerificationError(
-                f"{field_name} must be a mapping or expose to_dict()"
-            )
+            raise KernelVerificationError(f"{field_name} must be a mapping or expose to_dict()")
         raw = converter()
     if not isinstance(raw, Mapping):
         raise KernelVerificationError(f"{field_name} must serialize to an object")
@@ -542,17 +520,10 @@ def _json_safe(value: Any, *, field_name: str) -> Any:
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise KernelVerificationError(f"{field_name} keys must be strings")
-        return {
-            key: _json_safe(item, field_name=field_name)
-            for key, item in sorted(value.items())
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        return {key: _json_safe(item, field_name=field_name) for key, item in sorted(value.items())}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_json_safe(item, field_name=field_name) for item in value]
-    raise KernelVerificationError(
-        f"{field_name} contains unsupported {type(value).__name__}"
-    )
+    raise KernelVerificationError(f"{field_name} contains unsupported {type(value).__name__}")
 
 
 def _upstream_content_digest(payload: Any) -> str:
@@ -648,15 +619,11 @@ _FORBIDDEN_DECLARATIONS = {
 _INCOMPLETE_PROOFS = {
     KernelTarget.LEAN: re.compile(r"\b(?:sorry|admit)\b|\bsorryAx\b", re.IGNORECASE),
     KernelTarget.COQ: re.compile(r"\b(?:admit|admitted)\b", re.IGNORECASE),
-    KernelTarget.ISABELLE: re.compile(
-        r"\b(?:sorry|oops|skip_proof)\b", re.IGNORECASE
-    ),
+    KernelTarget.ISABELLE: re.compile(r"\b(?:sorry|oops|skip_proof)\b", re.IGNORECASE),
 }
 
 
-_LEAN_PROOF_FORBIDDEN_IMPORT = re.compile(
-    r"(?im)(?:^|[\r\n;])\s*(?:prelude\s+)?import\b"
-)
+_LEAN_PROOF_FORBIDDEN_IMPORT = re.compile(r"(?im)(?:^|[\r\n;])\s*(?:prelude\s+)?import\b")
 _LEAN_PROOF_FORBIDDEN_DECLARATION = re.compile(
     r"(?im)(?:^|[\r\n;])\s*(?:"
     r"axiom|constant|theorem|lemma|example|def|opaque|abbrev|instance|"
@@ -726,12 +693,8 @@ def admit_lean_proof_text(
     """
 
     theorem_id = _text(theorem_id, field_name="theorem_id")
-    declaration_name = _text(
-        declaration_name, field_name="declaration_name"
-    )
-    model_artifact_id = _text(
-        model_artifact_id, field_name="model_artifact_id"
-    )
+    declaration_name = _text(declaration_name, field_name="declaration_name")
+    model_artifact_id = _text(model_artifact_id, field_name="model_artifact_id")
     if not isinstance(proof_text, str):
         raise KernelVerificationError("proof_text must be a string")
     if not isinstance(native_source, str) or not native_source.strip():
@@ -763,9 +726,7 @@ def admit_lean_proof_text(
             declaration_name=declaration_name,
             model_artifact_id=model_artifact_id,
         )
-    if "\x00" in proof or any(
-        ord(char) < 32 and char not in "\r\n\t" for char in proof
-    ):
+    if "\x00" in proof or any(ord(char) < 32 and char not in "\r\n\t" for char in proof):
         return _lean_admission_rejection(
             code=KernelFailureCode.MALFORMED_RECONSTRUCTION,
             reason="Lean proof text contains forbidden control characters",
@@ -794,9 +755,9 @@ def admit_lean_proof_text(
             declaration_name=declaration_name,
             model_artifact_id=model_artifact_id,
         )
-    if _LEAN_PROOF_FORBIDDEN_DECLARATION.search(
+    if _LEAN_PROOF_FORBIDDEN_DECLARATION.search(proof) or _LEAN_PROOF_DECLARATION_ANYWHERE.search(
         proof
-    ) or _LEAN_PROOF_DECLARATION_ANYWHERE.search(proof):
+    ):
         return _lean_admission_rejection(
             code=KernelFailureCode.FORBIDDEN_DECLARATION,
             reason="Lean proof text contains a declaration or unsafe command",
@@ -992,17 +953,11 @@ def _failed_result(
 ) -> KernelVerificationResult:
     reconstruction_id = str(record.get("reconstruction_id") or "").strip()
     environment_lock_id = str(
-        record.get("environment_lock_id")
-        or environment_lock.get("lock_id")
-        or ""
+        record.get("environment_lock_id") or environment_lock.get("lock_id") or ""
     ).strip()
-    checked_source_digest = str(
-        evidence_record.get("checked_source_digest") or ""
-    ).strip()
+    checked_source_digest = str(evidence_record.get("checked_source_digest") or "").strip()
     output_digest = str(
-        evidence_record.get("raw_output_digest")
-        or record.get("kernel_output_digest")
-        or ""
+        evidence_record.get("raw_output_digest") or record.get("kernel_output_digest") or ""
     ).strip()
     artifact_payload = {
         "failure_code": failure_code.value,
@@ -1020,7 +975,8 @@ def _failed_result(
             EvidenceVerdict.UNSUPPORTED
             if status is KernelVerificationStatus.UNAVAILABLE
             else EvidenceVerdict.REJECTED
-            if status in {
+            if status
+            in {
                 KernelVerificationStatus.REJECTED,
                 KernelVerificationStatus.TIMED_OUT,
             }
@@ -1077,6 +1033,9 @@ def verify_kernel_reconstruction(
     expected_statement_digest: str = "",
     expected_checked_source_digest: str = "",
     expected_native_source: str = "",
+    expected_kernel_version: str = "",
+    expected_itp_version: str = "",
+    expected_environment_lock_id: str = "",
     provider_status: str = "",
     independent: bool = False,
     policy: KernelVerificationPolicy | None = None,
@@ -1096,9 +1055,7 @@ def verify_kernel_reconstruction(
         raise KernelVerificationError("policy must be KernelVerificationPolicy")
 
     record = _record(reconstruction_record, field_name="reconstruction_record")
-    evidence_record = _record(
-        reconstruction_evidence, field_name="reconstruction_evidence"
-    )
+    evidence_record = _record(reconstruction_evidence, field_name="reconstruction_evidence")
     lock_record = _record(environment_lock, field_name="environment_lock")
     request_record = _record(request, field_name="request") if request is not None else {}
 
@@ -1110,25 +1067,17 @@ def verify_kernel_reconstruction(
             expected_statement = expected_statement or obligation.statement
         else:
             obligation_id = obligation_id or str(
-                obligation_record.get("obligation_id")
-                or obligation_record.get("content_id")
-                or ""
+                obligation_record.get("obligation_id") or obligation_record.get("content_id") or ""
             )
-            expected_statement = expected_statement or str(
-                obligation_record.get("statement") or ""
-            )
+            expected_statement = expected_statement or str(obligation_record.get("statement") or "")
 
     if request_record:
         request_id = request_id or str(request_record.get("request_id") or "")
         if not obligation_id:
             obligation_id = str(
-                request_record.get("theorem_id")
-                or request_record.get("obligation_id")
-                or ""
+                request_record.get("theorem_id") or request_record.get("obligation_id") or ""
             )
-        expected_statement = expected_statement or str(
-            request_record.get("goal_statement") or ""
-        )
+        expected_statement = expected_statement or str(request_record.get("goal_statement") or "")
 
     if bindings is None:
         bindings = KernelVerificationBindings(
@@ -1141,17 +1090,21 @@ def verify_kernel_reconstruction(
             expected_statement_digest=expected_statement_digest,
             expected_checked_source_digest=expected_checked_source_digest,
             expected_native_source=expected_native_source,
+            expected_kernel_version=expected_kernel_version,
+            expected_itp_version=expected_itp_version,
+            expected_environment_lock_id=expected_environment_lock_id,
         )
     elif not isinstance(bindings, KernelVerificationBindings):
-        raise KernelVerificationError(
-            "bindings must be KernelVerificationBindings"
-        )
+        raise KernelVerificationError("bindings must be KernelVerificationBindings")
     elif any(
         (
             expected_theorem_statement,
             expected_statement_digest,
             expected_checked_source_digest,
             expected_native_source,
+            expected_kernel_version,
+            expected_itp_version,
+            expected_environment_lock_id,
         )
     ):
         bindings = KernelVerificationBindings(
@@ -1161,19 +1114,21 @@ def verify_kernel_reconstruction(
             kernel_id=bindings.kernel_id,
             toolchain_id=bindings.toolchain_id,
             expected_statement=(
-                expected_theorem_statement
-                or expected_statement
-                or bindings.expected_statement
+                expected_theorem_statement or expected_statement or bindings.expected_statement
             ),
             expected_statement_digest=(
                 expected_statement_digest or bindings.expected_statement_digest
             ),
             expected_checked_source_digest=(
-                expected_checked_source_digest
-                or bindings.expected_checked_source_digest
+                expected_checked_source_digest or bindings.expected_checked_source_digest
             ),
-            expected_native_source=(
-                expected_native_source or bindings.expected_native_source
+            expected_native_source=(expected_native_source or bindings.expected_native_source),
+            expected_kernel_version=(
+                expected_kernel_version or bindings.expected_kernel_version
+            ),
+            expected_itp_version=expected_itp_version or bindings.expected_itp_version,
+            expected_environment_lock_id=(
+                expected_environment_lock_id or bindings.expected_environment_lock_id
             ),
         )
 
@@ -1212,10 +1167,7 @@ def verify_kernel_reconstruction(
             provider_status=_text(provider_status, field_name="provider_status"),
         )
 
-    if (
-        target is KernelTarget.UNKNOWN
-        or target not in verification_policy.allowed_targets
-    ):
+    if target is KernelTarget.UNKNOWN or target not in verification_policy.allowed_targets:
         return fail(
             KernelFailureCode.UNSUPPORTED_KERNEL,
             f"target kernel {target.value} is not allowed by policy",
@@ -1266,8 +1218,7 @@ def verify_kernel_reconstruction(
         )
 
     evidence_target = str(
-        getattr(evidence_record.get("itp"), "value", evidence_record.get("itp"))
-        or ""
+        getattr(evidence_record.get("itp"), "value", evidence_record.get("itp")) or ""
     ).lower()
     lock_target = str(
         getattr(lock_record.get("itp"), "value", lock_record.get("itp")) or ""
@@ -1277,8 +1228,7 @@ def verify_kernel_reconstruction(
     if lock_target == "rocq":
         lock_target = "coq"
     if evidence_target != target.value or (
-        verification_policy.require_environment_lock
-        and lock_target != target.value
+        verification_policy.require_environment_lock and lock_target != target.value
     ):
         return fail(
             KernelFailureCode.ENVIRONMENT_MISMATCH,
@@ -1287,17 +1237,45 @@ def verify_kernel_reconstruction(
 
     environment_lock_id = str(record.get("environment_lock_id") or "")
     if verification_policy.require_environment_lock and (
-        not environment_lock_id
-        or environment_lock_id != str(lock_record.get("lock_id") or "")
+        not environment_lock_id or environment_lock_id != str(lock_record.get("lock_id") or "")
     ):
         return fail(
             KernelFailureCode.ENVIRONMENT_MISMATCH,
             "reconstruction environment lock identity does not match",
         )
-    if not str(lock_record.get("itp_version") or "").strip():
+    lock_version = str(lock_record.get("itp_version") or "").strip()
+    if not lock_version:
         return fail(
             KernelFailureCode.ENVIRONMENT_MISMATCH,
             "environment lock has no exact ITP version",
+        )
+    if (
+        bindings.expected_environment_lock_id
+        and bindings.expected_environment_lock_id != environment_lock_id
+    ):
+        return fail(
+            KernelFailureCode.ENVIRONMENT_MISMATCH,
+            "environment lock is stale relative to the expected current lock",
+        )
+    claimed_versions = [
+        item
+        for item in (
+            bindings.expected_kernel_version,
+            bindings.expected_itp_version,
+            str(record.get("kernel_version") or record.get("itp_version") or "").strip(),
+            str(evidence_record.get("kernel_version") or evidence_record.get("itp_version") or "").strip(),
+        )
+        if item
+    ]
+    kernel_id_version = ""
+    if "@" in bindings.kernel_id:
+        kernel_id_version = bindings.kernel_id.rsplit("@", 1)[-1].strip()
+        if kernel_id_version:
+            claimed_versions.append(kernel_id_version)
+    if any(item != lock_version for item in claimed_versions):
+        return fail(
+            KernelFailureCode.VERSION_MISMATCH,
+            "kernel or reconstruction version does not match the pinned environment lock",
         )
 
     if request_record:
@@ -1307,18 +1285,14 @@ def verify_kernel_reconstruction(
                 "Hammer request identity does not match the expected request",
             )
         theorem_id = str(
-            request_record.get("theorem_id")
-            or request_record.get("obligation_id")
-            or ""
+            request_record.get("theorem_id") or request_record.get("obligation_id") or ""
         )
         if theorem_id != bindings.obligation_id:
             return fail(
                 KernelFailureCode.STATEMENT_MISMATCH,
                 "Hammer request theorem identity does not match the obligation",
             )
-        request_statement = _normalized_statement(
-            str(request_record.get("goal_statement") or "")
-        )
+        request_statement = _normalized_statement(str(request_record.get("goal_statement") or ""))
         if bindings.expected_statement and request_statement != _normalized_statement(
             bindings.expected_statement
         ):
@@ -1376,12 +1350,8 @@ def verify_kernel_reconstruction(
             "kernel output exceeds the policy byte limit",
         )
 
-    claimed_source_digest = str(
-        evidence_record.get("checked_source_digest") or ""
-    )
-    if not _digest_matches(
-        claimed_source_digest, {"checked_source": checked_source}
-    ):
+    claimed_source_digest = str(evidence_record.get("checked_source_digest") or "")
+    if not _digest_matches(claimed_source_digest, {"checked_source": checked_source}):
         return fail(
             KernelFailureCode.DIGEST_MISMATCH,
             "checked source digest does not match the submitted source",
@@ -1439,8 +1409,7 @@ def verify_kernel_reconstruction(
             and not expected_native_statement
             and not bindings.expected_statement_digest
             and not bindings.expected_checked_source_digest
-            and extracted_statement
-            != _normalized_statement(bindings.expected_statement)
+            and extracted_statement != _normalized_statement(bindings.expected_statement)
         ):
             return fail(
                 KernelFailureCode.STATEMENT_MISMATCH,
@@ -1458,9 +1427,9 @@ def verify_kernel_reconstruction(
                 "no exact theorem statement binding was supplied",
             )
         if bindings.expected_statement_digest:
-            actual_digest = "sha256:" + hashlib.sha256(
-                extracted_statement.encode("utf-8")
-            ).hexdigest()
+            actual_digest = (
+                "sha256:" + hashlib.sha256(extracted_statement.encode("utf-8")).hexdigest()
+            )
             if actual_digest != bindings.expected_statement_digest:
                 return fail(
                     KernelFailureCode.STATEMENT_MISMATCH,
@@ -1491,9 +1460,7 @@ def verify_kernel_reconstruction(
             "accepted reconstruction has no completion timestamp",
         )
 
-    output_failure = _target_output_failure(
-        target, stdout=stdout, stderr=stderr
-    )
+    output_failure = _target_output_failure(target, stdout=stdout, stderr=stderr)
     if output_failure:
         code = (
             KernelFailureCode.INCOMPLETE_PROOF
@@ -1623,9 +1590,7 @@ def _local_lean_reconstruction_packet(
             )
             declaration_name = match.group(1) if match else ""
         if not declaration_name:
-            raise KernelVerificationError(
-                "declaration_name is required for Lean axiom inspection"
-            )
+            raise KernelVerificationError("declaration_name is required for Lean axiom inspection")
         source += f"\n#print axioms {declaration_name}\n"
 
     started_at = datetime.now(timezone.utc)
@@ -1642,12 +1607,9 @@ def _local_lean_reconstruction_packet(
             declaration_name=declaration_name,
         )
         if not isinstance(raw, Mapping):
-            raise KernelVerificationError(
-                "kernel_runner must return a mapping"
-            )
+            raise KernelVerificationError("kernel_runner must return a mapping")
         command = [
-            str(item)
-            for item in raw.get("command", (executable, "--json", "Reconstruction.lean"))
+            str(item) for item in raw.get("command", (executable, "--json", "Reconstruction.lean"))
         ]
         stdout = str(raw.get("stdout") or "")
         stderr = str(raw.get("stderr") or "")
@@ -1723,9 +1685,7 @@ def _local_lean_reconstruction_packet(
         }
     )
     source_digest = _upstream_content_digest({"checked_source": source})
-    output_digest = _upstream_content_digest(
-        {"stdout": stdout, "stderr": stderr}
-    )
+    output_digest = _upstream_content_digest({"stdout": stdout, "stderr": stderr})
     record = {
         "schema_version": "1.0.0",
         "reconstruction_id": reconstruction_id,
@@ -1760,9 +1720,7 @@ def _local_lean_reconstruction_packet(
         "stderr": stderr,
         "returncode": returncode,
         "timed_out": timed_out,
-        "wall_time_seconds": str(
-            max(0.0, (finished_at - started_at).total_seconds())
-        ),
+        "wall_time_seconds": str(max(0.0, (finished_at - started_at).total_seconds())),
         "raw_output_digest": output_digest,
     }
     lock = {
@@ -1827,9 +1785,7 @@ def verify_admitted_lean_proof(
             "reconstruction record, evidence, and environment lock are all required"
         )
     if all(supplied):
-        evidence_record = _record(
-            reconstruction_evidence, field_name="reconstruction_evidence"
-        )
+        evidence_record = _record(reconstruction_evidence, field_name="reconstruction_evidence")
         admitted_sources = {admission.checked_source}
         if admission.declaration_name and "#print axioms" not in admission.checked_source:
             admitted_sources.add(
@@ -1843,13 +1799,9 @@ def verify_admitted_lean_proof(
                 failure_code=KernelFailureCode.SOURCE_COPY,
                 reason="kernel packet did not check the exact admitted source",
                 bindings=bindings,
-                record=_record(
-                    reconstruction_record, field_name="reconstruction_record"
-                ),
+                record=_record(reconstruction_record, field_name="reconstruction_record"),
                 evidence_record=evidence_record,
-                environment_lock=_record(
-                    environment_lock, field_name="environment_lock"
-                ),
+                environment_lock=_record(environment_lock, field_name="environment_lock"),
                 provider_status=provider_status,
             )
         if str(evidence_record.get("reconstructed_proof_text") or "").strip() != (
@@ -1861,13 +1813,9 @@ def verify_admitted_lean_proof(
                 failure_code=KernelFailureCode.BINDING_MISMATCH,
                 reason="kernel packet proof text did not match the model artifact",
                 bindings=bindings,
-                record=_record(
-                    reconstruction_record, field_name="reconstruction_record"
-                ),
+                record=_record(reconstruction_record, field_name="reconstruction_record"),
                 evidence_record=evidence_record,
-                environment_lock=_record(
-                    environment_lock, field_name="environment_lock"
-                ),
+                environment_lock=_record(environment_lock, field_name="environment_lock"),
                 provider_status=provider_status,
             )
         return mapper.verify(
@@ -1937,22 +1885,14 @@ def build_kernel_verified_receipt(
     """
 
     if not isinstance(verification, KernelVerificationResult):
-        raise KernelVerificationError(
-            "verification must be KernelVerificationResult"
-        )
+        raise KernelVerificationError("verification must be KernelVerificationResult")
     if obligation is not None:
         if not isinstance(obligation, CodeProofObligation):
-            raise KernelVerificationError(
-                "obligation must be CodeProofObligation"
-            )
+            raise KernelVerificationError("obligation must be CodeProofObligation")
         if obligation.obligation_id != verification.obligation_id:
-            raise KernelVerificationError(
-                "obligation does not match kernel verification"
-            )
+            raise KernelVerificationError("obligation does not match kernel verification")
         repository_id = repository_id or obligation.repository_id
-        repository_tree_id = (
-            repository_tree_id or obligation.repository_tree_id
-        )
+        repository_tree_id = repository_tree_id or obligation.repository_tree_id
         ast_scope_ids = tuple(ast_scope_ids) or obligation.ast_scope_ids
         premise_ids = tuple(premise_ids) or obligation.premise_ids
 
@@ -1989,9 +1929,7 @@ def build_kernel_verified_receipt(
         provider_id=provider_id,
         provider_claimed_assurance=provider_claimed_assurance,
         freshness=EvidenceFreshness.CURRENT,
-        kernel_receipt_id=(
-            verification.kernel_receipt_id if verification.accepted else ""
-        ),
+        kernel_receipt_id=(verification.kernel_receipt_id if verification.accepted else ""),
         started_at=started_at,
         finished_at=finished_at,
         resource_usage=resource_usage or {},
@@ -2005,9 +1943,7 @@ class IndependentKernelVerifier:
     def __init__(self, policy: KernelVerificationPolicy | None = None) -> None:
         self.policy = policy or KernelVerificationPolicy()
         if not isinstance(self.policy, KernelVerificationPolicy):
-            raise KernelVerificationError(
-                "policy must be KernelVerificationPolicy"
-            )
+            raise KernelVerificationError("policy must be KernelVerificationPolicy")
 
     def verify(self, *args: Any, **kwargs: Any) -> KernelVerificationResult:
         kwargs.setdefault("policy", self.policy)

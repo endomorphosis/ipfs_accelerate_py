@@ -316,13 +316,15 @@ Create a custom recovery configuration:
 # custom_recovery_config.py
 from distributed_testing.monitoring.recovery_strategies import CoordinatorRecoveryStrategy
 
+
 class CustomRecoveryStrategy(CoordinatorRecoveryStrategy):
     """Custom recovery strategy with specialized behaviors."""
-    
+
     async def _recover_from_split_brain(self, failures):
         """Custom split brain recovery."""
         # Implement custom recovery logic
-        
+
+
 # Register the custom strategy
 recovery_strategies.register("custom", CustomRecoveryStrategy)
 ```

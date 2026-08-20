@@ -6,14 +6,15 @@ import time
 import requests
 from utils.production_validation import run_production_validation
 
+
 def check_health():
     """Comprehensive health check."""
     checks_passed = 0
     total_checks = 3
-    
+
     # Check production validation
     try:
-        result = run_production_validation('basic')
+        result = run_production_validation("basic")
         if result.overall_score > 80:
             print("✅ Production validation: PASSED")
             checks_passed += 1
@@ -21,10 +22,10 @@ def check_health():
             print(f"❌ Production validation: FAILED (score: {result.overall_score})")
     except Exception as e:
         print(f"❌ Production validation: ERROR ({e})")
-    
+
     # Check HTTP endpoint (if available)
     try:
-        response = requests.get('http://localhost:8000/health', timeout=5)
+        response = requests.get("http://localhost:8000/health", timeout=5)
         if response.status_code == 200:
             print("✅ HTTP endpoint: PASSED")
             checks_passed += 1
@@ -32,10 +33,11 @@ def check_health():
             print(f"❌ HTTP endpoint: FAILED (status: {response.status_code})")
     except Exception as e:
         print(f"❌ HTTP endpoint: ERROR ({e})")
-    
+
     # Check hardware detection
     try:
         from hardware_detection import HardwareDetector
+
         detector = HardwareDetector()
         hardware = detector.get_available_hardware()
         if hardware:
@@ -45,9 +47,9 @@ def check_health():
             print("❌ Hardware detection: FAILED")
     except Exception as e:
         print(f"❌ Hardware detection: ERROR ({e})")
-    
+
     print(f"\nHealth check: {checks_passed}/{total_checks} checks passed")
-    
+
     if checks_passed == total_checks:
         print("🎉 System is healthy!")
         return 0
@@ -57,6 +59,7 @@ def check_health():
     else:
         print("🚨 System is unhealthy!")
         return 2
+
 
 if __name__ == "__main__":
     sys.exit(check_health())

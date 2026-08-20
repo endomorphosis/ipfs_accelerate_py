@@ -80,6 +80,7 @@ from .tools.workflow_tools import register_native_workflow_tools_category
 from .tools.vllm_tools import register_native_vllm_tools
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .tools.rate_limiting_tools import register_native_rate_limiting_tools_category
+
 # Migrated legacy mcp/tools categories
 from .tools.hardware_tools import register_native_hardware_tools
 from .tools.inference_tools import register_native_inference_tools
@@ -94,7 +95,12 @@ from .tools.ipfs_network_tools import register_native_ipfs_network_tools
 from .tools.enhanced_inference_tools import register_native_enhanced_inference_tools
 from .tools.workflow_management_tools import register_native_workflow_management_tools
 from .tools.shared_tools import register_native_shared_tools
-from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
+from .mcplusplus.artifacts import (
+    ArtifactStore,
+    build_decision,
+    compute_artifact_cid,
+    envelope_from_payloads,
+)
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_with_ipfs_datasets_policy
 from .mcplusplus.event_dag import EventDAGStore
@@ -180,7 +186,9 @@ def _parse_preload_categories(value: str | None) -> list[str]:
     return parse_preload_categories(value, get_unified_wave_a_categories())
 
 
-def _preload_configured_categories(manager: HierarchicalToolManager, preload_categories: list[str]) -> list[str]:
+def _preload_configured_categories(
+    manager: HierarchicalToolManager, preload_categories: list[str]
+) -> list[str]:
     """Preload selected categories (if configured) by triggering list_tools()."""
     loaded: list[str] = []
     for category in preload_categories:
@@ -222,10 +230,14 @@ def _build_unified_services() -> dict[str, Any]:
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_peer_discovery"]
         ).create_peer_discovery(**kwargs),
         "result_cache_factory": lambda **kwargs: __import__(
-            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["ResultCache", "MemoryCacheBackend"]
-        ).ResultCache(backend=__import__(
-            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["MemoryCacheBackend"]
-        ).MemoryCacheBackend(), **kwargs),
+            "ipfs_accelerate_py.mcp_server.mcplusplus",
+            fromlist=["ResultCache", "MemoryCacheBackend"],
+        ).ResultCache(
+            backend=__import__(
+                "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["MemoryCacheBackend"]
+            ).MemoryCacheBackend(),
+            **kwargs,
+        ),
         "risk_scheduler_factory": lambda **kwargs: __import__(
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["RiskScheduler"]
         ).RiskScheduler(**kwargs),
@@ -260,12 +272,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     _audit_storage: Any = None
     try:
         from .ipfs_kit_bridge import get_audit_storage
+
         _audit_storage = get_audit_storage()
     except Exception:
         pass
     if _audit_storage is None:
         try:
             from ..ipfs_kit_integration import IPFSKitStorage
+
             _audit_storage = IPFSKitStorage(enable_ipfs_kit=True)
         except Exception:
             _audit_storage = None
@@ -311,7 +325,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         "enabled": prometheus_exporter is not None,
         "http_started": False,
         "error": "",
-        "info": prometheus_exporter.get_info() if prometheus_exporter is not None else {
+        "info": prometheus_exporter.get_info()
+        if prometheus_exporter is not None
+        else {
             "exporter": "prometheus",
             "namespace": config.prometheus_namespace,
             "port": config.prometheus_port,
@@ -359,7 +375,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     }
     if secrets_vault is not None and config.enable_secrets_env_autoload:
         try:
-            loaded_names = secrets_vault.load_into_env(overwrite=config.enable_secrets_env_overwrite)
+            loaded_names = secrets_vault.load_into_env(
+                overwrite=config.enable_secrets_env_overwrite
+            )
             secrets_status["env_loaded"] = list(loaded_names)
         except Exception as exc:
             secrets_status["error"] = str(exc)
@@ -668,7 +686,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             "source": "mcpplusplus.risk_frontier",
         }
 
-        scheduler_factory = services.get("workflow_scheduler_factory") if isinstance(services, dict) else None
+        scheduler_factory = (
+            services.get("workflow_scheduler_factory") if isinstance(services, dict) else None
+        )
         if callable(scheduler_factory):
             try:
                 scheduler = scheduler_factory()
@@ -714,7 +734,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             except Exception as exc:
                 binding["error"] = str(exc)
 
-        task_queue_factory = services.get("task_queue_factory") if isinstance(services, dict) else None
+        task_queue_factory = (
+            services.get("task_queue_factory") if isinstance(services, dict) else None
+        )
         if callable(task_queue_factory):
             try:
                 task_queue = task_queue_factory()
@@ -827,7 +849,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             response: dict[str, Any] = {
                 "ok": True,
                 "result": result,
-                "risk_assessment": risk_assessment_obj.to_dict() if risk_assessment_obj is not None else None,
+                "risk_assessment": risk_assessment_obj.to_dict()
+                if risk_assessment_obj is not None
+                else None,
                 "risk": risk_record.to_dict(),
                 "audit": policy_audit.stats() if policy_audit.enabled else None,
             }
@@ -867,7 +891,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 return meta
             try:
                 import json as _json
-                blob = _json.dumps(payload_obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+                blob = _json.dumps(payload_obj, sort_keys=True, separators=(",", ":")).encode(
+                    "utf-8"
+                )
                 store_fn = getattr(_audit_storage, "store", None)
                 if callable(store_fn):
                     stored_cid = store_fn(blob, cid)
@@ -1128,7 +1155,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     response["error"] = ""
 
                 try:
-                    peers_result = await _invoke_maybe_async(discover_fn, max_peers=peer_probe_limit)
+                    peers_result = await _invoke_maybe_async(
+                        discover_fn, max_peers=peer_probe_limit
+                    )
                 except TypeError:
                     peers_result = await _invoke_maybe_async(discover_fn)
                 peers: list[dict[str, Any]] = []
@@ -1199,7 +1228,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     if not callable(addrs_fn):
                         addrs_fn = getattr(registry, "get_bootstrap_nodes", None)
                     if not callable(addrs_fn):
-                        response["error"] = bootstrap_error or "peer_bootstrap_resolution_unavailable"
+                        response["error"] = (
+                            bootstrap_error or "peer_bootstrap_resolution_unavailable"
+                        )
                         return response
 
                     response["error"] = ""
@@ -1211,7 +1242,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
                 if isinstance(addrs_result, list):
                     response["addresses"] = [
-                        item for item in addrs_result[:peer_probe_limit] if isinstance(item, str) and item
+                        item
+                        for item in addrs_result[:peer_probe_limit]
+                        if isinstance(item, str) and item
                     ]
                     response["address_count"] = len(response["addresses"])
             except Exception as exc:
@@ -1227,7 +1260,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         tool_risk_overrides=dict(raw_risk_policy.get("tool_risk_overrides") or {}),
                         default_risk=float(raw_risk_policy.get("default_risk", 0.3) or 0.3),
                         actor_trust_levels=dict(raw_risk_policy.get("actor_trust_levels") or {}),
-                        max_acceptable_risk=float(raw_risk_policy.get("max_acceptable_risk", 0.75) or 0.75),
+                        max_acceptable_risk=float(
+                            raw_risk_policy.get("max_acceptable_risk", 0.75) or 0.75
+                        ),
                     )
                 )
 
@@ -1288,7 +1323,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         "scheme": "ucan",
                         **verdict.to_dict(),
                     },
-                    "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
+                    "risk_assessment": risk_assessment.to_dict()
+                    if risk_assessment is not None
+                    else None,
                     "risk": record.to_dict(),
                     "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
@@ -1356,7 +1393,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "error": "policy_denied",
                     "policy": policy_decision.to_dict(),
                     "policy_decision": dict(policy_decision_binding or {}),
-                    "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
+                    "risk_assessment": risk_assessment.to_dict()
+                    if risk_assessment is not None
+                    else None,
                     "risk": record.to_dict(),
                     "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
@@ -1377,15 +1416,23 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         if not emit_artifacts:
                             peer_registry_meta = await _probe_peer_registry()
                             peer_bootstrap_meta = await _probe_peer_bootstrap()
-                            obligations = len(policy_decision.obligations) if policy_decision is not None else 0
-                            record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
+                            obligations = (
+                                len(policy_decision.obligations)
+                                if policy_decision is not None
+                                else 0
+                            )
+                            record = risk_scheduler.record_outcome(
+                                actor=risk_actor, allowed=True, obligations=obligations
+                            )
                             policy_decision_label = "allow"
                             policy_justification = ""
                             policy_obligations: list[str] = []
                             if policy_decision is not None:
                                 policy_decision_label = policy_decision.decision
                                 policy_justification = policy_decision.justification
-                                policy_obligations = [str(x.get("type") or "") for x in policy_decision.obligations]
+                                policy_obligations = [
+                                    str(x.get("type") or "") for x in policy_decision.obligations
+                                ]
                             policy_audit.record(
                                 decision=policy_decision_label,
                                 tool=f"{category}.{tool_name}",
@@ -1471,7 +1518,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
         if not emit_artifacts:
             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
-            record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
+            record = risk_scheduler.record_outcome(
+                actor=risk_actor, allowed=True, obligations=obligations
+            )
             policy_decision_label = "allow"
             policy_justification = ""
             policy_obligations: list[str] = []
@@ -1499,8 +1548,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     extra_fields={
                         **_authorization_success_fields(),
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
-                        **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
-                        **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
+                        **(
+                            {"peer_registry": dict(peer_registry_meta)}
+                            if peer_registry_meta is not None
+                            else {}
+                        ),
+                        **(
+                            {"peer_bootstrap": dict(peer_bootstrap_meta)}
+                            if peer_bootstrap_meta is not None
+                            else {}
+                        ),
                     },
                 )
             _record_observability("success")
@@ -1513,8 +1570,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 extra_fields={
                     **_authorization_success_fields(),
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
-                    **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
-                    **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
+                    **(
+                        {"peer_registry": dict(peer_registry_meta)}
+                        if peer_registry_meta is not None
+                        else {}
+                    ),
+                    **(
+                        {"peer_bootstrap": dict(peer_bootstrap_meta)}
+                        if peer_bootstrap_meta is not None
+                        else {}
+                    ),
                 },
             )
 
@@ -1535,7 +1600,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             tool=f"{category}.{tool_name}",
             output_payload=output_payload,
             decision=policy_decision.decision if policy_decision is not None else "allow",
-            decision_justification=policy_decision.justification if policy_decision is not None else "",
+            decision_justification=policy_decision.justification
+            if policy_decision is not None
+            else "",
             decision_obligations=policy_decision.obligations if policy_decision is not None else [],
             proof_cid=proof_cid,
             policy_cid=policy_cid,
@@ -1692,14 +1759,24 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "event_dag": event_dag_meta,
                 "frontier": {
                     "enqueued": frontier_item is not None,
-                    "priority": round(frontier_item.priority, 5) if frontier_item is not None else None,
+                    "priority": round(frontier_item.priority, 5)
+                    if frontier_item is not None
+                    else None,
                     "event_cid": frontier_item.event_cid if frontier_item is not None else None,
                     "execution": frontier_execution,
                     "stats": risk_scheduler.stats(),
                 },
                 **({"cache": dict(cache_meta)} if use_result_cache else {}),
-                **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
-                **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
+                **(
+                    {"peer_registry": dict(peer_registry_meta)}
+                    if peer_registry_meta is not None
+                    else {}
+                ),
+                **(
+                    {"peer_bootstrap": dict(peer_bootstrap_meta)}
+                    if peer_bootstrap_meta is not None
+                    else {}
+                ),
             },
         )
 
@@ -1717,7 +1794,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "tracing": dict(tracing_status),
                 "prometheus": {
                     **dict(prometheus_status),
-                    "info": prometheus_exporter.get_info() if prometheus_exporter is not None else dict(prometheus_status.get("info") or {}),
+                    "info": prometheus_exporter.get_info()
+                    if prometheus_exporter is not None
+                    else dict(prometheus_status.get("info") or {}),
                 },
                 "audit_metrics": dict(audit_metrics_status),
             },
@@ -1725,7 +1804,11 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
     # Attach migration components for callers that want the unified surface.
     unified_services = _build_unified_services()
-    risk_scheduler_factory = unified_services.get("risk_scheduler_factory") if isinstance(unified_services, dict) else None
+    risk_scheduler_factory = (
+        unified_services.get("risk_scheduler_factory")
+        if isinstance(unified_services, dict)
+        else None
+    )
     if callable(risk_scheduler_factory):
         try:
             risk_scheduler = risk_scheduler_factory()
@@ -1734,7 +1817,11 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     if risk_scheduler is None:
         risk_scheduler = RiskScheduler()
 
-    workflow_engine_factory = unified_services.get("workflow_engine_factory") if isinstance(unified_services, dict) else None
+    workflow_engine_factory = (
+        unified_services.get("workflow_engine_factory")
+        if isinstance(unified_services, dict)
+        else None
+    )
     workflow_engine = None
     if callable(workflow_engine_factory):
         try:
@@ -1744,7 +1831,11 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     if workflow_engine is None:
         workflow_engine = WorkflowEngine()
 
-    workflow_dag_executor_factory = unified_services.get("workflow_dag_executor_factory") if isinstance(unified_services, dict) else None
+    workflow_dag_executor_factory = (
+        unified_services.get("workflow_dag_executor_factory")
+        if isinstance(unified_services, dict)
+        else None
+    )
     workflow_dag_executor = None
     if callable(workflow_dag_executor_factory):
         try:
@@ -1792,6 +1883,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_audit_storage", _audit_storage)
     setattr(server, "_unified_supported_profiles", list(unified_context.supported_profiles))
     from .mcplusplus.profile_g_transport import get_profile_g_dispatcher, profile_metadata
+
     setattr(server, "_unified_profile_g_dispatcher", get_profile_g_dispatcher())
     setattr(server, "_unified_profile_g_metadata", profile_metadata())
     setattr(
@@ -1949,10 +2041,15 @@ class StandaloneMCP:
     def _init_error_handler(self) -> None:
         """Initialize optional auto-healing error handler from environment."""
         import os
+
         try:
             from ipfs_accelerate_py.error_handler import CLIErrorHandler  # type: ignore
 
-            enable_auto_issue = os.environ.get("IPFS_AUTO_ISSUE", "").lower() in ("1", "true", "yes")
+            enable_auto_issue = os.environ.get("IPFS_AUTO_ISSUE", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
             enable_auto_pr = os.environ.get("IPFS_AUTO_PR", "").lower() in ("1", "true", "yes")
             enable_auto_heal = os.environ.get("IPFS_AUTO_HEAL", "").lower() in ("1", "true", "yes")
             repo = os.environ.get("IPFS_REPO", "endomorphosis/ipfs_accelerate_py")
@@ -2033,6 +2130,7 @@ class StandaloneMCP:
         title = "IPFS Accelerate MCP API"
         try:
             from fastapi import FastAPI  # type: ignore
+
             app: Any = FastAPI(
                 title=title,
                 description="IPFS Accelerate MCP",
@@ -2044,9 +2142,11 @@ class StandaloneMCP:
                 return {"status": "ok", "service": self.name}
 
         except ImportError:
+
             class _MinimalApp:
                 def __init__(self, title: str) -> None:
                     self.title = title
+
             app = _MinimalApp(title=title)
 
         app._standalone_mcp = self  # type: ignore[attr-defined]
@@ -2070,7 +2170,11 @@ class StandaloneMCP:
         if not self._error_handler:
             return
         try:
-            context = {"mcp_server": self.name, "resource_uri": resource_uri, "error_source": "mcp_resource"}
+            context = {
+                "mcp_server": self.name,
+                "resource_uri": resource_uri,
+                "error_source": "mcp_resource",
+            }
             self._error_handler.capture_error(exc, context=context)
         except Exception:
             pass
@@ -2079,7 +2183,11 @@ class StandaloneMCP:
         if not self._error_handler:
             return
         try:
-            context = {"mcp_server": self.name, "error_source": "mcp_client", **dict(error_data or {})}
+            context = {
+                "mcp_server": self.name,
+                "error_source": "mcp_client",
+                **dict(error_data or {}),
+            }
             exc = RuntimeError(str(error_data.get("error_message", "client error")))
             self._error_handler.capture_error(exc, context=context)
         except Exception:
@@ -2114,6 +2222,7 @@ class MCPServerWrapper:
         self.debug = debug
 
         from types import SimpleNamespace
+
         self.state = SimpleNamespace(accelerate=accelerate_instance)
 
         self.mcp = StandaloneMCP(name=self.name)
@@ -2129,7 +2238,10 @@ class MCPServerWrapper:
 
         # Register canonical hardware info tools as compatibility aliases.
         try:
-            from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
+            from .tools.hardware_tools.native_hardware_tools import (
+                hardware_get_info,
+                hardware_recommend,
+            )
 
             if "detect_hardware" not in self.mcp.tools:
                 self.mcp.register_tool(
@@ -2166,6 +2278,7 @@ class MCPServerWrapper:
         # Register basic system resources.
         try:
             import platform
+
             if "system://info" not in self.mcp.resources:
                 self.mcp.register_resource(
                     uri="system://info",
@@ -2190,6 +2303,7 @@ class MCPServerWrapper:
         description = self.description or "IPFS Accelerate MCP"
         try:
             from fastapi import FastAPI  # type: ignore
+
             app: Any = FastAPI(
                 title=title,
                 description=description,
@@ -2252,7 +2366,9 @@ class MCPServerWrapper:
             **kwargs,
         )
 
-    def register_resource(self, uri: str, function: Any, description: str = "", **kwargs: Any) -> None:
+    def register_resource(
+        self, uri: str, function: Any, description: str = "", **kwargs: Any
+    ) -> None:
         """Register a resource on the underlying standalone MCP registry."""
 
         self.mcp.register_resource(uri=uri, function=function, description=description, **kwargs)
@@ -2284,6 +2400,7 @@ class MCPServerWrapper:
         """Run the MCP server via uvicorn."""
         try:
             import uvicorn
+
             uvicorn.run(
                 self.app,
                 host=host or self.host,
@@ -2328,7 +2445,11 @@ def register_tools(
     """
     _ = include_p2p_taskqueue_tools
     try:
-        from .tools.hardware_tools.native_hardware_tools import hardware_get_info, hardware_recommend
+        from .tools.hardware_tools.native_hardware_tools import (
+            hardware_get_info,
+            hardware_recommend,
+        )
+
         mcp.register_tool(
             name="hardware_get_info",
             function=hardware_get_info,
@@ -2365,6 +2486,7 @@ def register_tools(
 
     try:
         from .tools.inference_tools.native_inference_tools import inference_run_inference
+
         mcp.register_tool(
             name="inference_run_inference",
             function=inference_run_inference,
@@ -2388,6 +2510,7 @@ def register_tools(
             model_get_served,
             model_list_served,
         )
+
         mcp.register_tool(
             name="model_list_served",
             function=model_list_served,
@@ -2422,6 +2545,7 @@ def register_tools(
 
     try:
         from .tools.shared_tools.native_shared_tools import generate_text
+
         mcp.register_tool(
             name="generate_text",
             function=generate_text,

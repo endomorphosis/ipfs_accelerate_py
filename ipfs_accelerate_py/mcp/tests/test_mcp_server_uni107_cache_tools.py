@@ -71,7 +71,9 @@ class TestMCPServerUNI107CacheTools(unittest.TestCase):
                 embeddings=[0.5, 0.6],
                 model="roundtrip-model",
             )
-            result = await get_cached_embeddings(text="round-trip-sentence", model="roundtrip-model")
+            result = await get_cached_embeddings(
+                text="round-trip-sentence", model="roundtrip-model"
+            )
             self.assertIn(result.get("status"), ["found", "not_found", "error"])
             if result.get("status") == "found":
                 self.assertEqual(result.get("cache_hit"), True)
@@ -108,7 +110,9 @@ class TestMCPServerUNI107CacheTools(unittest.TestCase):
         async def _run() -> None:
             result = await monitor_cache(metrics=["hit_rate", "   "])
             self.assertEqual(result.get("success"), False)
-            self.assertIn("metrics must be a list of non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "metrics must be a list of non-empty strings", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

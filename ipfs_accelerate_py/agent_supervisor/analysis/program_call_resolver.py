@@ -58,18 +58,12 @@ from .program_graph import (
 from ..proof.formal_verification_contracts import content_identity
 
 
-PROGRAM_CALL_RESOLVER_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-call-resolver@1"
-)
-PROGRAM_CALL_RESOLUTION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-call-resolution@1"
-)
+PROGRAM_CALL_RESOLVER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-call-resolver@1"
+PROGRAM_CALL_RESOLUTION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-call-resolution@1"
 PROGRAM_CALL_RESOLUTION_RESULT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-call-resolution-result@1"
 )
-PROGRAM_CALL_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-call-evidence@1"
-)
+PROGRAM_CALL_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-call-evidence@1"
 
 RESOLVER_VERSION = "program-call-resolver@1"
 RESOLVER_PRODUCER = "program-call-resolver@1"
@@ -355,17 +349,11 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
             plain[key] = dict(_mapping(item, f"{name}.{key}"))
         elif isinstance(item, (list, tuple)):
             plain[key] = [
-                (
-                    dict(_mapping(entry, f"{name}.{key}[]"))
-                    if isinstance(entry, Mapping)
-                    else entry
-                )
+                (dict(_mapping(entry, f"{name}.{key}[]")) if isinstance(entry, Mapping) else entry)
                 for entry in item
             ]
         else:
-            raise CallResolverError(
-                f"{name}.{key} has unsupported type {type(item).__name__}"
-            )
+            raise CallResolverError(f"{name}.{key} has unsupported type {type(item).__name__}")
     encoded = canonical_program_json(plain).encode("utf-8")
     if len(encoded) > DEFAULT_MAX_EVIDENCE_NOTES_BYTES:
         raise CallResolverBoundsError(f"{name} exceeds evidence notes bound")
@@ -476,14 +464,8 @@ class ResolutionEvidence:
         object.__setattr__(self, "rule_id", _text(self.rule_id, "evidence.rule_id"))
         object.__setattr__(self, "producer", _text(self.producer, "evidence.producer"))
         object.__setattr__(self, "blob_cid", _text(self.blob_cid, "evidence.blob_cid"))
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "evidence.forest_id")
-        )
-        span = (
-            self.span
-            if isinstance(self.span, SourceSpan)
-            else SourceSpan.from_dict(self.span)
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "evidence.forest_id"))
+        span = self.span if isinstance(self.span, SourceSpan) else SourceSpan.from_dict(self.span)
         object.__setattr__(self, "span", span)
         object.__setattr__(
             self,
@@ -553,9 +535,7 @@ class _EvidenceCallResolution:
     def __post_init__(self) -> None:
         object.__setattr__(self, "site_id", _text(self.site_id, "site_id"))
         object.__setattr__(self, "site_kind", _text(self.site_kind, "site_kind"))
-        object.__setattr__(
-            self, "status", _enum(self.status, ResolverStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, ResolverStatus, "status"))
         object.__setattr__(
             self,
             "reason_code",
@@ -571,14 +551,10 @@ class _EvidenceCallResolution:
                 f"confidence {self.confidence} is not deterministic for "
                 f"{self.status.value}/{self.reason_code.value} (expected {expected})"
             )
-        targets = tuple(
-            _text(item, "target", required=True) for item in (self.targets or ())
-        )
+        targets = tuple(_text(item, "target", required=True) for item in (self.targets or ()))
         object.__setattr__(self, "targets", targets)
         evidence = tuple(
-            item
-            if isinstance(item, ResolutionEvidence)
-            else ResolutionEvidence.from_dict(item)
+            item if isinstance(item, ResolutionEvidence) else ResolutionEvidence.from_dict(item)
             for item in (self.evidence or ())
         )
         object.__setattr__(self, "evidence", evidence)
@@ -614,20 +590,14 @@ class _EvidenceCallResolution:
             )
         if self.status is ResolverStatus.RESOLVED_STATIC:
             if len(self.targets) != 1:
-                raise CallResolverError(
-                    "resolved_static requires exactly one target"
-                )
+                raise CallResolverError("resolved_static requires exactly one target")
             if self.mechanism in _DYNAMIC_MECHANISMS:
-                raise CallResolverError(
-                    f"mechanism {self.mechanism!r} cannot be resolved_static"
-                )
+                raise CallResolverError(f"mechanism {self.mechanism!r} cannot be resolved_static")
         if self.status is ResolverStatus.AMBIGUOUS and len(self.targets) < 2:
             # Ambiguity may be structural (loop/namespace) without multiple
             # concrete targets; only same-name collisions require >= 2.
             if self.reason_code is ReasonCode.SAME_NAME_COLLISION:
-                raise CallResolverError(
-                    "same_name_collision requires at least two targets"
-                )
+                raise CallResolverError("same_name_collision requires at least two targets")
         if self.status is ResolverStatus.CANDIDATE and not self.targets:
             if self.reason_code not in {
                 ReasonCode.OPTIONAL_IMPORT,
@@ -726,9 +696,7 @@ class CallResolutionResult:
             _text(self.source_graph_id, "source_graph_id"),
         )
         resolutions = tuple(
-            item
-            if isinstance(item, CallResolution)
-            else CallResolution.from_dict(item)
+            item if isinstance(item, CallResolution) else CallResolution.from_dict(item)
             for item in (self.resolutions or ())
         )
         # Stable order by site_id then reason then resolution identity.
@@ -790,9 +758,7 @@ class CallResolutionResult:
                     qualified_name=resolution.site_qualified_name,
                 )
             )
-        return tuple(
-            sorted(items, key=lambda item: (item.element_id, item.element_kind))
-        )
+        return tuple(sorted(items, key=lambda item: (item.element_id, item.element_kind)))
 
     def stats(self) -> Mapping[str, Any]:
         by_status: dict[str, int] = {}
@@ -801,9 +767,7 @@ class CallResolutionResult:
         direct = 0
         for item in self.resolutions:
             by_status[item.status.value] = by_status.get(item.status.value, 0) + 1
-            by_reason[item.reason_code.value] = (
-                by_reason.get(item.reason_code.value, 0) + 1
-            )
+            by_reason[item.reason_code.value] = by_reason.get(item.reason_code.value, 0) + 1
             by_mechanism[item.mechanism] = by_mechanism.get(item.mechanism, 0) + 1
             if item.is_direct_edge_allowed:
                 direct += 1
@@ -861,18 +825,14 @@ class CallResolutionResult:
                 # Never manufacture an edge for a missing site.
                 continue
             if not resolution.evidence:
-                raise MissingEvidenceError(
-                    f"cannot materialize edge for {resolution.site_id!r}"
-                )
+                raise MissingEvidenceError(f"cannot materialize edge for {resolution.site_id!r}")
             targets = list(resolution.targets)
             if resolution.status is ResolverStatus.RESOLVED_STATIC:
                 if not resolution.is_direct_edge_allowed:
-                    raise ManufacturedEdgeError(
-                        f"refusing direct edge for {resolution.site_id!r}"
-                    )
+                    raise ManufacturedEdgeError(f"refusing direct edge for {resolution.site_id!r}")
             for target_ref in targets:
-                target_id = target_ref if target_ref in node_ids else qname_index.get(
-                    target_ref, ""
+                target_id = (
+                    target_ref if target_ref in node_ids else qname_index.get(target_ref, "")
                 )
                 if not target_id or target_id not in node_ids:
                     # Unknown target stays on the frontier via the resolution
@@ -901,9 +861,7 @@ class CallResolutionResult:
                         },
                     )
                 )
-        return tuple(
-            sorted(edges, key=lambda edge: (edge.source, edge.target, edge.edge_id))
-        )
+        return tuple(sorted(edges, key=lambda edge: (edge.source, edge.target, edge.edge_id)))
 
     def apply_to_graph(self, graph: ProgramGraph) -> ProgramGraph:
         """Return a new graph with resolution edges appended.
@@ -976,34 +934,22 @@ class ResolverCatalog:
         object.__setattr__(
             self,
             "installed_packages",
-            frozenset(
-                _text(item, "installed_package")
-                for item in (self.installed_packages or ())
-            ),
+            frozenset(_text(item, "installed_package") for item in (self.installed_packages or ())),
         )
         object.__setattr__(
             self,
             "namespace_packages",
-            frozenset(
-                _text(item, "namespace_package")
-                for item in (self.namespace_packages or ())
-            ),
+            frozenset(_text(item, "namespace_package") for item in (self.namespace_packages or ())),
         )
         object.__setattr__(
             self,
             "external_packages",
-            frozenset(
-                _text(item, "external_package")
-                for item in (self.external_packages or ())
-            ),
+            frozenset(_text(item, "external_package") for item in (self.external_packages or ())),
         )
         object.__setattr__(
             self,
             "module_is_package",
-            frozenset(
-                _text(item, "package_module")
-                for item in (self.module_is_package or ())
-            ),
+            frozenset(_text(item, "package_module") for item in (self.module_is_package or ())),
         )
 
 
@@ -1107,9 +1053,7 @@ class _EvidenceProgramCallResolver:
         self._imports: list[ProgramGraphNode] = []
         self._calls: list[ProgramGraphNode] = []
         self._reexports: list[ProgramGraphNode] = []
-        self._definitions_by_module: dict[str, list[ProgramGraphNode]] = defaultdict(
-            list
-        )
+        self._definitions_by_module: dict[str, list[ProgramGraphNode]] = defaultdict(list)
         self._alias_by_component: dict[str, dict[str, str]] = defaultdict(dict)
         self._member_index: dict[str, list[str]] = defaultdict(list)
         self._mcp_tools_by_name: dict[str, list[ProgramGraphNode]] = defaultdict(list)
@@ -1140,9 +1084,7 @@ class _EvidenceProgramCallResolver:
                     owner = _record_str(node.record, "owner", "class_name", "parent")
                     member = _record_str(node.record, "member", "name") or simple
                     if owner and member:
-                        self._member_index[f"{owner}.{member}"].append(
-                            node.qualified_name
-                        )
+                        self._member_index[f"{owner}.{member}"].append(node.qualified_name)
                         self._member_index[member].append(node.qualified_name)
             elif node.kind is ProgramNodeKind.IMPORT:
                 self._imports.append(node)
@@ -1183,9 +1125,8 @@ class _EvidenceProgramCallResolver:
             if source is None or target is None:
                 continue
             if source.kind is ProgramNodeKind.MODULE and target.kind is ProgramNodeKind.IMPORT:
-                local = (
-                    _record_str(target.record, "alias", "local_name")
-                    or _simple_name(target.qualified_name)
+                local = _record_str(target.record, "alias", "local_name") or _simple_name(
+                    target.qualified_name
                 )
                 imported = (
                     _record_str(target.record, "target", "module", "import_target")
@@ -1238,10 +1179,7 @@ class _EvidenceProgramCallResolver:
 
         site = self._site(node, ProgramNodeKind.IMPORT)
         if site.binding.resolver_status is ResolverStatus.RESOLVED_STATIC:
-            target = (
-                _record_str(site.record, "resolved_target", "target")
-                or site.qualified_name
-            )
+            target = _record_str(site.record, "resolved_target", "target") or site.qualified_name
             return _make_resolution(
                 site=site,
                 site_kind="import",
@@ -1260,12 +1198,9 @@ class _EvidenceProgramCallResolver:
             )
 
         target = (
-            _record_str(site.record, "target", "module", "import_target")
-            or site.qualified_name
+            _record_str(site.record, "target", "module", "import_target") or site.qualified_name
         )
-        optional = bool(
-            _record_flag(site.record, "optional", "is_optional", "optional_import")
-        )
+        optional = bool(_record_flag(site.record, "optional", "is_optional", "optional_import"))
         relative_level = int(_record_flag(site.record, "relative_level") or 0)
         if target.startswith(".") or relative_level > 0:
             return self._resolve_relative_import(
@@ -1275,10 +1210,7 @@ class _EvidenceProgramCallResolver:
 
     def _module_for_component(self, component_id: str) -> ProgramGraphNode | None:
         for node in self._graph.nodes:
-            if (
-                node.kind is ProgramNodeKind.MODULE
-                and node.component_id == component_id
-            ):
+            if node.kind is ProgramNodeKind.MODULE and node.component_id == component_id:
                 return node
         return None
 
@@ -1296,9 +1228,7 @@ class _EvidenceProgramCallResolver:
             current
             and (
                 current in self._catalog.module_is_package
-                or _record_flag(
-                    module_node.record if module_node else {}, "is_package"
-                )
+                or _record_flag(module_node.record if module_node else {}, "is_package")
             )
         )
         synthetic = target
@@ -1343,9 +1273,7 @@ class _EvidenceProgramCallResolver:
     ) -> CallResolution:
         # Alias binding: import target may already be a local alias expansion.
         alias_map = self._alias_by_component.get(site.component_id, {})
-        local = _record_str(site.record, "alias", "local_name") or _simple_name(
-            site.qualified_name
-        )
+        local = _record_str(site.record, "alias", "local_name") or _simple_name(site.qualified_name)
         if local and local in alias_map and alias_map[local] != target:
             # Prefer explicit record target; alias map is diagnostic.
             pass
@@ -1368,7 +1296,9 @@ class _EvidenceProgramCallResolver:
                 site_kind="import",
                 status=ResolverStatus.AMBIGUOUS,
                 reason_code=ReasonCode.NAMESPACE_PACKAGE,
-                targets=tuple(sorted({node.qualified_name for node in modules if node.qualified_name})),
+                targets=tuple(
+                    sorted({node.qualified_name for node in modules if node.qualified_name})
+                ),
                 evidence=(
                     _evidence_from_node(
                         site,
@@ -1407,14 +1337,8 @@ class _EvidenceProgramCallResolver:
                 for qname in self._modules_by_qname
             )
         ):
-            status = (
-                ResolverStatus.CANDIDATE if optional else ResolverStatus.EXTERNAL
-            )
-            reason = (
-                ReasonCode.OPTIONAL_IMPORT
-                if optional
-                else ReasonCode.UNINSTALLED_DEPENDENCY
-            )
+            status = ResolverStatus.CANDIDATE if optional else ResolverStatus.EXTERNAL
+            reason = ReasonCode.OPTIONAL_IMPORT if optional else ReasonCode.UNINSTALLED_DEPENDENCY
             return _make_resolution(
                 site=site,
                 site_kind="import",
@@ -1475,9 +1399,7 @@ class _EvidenceProgramCallResolver:
         if len(modules) == 1 and not symbols:
             target_q = modules[0].qualified_name
             alias = _record_str(site.record, "alias", "local_name")
-            final_reason = (
-                ReasonCode.ALIAS_BINDING if alias else reason_code
-            )
+            final_reason = ReasonCode.ALIAS_BINDING if alias else reason_code
             return _make_resolution(
                 site=site,
                 site_kind="import",
@@ -1596,12 +1518,9 @@ class _EvidenceProgramCallResolver:
         """Follow a re-export chain with loop detection."""
 
         site = self._site(node, ProgramNodeKind.EXPORT)
-        source_module = _record_str(
-            site.record, "from_module", "source_module", "module"
-        )
-        export_name = (
-            _record_str(site.record, "export_name", "name", "local_name")
-            or _simple_name(site.qualified_name)
+        source_module = _record_str(site.record, "from_module", "source_module", "module")
+        export_name = _record_str(site.record, "export_name", "name", "local_name") or _simple_name(
+            site.qualified_name
         )
         if not source_module:
             # Not a re-export after all: treat as local export binding.
@@ -1628,9 +1547,7 @@ class _EvidenceProgramCallResolver:
                 status=ResolverStatus.UNRESOLVED,
                 reason_code=ReasonCode.NO_TARGET,
                 targets=(),
-                evidence=(
-                    _evidence_from_node(site, rule_id="rule:export_no_source"),
-                ),
+                evidence=(_evidence_from_node(site, rule_id="rule:export_no_source"),),
             )
 
         seen: list[str] = []
@@ -1659,11 +1576,7 @@ class _EvidenceProgramCallResolver:
             seen.append(chain_key)
 
             # Prefer a concrete symbol at module.name.
-            qname = (
-                f"{current_module}.{current_name}"
-                if current_name
-                else current_module
-            )
+            qname = f"{current_module}.{current_name}" if current_name else current_module
             symbols = self._symbols_by_qname.get(qname, [])
             if len(symbols) == 1:
                 return _make_resolution(
@@ -1688,9 +1601,7 @@ class _EvidenceProgramCallResolver:
                     site_kind="reexport",
                     status=ResolverStatus.AMBIGUOUS,
                     reason_code=ReasonCode.SAME_NAME_COLLISION,
-                    targets=tuple(
-                        sorted({node.qualified_name for node in symbols})
-                    ),
+                    targets=tuple(sorted({node.qualified_name for node in symbols})),
                     evidence=(
                         _evidence_from_node(
                             site,
@@ -1742,14 +1653,12 @@ class _EvidenceProgramCallResolver:
                     ),
                     record={"chain": list(seen), "qname": qname},
                 )
-            current_module = _record_str(
-                next_export.record, "from_module", "source_module", "module"
-            ) or current_module
+            current_module = (
+                _record_str(next_export.record, "from_module", "source_module", "module")
+                or current_module
+            )
             current_name = (
-                _record_str(
-                    next_export.record, "export_name", "name", "local_name"
-                )
-                or current_name
+                _record_str(next_export.record, "export_name", "name", "local_name") or current_name
             )
 
         return _make_resolution(
@@ -1768,9 +1677,7 @@ class _EvidenceProgramCallResolver:
             record={"chain": list(seen)},
         )
 
-    def _find_reexport(
-        self, module_qname: str, export_name: str
-    ) -> ProgramGraphNode | None:
+    def _find_reexport(self, module_qname: str, export_name: str) -> ProgramGraphNode | None:
         for node in self._reexports:
             module_node = self._module_for_component(node.component_id)
             owner = module_node.qualified_name if module_node else ""
@@ -1781,9 +1688,8 @@ class _EvidenceProgramCallResolver:
                     or _record_str(node.record, "owner_module") == module_qname
                 ):
                     continue
-            name = (
-                _record_str(node.record, "export_name", "name", "local_name")
-                or _simple_name(node.qualified_name)
+            name = _record_str(node.record, "export_name", "name", "local_name") or _simple_name(
+                node.qualified_name
             )
             if name == export_name or not export_name:
                 return node
@@ -1793,10 +1699,7 @@ class _EvidenceProgramCallResolver:
         """Resolve one call site conservatively."""
 
         site = self._site(node, ProgramNodeKind.CALL)
-        callee = (
-            _record_str(site.record, "callee", "target", "name")
-            or site.qualified_name
-        )
+        callee = _record_str(site.record, "callee", "target", "name") or site.qualified_name
         mechanism = self._detect_mechanism(site, callee)
         if mechanism in _DYNAMIC_MECHANISMS:
             return self._resolve_dynamic_call(site, callee=callee, mechanism=mechanism)
@@ -1804,9 +1707,7 @@ class _EvidenceProgramCallResolver:
         # Generated SDK / client methods (closed catalog).
         if callee in self._catalog.generated_sdk_methods:
             target = self._catalog.generated_sdk_methods[callee]
-            is_client = bool(
-                _record_flag(site.record, "generated_client", "is_generated_client")
-            )
+            is_client = bool(_record_flag(site.record, "generated_client", "is_generated_client"))
             if is_client:
                 return _make_resolution(
                     site=site,
@@ -1891,11 +1792,7 @@ class _EvidenceProgramCallResolver:
         if callee in self._mcp_tools_by_name:
             tools = self._mcp_tools_by_name[callee]
             targets = tuple(sorted({tool.qualified_name for tool in tools}))
-            status = (
-                ResolverStatus.CANDIDATE
-                if len(targets) == 1
-                else ResolverStatus.AMBIGUOUS
-            )
+            status = ResolverStatus.CANDIDATE if len(targets) == 1 else ResolverStatus.AMBIGUOUS
             reason = (
                 ReasonCode.KNOWN_REGISTRATION
                 if len(targets) == 1
@@ -1924,9 +1821,7 @@ class _EvidenceProgramCallResolver:
         alias_map = self._alias_by_component.get(site.component_id, {})
         if root and root in alias_map:
             expanded = alias_map[root] + callee[len(root) :]
-            return self._resolve_expanded_callee(
-                site, callee=expanded, via_alias=root
-            )
+            return self._resolve_expanded_callee(site, callee=expanded, via_alias=root)
 
         # Class / member calls: owner.member with unique member index hit.
         if "." in callee:
@@ -2013,8 +1908,7 @@ class _EvidenceProgramCallResolver:
             exact = [
                 node
                 for node in same_module
-                if node.qualified_name
-                in {callee, f"{module_q}.{_simple_name(callee)}"}
+                if node.qualified_name in {callee, f"{module_q}.{_simple_name(callee)}"}
             ]
             pool = exact or same_module
             if len(pool) == 1:
@@ -2041,11 +1935,7 @@ class _EvidenceProgramCallResolver:
         simple = _simple_name(callee)
         hits = self._symbols_by_simple.get(simple, []) if simple else []
         # Deduplicate by qualified name.
-        by_qname = {
-            node.qualified_name: node
-            for node in hits
-            if node.qualified_name
-        }
+        by_qname = {node.qualified_name: node for node in hits if node.qualified_name}
         if len(by_qname) > 1:
             targets = tuple(sorted(by_qname))
             return _make_resolution(
@@ -2252,9 +2142,7 @@ class _EvidenceProgramCallResolver:
         )
 
     def _detect_mechanism(self, site: ProgramGraphNode, callee: str) -> str:
-        explicit = _record_str(
-            site.record, "mechanism", "dispatch", "transport", "kind"
-        ).lower()
+        explicit = _record_str(site.record, "mechanism", "dispatch", "transport", "kind").lower()
         if explicit in _DYNAMIC_MECHANISMS:
             return explicit
         relationship = _record_str(site.record, "relationship").lower()
@@ -2285,9 +2173,7 @@ class _EvidenceProgramCallResolver:
             ("requests.", "httpx.", "urllib.", "aiohttp.", "axios.")
         ):
             return "http"
-        if callee in _RPC_CALLEES or callee.startswith(
-            ("grpc.", "xmlrpc.", "jsonrpc.")
-        ):
+        if callee in _RPC_CALLEES or callee.startswith(("grpc.", "xmlrpc.", "jsonrpc.")):
             return "rpc"
         if callee in _LIBP2P_CALLEES or "libp2p" in callee:
             return "libp2p"
@@ -2302,9 +2188,7 @@ class _EvidenceProgramCallResolver:
         callee: str,
         mechanism: str,
     ) -> CallResolution:
-        reason = _DYNAMIC_REASON_BY_MECHANISM.get(
-            mechanism, ReasonCode.UNSUPPORTED_CONSTRUCT
-        )
+        reason = _DYNAMIC_REASON_BY_MECHANISM.get(mechanism, ReasonCode.UNSUPPORTED_CONSTRUCT)
         # Dynamic sites are never resolved_static.  Prefer EXTERNAL for
         # process/network/transport boundaries; AMBIGUOUS for DI/callback/
         # monkey patch; CANDIDATE for dynamic import.
@@ -2356,9 +2240,7 @@ class _EvidenceProgramCallResolver:
             },
         )
 
-    def _site(
-        self, node: ProgramGraphNode | str, expected: ProgramNodeKind
-    ) -> ProgramGraphNode:
+    def _site(self, node: ProgramGraphNode | str, expected: ProgramNodeKind) -> ProgramGraphNode:
         if isinstance(node, ProgramGraphNode):
             site = node
         else:
@@ -2367,8 +2249,7 @@ class _EvidenceProgramCallResolver:
                 raise CallResolverError(f"unknown site node_id: {node!r}")
         if site.kind is not expected:
             raise CallResolverError(
-                f"site {site.node_id!r} has kind {site.kind.value}, "
-                f"expected {expected.value}"
+                f"site {site.node_id!r} has kind {site.kind.value}, expected {expected.value}"
             )
         return site
 
@@ -2409,11 +2290,7 @@ def make_resolution(
 
     status_enum = _enum(status, ResolverStatus, "status")
     reason_enum = _enum(reason_code, ReasonCode, "reason_code")
-    conf = (
-        int(confidence)
-        if confidence is not None
-        else confidence_for(status_enum, reason_enum)
-    )
+    conf = int(confidence) if confidence is not None else confidence_for(status_enum, reason_enum)
     return CallResolution(
         site_id=site_id,
         site_kind=site_kind,

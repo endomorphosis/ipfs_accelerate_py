@@ -49,34 +49,35 @@ from .formal_verification_contracts import (
     ContractValidationError,
     content_identity,
 )
+from .goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
+    ProofStateClass,
+    ProofStateClassification,
+    RankedKind,
+    TacticPremiseTrace,
+    build_tactic_premise_trace,
+    project_curriculum,
+)
 
 
 # ---------------------------------------------------------------------------
 # Interface / schema constants
 # ---------------------------------------------------------------------------
 
-COUNTEREXAMPLE_GUIDED_PROOF_DEVELOPMENT_INTERFACE: Final = (
-    "CounterexampleGuidedProofDevelopment@1"
-)
+COUNTEREXAMPLE_GUIDED_PROOF_DEVELOPMENT_INTERFACE: Final = "CounterexampleGuidedProofDevelopment@1"
 COUNTEREXAMPLE_GUIDED_PROOF_DEVELOPMENT_VERSION: Final = "1.0.0"
 COUNTEREXAMPLE_GUIDED_PROOF_DEVELOPMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/counterexample-guided-proof-development@1"
 )
-CEGIS_BUDGET_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/cegis-budget@1"
-)
-CEGIS_CANDIDATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/cegis-refinement-candidate@1"
-)
+CEGIS_BUDGET_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/cegis-budget@1"
+CEGIS_CANDIDATE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/cegis-refinement-candidate@1"
 CEGIS_ITERATION_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/cegis-iteration-binding@1"
 )
-CEGIS_ITERATION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/cegis-iteration@1"
-)
-CEGIS_LOOP_RESULT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/cegis-loop-result@1"
-)
+CEGIS_ITERATION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/cegis-iteration@1"
+CEGIS_LOOP_RESULT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/cegis-loop-result@1"
 
 DEFAULT_MAX_ITERATIONS: Final = 8
 DEFAULT_MAX_CANDIDATES_PER_ITERATION: Final = 4
@@ -190,9 +191,7 @@ def _strings(value: Any) -> tuple[str, ...]:
         return ()
     if isinstance(value, str):
         values: Iterable[Any] = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
         values = value
     else:
         raise CegisValidationError("expected a sequence of strings")
@@ -206,9 +205,7 @@ def _strings(value: Any) -> tuple[str, ...]:
 
 def _positive(value: Any, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise CegisValidationError(
-            f"{name} must be an integer of at least {minimum}"
-        )
+        raise CegisValidationError(f"{name} must be an integer of at least {minimum}")
     return value
 
 
@@ -237,19 +234,13 @@ def _cancelled(value: Any) -> bool:
     checker = getattr(value, "is_cancelled", None)
     if callable(checker):
         return bool(checker())
-    raise CegisValidationError(
-        "cancelled must be a boolean, predicate, event, token, or None"
-    )
+    raise CegisValidationError("cancelled must be a boolean, predicate, event, token, or None")
 
 
 def _public_mapping(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if not value:
         return {}
-    return {
-        str(key): item
-        for key, item in value.items()
-        if not str(key).startswith("_")
-    }
+    return {str(key): item for key, item in value.items() if not str(key).startswith("_")}
 
 
 def _enum(value: Any, kind: type[Enum], name: str) -> Any:
@@ -260,9 +251,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
         return kind(str(raw).strip().lower())
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({item.value for item in kind}))
-        raise CegisValidationError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise CegisValidationError(f"{name} must be one of: {allowed}") from exc
 
 
 def _counterexample(
@@ -271,9 +260,7 @@ def _counterexample(
     if isinstance(value, FormalCounterexample):
         return value
     if not isinstance(value, Mapping):
-        raise CegisValidationError(
-            "counterexample must be FormalCounterexample or a mapping"
-        )
+        raise CegisValidationError("counterexample must be FormalCounterexample or a mapping")
     try:
         return normalize_counterexample(value)
     except CounterexampleValidationError as exc:
@@ -337,9 +324,7 @@ class CegisBudget:
             _positive(self.max_backoff_seconds, "max_backoff_seconds"),
         )
         if self.base_backoff_seconds > self.max_backoff_seconds:
-            raise CegisValidationError(
-                "base_backoff_seconds cannot exceed max_backoff_seconds"
-            )
+            raise CegisValidationError("base_backoff_seconds cannot exceed max_backoff_seconds")
         bounds = dict(self.finite_bounds or {})
         object.__setattr__(self, "finite_bounds", bounds)
         object.__setattr__(
@@ -353,9 +338,7 @@ class CegisBudget:
         object.__setattr__(
             self,
             "identical_failure_count",
-            _non_negative(
-                self.identical_failure_count, "identical_failure_count"
-            ),
+            _non_negative(self.identical_failure_count, "identical_failure_count"),
         )
 
     @property
@@ -380,15 +363,9 @@ class CegisBudget:
             base_backoff_seconds=self.base_backoff_seconds,
             max_backoff_seconds=self.max_backoff_seconds,
             finite_bounds=dict(self.finite_bounds),
-            iterations_used=(
-                self.iterations_used
-                if iterations_used is None
-                else iterations_used
-            ),
+            iterations_used=(self.iterations_used if iterations_used is None else iterations_used),
             candidates_tried=(
-                self.candidates_tried
-                if candidates_tried is None
-                else candidates_tried
+                self.candidates_tried if candidates_tried is None else candidates_tried
             ),
             identical_failure_count=(
                 self.identical_failure_count
@@ -434,12 +411,8 @@ class CegisBudget:
             max_identical_failures=value.get(
                 "max_identical_failures", DEFAULT_MAX_IDENTICAL_FAILURES
             ),
-            base_backoff_seconds=value.get(
-                "base_backoff_seconds", DEFAULT_BASE_BACKOFF_SECONDS
-            ),
-            max_backoff_seconds=value.get(
-                "max_backoff_seconds", DEFAULT_MAX_BACKOFF_SECONDS
-            ),
+            base_backoff_seconds=value.get("base_backoff_seconds", DEFAULT_BASE_BACKOFF_SECONDS),
+            max_backoff_seconds=value.get("max_backoff_seconds", DEFAULT_MAX_BACKOFF_SECONDS),
             finite_bounds=dict(value.get("finite_bounds") or {}),
             iterations_used=value.get("iterations_used", 0),
             candidates_tried=value.get("candidates_tried", 0),
@@ -461,9 +434,7 @@ class RefinementCandidate:
     statement: str = ""
     addresses_witness: bool = True
     parameters: Mapping[str, Any] = field(default_factory=dict)
-    validation_status: CandidateValidationStatus = (
-        CandidateValidationStatus.SKIPPED
-    )
+    validation_status: CandidateValidationStatus = CandidateValidationStatus.SKIPPED
     validation_reason: str = ""
 
     def __post_init__(self) -> None:
@@ -472,12 +443,8 @@ class RefinementCandidate:
             "candidate_id",
             _text(self.candidate_id, field_name="candidate_id"),
         )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, CandidateKind, "kind")
-        )
-        object.__setattr__(
-            self, "goal_id", _text(self.goal_id, field_name="goal_id")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, CandidateKind, "kind"))
+        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id"))
         object.__setattr__(
             self,
             "repaired_tree_id",
@@ -488,15 +455,9 @@ class RefinementCandidate:
             "repaired_plan_id",
             str(self.repaired_plan_id or "").strip(),
         )
-        object.__setattr__(
-            self, "statement", str(self.statement or "").strip()
-        )
-        object.__setattr__(
-            self, "addresses_witness", bool(self.addresses_witness)
-        )
-        object.__setattr__(
-            self, "parameters", _public_mapping(dict(self.parameters or {}))
-        )
+        object.__setattr__(self, "statement", str(self.statement or "").strip())
+        object.__setattr__(self, "addresses_witness", bool(self.addresses_witness))
+        object.__setattr__(self, "parameters", _public_mapping(dict(self.parameters or {})))
         object.__setattr__(
             self,
             "validation_status",
@@ -518,10 +479,7 @@ class RefinementCandidate:
 
     @property
     def admissible(self) -> bool:
-        return (
-            self.validation_status is CandidateValidationStatus.VALID
-            and self.addresses_witness
-        )
+        return self.validation_status is CandidateValidationStatus.VALID and self.addresses_witness
 
     def with_validation(
         self,
@@ -579,15 +537,11 @@ class RefinementCandidate:
                 or value.get("repository_tree_id")
                 or ""
             ),
-            repaired_plan_id=str(
-                value.get("repaired_plan_id") or value.get("plan_id") or ""
-            ),
+            repaired_plan_id=str(value.get("repaired_plan_id") or value.get("plan_id") or ""),
             statement=str(value.get("statement") or value.get("text") or ""),
             addresses_witness=bool(value.get("addresses_witness", True)),
             parameters=dict(value.get("parameters") or {}),
-            validation_status=value.get(
-                "validation_status", CandidateValidationStatus.SKIPPED
-            ),
+            validation_status=value.get("validation_status", CandidateValidationStatus.SKIPPED),
             validation_reason=str(value.get("validation_reason") or ""),
         )
 
@@ -658,9 +612,7 @@ class IterationBinding:
             "result_status",
             _enum(self.result_status, IterationOutcome, "result_status"),
         )
-        object.__setattr__(
-            self, "property_id", str(self.property_id or "").strip()
-        )
+        object.__setattr__(self, "property_id", str(self.property_id or "").strip())
         object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
         object.__setattr__(
             self,
@@ -668,9 +620,7 @@ class IterationBinding:
             str(self.bound_digest or self.budget.bound_digest or "").strip(),
         )
         object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
-        object.__setattr__(
-            self, "repaired_plan_id", str(self.repaired_plan_id or "").strip()
-        )
+        object.__setattr__(self, "repaired_plan_id", str(self.repaired_plan_id or "").strip())
         object.__setattr__(
             self,
             "verifier_receipt_id",
@@ -681,12 +631,8 @@ class IterationBinding:
             "closure_status",
             _enum(self.closure_status, WitnessClosureStatus, "closure_status"),
         )
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "").strip()
-        )
-        object.__setattr__(
-            self, "phase", _enum(self.phase, IterationPhase, "phase")
-        )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        object.__setattr__(self, "phase", _enum(self.phase, IterationPhase, "phase"))
 
     @property
     def binding_id(self) -> str:
@@ -745,9 +691,7 @@ class IterationBinding:
             policy_id=str(value.get("policy_id") or ""),
             repaired_plan_id=str(value.get("repaired_plan_id") or ""),
             verifier_receipt_id=str(value.get("verifier_receipt_id") or ""),
-            closure_status=value.get(
-                "closure_status", WitnessClosureStatus.OPEN
-            ),
+            closure_status=value.get("closure_status", WitnessClosureStatus.OPEN),
             reason_code=str(value.get("reason_code") or ""),
             phase=value.get("phase", IterationPhase.VERIFY),
         )
@@ -769,21 +713,11 @@ class CegisIteration:
     def __post_init__(self) -> None:
         if not isinstance(self.binding, IterationBinding):
             raise CegisValidationError("binding must be IterationBinding")
-        if self.candidate is not None and not isinstance(
-            self.candidate, RefinementCandidate
-        ):
-            raise CegisValidationError(
-                "candidate must be RefinementCandidate or None"
-            )
-        if self.closure is not None and not isinstance(
-            self.closure, VerifierBackedRepairClosure
-        ):
-            raise CegisValidationError(
-                "closure must be VerifierBackedRepairClosure or None"
-            )
-        object.__setattr__(
-            self, "post_witness_id", str(self.post_witness_id or "").strip()
-        )
+        if self.candidate is not None and not isinstance(self.candidate, RefinementCandidate):
+            raise CegisValidationError("candidate must be RefinementCandidate or None")
+        if self.closure is not None and not isinstance(self.closure, VerifierBackedRepairClosure):
+            raise CegisValidationError("closure must be VerifierBackedRepairClosure or None")
+        object.__setattr__(self, "post_witness_id", str(self.post_witness_id or "").strip())
         object.__setattr__(
             self, "backoff_seconds", _non_negative(self.backoff_seconds, "backoff_seconds")
         )
@@ -797,9 +731,7 @@ class CegisIteration:
         return {
             "schema": CEGIS_ITERATION_SCHEMA,
             "binding": self.binding.to_dict(),
-            "candidate": (
-                None if self.candidate is None else self.candidate.to_dict()
-            ),
+            "candidate": (None if self.candidate is None else self.candidate.to_dict()),
             "closure": None if self.closure is None else self.closure.to_dict(),
             "post_witness_id": self.post_witness_id,
             "backoff_seconds": self.backoff_seconds,
@@ -853,6 +785,8 @@ class CegisLoopResult:
     repository_tree_id: str = ""
     policy_id: str = ""
     reason_code: str = ""
+    curriculum: CurriculumProjection | None = None
+    traces: tuple[TacticPremiseTrace, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -875,15 +809,11 @@ class CegisLoopResult:
             "exact_verifier_id",
             _text(self.exact_verifier_id, field_name="exact_verifier_id"),
         )
-        object.__setattr__(
-            self, "property_id", str(self.property_id or "").strip()
-        )
+        object.__setattr__(self, "property_id", str(self.property_id or "").strip())
         records = tuple(self.iterations or ())
         for item in records:
             if not isinstance(item, CegisIteration):
-                raise CegisValidationError(
-                    "iterations must contain CegisIteration records"
-                )
+                raise CegisValidationError("iterations must contain CegisIteration records")
         object.__setattr__(self, "iterations", records)
         if not isinstance(self.budget, CegisBudget):
             raise CegisValidationError("budget must be CegisBudget")
@@ -895,13 +825,9 @@ class CegisLoopResult:
         object.__setattr__(self, "closed", bool(self.closed))
         if self.closed:
             if self.open_counterexamples != 0:
-                raise CegisValidationError(
-                    "closed loops must report zero open counterexamples"
-                )
+                raise CegisValidationError("closed loops must report zero open counterexamples")
             if self.stop_reason is not CegisStopReason.CLOSED:
-                raise CegisValidationError(
-                    "closed loops must use stop_reason=closed"
-                )
+                raise CegisValidationError("closed loops must use stop_reason=closed")
             if self.closure is None or not self.closure.closed:
                 raise CegisValidationError(
                     "closed loops require a closed verifier-backed repair closure"
@@ -916,13 +842,22 @@ class CegisLoopResult:
                     raise CegisValidationError(
                         "open loops must keep a non-zero open-counterexample count"
                     )
-        object.__setattr__(
-            self, "repository_tree_id", str(self.repository_tree_id or "").strip()
-        )
+        object.__setattr__(self, "repository_tree_id", str(self.repository_tree_id or "").strip())
         object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "").strip()
-        )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        if self.curriculum is not None and not isinstance(self.curriculum, CurriculumProjection):
+            object.__setattr__(
+                self,
+                "curriculum",
+                CurriculumProjection.from_dict(_mapping(self.curriculum, field_name="curriculum")),
+            )
+        traces: list[TacticPremiseTrace] = []
+        for item in self.traces or ():
+            if isinstance(item, TacticPremiseTrace):
+                traces.append(item)
+            else:
+                traces.append(TacticPremiseTrace.from_dict(_mapping(item, field_name="trace")))
+        object.__setattr__(self, "traces", tuple(traces))
 
     @property
     def result_id(self) -> str:
@@ -948,17 +883,15 @@ class CegisLoopResult:
             "closed": self.closed,
             "closure": None if self.closure is None else self.closure.to_dict(),
             "selected_candidate": (
-                None
-                if self.selected_candidate is None
-                else self.selected_candidate.to_dict()
+                None if self.selected_candidate is None else self.selected_candidate.to_dict()
             ),
             "repository_tree_id": self.repository_tree_id,
             "policy_id": self.policy_id,
             "reason_code": self.reason_code,
             "iteration_count": self.iteration_count,
-            "verifier_backed_repair_closure_schema": (
-                VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA
-            ),
+            "verifier_backed_repair_closure_schema": (VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA),
+            "curriculum": (self.curriculum.to_dict() if self.curriculum is not None else None),
+            "traces": [item.to_dict() for item in self.traces],
         }
         if include_identity:
             payload["result_id"] = self.result_id
@@ -970,8 +903,7 @@ class CegisLoopResult:
         if value.get("schema") not in {None, CEGIS_LOOP_RESULT_SCHEMA}:
             raise CegisValidationError("unsupported cegis loop result schema")
         iterations = tuple(
-            CegisIteration.from_dict(item)
-            for item in (value.get("iterations") or ())
+            CegisIteration.from_dict(item) for item in (value.get("iterations") or ())
         )
         closure_payload = value.get("closure")
         candidate_payload = value.get("selected_candidate")
@@ -998,6 +930,8 @@ class CegisLoopResult:
             repository_tree_id=str(value.get("repository_tree_id") or ""),
             policy_id=str(value.get("policy_id") or ""),
             reason_code=str(value.get("reason_code") or ""),
+            curriculum=value.get("curriculum"),
+            traces=tuple(value.get("traces") or ()),
         )
 
 
@@ -1048,17 +982,12 @@ def _default_refine(
         or (
             counterexample.bindings.obligation_ids[0]
             if counterexample.bindings.obligation_ids
-            else counterexample.violated_property
-            or "goal:unspecified"
+            else counterexample.violated_property or "goal:unspecified"
         )
     )
     plan = str(
         context.get("repaired_plan_id")
-        or (
-            counterexample.bindings.plan_ids[0]
-            if counterexample.bindings.plan_ids
-            else ""
-        )
+        or (counterexample.bindings.plan_ids[0] if counterexample.bindings.plan_ids else "")
     )
     kind = CandidateKind.REPAIR
     repair_classes = tuple(counterexample.repair_classes or ())
@@ -1088,15 +1017,11 @@ def _default_refine(
             goal_id=goal,
             repaired_tree_id=tree,
             repaired_plan_id=plan or f"plan:refined:{candidate_id[-12:]}",
-            statement=(
-                f"Refine against witness {counterexample.semantic_id[:24]}"
-            ),
+            statement=(f"Refine against witness {counterexample.semantic_id[:24]}"),
             addresses_witness=True,
             parameters={
                 "source_witness_id": counterexample.semantic_id,
-                "repair_classes": [
-                    str(getattr(item, "value", item)) for item in repair_classes
-                ],
+                "repair_classes": [str(getattr(item, "value", item)) for item in repair_classes],
             },
         ),
     )
@@ -1131,11 +1056,7 @@ def _normalize_validation(raw: Any) -> tuple[CandidateValidationStatus, str]:
         return status, reason
     if isinstance(raw, bool):
         return (
-            (
-                CandidateValidationStatus.VALID
-                if raw
-                else CandidateValidationStatus.INVALID
-            ),
+            (CandidateValidationStatus.VALID if raw else CandidateValidationStatus.INVALID),
             "boolean_validation",
         )
     if raw is None:
@@ -1176,8 +1097,7 @@ def _policy_id(
 
 def _assumption_ids(counterexample: FormalCounterexample) -> tuple[str, ...]:
     return _strings(
-        tuple(counterexample.assumption_ids)
-        + tuple(counterexample.bindings.assumption_ids)
+        tuple(counterexample.assumption_ids) + tuple(counterexample.bindings.assumption_ids)
     )
 
 
@@ -1226,6 +1146,89 @@ def _outcome_for_closure(
     if closure.status is WitnessClosureStatus.UNKNOWN:
         return IterationOutcome.UNKNOWN
     return IterationOutcome.STILL_OPEN
+
+
+def project_cegis_curriculum(
+    *,
+    stop_reason: CegisStopReason | str,
+    closed: bool,
+    independently_validated: bool,
+    traces: Sequence[TacticPremiseTrace] = (),
+    property_id: str = "",
+    witness_id: str = "",
+) -> CurriculumProjection:
+    """Project a CEGIS outcome onto a typed curriculum class.
+
+    Timeout remains timeout (never falsehood). Structural admissibility or
+    candidate success never upgrades curriculum authority. Only a closed
+    verifier-backed receipt or an independently checked counterexample may
+    become high-authority curriculum.
+    """
+
+    reason = _enum(stop_reason, CegisStopReason, "stop_reason")
+    if reason is CegisStopReason.VERIFIER_TIMEOUT:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.TIMEOUT,
+            curriculum_class=CurriculumClass.TIMEOUT,
+            independently_validated=independently_validated,
+            kernel_verified=False,
+            reason_code="timeout_is_not_falsehood",
+        )
+    elif reason is CegisStopReason.CLOSED and closed and independently_validated:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.CLOSED,
+            curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+            independently_validated=True,
+            kernel_verified=True,
+            reason_code="fresh_matching_verifier_receipt",
+        )
+    elif reason in {
+        CegisStopReason.OPEN_CONTINUED_FAILURE,
+        CegisStopReason.UNCHANGED_WITNESS_BACKOFF,
+        CegisStopReason.IDENTICAL_FAILURE_TERMINATED,
+        CegisStopReason.REFINEMENT_DEPTH_EXHAUSTED,
+        CegisStopReason.RETRY_BUDGET_EXHAUSTED,
+        CegisStopReason.CANDIDATE_BUDGET_EXHAUSTED,
+    }:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.COUNTEREXAMPLE,
+            curriculum_class=CurriculumClass.COUNTEREXAMPLE,
+            independently_validated=independently_validated,
+            kernel_verified=False,
+            reason_code="open_checked_counterexample"
+            if independently_validated
+            else "candidate_counterexample",
+        )
+    elif reason is CegisStopReason.NO_ADMISSIBLE_CANDIDATE:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.PARSE_ERROR,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=independently_validated,
+            reason_code="parse_type_candidate_rejected",
+        )
+    else:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.OPEN,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=independently_validated,
+            reason_code=reason.value,
+        )
+    bound_traces = tuple(traces)
+    if not bound_traces and (property_id or witness_id):
+        bound_traces = (
+            build_tactic_premise_trace(
+                kind=RankedKind.TACTIC,
+                goal_id=property_id or "goal:unspecified",
+                item_ids=(witness_id,) if witness_id else (),
+                outcome=classification.curriculum_class.value,
+                independently_validated=independently_validated,
+            ),
+        )
+    return project_curriculum(
+        classification,
+        traces=bound_traces,
+        independently_validated=independently_validated,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1290,9 +1293,7 @@ class CounterexampleGuidedTactician:
 
         witness = _counterexample(counterexample)
         active_budget = self._resolve_budget(budget)
-        verifier_id = str(exact_verifier_id or "").strip() or _originating_verifier_id(
-            witness
-        )
+        verifier_id = str(exact_verifier_id or "").strip() or _originating_verifier_id(witness)
         property_id = _property_id(witness)
         policy = _policy_id(witness, explicit=policy_id)
         tree = _tree_id(witness, explicit=repository_tree_id)
@@ -1306,9 +1307,7 @@ class CounterexampleGuidedTactician:
         if not active_budget.finite_bounds and witness.finite_bounds:
             active_budget = CegisBudget(
                 max_iterations=active_budget.max_iterations,
-                max_candidates_per_iteration=(
-                    active_budget.max_candidates_per_iteration
-                ),
+                max_candidates_per_iteration=(active_budget.max_candidates_per_iteration),
                 max_identical_failures=active_budget.max_identical_failures,
                 base_backoff_seconds=active_budget.base_backoff_seconds,
                 max_backoff_seconds=active_budget.max_backoff_seconds,
@@ -1394,9 +1393,7 @@ class CounterexampleGuidedTactician:
             # Unchanged witness → backoff (preserve formal-replanner semantics).
             if previous and previous == current.semantic_id:
                 identical_failures += 1
-                used_budget = used_budget.with_usage(
-                    identical_failure_count=identical_failures
-                )
+                used_budget = used_budget.with_usage(identical_failure_count=identical_failures)
                 seconds = used_budget.backoff_seconds(identical_failures - 1)
                 if identical_failures >= used_budget.max_identical_failures:
                     binding = IterationBinding(
@@ -1414,9 +1411,7 @@ class CounterexampleGuidedTactician:
                         assumption_ids=assumptions,
                         bound_digest=bound_digest,
                         policy_id=policy,
-                        repaired_plan_id=str(
-                            base_context.get("repaired_plan_id") or ""
-                        ),
+                        repaired_plan_id=str(base_context.get("repaired_plan_id") or ""),
                         closure_status=WitnessClosureStatus.OPEN,
                         reason_code="identical_failure_terminated",
                         phase=IterationPhase.BACKOFF,
@@ -1448,9 +1443,7 @@ class CounterexampleGuidedTactician:
                     assumption_ids=assumptions,
                     bound_digest=bound_digest,
                     policy_id=policy,
-                    repaired_plan_id=str(
-                        base_context.get("repaired_plan_id") or ""
-                    ),
+                    repaired_plan_id=str(base_context.get("repaired_plan_id") or ""),
                     closure_status=WitnessClosureStatus.OPEN,
                     reason_code="unchanged_witness_backoff",
                     phase=IterationPhase.BACKOFF,
@@ -1512,9 +1505,7 @@ class CounterexampleGuidedTactician:
             candidates = self._materialize_candidates(
                 raw_candidates,
                 default_tree=tree,
-                default_goal=str(
-                    base_context.get("goal_id") or property_id or "goal:unspecified"
-                ),
+                default_goal=str(base_context.get("goal_id") or property_id or "goal:unspecified"),
                 default_plan=str(base_context.get("repaired_plan_id") or ""),
             )
             if not candidates:
@@ -1582,8 +1573,7 @@ class CounterexampleGuidedTactician:
                         repaired_plan_id=validated.repaired_plan_id,
                         closure_status=WitnessClosureStatus.OPEN,
                         reason_code=(
-                            validated.validation_reason
-                            or validated.validation_status.value
+                            validated.validation_reason or validated.validation_status.value
                         ),
                         phase=IterationPhase.VALIDATE,
                     )
@@ -1634,18 +1624,14 @@ class CounterexampleGuidedTactician:
                     verifier_receipt_id=closure.verifier_receipt_id,
                     closure_status=closure.status,
                     reason_code=closure.reason_code,
-                    phase=IterationPhase.CLOSE
-                    if closure.closed
-                    else IterationPhase.VERIFY,
+                    phase=IterationPhase.CLOSE if closure.closed else IterationPhase.VERIFY,
                 )
                 iterations.append(
                     CegisIteration(
                         binding=binding,
                         candidate=validated,
                         closure=closure,
-                        post_witness_id=(
-                            "" if closure.closed else current.semantic_id
-                        ),
+                        post_witness_id=("" if closure.closed else current.semantic_id),
                         notes=(closure.reason_code,),
                     )
                 )
@@ -1746,9 +1732,7 @@ class CounterexampleGuidedTactician:
 
     # -- internals ---------------------------------------------------------
 
-    def _resolve_budget(
-        self, budget: CegisBudget | Mapping[str, Any] | None
-    ) -> CegisBudget:
+    def _resolve_budget(self, budget: CegisBudget | Mapping[str, Any] | None) -> CegisBudget:
         if budget is None:
             return self.budget
         if isinstance(budget, CegisBudget):
@@ -1907,6 +1891,25 @@ class CounterexampleGuidedTactician:
         policy_id: str = "",
         reason_code: str = "",
     ) -> CegisLoopResult:
+        independently_validated = bool(closed and closure is not None and closure.closed)
+        traces = (
+            build_tactic_premise_trace(
+                kind=RankedKind.TACTIC,
+                goal_id=property_id or "goal:unspecified",
+                item_ids=(initial_witness_id,),
+                outcome=("verified_success" if independently_validated else stop_reason.value),
+                independently_validated=independently_validated,
+                metadata={"repository_tree_id": repository_tree_id},
+            ),
+        )
+        curriculum = project_cegis_curriculum(
+            stop_reason=stop_reason,
+            closed=closed,
+            independently_validated=independently_validated,
+            traces=traces,
+            property_id=property_id,
+            witness_id=initial_witness_id,
+        )
         return CegisLoopResult(
             stop_reason=stop_reason,
             initial_witness_id=initial_witness_id,
@@ -1922,6 +1925,8 @@ class CounterexampleGuidedTactician:
             repository_tree_id=repository_tree_id,
             policy_id=policy_id,
             reason_code=reason_code,
+            curriculum=curriculum,
+            traces=traces,
         )
 
 
@@ -1998,5 +2003,6 @@ __all__ = [
     "ReplayProvider",
     "ValidateProvider",
     "VerifyProvider",
+    "project_cegis_curriculum",
     "run_counterexample_guided_loop",
 ]

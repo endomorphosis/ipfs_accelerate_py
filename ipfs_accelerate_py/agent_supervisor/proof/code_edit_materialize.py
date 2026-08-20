@@ -109,9 +109,7 @@ def _assurance_value(value: Any) -> AssuranceLevel:
     try:
         return AssuranceLevel(text)
     except ValueError as exc:
-        raise CodeEditMaterializeError(
-            f"invalid assurance level: {text!r}"
-        ) from exc
+        raise CodeEditMaterializeError(f"invalid assurance level: {text!r}") from exc
 
 
 def _reject_gold_bodies(payload: Mapping[str, Any], *, where: str) -> None:
@@ -210,9 +208,7 @@ def emit_validation_command_specs(
     )
     impact = tuple(predicted_files) if predicted_files else ()
     specs: list[ValidationCommand] = []
-    for ordinal, (cmd, stage, verdict, kind) in enumerate(
-        zip(commands, stages, verdicts, kinds)
-    ):
+    for ordinal, (cmd, stage, verdict, kind) in enumerate(zip(commands, stages, verdicts, kinds)):
         specs.append(
             ValidationCommand(
                 command=cmd,
@@ -254,12 +250,8 @@ class CodeEditSupervisorTask:
         object.__setattr__(self, "validation_commands", cmds)
         object.__setattr__(self, "title", str(self.title or "").strip())
         object.__setattr__(self, "implementable", bool(self.implementable))
-        object.__setattr__(
-            self, "predicted_files", _sorted_unique(self.predicted_files)
-        )
-        object.__setattr__(
-            self, "acceptance_ids", _sorted_unique(self.acceptance_ids)
-        )
+        object.__setattr__(self, "predicted_files", _sorted_unique(self.predicted_files))
+        object.__setattr__(self, "acceptance_ids", _sorted_unique(self.acceptance_ids))
         object.__setattr__(self, "notes", _sorted_unique(self.notes))
         if not isinstance(self.metadata, Mapping):
             raise CodeEditMaterializeError("metadata must be a mapping")
@@ -322,9 +314,7 @@ class CodeEditMaterializeReport:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "repository_tree_id", str(self.repository_tree_id or "").strip()
-        )
+        object.__setattr__(self, "repository_tree_id", str(self.repository_tree_id or "").strip())
         object.__setattr__(self, "packets", tuple(self.packets or ()))
         object.__setattr__(self, "tasks", tuple(self.tasks or ()))
         object.__setattr__(self, "notes", _sorted_unique(self.notes))
@@ -363,13 +353,9 @@ class CodeEditMaterializeReport:
     def from_dict(cls, payload: Mapping[str, Any]) -> "CodeEditMaterializeReport":
         if not isinstance(payload, Mapping):
             raise CodeEditMaterializeError("materialize report must be an object")
-        packets = tuple(
-            CodeEditPacket.from_dict(item)
-            for item in (payload.get("packets") or ())
-        )
+        packets = tuple(CodeEditPacket.from_dict(item) for item in (payload.get("packets") or ()))
         tasks = tuple(
-            CodeEditSupervisorTask.from_dict(item)
-            for item in (payload.get("tasks") or ())
+            CodeEditSupervisorTask.from_dict(item) for item in (payload.get("tasks") or ())
         )
         return cls(
             repository_tree_id=str(payload.get("repository_tree_id") or ""),
@@ -384,14 +370,10 @@ def _claim_status_from_record(claim: CodeClaimRecord) -> ClaimStatusRecord:
     return ClaimStatusRecord(
         claim_id=str(claim.claim_id),
         property_id=str(claim.property_id or ""),
-        status=claim.status.value
-        if isinstance(claim.status, ClaimStatus)
-        else str(claim.status),
+        status=claim.status.value if isinstance(claim.status, ClaimStatus) else str(claim.status),
         obligation_id=str(claim.obligation_id or ""),
         evidence_ids=tuple(claim.evidence_ids or ()),
-        evidence_tiers=tuple(
-            str(getattr(t, "value", t)) for t in (claim.evidence_tiers or ())
-        ),
+        evidence_tiers=tuple(str(getattr(t, "value", t)) for t in (claim.evidence_tiers or ())),
         required_assurance=claim.required_assurance,
         derived_assurance=claim.derived_assurance,
     )
@@ -408,12 +390,10 @@ def _claim_status_from_hit(hit: ClaimQueryHit) -> ClaimStatusRecord:
         evidence_ids=tuple(hit.evidence_ids or ()),
         evidence_tiers=tuple(hit.evidence_tiers or ()),
         required_assurance=_assurance_value(
-            (hit.provenance or {}).get("required_assurance")
-            or AssuranceLevel.KERNEL_VERIFIED
+            (hit.provenance or {}).get("required_assurance") or AssuranceLevel.KERNEL_VERIFIED
         ),
         derived_assurance=_assurance_value(
-            (hit.provenance or {}).get("derived_assurance")
-            or AssuranceLevel.UNVERIFIED
+            (hit.provenance or {}).get("derived_assurance") or AssuranceLevel.UNVERIFIED
         ),
         reason_codes=tuple(hit.reason_codes or ()),
     )
@@ -540,8 +520,7 @@ def packet_from_query_hit(
     if not isinstance(hit, ClaimQueryHit):
         raise CodeEditMaterializeError("hit must be a ClaimQueryHit")
     assurance = _assurance_value(
-        (hit.provenance or {}).get("required_assurance")
-        or AssuranceLevel.KERNEL_VERIFIED
+        (hit.provenance or {}).get("required_assurance") or AssuranceLevel.KERNEL_VERIFIED
     )
     claim_rec = _claim_status_from_hit(hit)
     cache_rec = _cache_status_from_hit(hit, required_assurance=assurance)
@@ -588,14 +567,16 @@ def packet_from_compiled_item(
     if not tree and item.obligation is not None:
         tree = str(item.obligation.repository_tree_id or "")
     files = tuple(predicted_files) or _predicted_files_from_item(item)
-    inv = [str(s.get("reason_code") or s.get("kind") or "") for s in (item.invalidation_selectors or ()) if isinstance(s, Mapping)]
+    inv = [
+        str(s.get("reason_code") or s.get("kind") or "")
+        for s in (item.invalidation_selectors or ())
+        if isinstance(s, Mapping)
+    ]
     inv = [x for x in inv if x]
     inv.extend(item.reason_codes or ())
 
     compile_status = (
-        item.status.value
-        if isinstance(item.status, ObligationCompileStatus)
-        else str(item.status)
+        item.status.value if isinstance(item.status, ObligationCompileStatus) else str(item.status)
     )
     claim_rec: ClaimStatusRecord
     if item.claim is not None and isinstance(item.claim, CodeClaimRecord):
@@ -705,12 +686,8 @@ def bridge_plateau_codex_packet(
     files = _sorted_unique(
         predicted_files or plateau.get("predicted_files") or plateau.get("paths") or ()
     )
-    acceptance = _sorted_unique(
-        acceptance_ids or plateau.get("acceptance_ids") or ()
-    )
-    inv = _sorted_unique(
-        plateau.get("invalidation_reasons") or plateau.get("reason_codes") or ()
-    )
+    acceptance = _sorted_unique(acceptance_ids or plateau.get("acceptance_ids") or ())
+    inv = _sorted_unique(plateau.get("invalidation_reasons") or plateau.get("reason_codes") or ())
     status = str(plateau.get("status") or plateau.get("claim_status") or ClaimStatus.OPEN.value)
 
     return build_code_edit_packet(
@@ -887,9 +864,7 @@ def materialize_code_edit_packets(
 
     if compilation is not None:
         if not isinstance(compilation, CodeProofObligationCompilation):
-            raise CodeEditMaterializeError(
-                "compilation must be a CodeProofObligationCompilation"
-            )
+            raise CodeEditMaterializeError("compilation must be a CodeProofObligationCompilation")
         tree = repository_tree_id or compilation.repository_tree_id
         repo = repository_id or compilation.repository_id
         for item in compilation.items:

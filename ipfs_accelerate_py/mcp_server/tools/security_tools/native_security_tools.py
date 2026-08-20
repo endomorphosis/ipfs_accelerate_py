@@ -30,7 +30,9 @@ def _mcp_error_response(message: str, *, error_type: str = "error") -> Dict[str,
     )
 
 
-def _parse_json_object(request_json: Any) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+def _parse_json_object(
+    request_json: Any,
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """Parse JSON-string object payload for source-compatible MCP entrypoints."""
     if not isinstance(request_json, str):
         return None, _mcp_error_response("Input must be a JSON string")
@@ -89,11 +91,15 @@ async def check_access_permission(
     resource_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Check whether a user has access permission to a resource."""
-    if isinstance(resource_id, str) and user_id is None and (
-        not resource_id.strip()
-        or resource_id.lstrip().startswith("{")
-        or resource_id.lstrip().startswith("[")
-        or any(ch.isspace() for ch in resource_id)
+    if (
+        isinstance(resource_id, str)
+        and user_id is None
+        and (
+            not resource_id.strip()
+            or resource_id.lstrip().startswith("{")
+            or resource_id.lstrip().startswith("[")
+            or any(ch.isspace() for ch in resource_id)
+        )
     ):
         data, error = _parse_json_object(resource_id)
         if error is not None:
@@ -101,7 +107,9 @@ async def check_access_permission(
 
         for field in ("resource_id", "user_id"):
             if not data.get(field):
-                return _mcp_error_response(f"Missing required field: {field}", error_type="validation")
+                return _mcp_error_response(
+                    f"Missing required field: {field}", error_type="validation"
+                )
 
         payload = await check_access_permission(
             resource_id=str(data["resource_id"]),
@@ -114,9 +122,7 @@ async def check_access_permission(
     normalized_resource_id = str(resource_id or "").strip()
     normalized_user_id = str(user_id or "").strip()
     normalized_permission_type = str(permission_type or "read").strip().lower() or "read"
-    normalized_resource_type = (
-        None if resource_type is None else str(resource_type).strip()
-    )
+    normalized_resource_type = None if resource_type is None else str(resource_type).strip()
 
     if not normalized_resource_id:
         return {
@@ -142,8 +148,7 @@ async def check_access_permission(
         return {
             "status": "error",
             "error": (
-                "permission_type must be one of: "
-                + ", ".join(sorted(_VALID_PERMISSION_TYPES))
+                "permission_type must be one of: " + ", ".join(sorted(_VALID_PERMISSION_TYPES))
             ),
             "allowed": False,
             "user_id": normalized_user_id,

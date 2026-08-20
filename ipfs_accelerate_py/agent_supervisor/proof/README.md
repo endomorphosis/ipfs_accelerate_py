@@ -17,6 +17,7 @@ Formal verification and attestation: prover contracts, caches, capabilities, and
 
 | Module | Path |
 | --- | --- |
+| `campaign_proof_replay` | `proof/campaign_proof_replay.py` |
 | `code_claim_contracts` | `proof/code_claim_contracts.py` |
 | `code_edit_materialize` | `proof/code_edit_materialize.py` |
 | `code_edit_packet` | `proof/code_edit_packet.py` |
@@ -48,7 +49,9 @@ Formal verification and attestation: prover contracts, caches, capabilities, and
 | `logic_translation_validation` | `proof/logic_translation_validation.py` |
 | `multi_prover_resources` | `proof/multi_prover_resources.py` |
 | `multi_prover_router` | `proof/multi_prover_router.py` |
+| `bounded_expert_iteration` | `proof/bounded_expert_iteration.py` |
 | `proof_attestation` | `proof/proof_attestation.py` |
+| `proof_authority_security` | `proof/proof_authority_security.py` |
 | `proof_context` | `proof/proof_context.py` |
 | `proof_directed_retrieval` | `proof/proof_directed_retrieval.py` |
 | `proof_fallbacks` | `proof/proof_fallbacks.py` |

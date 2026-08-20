@@ -109,16 +109,10 @@ def test_merge_prompt_restores_only_exact_affected_gitlinks_without_recursion(
         repo_root=repo,
     )
 
-    assert (
-        "git -c submodule.recurse=false submodule update --init -- <exact-path>"
-        in prompt
-    )
+    assert "git -c submodule.recurse=false submodule update --init -- <exact-path>" in prompt
     assert "git submodule update --init --recursive" not in prompt
     assert "never run a recursive or repository-wide submodule update" in prompt
-    assert (
-        "only when that exact nested path is itself conflicted or explicitly declared"
-        in prompt
-    )
+    assert "only when that exact nested path is itself conflicted or explicitly declared" in prompt
     assert "innermost first and working outward" in prompt
 
 
@@ -180,7 +174,9 @@ def test_resolution_validation_rejects_markers_and_invalid_python(tmp_path: Path
     marked = tmp_path / "marked.py"
     invalid = tmp_path / "invalid.py"
     clean.write_text("value = 1\n", encoding="utf-8")
-    marked.write_text("<<<<<<< HEAD\nvalue = 1\n=======\nvalue = 2\n>>>>>>> branch\n", encoding="utf-8")
+    marked.write_text(
+        "<<<<<<< HEAD\nvalue = 1\n=======\nvalue = 2\n>>>>>>> branch\n", encoding="utf-8"
+    )
     invalid.write_text("def broken(\n", encoding="utf-8")
 
     result = validate_resolved_paths(tmp_path, ["clean.py", "marked.py", "invalid.py"])

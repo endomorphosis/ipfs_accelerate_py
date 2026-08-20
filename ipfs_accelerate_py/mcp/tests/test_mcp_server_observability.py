@@ -35,7 +35,9 @@ class TestObservabilityMonitoring(unittest.TestCase):
         p2p.track_workflow_execution("wf-1", status="completed", execution_time_ms=11.0)
         p2p.track_bootstrap_operation("seed", success=True, duration_ms=3.0)
 
-        self.assertGreaterEqual(collector.counters.get("p2p.peer_discovery.total[source=dht,success=true]", 0.0), 1.0)
+        self.assertGreaterEqual(
+            collector.counters.get("p2p.peer_discovery.total[source=dht,success=true]", 0.0), 1.0
+        )
         self.assertEqual(p2p.get_dashboard_data()["peer_discovery"]["total_discoveries"], 1)
 
 

@@ -23,5 +23,8 @@ def test_dashboard_package_exports_supported_native_functions() -> None:
     assert export_tdfol_statistics is native_dashboard_tools.export_tdfol_statistics
     assert get_tdfol_profiler_report is native_dashboard_tools.get_tdfol_profiler_report
     assert compare_tdfol_strategies is native_dashboard_tools.compare_tdfol_strategies
-    assert check_tdfol_performance_regression is native_dashboard_tools.check_tdfol_performance_regression
+    assert (
+        check_tdfol_performance_regression
+        is native_dashboard_tools.check_tdfol_performance_regression
+    )
     assert reset_tdfol_metrics is native_dashboard_tools.reset_tdfol_metrics

@@ -45,7 +45,9 @@ class HerbertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         super().setUp()
 
         # Use a simpler test file without japanese/chinese characters
-        with open(f"{get_tests_dir()}/fixtures/sample_text_no_unicode.txt", encoding="utf-8") as f_data:
+        with open(
+            f"{get_tests_dir()}/fixtures/sample_text_no_unicode.txt", encoding="utf-8"
+        ) as f_data:
             self._data = f_data.read().replace("\n\n", "\n").strip()
 
         vocab = [

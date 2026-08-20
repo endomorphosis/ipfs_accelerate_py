@@ -66,11 +66,12 @@ def to_valid_identifier(text):
     # Remove other invalid characters...
     return text
 
+
 def get_pascal_case_identifier(text):
     """Convert model name to PascalCase for class names."""
     # Split by hyphens and capitalize each part
-    parts = text.split('-')
-    return ''.join(part.capitalize() for part in parts)
+    parts = text.split("-")
+    return "".join(part.capitalize() for part in parts)
 ```
 
 This ensures that models like `xlm-roberta` and `gpt-j` are properly converted to valid Python identifiers.

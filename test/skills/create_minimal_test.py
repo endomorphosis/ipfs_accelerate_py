@@ -14,11 +14,11 @@ from pathlib import Path
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(f"create_minimal_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
+        logging.FileHandler(f"create_minimal_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ MODEL_FAMILIES = {
         "tokenizer_class": "BertTokenizer",
         "task": "fill-mask",
         "test_text": "The man worked as a [MASK].",
-        "architecture_type": "encoder_only"
+        "architecture_type": "encoder_only",
     },
     "gpt2": {
         "model_id": "gpt2",
@@ -38,7 +38,7 @@ MODEL_FAMILIES = {
         "tokenizer_class": "GPT2Tokenizer",
         "task": "text-generation",
         "test_text": "Once upon a time",
-        "architecture_type": "decoder_only"
+        "architecture_type": "decoder_only",
     },
     "t5": {
         "model_id": "t5-small",
@@ -46,7 +46,7 @@ MODEL_FAMILIES = {
         "tokenizer_class": "T5Tokenizer",
         "task": "translation_en_to_fr",
         "test_text": "translate English to French: Hello, how are you?",
-        "architecture_type": "encoder_decoder"
+        "architecture_type": "encoder_decoder",
     },
     "vit": {
         "model_id": "google/vit-base-patch16-224",
@@ -54,31 +54,33 @@ MODEL_FAMILIES = {
         "processor_class": "ViTImageProcessor",
         "task": "image-classification",
         "test_image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
-        "architecture_type": "vision"
-    }
+        "architecture_type": "vision",
+    },
 }
+
 
 def verify_python_syntax(file_path):
     """
     Verify the Python syntax of a file.
-    
+
     Args:
         file_path: Path to the file to check
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             content = f.read()
-        
+
         # Try to compile the code to check syntax
-        compile(content, file_path, 'exec')
+        compile(content, file_path, "exec")
         return True, None
     except SyntaxError as e:
         return False, f"{e.__class__.__name__}: {e}"
     except Exception as e:
         return False, f"Unexpected error: {e}"
+
 
 def generate_minimal_imports():
     """Generate minimal import statements."""
@@ -128,6 +130,7 @@ except ImportError:
     logger.warning("tokenizers not available, using mock")
 """
 
+
 def generate_hardware_detection():
     """Generate hardware detection function."""
     return """
@@ -167,16 +170,17 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 """
 
+
 def generate_minimal_class(family, family_info):
     """Generate a minimal test class with correct indentation."""
-    
+
     class_name = f"Test{family.capitalize()}Models"
     registry_name = f"{family.upper()}_MODELS_REGISTRY"
     model_id = family_info.get("model_id", "")
     model_class = family_info.get("model_class", "")
     task = family_info.get("task", "")
     architecture_type = family_info.get("architecture_type", "")
-    
+
     # Create a minimal model registry
     registry = f"""
 # Models registry
@@ -187,7 +191,7 @@ def generate_minimal_class(family, family_info):
     }}
 }}
 """
-    
+
     # Create the class with proper indentation
     class_def = f"""
 class {class_name}:
@@ -211,13 +215,13 @@ class {class_name}:
         
         # Define test inputs
 """
-    
+
     # Add appropriate test inputs based on architecture type
     if architecture_type == "vision":
         class_def += f'        self.test_image_url = "{family_info.get("test_image_url", "http://images.cocodataset.org/val2017/000000039769.jpg")}"\n'
     else:
         class_def += f'        self.test_text = "{family_info.get("test_text", "Test input")}"\n'
-    
+
     # Add hardware preference
     class_def += """
         # Configure hardware preference
@@ -271,7 +275,7 @@ class {class_name}:
             
             # Prepare test input
 """
-    
+
     # Add pipeline input based on architecture type
     if architecture_type == "vision":
         class_def += """            # For vision models
@@ -286,7 +290,7 @@ class {class_name}:
         class_def += """            # For text models
             pipeline_input = self.test_text
 """
-    
+
     # Complete the test_pipeline method
     class_def += """
             # Run inference
@@ -326,14 +330,15 @@ class {class_name}:
             }
         }
 """
-    
+
     return registry + class_def
+
 
 def generate_main_function(family, family_info):
     """Generate main function for the test script."""
     model_id = family_info.get("model_id", "")
     class_name = f"Test{family.capitalize()}Models"
-    
+
     return f"""
 def main():
     \"\"\"Command-line entry point.\"\"\"
@@ -370,32 +375,33 @@ if __name__ == "__main__":
     main()
 """
 
+
 def create_minimal_test_file(family, output_dir=None):
     """Create a minimal test file for a specific model family."""
     if family not in MODEL_FAMILIES:
         logger.error(f"Unknown model family: {family}")
         return None
-    
+
     family_info = MODEL_FAMILIES[family]
-    
+
     # Create the minimal test file
     content = ""
     content += generate_minimal_imports()
     content += generate_hardware_detection()
     content += generate_minimal_class(family, family_info)
     content += generate_main_function(family, family_info)
-    
+
     # Determine output path
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, f"test_hf_{family}.py")
     else:
         output_path = f"test_hf_{family}.py"
-    
+
     # Write the file
     with open(output_path, "w") as f:
         f.write(content)
-    
+
     # Verify syntax
     is_valid, error = verify_python_syntax(output_path)
     if is_valid:
@@ -405,34 +411,42 @@ def create_minimal_test_file(family, output_dir=None):
         logger.error(f"❌ Syntax error in {output_path}: {error}")
         return None
 
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Create minimal HuggingFace test files")
-    parser.add_argument("--families", nargs="+", choices=MODEL_FAMILIES.keys(), default=list(MODEL_FAMILIES.keys()),
-                        help="Model families to create test files for")
-    parser.add_argument("--output-dir", type=str, default="fixed_tests",
-                        help="Output directory for test files")
-    
+    parser.add_argument(
+        "--families",
+        nargs="+",
+        choices=MODEL_FAMILIES.keys(),
+        default=list(MODEL_FAMILIES.keys()),
+        help="Model families to create test files for",
+    )
+    parser.add_argument(
+        "--output-dir", type=str, default="fixed_tests", help="Output directory for test files"
+    )
+
     args = parser.parse_args()
-    
+
     # Create each test file
     success_count = 0
     failure_count = 0
-    
+
     for family in args.families:
         output_path = create_minimal_test_file(family, args.output_dir)
         if output_path:
             success_count += 1
         else:
             failure_count += 1
-    
+
     # Print summary
     logger.info("\nSummary:")
     logger.info(f"- Files created: {success_count}")
     logger.info(f"- Failed: {failure_count}")
     logger.info(f"- Output directory: {args.output_dir}")
-    
+
     return 0 if failure_count == 0 else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

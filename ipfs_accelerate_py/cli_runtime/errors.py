@@ -107,9 +107,7 @@ class CLIErrorRecord:
             raise ValueError("error message must not be empty")
         if not isinstance(self.retryable, bool):
             raise TypeError("error retryable must be a boolean")
-        object.__setattr__(
-            self, "message", _clip_text(message, MAX_ERROR_MESSAGE_CHARS)
-        )
+        object.__setattr__(self, "message", _clip_text(message, MAX_ERROR_MESSAGE_CHARS))
         object.__setattr__(self, "details", _bounded_details(self.details))
 
     def to_dict(self) -> dict[str, Any]:

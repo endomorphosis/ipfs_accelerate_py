@@ -108,7 +108,7 @@ benchmark = ModelBenchmark(
     hardware=["cpu", "cuda"],
     metrics=["latency", "throughput", "memory", "flops", "power", "bandwidth"],
     warmup_iterations=5,
-    test_iterations=20
+    test_iterations=20,
 )
 
 results = benchmark.run()
@@ -122,8 +122,8 @@ results.export_to_markdown("benchmark_results.md")
 results.plot_latency_comparison()
 results.plot_memory_usage()
 results.plot_throughput_scaling()
-results.plot_power_efficiency()     # Hardware-aware power metrics
-results.plot_bandwidth_utilization() # Memory bandwidth and roofline model
+results.plot_power_efficiency()  # Hardware-aware power metrics
+results.plot_bandwidth_utilization()  # Memory bandwidth and roofline model
 ```
 
 ## Command-line Usage
@@ -255,7 +255,7 @@ results = hardware_aware_benchmark.run_hardware_aware_benchmark(
     model_id="meta-llama/Llama-2-7b-hf",
     output_dir="llm_benchmark_results",
     use_4bit=True,  # Enable 4-bit quantization
-    use_flash_attention=True  # Enable Flash Attention
+    use_flash_attention=True,  # Enable Flash Attention
 )
 
 # Print hardware efficiency insights
@@ -272,13 +272,12 @@ from refactored_benchmark_suite.examples import vision_hardware_aware_benchmark
 vision_hardware_aware_benchmark.run_vision_hardware_aware_benchmark(
     model_id="facebook/detr-resnet-50",  # DETR model
     output_dir="vision_benchmark_results",
-    use_torch_compile=True  # Enable torch.compile optimization
+    use_torch_compile=True,  # Enable torch.compile optimization
 )
 
 # Compare multiple vision model families
 vision_hardware_aware_benchmark.run_vision_model_family_comparison(
-    output_dir="vision_comparison_results",
-    hardware=["cpu", "cuda"]
+    output_dir="vision_comparison_results", hardware=["cpu", "cuda"]
 )
 ```
 
@@ -290,15 +289,13 @@ from refactored_benchmark_suite.examples import speech_hardware_aware_benchmark
 
 # Benchmark a specific speech model with hardware metrics
 results = speech_hardware_aware_benchmark.benchmark_speech_model(
-    model_id="openai/whisper-small",
-    use_power_metrics=True,
-    use_bandwidth_metrics=True
+    model_id="openai/whisper-small", use_power_metrics=True, use_bandwidth_metrics=True
 )
 
 # Compare different speech model architectures
 speech_hardware_aware_benchmark.compare_speech_architectures(
     models=["openai/whisper-base", "facebook/wav2vec2-base", "facebook/hubert-base"],
-    output_dir="speech_comparison"
+    output_dir="speech_comparison",
 )
 ```
 
@@ -313,19 +310,17 @@ results = multimodal_hardware_aware_benchmark.benchmark_modern_multimodal_models
     use_power_metrics=True,
     use_bandwidth_metrics=True,
     model_size="base",  # Choose from tiny, small, base, large
-    output_dir="multimodal_benchmark_results"
+    output_dir="multimodal_benchmark_results",
 )
 
 # Or benchmark a specific multimodal model with custom configuration
 single_results = multimodal_hardware_aware_benchmark.benchmark_specific_multimodal_model(
-    model_id="llava-hf/llava-1.5-7b-hf",
-    use_hardware_metrics=True
+    model_id="llava-hf/llava-1.5-7b-hf", use_hardware_metrics=True
 )
 
 # Run benchmarks for a specific multimodal task
 task_results = multimodal_hardware_aware_benchmark.benchmark_specific_multimodal_task(
-    task="visual-question-answering",
-    model_id="dandelin/vilt-b32-finetuned-vqa"
+    task="visual-question-answering", model_id="dandelin/vilt-b32-finetuned-vqa"
 )
 ```
 

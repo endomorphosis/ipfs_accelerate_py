@@ -273,9 +273,7 @@ def _g030_planning_run():
     }
 
     def gates(plan, frozen_goal, request):
-        receipts = deterministic_hard_gate_receipts(
-            plan, frozen_goal, request
-        )
+        receipts = deterministic_hard_gate_receipts(plan, frozen_goal, request)
         if plan.candidate_id != cheap.candidate_id:
             return receipts
         return tuple(
@@ -292,9 +290,7 @@ def _g030_planning_run():
     return plan_adaptively(
         goal,
         context,
-        providers={
-            AdaptiveCandidateProviderKind.LLM: lambda _request: (cheap,)
-        },
+        providers={AdaptiveCandidateProviderKind.LLM: lambda _request: (cheap,)},
         hard_gate_evaluator=gates,
     )
 
@@ -317,9 +313,7 @@ def test_new_counterexample_triggers_exactly_one_bounded_verified_refinement() -
 
     request = _request()
     policy = AdaptiveRefinementPolicy()
-    result = AdaptiveGoalRefiner(
-        generate, verify, policy=policy, clock=lambda: 100
-    ).refine(request)
+    result = AdaptiveGoalRefiner(generate, verify, policy=policy, clock=lambda: 100).refine(request)
 
     assert result.admitted
     assert result.admitted_plan == _plan(with_child=True)
@@ -336,9 +330,7 @@ def test_new_counterexample_triggers_exactly_one_bounded_verified_refinement() -
     assert receipt.previous_plan_id == request.plan.content_id
     assert receipt.candidate_plan_id == result.admitted_plan.content_id
     assert receipt.refinement_index == 1
-    assert receipt.requirement_ids == (
-        NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
-    )
+    assert receipt.requirement_ids == (NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,)
     assert receipt.proved_requirement_ids == receipt.requirement_ids
     assert receipt.verification_receipt_id == "verification:independent"
     assert receipt.producer_kind == "leanstral"
@@ -373,8 +365,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "status": "passed",
                 "tree_id": tree_id,
                 "command": (
-                    "python -m pytest "
-                    "test/api/test_agent_supervisor_adaptive_goal_refiner.py -q"
+                    "python -m pytest test/api/test_agent_supervisor_adaptive_goal_refiner.py -q"
                 ),
             },
             validation_passed=True,
@@ -400,17 +391,9 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "criterion": criterion,
                 "status": "verified",
                 "verified": True,
-                "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "adaptive_goal_refiner.py"
-                ),
-                "validation": (
-                    "test/api/test_agent_supervisor_"
-                    "adaptive_goal_refiner.py"
-                ),
-                "validation_receipt_ids": [
-                    f"validation:asi-073:{index}"
-                ],
+                "implementation": ("ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py"),
+                "validation": ("test/api/test_agent_supervisor_adaptive_goal_refiner.py"),
+                "validation_receipt_ids": [f"validation:asi-073:{index}"],
             }
             for index, criterion in enumerate(criteria, start=1)
         ],
@@ -515,13 +498,8 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
                 goal_id="ASI-G098",
                 criterion=criterion,
                 status=CoverageStatus.VERIFIED,
-                changed_files=[
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "adaptive_goal_refiner.py"
-                ],
-                validation_receipt_ids=[
-                    f"validation:asi-073:{index}"
-                ],
+                changed_files=["ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py"],
+                validation_receipt_ids=[f"validation:asi-073:{index}"],
             )
             for index, criterion in enumerate(criteria, start=1)
         ],
@@ -602,10 +580,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert failed_submission.state is GoalState.PROVISIONALLY_COMPLETE
     assert "failed_validation" in failed_submission.reason_codes
-    assert (
-        "validation_evidence_incomplete"
-        in failed_submission.gate.fail_reason_codes
-    )
+    assert "validation_evidence_incomplete" in failed_submission.gate.fail_reason_codes
 
     stale = replace(
         evidence[0],
@@ -627,9 +602,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
     missing_validation["criteria"][0]["validation"] = ""
     missing_validation["criteria"][0]["validation_receipt_ids"] = []
     unbound_validation = copy.deepcopy(coverage)
-    unbound_validation["criteria"][0]["validation_receipt_ids"] = [
-        "validation:foreign-tree"
-    ]
+    unbound_validation["criteria"][0]["validation_receipt_ids"] = ["validation:foreign-tree"]
     for invalid_coverage in (
         missing_implementation,
         missing_validation,
@@ -743,10 +716,7 @@ def test_g098_completion_requires_fresh_complete_current_tree_proof() -> None:
         )
         assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
         assert not no_quorum.verified
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in no_quorum.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
     foreign = replace(
         evidence[0],
@@ -768,8 +738,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
     planning_run = _g030_planning_run()
     assert planning_run.selection.evaluation.covers_every_planning_dimension
     assert all(
-        {item.dimension for item in evaluated.dimensions}
-        == set(PlanEvaluationDimension)
+        {item.dimension for item in evaluated.dimensions} == set(PlanEvaluationDimension)
         for evaluated in planning_run.selection.evaluation.ranked
     )
 
@@ -779,14 +748,10 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
         clock=lambda: 100,
     ).refine(_request())
     retry_now = [100]
-    retry_request = _request(
-        _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
-    )
+    retry_request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
     retry_controller = AdaptiveGoalRefiner(
         _candidate,
-        lambda candidate, request: _verification(
-            request, verified=False
-        ),
+        lambda candidate, request: _verification(request, verified=False),
         policy=AdaptiveRefinementPolicy(
             initial_backoff_seconds=30,
             max_backoff_seconds=120,
@@ -795,9 +760,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
     )
     failed = retry_controller.refine(retry_request)
     retry_now[0] = 110
-    backed_off = retry_controller.refine(
-        replace(retry_request, cycle_id="cycle:g030-backoff")
-    )
+    backed_off = retry_controller.refine(replace(retry_request, cycle_id="cycle:g030-backoff"))
     cohort = EvidenceAwarePlanningCompletionEvidence(
         planning_run=planning_run,
         changed_refinement_receipt=changed.receipt,
@@ -815,10 +778,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
     )
     assert not cohort.completion_authority
     assert not cohort.safe_for_completion_reasoning
-    assert (
-        EvidenceAwarePlanningCompletionEvidence.from_dict(cohort.to_dict())
-        == cohort
-    )
+    assert EvidenceAwarePlanningCompletionEvidence.from_dict(cohort.to_dict()) == cohort
     assert changed.planning_completion_witness["completion_authority"] is False
     assert backed_off.planning_completion_witness["requirement_ids"] == [
         UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
@@ -870,23 +830,13 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
                 "verified": True,
                 "implementation": (
                     "ipfs_accelerate_py/agent_supervisor/"
-                    + (
-                        "adaptive_planner.py"
-                        if index <= 2
-                        else "adaptive_goal_refiner.py"
-                    )
+                    + ("adaptive_planner.py" if index <= 2 else "adaptive_goal_refiner.py")
                 ),
                 "validation": (
                     "test/api/test_agent_supervisor_"
-                    + (
-                        "adaptive_planner.py"
-                        if index <= 2
-                        else "adaptive_goal_refiner.py"
-                    )
+                    + ("adaptive_planner.py" if index <= 2 else "adaptive_goal_refiner.py")
                 ),
-                "validation_receipt_id": evidence[
-                    index - 1
-                ].provenance_cid,
+                "validation_receipt_id": evidence[index - 1].provenance_cid,
             }
             for index, criterion in enumerate(
                 EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
@@ -974,10 +924,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
             ],
         }
 
-    children = tuple(
-        child(goal_id)
-        for goal_id in EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS
-    )
+    children = tuple(child(goal_id) for goal_id in EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS)
     values = {
         "producing_tasks": producing_tasks,
         "evidence": evidence,
@@ -995,9 +942,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert provisional.gate is not None and provisional.gate.passed
-    assert provisional.acceptance_criteria == (
-        EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA)
     assert provisional.gate.evaluated_evidence["analysis_result"] == {}
 
     verified = cohort.evaluate_evidence_aware_planning_completion(
@@ -1031,9 +976,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
     assert "child_proof_stale" in stale.reason_codes
 
     unbound_coverage = copy.deepcopy(coverage)
-    unbound_coverage["criteria"][0][
-        "validation_receipt_id"
-    ] = "validation:foreign"
+    unbound_coverage["criteria"][0]["validation_receipt_id"] = "validation:foreign"
     no_coverage = cohort.evaluate_evidence_aware_planning_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
         **{**values, "coverage": unbound_coverage},
@@ -1069,10 +1012,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
         **{**values, "exhaustion_quorum": duplicate_quorum},
     )
     assert not no_quorum.verified
-    assert any(
-        reason.startswith("exhaustion_quorum")
-        for reason in no_quorum.reason_codes
-    )
+    assert any(reason.startswith("exhaustion_quorum") for reason in no_quorum.reason_codes)
 
     with pytest.raises(ValueError, match="configured ASI-G030 count"):
         cohort.evaluate_evidence_aware_planning_completion(
@@ -1087,9 +1027,7 @@ def test_g030_parent_completion_requires_all_producers_and_fresh_descendants() -
     assert reopened.state is GoalState.REOPENED
 
     tampered = cohort.to_dict()
-    tampered["planning_run"]["selection"]["frozen_goal"][
-        "repository_tree_id"
-    ] = "tree:foreign"
+    tampered["planning_run"]["selection"]["frozen_goal"]["repository_tree_id"] = "tree:foreign"
     with pytest.raises(AdaptivePlannerValidationError):
         EvidenceAwarePlanningCompletionEvidence.from_dict(tampered)
 
@@ -1138,9 +1076,7 @@ def test_unchanged_failure_signature_backs_off_without_another_model_call() -> N
     controller = AdaptiveGoalRefiner(
         generate,
         disprove,
-        policy=AdaptiveRefinementPolicy(
-            initial_backoff_seconds=30, max_backoff_seconds=120
-        ),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=30, max_backoff_seconds=120),
         clock=lambda: now[0],
     )
     request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
@@ -1148,9 +1084,11 @@ def test_unchanged_failure_signature_backs_off_without_another_model_call() -> N
     failed = controller.refine(request)
     now[0] = 110
     backed_off = controller.refine(
-        replace(request, cycle_id="cycle:unchanged", signals=(
-            replace(request.signals[0], observed_at=109, occurrence_count=99),
-        ))
+        replace(
+            request,
+            cycle_id="cycle:unchanged",
+            signals=(replace(request.signals[0], observed_at=109, occurrence_count=99),),
+        )
     )
 
     assert failed.decision is RefinementDecision.VERIFICATION_FAILED
@@ -1161,9 +1099,7 @@ def test_unchanged_failure_signature_backs_off_without_another_model_call() -> N
     assert backed_off.receipt.retry_after == 130
     assert calls == {"generator": 1, "verifier": 1}
     receipt = backed_off.receipt
-    assert receipt.requirement_ids == (
-        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
-    )
+    assert receipt.requirement_ids == (UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,)
     assert receipt.proved_requirement_ids == receipt.requirement_ids
     witness = receipt.unchanged_failure_backoff_evidence
     assert isinstance(witness, UnchangedFailureBackoffEvidence)
@@ -1212,10 +1148,7 @@ def test_changed_evidence_bypasses_old_backoff_in_the_next_cycle() -> None:
     assert first.decision is RefinementDecision.VERIFICATION_FAILED
     assert changed.decision is RefinementDecision.VERIFICATION_FAILED
     assert calls == 2
-    assert (
-        first.receipt.evidence_fingerprint
-        != changed.receipt.evidence_fingerprint
-    )
+    assert first.receipt.evidence_fingerprint != changed.receipt.evidence_fingerprint
 
 
 def test_changed_plan_state_cannot_replay_an_old_failure_backoff() -> None:
@@ -1262,9 +1195,7 @@ def test_retry_deadline_reopens_generation_without_stale_backoff_authority() -> 
     controller = AdaptiveGoalRefiner(
         generate,
         lambda candidate, request: _verification(request, verified=False),
-        policy=AdaptiveRefinementPolicy(
-            initial_backoff_seconds=10, max_backoff_seconds=40
-        ),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=10, max_backoff_seconds=40),
         clock=lambda: now[0],
     )
     request = _request(_signal(kind=RefinementSignalKind.REPEATED_FAILURE))
@@ -1287,25 +1218,19 @@ def test_suppressed_polls_do_not_inflate_exponential_failure_backoff() -> None:
     controller = AdaptiveGoalRefiner(
         _candidate,
         lambda candidate, current: _verification(current, verified=False),
-        policy=AdaptiveRefinementPolicy(
-            initial_backoff_seconds=10, max_backoff_seconds=80
-        ),
+        policy=AdaptiveRefinementPolicy(initial_backoff_seconds=10, max_backoff_seconds=80),
         clock=lambda: now[0],
     )
     first = controller.refine(request)
     assert first.receipt.retry_after == 110
     for index, timestamp in enumerate((101, 102, 103), start=1):
         now[0] = timestamp
-        poll = controller.refine(
-            replace(request, cycle_id=f"cycle:poll:{index}")
-        )
+        poll = controller.refine(replace(request, cycle_id=f"cycle:poll:{index}"))
         assert poll.decision is RefinementDecision.BACKED_OFF
         assert poll.receipt.retry_after == 110
 
     now[0] = 110
-    second_failure = controller.refine(
-        replace(request, cycle_id="cycle:second-failure")
-    )
+    second_failure = controller.refine(replace(request, cycle_id="cycle:second-failure"))
     assert second_failure.decision is RefinementDecision.VERIFICATION_FAILED
     assert second_failure.receipt.attempt_index == 5
     assert second_failure.receipt.retry_after == 130
@@ -1392,14 +1317,10 @@ def test_distinct_changed_counterexamples_share_one_generation_slot_per_cycle() 
 
     assert sum(item.admitted for item in same_cycle_results) == 1
     exhausted = next(
-        item
-        for item in same_cycle_results
-        if item.decision is RefinementDecision.BUDGET_EXHAUSTED
+        item for item in same_cycle_results if item.decision is RefinementDecision.BUDGET_EXHAUSTED
     )
     assert not exhausted.model_called
-    assert {
-        item.receipt.cycle_id for item in same_cycle_results
-    } == {"cycle:1"}
+    assert {item.receipt.cycle_id for item in same_cycle_results} == {"cycle:1"}
     assert next_cycle.admitted
     assert next_cycle.receipt.cycle_id == "cycle:2"
     assert calls == 2
@@ -1428,9 +1349,7 @@ def test_all_reviewed_typed_changes_are_eligible(kind: RefinementSignalKind) -> 
     ).refine(request)
     assert result.admitted
     if kind is RefinementSignalKind.COUNTEREXAMPLE:
-        assert result.receipt.requirement_ids == (
-            NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
-        )
+        assert result.receipt.requirement_ids == (NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,)
         assert result.receipt.new_counterexample_evidence is not None
     else:
         assert result.receipt.requirement_ids == ()
@@ -1460,9 +1379,9 @@ def test_frozen_root_and_assumptions_cannot_be_mutated(mutation: str) -> None:
         verifier_calls += 1
         return _verification(request)
 
-    result = AdaptiveGoalRefiner(
-        lambda current: candidate, verify, clock=lambda: 100
-    ).refine(request)
+    result = AdaptiveGoalRefiner(lambda current: candidate, verify, clock=lambda: 100).refine(
+        request
+    )
 
     assert result.decision is RefinementDecision.CANDIDATE_REJECTED
     assert result.admitted_plan is None
@@ -1505,9 +1424,7 @@ def test_verification_for_another_candidate_plan_cannot_be_replayed() -> None:
 
 def test_candidate_must_bind_request_signal_kind_and_repository_tree() -> None:
     request = _request()
-    wrong_kind = replace(
-        _candidate(request), signal_kind=RefinementSignalKind.CAPABILITY_CHANGE
-    )
+    wrong_kind = replace(_candidate(request), signal_kind=RefinementSignalKind.CAPABILITY_CHANGE)
     kind_result = AdaptiveGoalRefiner(
         lambda current: wrong_kind,
         lambda candidate, current: _verification(current),
@@ -1517,9 +1434,7 @@ def test_candidate_must_bind_request_signal_kind_and_repository_tree() -> None:
     assert "signal kind" in kind_result.receipt.reason
     assert kind_result.receipt.requirement_ids == ()
 
-    wrong_tree_plan = replace(
-        _plan(with_child=True), repository_tree_id="tree:other"
-    )
+    wrong_tree_plan = replace(_plan(with_child=True), repository_tree_id="tree:other")
     wrong_tree = replace(_candidate(request), plan=wrong_tree_plan)
     tree_result = AdaptiveGoalRefiner(
         lambda current: wrong_tree,
@@ -1546,13 +1461,9 @@ def test_counterexample_witness_tampering_fails_closed() -> None:
         clock=lambda: 100,
     ).refine(request)
     payload = result.receipt.to_dict()
-    payload["new_counterexample_evidence"]["candidate_plan_id"] = (
-        request.plan.content_id
-    )
+    payload["new_counterexample_evidence"]["candidate_plan_id"] = request.plan.content_id
 
-    with pytest.raises(
-        AdaptiveGoalRefinementError, match="evidence identity does not match"
-    ):
+    with pytest.raises(AdaptiveGoalRefinementError, match="evidence identity does not match"):
         AdaptiveRefinementReceipt.from_dict(payload)
 
 
@@ -1573,16 +1484,12 @@ def test_backoff_witness_tampering_and_detached_sources_fail_closed() -> None:
 
     missing = copy.deepcopy(payload)
     missing["unchanged_failure_backoff_evidence"] = None
-    with pytest.raises(
-        AdaptiveGoalRefinementError, match="missing its causal witness"
-    ):
+    with pytest.raises(AdaptiveGoalRefinementError, match="missing its causal witness"):
         AdaptiveRefinementReceipt.from_dict(missing)
 
     tampered = copy.deepcopy(payload)
     tampered["unchanged_failure_backoff_evidence"]["retry_after"] += 1
-    with pytest.raises(
-        AdaptiveGoalRefinementError, match="backoff deadline|identity"
-    ):
+    with pytest.raises(AdaptiveGoalRefinementError, match="backoff deadline|identity"):
         AdaptiveRefinementReceipt.from_dict(tampered)
 
     unknown = copy.deepcopy(payload)
@@ -1610,9 +1517,7 @@ def test_backoff_witness_tampering_and_detached_sources_fail_closed() -> None:
         backed_off.receipt,
         unchanged_failure_backoff_evidence=detached,
     )
-    with pytest.raises(
-        AdaptiveGoalRefinementError, match="source failure is absent"
-    ):
+    with pytest.raises(AdaptiveGoalRefinementError, match="source failure is absent"):
         InMemoryRefinementStore((failed.receipt, detached_receipt))
 
 
@@ -1673,9 +1578,7 @@ def test_g115_completion_bridge_fixes_goal_and_closed_criterion_population() -> 
     assert UNCHANGED_FAILURE_BACKOFF_GOAL_ID == "ASI-G115"
     assert projected_goal_ids == [UNCHANGED_FAILURE_BACKOFF_GOAL_ID]
     assert not decision.verified
-    assert decision.acceptance_criteria == (
-        UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
-    )
+    assert decision.acceptance_criteria == (UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA)
     assert set((*decision.missing_criteria, *decision.invalid_criteria)) == set(
         UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA
     )
@@ -1692,17 +1595,11 @@ def test_formal_unchanged_routing_names_g115_without_claiming_evidence() -> None
         backoff_seconds=4,
     )
 
-    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (
-        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
-    )
-    assert decision.requirement_ids == (
-        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
-    )
+    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
+    assert decision.requirement_ids == (UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,)
     assert decision.evidence_ids == ()
     payload = decision.to_dict()
-    assert payload["requirement_ids"] == [
-        UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID
-    ]
+    assert payload["requirement_ids"] == [UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID]
     assert payload["completion_evidence_roles"] == []
     assert payload["completion_authority"] is False
     assert payload["safe_for_completion_reasoning"] is False
@@ -1773,9 +1670,7 @@ def test_depth_and_per_root_budgets_stop_before_generation() -> None:
         calls += 1
         return _candidate(request)
 
-    policy = AdaptiveRefinementPolicy(
-        max_refinements_per_root=1, max_refinement_depth=1
-    )
+    policy = AdaptiveRefinementPolicy(max_refinements_per_root=1, max_refinement_depth=1)
     depth_result = AdaptiveGoalRefiner(
         generate,
         lambda candidate, request: _verification(request),
@@ -1859,9 +1754,7 @@ def test_jsonl_store_survives_restart_and_suppresses_duplicate_generation(tmp_pa
     assert calls == 1
     persisted = JsonlRefinementStore(path).receipts()
     assert persisted == (first.receipt,)
-    assert AdaptiveRefinementReceipt.from_dict(
-        first.receipt.to_dict()
-    ) == first.receipt
+    assert AdaptiveRefinementReceipt.from_dict(first.receipt.to_dict()) == first.receipt
 
 
 def test_concurrent_same_evidence_performs_one_generation_and_admission() -> None:
@@ -1887,9 +1780,7 @@ def test_concurrent_same_evidence_performs_one_generation_and_admission() -> Non
 
     assert calls == 1
     assert sum(result.admitted for result in results) == 1
-    assert sum(
-        result.decision is RefinementDecision.DUPLICATE for result in results
-    ) == 3
+    assert sum(result.decision is RefinementDecision.DUPLICATE for result in results) == 3
 
 
 def test_goal_quality_records_all_dimensions_and_deterministic_debt() -> None:
@@ -1995,10 +1886,7 @@ def test_goal_quality_and_debt_records_round_trip_fail_closed() -> None:
     restored = GoalQualityRecord.from_dict(incomplete.to_dict())
 
     assert restored == incomplete
-    assert all(
-        GoalDebtRecord.from_dict(item.to_dict()) == item
-        for item in restored.debt_records
-    )
+    assert all(GoalDebtRecord.from_dict(item.to_dict()) == item for item in restored.debt_records)
     assert {item.kind for item in restored.debt_records} == {
         GoalDebtKind.AMBIGUOUS,
         GoalDebtKind.STALE_EVIDENCE,
@@ -2009,9 +1897,7 @@ def test_goal_quality_and_debt_records_round_trip_fail_closed() -> None:
 
     tampered = copy.deepcopy(incomplete.to_dict())
     tampered["debt_records"][0]["quality_id"] = complete.content_id
-    with pytest.raises(
-        AdaptiveGoalRefinementError, match="identity|do not match"
-    ):
+    with pytest.raises(AdaptiveGoalRefinementError, match="identity|do not match"):
         GoalQualityRecord.from_dict(tampered)
 
 
@@ -2024,18 +1910,12 @@ def test_refinement_request_binds_exact_quality_and_debt_snapshot() -> None:
     payload = request.to_dict()
 
     assert payload["quality_id"] == quality.content_id
-    assert payload["goal_debt_ids"] == tuple(
-        item.content_id for item in quality.debt_records
-    )
+    assert payload["goal_debt_ids"] == tuple(item.content_id for item in quality.debt_records)
 
-    with pytest.raises(
-        AdaptiveGoalRefinementError, match="quality assumptions"
-    ):
+    with pytest.raises(AdaptiveGoalRefinementError, match="quality assumptions"):
         replace(
             request,
-            quality=replace(
-                quality, assumption_ids=("assumption:invented",)
-            ),
+            quality=replace(quality, assumption_ids=("assumption:invented",)),
         )
 
 
@@ -2043,9 +1923,7 @@ def test_changed_quality_debt_bypasses_unchanged_failure_backoff() -> None:
     now = [100]
     calls = 0
     signal = _signal(kind=RefinementSignalKind.REPEATED_FAILURE)
-    first_quality = replace(
-        _complete_quality(), stale_evidence_ids=("receipt:stale-v1",)
-    )
+    first_quality = replace(_complete_quality(), stale_evidence_ids=("receipt:stale-v1",))
 
     def generate(request):
         nonlocal calls
@@ -2063,17 +1941,13 @@ def test_changed_quality_debt_bypasses_unchanged_failure_backoff() -> None:
     changed_request = replace(
         first_request,
         cycle_id="cycle:quality-v2",
-        quality=replace(
-            first_quality, stale_evidence_ids=("receipt:stale-v2",)
-        ),
+        quality=replace(first_quality, stale_evidence_ids=("receipt:stale-v2",)),
     )
     changed = controller.refine(changed_request)
 
     assert failed.decision is RefinementDecision.VERIFICATION_FAILED
     assert changed.decision is RefinementDecision.VERIFICATION_FAILED
-    assert failed.receipt.evidence_fingerprint != (
-        changed.receipt.evidence_fingerprint
-    )
+    assert failed.receipt.evidence_fingerprint != (changed.receipt.evidence_fingerprint)
     assert calls == 2
 
 
@@ -2104,9 +1978,7 @@ def test_objective_tracker_persists_idempotent_quality_and_debt_report(
 - Validation: pytest test_runtime.py -q
 """
     report = build_objective_goal_quality_report(objective_text)
-    root = next(
-        item for item in report.quality_records if item.goal_id == "goal:root"
-    )
+    root = next(item for item in report.quality_records if item.goal_id == "goal:root")
 
     assert root.debt == ()
     assert root.breadth == 1
@@ -2122,14 +1994,8 @@ def test_objective_tracker_persists_idempotent_quality_and_debt_report(
 
     assert second == first
     assert report_path.read_bytes() == first_bytes
-    assert load_objective_goal_quality_report(
-        report_path, objective_path=objective_path
-    ) == first
+    assert load_objective_goal_quality_report(report_path, objective_path=objective_path) == first
 
-    objective_path.write_text(
-        objective_text + "\n<!-- changed heap -->\n", encoding="utf-8"
-    )
+    objective_path.write_text(objective_text + "\n<!-- changed heap -->\n", encoding="utf-8")
     with pytest.raises(ValueError, match="stale"):
-        load_objective_goal_quality_report(
-            report_path, objective_path=objective_path
-        )
+        load_objective_goal_quality_report(report_path, objective_path=objective_path)

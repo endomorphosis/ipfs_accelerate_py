@@ -154,9 +154,7 @@ class FakeProcessAdapter:
             captured_at_ms=self.clock.now_ms(),
         )
 
-    def launch(
-        self, profile: LifecycleProfile, *, fencing_epoch: int
-    ) -> ProcessIdentity:
+    def launch(self, profile: LifecycleProfile, *, fencing_epoch: int) -> ProcessIdentity:
         self.events.append("launch")
         if self.effect_hook is not None:
             hook, self.effect_hook = self.effect_hook, None
@@ -194,9 +192,7 @@ class FakeProcessAdapter:
         if self.leave_descendant and tree.members:
             keep = tree.members[-1].identity_id
         self.live = {
-            identity_id: member
-            for identity_id, member in self.live.items()
-            if identity_id == keep
+            identity_id: member for identity_id, member in self.live.items() if identity_id == keep
         }
 
     def identity_alive(self, identity: ProcessIdentity) -> bool:
@@ -334,10 +330,7 @@ def test_restart_persists_intent_then_fences_old_tree_before_identical_start(
     observed_phases: list[str] = []
 
     def inspect_intent() -> None:
-        records = [
-            json.loads(line)
-            for line in journal.read_text(encoding="utf-8").splitlines()
-        ]
+        records = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()]
         observed_phases.append(records[-1]["phase"])
         assert records[0]["phase"] == "prepared"
 
@@ -447,9 +440,9 @@ def test_shared_control_transaction_wraps_process_saga_and_replays_exactly(
     assert adapter.launches == 1
     records = [
         json.loads(line)
-        for line in (
-            Path(profile.state_root) / "control-transactions.jsonl"
-        ).read_text(encoding="utf-8").splitlines()
+        for line in (Path(profile.state_root) / "control-transactions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert [record["phase"] for record in records] == [
         "prepared",
@@ -509,9 +502,7 @@ def test_split_brain_and_descendant_left_after_stop_never_launch(
     latest = orphan.store.latest()[other_profile.target_id]
     assert latest.phase is LifecycleSagaPhase.PARTIAL_FAILURE
     assert latest.failure_code == "descendants_remain"
-    assert latest.compensation == (
-        "repair_or_quarantine_remaining_process_tree",
-    )
+    assert latest.compensation == ("repair_or_quarantine_remaining_process_tree",)
 
 
 def test_restart_partial_launch_failure_resumes_after_old_fence_only(
@@ -584,9 +575,7 @@ def test_stale_fence_and_changed_configuration_are_rejected(
         orchestrator.stop(stale)
     assert adapter.terminations == 1
 
-    changed_profile = _profile(
-        tmp_path, argv=("/usr/bin/python3", "-c", "print('changed')")
-    )
+    changed_profile = _profile(tmp_path, argv=("/usr/bin/python3", "-c", "print('changed')"))
     changed = _orchestrator(changed_profile, adapter, clock)
     request = _request(
         changed_profile,

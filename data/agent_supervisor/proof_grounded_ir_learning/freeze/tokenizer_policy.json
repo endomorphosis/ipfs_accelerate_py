@@ -1,0 +1,25 @@
+{
+  "canonical_tokenization": {
+    "allowed_uses": [
+      "contract validation",
+      "deterministic compiler/decompiler replay",
+      "schema migration testing"
+    ],
+    "identity": "deterministic-canonical-structure-only",
+    "learned_vocabulary_identity": "none",
+    "model_checkpoint_identity": "none"
+  },
+  "contract_version": 1,
+  "interface": "proof-grounded-ir-learning/tokenizer-freeze-policy/v1",
+  "mutation_policy": "supersede_never_overwrite",
+  "policy_cid": "baguqeerahoedy5eyabjpcixpxwcjlbh54femnpb3krvirv3scto4nqfkplua",
+  "policy_sha256": "sha256:3b883c74980052f122efbd849584fde148c6bc3b546a88d77214ddc6c0aa7ae8",
+  "schema": "IRTokenizerFreezePolicy@1",
+  "status": "no_learned_tokenizer_admitted",
+  "training_policy": {
+    "authorized": false,
+    "reason": "PGIR-050 must define and freeze a compatible tokenizer before learned training",
+    "superseding_root_required": true
+  },
+  "unknown_token_behavior": "fail_closed"
+}

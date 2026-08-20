@@ -81,8 +81,14 @@ def test_web_archive_package_exports_supported_native_functions() -> None:
     assert list_common_crawl_indexes is native_web_archive_tools.list_common_crawl_indexes
     assert search_common_crawl_advanced is native_web_archive_tools.search_common_crawl_advanced
     assert fetch_warc_record_advanced is native_web_archive_tools.fetch_warc_record_advanced
-    assert list_common_crawl_collections_advanced is native_web_archive_tools.list_common_crawl_collections_advanced
-    assert get_common_crawl_collection_info_advanced is native_web_archive_tools.get_common_crawl_collection_info_advanced
+    assert (
+        list_common_crawl_collections_advanced
+        is native_web_archive_tools.list_common_crawl_collections_advanced
+    )
+    assert (
+        get_common_crawl_collection_info_advanced
+        is native_web_archive_tools.get_common_crawl_collection_info_advanced
+    )
     assert search_wayback_machine is native_web_archive_tools.search_wayback_machine
     assert get_wayback_content is native_web_archive_tools.get_wayback_content
     assert archive_to_wayback is native_web_archive_tools.archive_to_wayback
@@ -130,4 +136,7 @@ def test_web_archive_package_exports_supported_native_functions() -> None:
     assert unified_fetch is native_web_archive_tools.unified_fetch
     assert unified_search_and_fetch is native_web_archive_tools.unified_search_and_fetch
     assert unified_health is native_web_archive_tools.unified_health
-    assert unified_agentic_discover_and_fetch is native_web_archive_tools.unified_agentic_discover_and_fetch
+    assert (
+        unified_agentic_discover_and_fetch
+        is native_web_archive_tools.unified_agentic_discover_and_fetch
+    )

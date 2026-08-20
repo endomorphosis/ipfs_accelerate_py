@@ -94,9 +94,7 @@ def evidence_output_path_is_excluded(
             value,
             require_file_suffix=False,
         )
-        if excluded and (
-            candidate == excluded or candidate.startswith(excluded + "/")
-        ):
+        if excluded and (candidate == excluded or candidate.startswith(excluded + "/")):
             return True
     return False
 

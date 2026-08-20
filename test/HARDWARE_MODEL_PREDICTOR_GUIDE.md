@@ -96,7 +96,7 @@ from hardware_model_predictor import HardwareModelPredictor
 predictor = HardwareModelPredictor(
     benchmark_dir="./benchmark_results",
     database_path="./benchmark_db.duckdb",
-    config_path="./config.json"
+    config_path="./config.json",
 )
 
 # Get hardware recommendation
@@ -106,7 +106,7 @@ recommendation = predictor.predict_optimal_hardware(
     batch_size=8,
     sequence_length=128,
     mode="inference",
-    precision="fp32"
+    precision="fp32",
 )
 
 # Print recommendation
@@ -120,7 +120,7 @@ performance = predictor.predict_performance(
     model_family="embedding",
     hardware="cuda",
     batch_size=8,
-    precision="fp32"
+    precision="fp32",
 )
 
 # Print performance metrics
@@ -140,7 +140,7 @@ models = [
     {"name": "bert-base-uncased", "family": "embedding"},
     {"name": "t5-small", "family": "text_generation"},
     {"name": "gpt2", "family": "text_generation"},
-    {"name": "vit-base-patch16-224", "family": "vision"}
+    {"name": "vit-base-patch16-224", "family": "vision"},
 ]
 
 # Define hardware platforms and batch sizes
@@ -153,11 +153,12 @@ matrix = predictor.create_hardware_prediction_matrix(
     batch_sizes=batch_sizes,
     hardware_platforms=hardware_platforms,
     precision="fp16",
-    mode="inference"
+    mode="inference",
 )
 
 # Save matrix to file
 import json
+
 with open("custom_matrix.json", "w") as f:
     json.dump(matrix, f, indent=2)
 
@@ -271,8 +272,7 @@ predictor = HardwareModelPredictor(database_path="./benchmark_db.duckdb")
 
 # Use database as data source for predictions
 recommendation = predictor.predict_optimal_hardware(
-    model_name="bert-base-uncased",
-    model_family="embedding"
+    model_name="bert-base-uncased", model_family="embedding"
 )
 ```
 
@@ -287,8 +287,7 @@ from model_performance_predictor import train_prediction_models
 
 # Train custom models on specific data
 custom_models = train_prediction_models(
-    db_path="./my_benchmark_data.parquet",
-    output_dir="./my_models"
+    db_path="./my_benchmark_data.parquet", output_dir="./my_models"
 )
 
 # Use custom models with predictor
@@ -315,7 +314,7 @@ recommendation = predictor.predict_optimal_hardware(
     mode="training",
     batch_size=32,
     is_distributed=True,
-    gpu_count=8
+    gpu_count=8,
 )
 ```
 
@@ -332,7 +331,7 @@ python hardware_model_predictor.py --model bert-base-uncased --hardware webnn we
 recommendation = predictor.predict_optimal_hardware(
     model_name="bert-base-uncased",
     model_family="embedding",
-    available_hardware=["webnn", "webgpu", "cpu"]
+    available_hardware=["webnn", "webgpu", "cpu"],
 )
 
 # Get browser-specific recommendations
@@ -340,7 +339,7 @@ performance = predictor.predict_performance(
     model_name="bert-base-uncased",
     model_family="embedding",
     hardware=["webnn", "webgpu"],
-    precision="fp16"
+    precision="fp16",
 )
 ```
 

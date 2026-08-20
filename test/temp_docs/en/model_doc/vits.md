@@ -64,7 +64,7 @@ inputs = tokenizer(text="Hello - my dog is cute", return_tensors="pt")
 set_seed(555)  # make deterministic
 
 with torch.no_grad():
-   outputs = model(**inputs)
+    outputs = model(**inputs)
 
 waveform = outputs.waveform[0]
 ```
@@ -116,7 +116,7 @@ inputs = tokenizer(text=text, return_tensors="pt")
 
 set_seed(555)  # make deterministic
 with torch.no_grad():
-   outputs = model(inputs["input_ids"])
+    outputs = model(inputs["input_ids"])
 
 waveform = outputs.waveform[0]
 ```
@@ -142,13 +142,16 @@ import subprocess
 tokenizer = VitsTokenizer.from_pretrained("facebook/mms-tts-kor")
 model = VitsModel.from_pretrained("facebook/mms-tts-kor")
 
+
 def uromanize(input_string, uroman_path):
     """Convert non-Roman strings to Roman using the `uroman` perl package."""
     script_path = os.path.join(uroman_path, "bin", "uroman.pl")
 
     command = ["perl", script_path]
 
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     # Execute the perl command
     stdout, stderr = process.communicate(input=input_string.encode())
 
@@ -158,6 +161,7 @@ def uromanize(input_string, uroman_path):
     # Return the output as a string and skip the new-line character at the end
     return stdout.decode()[:-1]
 
+
 text = "이봐 무슨 일이야"
 uromanized_text = uromanize(text, uroman_path=os.environ["UROMAN"])
 
@@ -165,7 +169,7 @@ inputs = tokenizer(text=uromanized_text, return_tensors="pt")
 
 set_seed(555)  # make deterministic
 with torch.no_grad():
-   outputs = model(inputs["input_ids"])
+    outputs = model(inputs["input_ids"])
 
 waveform = outputs.waveform[0]
 ```

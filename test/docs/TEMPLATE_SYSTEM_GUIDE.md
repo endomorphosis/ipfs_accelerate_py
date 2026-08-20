@@ -71,9 +71,7 @@ from test.template_system.templates.api_test_template import APITestTemplate
 
 # Generate a model test
 model_template = ModelTestTemplate(
-    model_name="bert-base-uncased",
-    model_type="text",
-    framework="transformers"
+    model_name="bert-base-uncased", model_type="text", framework="transformers"
 )
 model_test_path = model_template.generate()
 
@@ -83,20 +81,16 @@ hardware_template = HardwareTestTemplate(
         "hardware_platform": "webgpu",
         "test_name": "webgpu_matmul",
         "test_operation": "matmul",
-        "test_category": "compute"
+        "test_category": "compute",
     },
-    output_dir="test"
+    output_dir="test",
 )
 hardware_test_path = hardware_template.write()
 
 # Generate an API test
 api_template = APITestTemplate(
-    parameters={
-        "api_name": "openai",
-        "test_name": "openai_client",
-        "api_type": "openai"
-    },
-    output_dir="test"
+    parameters={"api_name": "openai", "test_name": "openai_client", "api_type": "openai"},
+    output_dir="test",
 )
 api_test_path = api_template.write()
 ```
@@ -127,10 +121,7 @@ The Model Test Template generates tests for ML models with specific handling for
 from test.template_system.templates.model_test_template import ModelTestTemplate
 
 template = ModelTestTemplate(
-    model_name="bert-base-uncased",
-    model_type="text",
-    framework="transformers",
-    batch_size=2
+    model_name="bert-base-uncased", model_type="text", framework="transformers", batch_size=2
 )
 test_path = template.generate()
 ```
@@ -157,9 +148,9 @@ template = HardwareTestTemplate(
         "hardware_platform": "webgpu",
         "test_name": "webgpu_matmul",
         "test_operation": "matmul",
-        "test_category": "compute"
+        "test_category": "compute",
     },
-    output_dir="test"
+    output_dir="test",
 )
 test_path = template.write()
 ```
@@ -181,12 +172,8 @@ The API Test Template generates tests for API endpoints, clients, and integratio
 from test.template_system.templates.api_test_template import APITestTemplate
 
 template = APITestTemplate(
-    parameters={
-        "api_name": "openai",
-        "test_name": "openai_client",
-        "api_type": "openai"
-    },
-    output_dir="test"
+    parameters={"api_name": "openai", "test_name": "openai_client", "api_type": "openai"},
+    output_dir="test",
 )
 test_path = template.write()
 ```
@@ -221,13 +208,14 @@ To customize the generated tests, you can:
 ```python
 from test.template_system.templates.model_test_template import ModelTestTemplate
 
+
 class CustomModelTemplate(ModelTestTemplate):
     def generate_imports(self) -> str:
         """Add custom imports."""
         imports = super().generate_imports()
         imports += "\n# Custom imports\nimport custom_module\n"
         return imports
-    
+
     def after_generate(self) -> None:
         """Custom actions after generation."""
         super().after_generate()

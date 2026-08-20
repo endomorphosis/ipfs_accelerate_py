@@ -35,7 +35,12 @@ from ipfs_accelerate_py.agent_supervisor.proof.counterexample_guided_tactician i
     IterationBinding,
     IterationOutcome,
     RefinementCandidate,
+    project_cegis_curriculum,
     run_counterexample_guided_loop,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_counterexamples import (
     CounterexampleKind,
@@ -434,9 +439,7 @@ def test_independent_validation_rejects_before_verifier() -> None:
     assert not result.closed
     assert verify_calls["n"] == 0
     assert result.stop_reason is CegisStopReason.NO_ADMISSIBLE_CANDIDATE
-    assert result.iterations[0].binding.result_status is (
-        IterationOutcome.CANDIDATE_REJECTED
-    )
+    assert result.iterations[0].binding.result_status is (IterationOutcome.CANDIDATE_REJECTED)
 
 
 def test_exact_originating_verifier_is_bound_into_request() -> None:
@@ -558,9 +561,7 @@ def test_default_refine_and_validate_path_without_custom_providers() -> None:
     ).run(cx, repository_tree_id="tree:repair-v1", goal_id="G-close")
     assert result.closed
     assert result.selected_candidate is not None
-    assert result.selected_candidate.validation_status is (
-        CandidateValidationStatus.VALID
-    )
+    assert result.selected_candidate.validation_status is (CandidateValidationStatus.VALID)
     assert result.selected_candidate.kind in set(CandidateKind)
 
 
@@ -584,3 +585,105 @@ def test_closed_result_requires_zero_open_and_named_closure() -> None:
             closed=True,
             closure=None,
         )
+
+
+def test_closed_loop_projects_verified_success_curriculum() -> None:
+    cx = _counterexample()
+    candidate = _candidate_for(cx)
+
+    def refine(witness, context):
+        del witness, context
+        return (candidate,)
+
+    def verify(binding: dict[str, Any]) -> dict[str, Any]:
+        return _matching_receipt(binding, outcome="verified")
+
+    result = CounterexampleGuidedTactician(
+        refine=refine,
+        verify=verify,
+        budget=CegisBudget(max_iterations=1),
+    ).run(cx)
+    assert result.closed
+    assert result.curriculum is not None
+    assert result.curriculum.curriculum_class is CurriculumClass.VERIFIED_SUCCESS
+    assert result.curriculum.authority is CurriculumAuthority.HIGH
+    assert result.curriculum.independently_validated is True
+    assert result.curriculum.timeout_is_falsehood is False
+    assert result.curriculum.source_faithful is False
+    assert result.traces
+    restored = CegisLoopResult.from_dict(result.to_dict())
+    assert restored.curriculum is not None
+    assert restored.curriculum.authority is CurriculumAuthority.HIGH
+
+
+def test_timeout_curriculum_is_not_falsehood() -> None:
+    cx = _counterexample()
+    candidate = _candidate_for(cx)
+
+    def refine(witness, context):
+        del witness, context
+        return (candidate,)
+
+    def verify(binding: dict[str, Any]) -> dict[str, Any]:
+        return _matching_receipt(binding, outcome="timeout")
+
+    result = CounterexampleGuidedTactician(
+        refine=refine,
+        verify=verify,
+        budget=CegisBudget(max_iterations=1),
+    ).run(cx)
+    assert not result.closed
+    assert result.stop_reason is CegisStopReason.VERIFIER_TIMEOUT
+    assert result.curriculum is not None
+    assert result.curriculum.curriculum_class is CurriculumClass.TIMEOUT
+    assert result.curriculum.authority is CurriculumAuthority.CANDIDATE
+    assert result.curriculum.timeout_is_falsehood is False
+    projected = project_cegis_curriculum(
+        stop_reason=CegisStopReason.VERIFIER_TIMEOUT,
+        closed=False,
+        independently_validated=True,
+        property_id=cx.violated_property,
+        witness_id=cx.semantic_id,
+    )
+    assert projected.curriculum_class is CurriculumClass.TIMEOUT
+    assert projected.authority is not CurriculumAuthority.HIGH
+
+
+def test_open_checked_counterexample_curriculum_stays_counterexample() -> None:
+    cx = _counterexample()
+    candidate = _candidate_for(cx)
+
+    def refine(witness, context):
+        del witness, context
+        return (candidate,)
+
+    def verify(binding: dict[str, Any]) -> dict[str, Any]:
+        return _matching_receipt(binding, outcome="still_violated")
+
+    result = CounterexampleGuidedTactician(
+        refine=refine,
+        verify=verify,
+        budget=CegisBudget(max_iterations=1),
+    ).run(cx)
+    assert not result.closed
+    assert result.curriculum is not None
+    assert result.curriculum.curriculum_class is CurriculumClass.COUNTEREXAMPLE
+    assert result.curriculum.authority is CurriculumAuthority.CANDIDATE
+
+
+def test_rejected_candidate_projects_parse_type_curriculum() -> None:
+    cx = _counterexample()
+    bad = _candidate_for(cx, candidate_id="candidate:bad", addresses=False)
+
+    def refine(witness, context):
+        del witness, context
+        return (bad,)
+
+    result = CounterexampleGuidedTactician(
+        refine=refine,
+        budget=CegisBudget(max_iterations=1),
+    ).run(cx)
+    assert result.stop_reason is CegisStopReason.NO_ADMISSIBLE_CANDIDATE
+    assert result.curriculum is not None
+    assert result.curriculum.curriculum_class is CurriculumClass.PARSE_TYPE
+    assert result.curriculum.authority is not CurriculumAuthority.HIGH

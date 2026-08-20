@@ -101,6 +101,7 @@ class IPFSKitStorage:
 if enable_ipfs_kit and not force_fallback:
     try:
         import ipfs_kit_py
+
         # Use ipfs_kit_py
         using_fallback = False
     except ImportError:
@@ -181,15 +182,11 @@ cid = storage.store(data, filename="example.txt")
 class ModelManager:
     def __init__(self):
         self.storage = get_storage()
-    
+
     def save_model(self, model_data, model_name):
-        cid = self.storage.store(
-            model_data,
-            filename=f"{model_name}.bin",
-            pin=True
-        )
+        cid = self.storage.store(model_data, filename=f"{model_name}.bin", pin=True)
         return cid
-    
+
     def load_model(self, cid):
         model_data = self.storage.retrieve(cid)
         return self._deserialize(model_data)
@@ -292,14 +289,14 @@ export IPFS_ACCELERATE_CACHE_DIR="~/.custom_cache"
 from ipfs_accelerate_py import IPFSKitStorage
 
 storage = IPFSKitStorage(
-    enable_ipfs_kit=True,      # Try to use ipfs_kit_py
+    enable_ipfs_kit=True,  # Try to use ipfs_kit_py
     cache_dir="~/.cache/app",  # Cache location
-    force_fallback=False,      # Force local mode
-    config={                   # Backend configuration
-        'enable_ipfs': True,
-        'enable_filecoin': False,
-        'enable_s3': False
-    }
+    force_fallback=False,  # Force local mode
+    config={  # Backend configuration
+        "enable_ipfs": True,
+        "enable_filecoin": False,
+        "enable_s3": False,
+    },
 )
 ```
 
@@ -388,15 +385,10 @@ storage = IPFSKitStorage(
 status = storage.get_backend_status()
 # Returns:
 {
-    'ipfs_kit_available': bool,
-    'using_fallback': bool,
-    'cache_dir': str,
-    'backends': {
-        'local': bool,
-        'ipfs': bool,
-        's3': bool,
-        'filecoin': bool
-    }
+    "ipfs_kit_available": bool,
+    "using_fallback": bool,
+    "cache_dir": str,
+    "backends": {"local": bool, "ipfs": bool, "s3": bool, "filecoin": bool},
 }
 ```
 

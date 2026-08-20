@@ -30,17 +30,19 @@ This document provides verification that datasets integration has been added to 
 **Logging points**:
 ```python
 # Model registration
-self._provenance_logger.log_transformation("model_registered", {
-    "model_id": metadata.model_id,
-    "model_type": metadata.model_type,
-    "timestamp": metadata.updated_at.isoformat()
-})
+self._provenance_logger.log_transformation(
+    "model_registered",
+    {
+        "model_id": metadata.model_id,
+        "model_type": metadata.model_type,
+        "timestamp": metadata.updated_at.isoformat(),
+    },
+)
 
 # Model access
-self._datasets_manager.log_event("model_accessed", {
-    "model_id": model_id,
-    "model_type": result.model_type
-})
+self._datasets_manager.log_event(
+    "model_accessed", {"model_id": model_id, "model_type": result.model_type}
+)
 ```
 
 ---
@@ -63,19 +65,19 @@ self._datasets_manager.log_event("model_accessed", {
 **Logging points**:
 ```python
 # Database connection
-self._datasets_manager.log_event("database_connected", {
-    "db_path": self.db_path,
-    "type": "duckdb"
-})
+self._datasets_manager.log_event("database_connected", {"db_path": self.db_path, "type": "duckdb"})
 
 # Acceleration results
-self._provenance_logger.log_transformation("acceleration_result_stored", {
-    "run_id": run_id,
-    "model_name": model_name,
-    "acceleration_type": acceleration_type,
-    "success": success,
-    "execution_time_ms": execution_time_ms
-})
+self._provenance_logger.log_transformation(
+    "acceleration_result_stored",
+    {
+        "run_id": run_id,
+        "model_name": model_name,
+        "acceleration_type": acceleration_type,
+        "success": success,
+        "execution_time_ms": execution_time_ms,
+    },
+)
 ```
 
 ---
@@ -98,10 +100,7 @@ self._provenance_logger.log_transformation("acceleration_result_stored", {
 ```python
 # Error aggregator initialization
 self._provenance_logger = ProvenanceLogger()
-self._datasets_manager = DatasetsManager({
-    'enable_audit': True,
-    'enable_provenance': True
-})
+self._datasets_manager = DatasetsManager({"enable_audit": True, "enable_provenance": True})
 ```
 
 ---
@@ -123,14 +122,17 @@ self._datasets_manager = DatasetsManager({
 **Logging points**:
 ```python
 # Inference logging
-_provenance_logger.log_inference(model_name=model, data={
-    "model_type": "embedding",
-    "inputs_processed": len(inputs),
-    "embedding_size": embedding_size,
-    "device": device,
-    "duration_ms": result["processing_time"] * 1000,
-    "hardware": device
-})
+_provenance_logger.log_inference(
+    model_name=model,
+    data={
+        "model_type": "embedding",
+        "inputs_processed": len(inputs),
+        "embedding_size": embedding_size,
+        "device": device,
+        "duration_ms": result["processing_time"] * 1000,
+        "hardware": device,
+    },
+)
 ```
 
 ---
@@ -177,11 +179,9 @@ DatasetsManager = ...
 **Logging points**:
 ```python
 # MCP start logging
-self._log_cli_event("mcp_start", {
-    "port": args.port,
-    "host": args.host,
-    "dashboard": args.dashboard
-})
+self._log_cli_event(
+    "mcp_start", {"port": args.port, "host": args.host, "dashboard": args.dashboard}
+)
 ```
 
 ---
@@ -310,7 +310,7 @@ if HAVE_DATASETS_INTEGRATION and is_datasets_available():
 # Logging with fallback:
 if self._provenance_logger:
     try:
-        self._provenance_logger.log_*(...) 
+        self._provenance_logger.log_ * (...)
     except Exception as e:
         logger.debug(f"Provenance logging failed: {e}")
 ```

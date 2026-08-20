@@ -136,19 +136,21 @@ def verify_real_implementation(self):
     """Detect if real WebNN/WebGPU implementation is available."""
     # Get feature details
     features = self.web_implementation.features or {}
-    
+
     # Check if real implementation is being used
     is_real = not self.web_implementation.simulation_mode
-    
+
     if is_real:
         logger.info(f"Real {platform} implementation detected in {browser}")
-        
+
         # Log adapter/backend details
         if platform == "webgpu":
             adapter = features.get("webgpu_adapter", {})
             if adapter:
-                logger.info(f"WebGPU Adapter: {adapter.get('vendor', 'Unknown')} - {adapter.get('architecture', 'Unknown')}")
-        
+                logger.info(
+                    f"WebGPU Adapter: {adapter.get('vendor', 'Unknown')} - {adapter.get('architecture', 'Unknown')}"
+                )
+
         if platform == "webnn":
             backend = features.get("webnn_backend", "Unknown")
             logger.info(f"WebNN Backend: {backend}")
@@ -240,27 +242,28 @@ from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge
 bridge = ResourcePoolBridge(max_connections=4)
 
 # Initialize with model configurations
-await bridge.initialize([
-    {
-        'model_id': 'whisper-model',
-        'model_name': 'whisper-tiny',
-        'platform': 'webgpu',
-        'browser': 'firefox',
-        'optimize_audio': True
-    },
-    {
-        'model_id': 'bert-model',
-        'model_name': 'bert-base-uncased',
-        'platform': 'webnn',
-        'browser': 'edge'
-    }
-])
+await bridge.initialize(
+    [
+        {
+            "model_id": "whisper-model",
+            "model_name": "whisper-tiny",
+            "platform": "webgpu",
+            "browser": "firefox",
+            "optimize_audio": True,
+        },
+        {
+            "model_id": "bert-model",
+            "model_name": "bert-base-uncased",
+            "platform": "webnn",
+            "browser": "edge",
+        },
+    ]
+)
 
 # Run parallel inference
-results = await bridge.run_parallel([
-    ('whisper-model', {'audio': 'test.mp3'}),
-    ('bert-model', {'text': 'This is a test'})
-])
+results = await bridge.run_parallel(
+    [("whisper-model", {"audio": "test.mp3"}), ("bert-model", {"text": "This is a test"})]
+)
 ```
 
 > **After Migration**: Once moved to the `ipfs_accelerate_js` folder, import paths will change to:
@@ -289,14 +292,12 @@ result = await bridge.initialize_model(
     model_name="whisper-tiny",
     model_type="audio",
     platform="webgpu",
-    options={"precision": {"bits": 8}}
+    options={"precision": {"bits": 8}},
 )
 
 # Run inference
 inference_result = await bridge.run_inference(
-    model_name="whisper-tiny",
-    input_data={"audio": "test.mp3"},
-    platform="webgpu"
+    model_name="whisper-tiny", input_data={"audio": "test.mp3"}, platform="webgpu"
 )
 
 # Close when done

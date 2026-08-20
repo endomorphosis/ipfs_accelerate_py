@@ -65,10 +65,7 @@ def _canonical_fixture():
     )
     admitted_root = prompt_workflow_cid(
         {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "admitted-prompt-plan@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/admitted-prompt-plan@1"),
             "candidate_plan_cid": fixture.plan_root_cid,
             "formal_plan_id": receipt.formal_plan_id,
             "ir_receipt_id": receipt.ir_receipt_id,
@@ -108,10 +105,7 @@ def _sources(tmp_path: Path):
 
 def _canonical_graph(source) -> list[tuple[str, str, tuple[str, ...]]]:
     snapshot = source.snapshot(include_tasks=True)
-    return [
-        (task.task_id, task.status, task.dependency_task_ids)
-        for task in snapshot.tasks
-    ]
+    return [(task.task_id, task.status, task.dependency_task_ids) for task in snapshot.tasks]
 
 
 def _exercise_lifecycle(source):
@@ -223,17 +217,21 @@ def test_same_fixture_has_identical_queries_claims_retries_and_terminal_graph(
     markdown_result = _exercise_lifecycle(markdown)
     database_result = _exercise_lifecycle(database)
 
-    assert markdown_result == database_result == {
-        "ready_order": [("FIX-001",), ("FIX-002",), ()],
-        "claims": ["FIX-001", "FIX-001", "FIX-002"],
-        "retries": ["FIX-001"],
-        "completions": ["FIX-001", "FIX-002"],
-        "terminal": True,
-        "graph": [
-            ("FIX-001", "completed", ()),
-            ("FIX-002", "completed", ("FIX-001",)),
-        ],
-    }
+    assert (
+        markdown_result
+        == database_result
+        == {
+            "ready_order": [("FIX-001",), ("FIX-002",), ()],
+            "claims": ["FIX-001", "FIX-001", "FIX-002"],
+            "retries": ["FIX-001"],
+            "completions": ["FIX-001", "FIX-002"],
+            "terminal": True,
+            "graph": [
+                ("FIX-001", "completed", ()),
+                ("FIX-002", "completed", ("FIX-001",)),
+            ],
+        }
+    )
 
 
 def test_daemon_consumes_either_source_and_receipts_bind_source_identity(
@@ -249,9 +247,9 @@ def test_daemon_consumes_either_source_and_receipts_bind_source_identity(
 
         assert first["active_task_id"] == "FIX-001"
         assert second["active_task_id"] == "FIX-002"
-        assert completed["completion_receipts"][0][
-            "task_source_identity"
-        ] == source.identity.to_dict()
+        assert (
+            completed["completion_receipts"][0]["task_source_identity"] == source.identity.to_dict()
+        )
         checkpoint = daemon._runtime_checkpoint
         assert checkpoint["task_source_identity"] == source.identity.to_dict()
         observed.append(
@@ -296,9 +294,7 @@ def test_stale_revision_cursor_corruption_foreign_root_and_swap_fail_closed(
         open_task_source(database.backend, expected_root_id="plan:foreign")
 
     connection = duckdb.connect(str(database.path))
-    connection.execute(
-        "UPDATE tasks SET goal_cid = 'goal:foreign' WHERE task_alias = 'FIX-001'"
-    )
+    connection.execute("UPDATE tasks SET goal_cid = 'goal:foreign' WHERE task_alias = 'FIX-001'")
     connection.close()
     assert not database.check_integrity().valid
     invalid = database_daemon.run_once()

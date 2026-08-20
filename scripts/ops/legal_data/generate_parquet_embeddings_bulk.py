@@ -23,7 +23,14 @@ def main() -> int:
     cached = sys.modules.get("ipfs_datasets_py")
     if cached is not None and not hasattr(cached, "embeddings_router"):
         sys.modules.pop("ipfs_datasets_py", None)
-    target = repo_root / "ipfs_datasets_py" / "scripts" / "ops" / "legal_data" / "generate_parquet_embeddings_bulk.py"
+    target = (
+        repo_root
+        / "ipfs_datasets_py"
+        / "scripts"
+        / "ops"
+        / "legal_data"
+        / "generate_parquet_embeddings_bulk.py"
+    )
     if not target.exists():
         raise FileNotFoundError(f"Canonical script not found: {target}")
     runpy.run_path(str(target), run_name="__main__")

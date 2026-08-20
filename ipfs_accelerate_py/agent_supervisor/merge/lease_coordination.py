@@ -6268,3 +6268,19 @@ __all__ = [
     "WorkerEnvironmentReceipt",
     "canonical_profile_g_bytes", "profile_g_cid",
 ]
+
+def profile_g_taskspec_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Return a Profile-G TaskSpec ``max_attempts`` value in ``[1, 100]``.
+
+    Operational queue state may use ``0`` as unlimited. Profile-G v1 TaskSpec
+    cannot represent that sentinel, so embed the same bounded terminal-block
+    cap used by the lease coordinator.
+    """
+
+    raw = profile_g_task_attempt_limit(value, default=default)
+    return UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP if raw == 0 else raw
+
+
+def _duckdb_path_literal(path: Path) -> str:
+    return "'" + str(path).replace("'", "''") + "'"
+

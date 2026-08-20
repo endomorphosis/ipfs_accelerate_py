@@ -129,6 +129,7 @@ from .implementation_daemon import (
     _validated_provider_filesystem_boundary_receipt,
     consume_stale_active_attempt,
     load_json_dict,
+    normalize_status,
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
     normalize_relative_path_list,
@@ -10070,6 +10071,8 @@ class PortalImplementationSupervisor:
         )
         update_maintenance_phase("stale_active_state_repair")
         stale_active_state_repair = self.repair_stale_active_execution_state()
+        update_maintenance_phase("completed_leftover_execution")
+        completed_leftover_execution = self.release_completed_leftover_execution()
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
         update_maintenance_phase("generated_dirty_repair")
@@ -10200,6 +10203,7 @@ class PortalImplementationSupervisor:
                 "strategy_file_repair": strategy_file_repair,
                 "state_file_repair": state_file_repair,
                 "stale_active_state_repair": stale_active_state_repair,
+                "completed_leftover_execution": completed_leftover_execution,
                 "stale_worktree_detection": stale_worktree_detection,
                 "worktree_pool_orphan_reconciliation": (
                     worktree_pool_orphan_reconciliation
@@ -10463,6 +10467,7 @@ class PortalImplementationSupervisor:
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
             "stale_active_state_repair": stale_active_state_repair,
+            "completed_leftover_execution": completed_leftover_execution,
             "stale_worktree_detection": stale_worktree_detection,
             "worktree_pool_orphan_reconciliation": (
                 worktree_pool_orphan_reconciliation
@@ -11170,6 +11175,65 @@ class PortalImplementationSupervisor:
             **active_fields,
         }
         self._record_event("stale_active_execution_state_repaired", result)
+        return result
+
+    def _board_task_is_completed(self, task_id: str) -> bool:
+        """Return whether the live board already marked this task completed."""
+
+        normalized = str(task_id or "").strip()
+        if not normalized or not self.config.todo_path.exists():
+            return False
+        try:
+            tasks = parse_task_file(self.config.todo_path, self.config.task_prefix)
+        except (OSError, UnicodeDecodeError):
+            return False
+        return any(
+            task.task_id == normalized and normalize_status(task.status) == "completed"
+            for task in tasks
+        )
+
+    def release_completed_leftover_execution(self) -> dict[str, Any]:
+        """Stop a live attempt whose board task has already completed."""
+
+        state = PortalTaskState.load(self.config.state_path)
+        task_id = str(state.active_task_id or "").strip()
+        if not task_id or not state.implementation_in_progress:
+            return {
+                "attempted": False,
+                "released": False,
+                "reason": "no_active_implementation",
+                "active_task_id": task_id,
+            }
+        if not self._board_task_is_completed(task_id):
+            return {
+                "attempted": False,
+                "released": False,
+                "reason": "active_task_not_completed",
+                "active_task_id": task_id,
+            }
+        stop = self._terminate_managed_daemon_tree(grace_seconds=2.0)
+        repaired_at = utc_now()
+        consume_stale_active_attempt(state)
+        state.active_attempt = 0
+        state.active_phase = ""
+        state.active_phase_started_at = ""
+        state.active_phase_detail = ""
+        state.active_log_path = ""
+        state.active_worktree_path = ""
+        state.active_branch = ""
+        state.implementation_in_progress = False
+        state.heartbeat_at = repaired_at
+        state.last_progress_at = repaired_at
+        state.save(self.config.state_path)
+        result = {
+            "attempted": True,
+            "released": True,
+            "reason": "completed_task_leftover",
+            "active_task_id": task_id,
+            "repaired_at": repaired_at,
+            "stop": stop,
+        }
+        self._record_event("completed_leftover_execution_released", result)
         return result
 
     def _repo_merge_lock_path(self) -> Path:
@@ -16827,6 +16891,7 @@ class PortalImplementationSupervisor:
 
         checked: list[dict[str, Any]] = []
         configured_submodule_deletion = False
+        matching_submodule_working_tree = False
         for line in status_lines:
             code = line[:2]
             relative = self._status_line_path(line)
@@ -16837,6 +16902,22 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True, "configured_submodule_deletion": True})
                 configured_submodule_deletion = True
                 continue
+            if self._status_line_is_configured_submodule_working_tree(code, relative):
+                if self._submodule_gitlink_matches_target(worktree_path, relative, target_ref):
+                    checked.append(
+                        {
+                            **detail,
+                            "matches_target": True,
+                            "submodule_gitlink_matches_target": True,
+                        }
+                    )
+                    matching_submodule_working_tree = True
+                    continue
+                return {
+                    "redundant": False,
+                    "reason": "submodule_gitlink_diverged",
+                    "checked": [*checked, detail],
+                }
             if "D" in code or "?" in code.strip(" ?"):
                 return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
             if code == "??" or "M" in code or "A" in code:
@@ -16845,12 +16926,48 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True})
                 continue
             return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
-        reason = (
-            "configured_submodule_deletions_match_target"
-            if configured_submodule_deletion
-            else "all_dirty_paths_match_target"
-        )
+        if configured_submodule_deletion:
+            reason = "configured_submodule_deletions_match_target"
+        elif matching_submodule_working_tree:
+            reason = "submodule_working_tree_matches_gitlink"
+        else:
+            reason = "all_dirty_paths_match_target"
         return {"redundant": True, "reason": reason, "checked": checked}
+
+    def _status_line_is_configured_submodule_working_tree(self, code: str, relative: str) -> bool:
+        if "m" not in code and code not in {" M", "M "}:
+            return False
+        relative = relative.rstrip("/")
+        return any(relative == path.rstrip("/") for path in self.config.worktree_submodule_paths)
+
+    def _submodule_gitlink_sha(self, cwd: Path, relative: str, ref: str) -> str:
+        result = subprocess.run(
+            ["git", "ls-tree", ref, "--", relative],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == "160000":
+                return parts[2]
+        return ""
+
+    def _submodule_gitlink_matches_target(
+        self,
+        worktree_path: Path,
+        relative: str,
+        target_ref: str,
+    ) -> bool:
+        recorded = self._submodule_gitlink_sha(worktree_path, relative, "HEAD")
+        target = self._submodule_gitlink_sha(self.config.repo_root, relative, target_ref)
+        if not (recorded and target and recorded == target):
+            return False
+        nested_head = self._git_ref_commit(worktree_path / relative, "HEAD")
+        return bool(nested_head and nested_head == recorded)
 
     def _status_line_is_configured_submodule_deletion(
         self,
@@ -21115,7 +21232,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--task-source-kind",
-        choices=("legacy-markdown", "markdown", "duckdb"),
+        choices=("", "legacy-markdown", "markdown", "duckdb"),
         default="",
         help=(
             "Explicit task-source storage contract forwarded to the managed "
@@ -21125,7 +21242,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--authority-mode",
-        choices=("quack", "embedded", "embedded_exclusive", "legacy_markdown"),
+        choices=("", "legacy_markdown", "embedded", "embedded_exclusive", "quack"),
         default="",
         help=(
             "Explicit state authority mode. Quack never silently becomes "
@@ -21135,29 +21252,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--endpoint-secret-handle",
         default="",
-        help="Opaque state endpoint secret handle; raw tokens are rejected.",
+        help="Opaque state endpoint secret handle; raw credentials are forbidden.",
     )
-    parser.add_argument(
-        "--quack-endpoint",
-        default="",
-        help="Loopback quack: URI for the exclusive state owner.",
-    )
+    parser.add_argument("--quack-endpoint", default="")
     parser.add_argument("--state-store-id", default="")
     parser.add_argument("--state-store-generation", default="")
     parser.add_argument("--state-schema-revision", default="")
+    parser.add_argument(
+        "--state-failover-policy",
+        choices=("fail_closed", "require_explicit_operator"),
+        default="fail_closed",
+    )
     parser.add_argument("--event-store-path", default="")
     parser.add_argument("--runtime-registry-path", default="")
     parser.add_argument("--export-profile", default="")
     parser.add_argument(
-        "--state-failover-policy",
-        choices=("fail_closed", "require_explicit_operator"),
-        default="",
-        help="Failover policy; Quack requires fail_closed.",
-    )
-    parser.add_argument(
         "--explicit-legacy-task-source",
         action="store_true",
-        help="Acknowledge an explicit legacy markdown task source.",
+        help="Acknowledge explicit legacy-Markdown authority.",
     )
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument(

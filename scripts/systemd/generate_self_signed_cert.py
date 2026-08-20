@@ -108,7 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional path to write MCP_LAN_IP=... (updated when value changes)",
     )
     parser.add_argument("--days", type=int, default=365, help="Validity period in days")
-    parser.add_argument("--cn", default="ipfs-accelerate-mcpplusplus", help="Certificate common name")
+    parser.add_argument(
+        "--cn", default="ipfs-accelerate-mcpplusplus", help="Certificate common name"
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite existing files")
 
     args = parser.parse_args(argv)
@@ -120,7 +122,11 @@ def main(argv: list[str] | None = None) -> int:
     detected_ip = _detect_lan_ip() or ""
     ip = override_ip or detected_ip
 
-    env_path = pathlib.Path(args.write_env_file).expanduser() if str(args.write_env_file or "").strip() else None
+    env_path = (
+        pathlib.Path(args.write_env_file).expanduser()
+        if str(args.write_env_file or "").strip()
+        else None
+    )
     prev_env_ip = ""
     if env_path is not None:
         prev_env_ip = _read_env_var(env_path, "MCP_LAN_IP")

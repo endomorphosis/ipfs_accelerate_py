@@ -117,11 +117,7 @@ def _request() -> DecisionRequest:
                 SemanticRoot(
                     kind=kind,
                     artifact=_artifact(f"root-{kind.value}"),
-                    coverage=(
-                        coverage
-                        if kind is SemanticRootKind.DIRTY_WORKTREE
-                        else ()
-                    ),
+                    coverage=(coverage if kind is SemanticRootKind.DIRTY_WORKTREE else ()),
                 )
                 for kind in SemanticRootKind
             ),
@@ -226,9 +222,7 @@ def _edge(
     )
 
 
-def _graph(
-    request: DecisionRequest, *, large_legal_body: bool = False
-) -> SemanticDependencyGraph:
+def _graph(request: DecisionRequest, *, large_legal_body: bool = False) -> SemanticDependencyGraph:
     legal_record: dict[str, object] = {
         "jurisdiction": "US",
         "rule": "applicable",
@@ -396,9 +390,7 @@ def test_provider_remeasurement_splits_or_fails_closed_without_truncation() -> N
     assert result.split
     assert result.expansion_requests
     assert set(result.witness.mandatory_node_ids) == {
-        reference.node_id
-        for context in result.contexts
-        for reference in context.references
+        reference.node_id for context in result.contexts for reference in context.references
     }
     assert all(
         context.provider_input_tokens <= context.effective_input_limit
@@ -419,9 +411,7 @@ def test_receipt_decision_and_graph_bindings_fail_closed() -> None:
     request = _request()
     graph = _graph(request)
     receipt = retrieve_proof_directed(request, graph)
-    compiler = DecisionContextCompiler(
-        _context_budget(), tokenizer=_tokenizer
-    )
+    compiler = DecisionContextCompiler(_context_budget(), tokenizer=_tokenizer)
 
     with pytest.raises(DecisionContextBindingError, match="different decision"):
         compiler.compile(
@@ -437,9 +427,10 @@ def test_contract_round_trip_is_immutable_and_tamper_evident() -> None:
     restored = DecisionContextCompilation.from_dict(result.to_record())
 
     assert restored.content_id == result.content_id
-    assert ContextCompletenessWitness.from_dict(
-        result.witness.to_record()
-    ).content_id == result.witness.content_id
+    assert (
+        ContextCompletenessWitness.from_dict(result.witness.to_record()).content_id
+        == result.witness.content_id
+    )
 
     forged = result.witness.to_record()
     forged["closure_id"] = "mandatory-closure:forged"
@@ -485,14 +476,8 @@ def test_tenfold_irrelevant_growth_changes_only_bounded_index_metadata() -> None
 
     assert grown.context.required_core == base.context.required_core
     assert [
-        reference.to_dict()
-        for context in grown.contexts
-        for reference in context.references
-    ] == [
-        reference.to_dict()
-        for context in base.contexts
-        for reference in context.references
-    ]
+        reference.to_dict() for context in grown.contexts for reference in context.references
+    ] == [reference.to_dict() for context in base.contexts for reference in context.references]
     assert grown.witness.content_id == base.witness.content_id
     assert grown.witness.entries == base.witness.entries
     assert grown.context.index_metadata != base.context.index_metadata

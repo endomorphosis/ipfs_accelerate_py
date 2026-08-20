@@ -57,15 +57,13 @@ The Fault Tolerance Visualization System provides comprehensive visualization ca
 
 ```python
 from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
-    create_recovery_manager, visualize_fault_tolerance
+    create_recovery_manager,
+    visualize_fault_tolerance,
 )
 
 # Create recovery manager with ML detection
 recovery_manager = create_recovery_manager(
-    coordinator=coordinator,
-    db_manager=db_manager,
-    scheduler=scheduler,
-    enable_ml=True
+    coordinator=coordinator, db_manager=db_manager, scheduler=scheduler, enable_ml=True
 )
 
 # After running some tests and collecting failure data...
@@ -75,6 +73,7 @@ report_path = recovery_manager.create_visualization(output_dir="./visualizations
 
 # Open the report in a browser
 import webbrowser
+
 webbrowser.open(f"file://{os.path.abspath(report_path)}")
 ```
 

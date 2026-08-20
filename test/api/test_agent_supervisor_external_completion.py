@@ -54,13 +54,7 @@ def test_external_completion_cids_require_canonical_multiformats_encoding():
     # Encode CID version 1 as the overlong varint 0x81 0x00. It decodes to
     # the same integer but is not a canonical multiformats representation.
     noncanonical_raw = b"\x81\x00" + raw[1:]
-    noncanonical = (
-        "b"
-        + base64.b32encode(noncanonical_raw)
-        .decode("ascii")
-        .rstrip("=")
-        .lower()
-    )
+    noncanonical = "b" + base64.b32encode(noncanonical_raw).decode("ascii").rstrip("=").lower()
 
     assert validate_cid(canonical, field_name="canonical") == canonical
     with pytest.raises(ValueError, match="valid CIDv1"):
@@ -168,9 +162,7 @@ def _authority(
                 evidence_term=EVIDENCE_TERM,
                 source=source,
                 run_plan_cid=run_plan_cid or requirement.run_plan_cid,
-                parent_ledger_cid=(
-                    parent_ledger_cid or requirement.parent_ledger_cid
-                ),
+                parent_ledger_cid=(parent_ledger_cid or requirement.parent_ledger_cid),
                 artifacts=artifacts,
                 producer_id=producer_id,
                 validator_id=validator_id,
@@ -202,9 +194,7 @@ def _completion_gate(
             "verified": True,
             "repository_tree": identity.tree_id,
             "evaluated_at": OBSERVED_AT,
-            "criteria": [
-                {"criterion": EVIDENCE_TERM, "status": "verified"}
-            ],
+            "criteria": [{"criterion": EVIDENCE_TERM, "status": "verified"}],
         },
         "analyzer_health": {
             "status": "healthy",
@@ -268,20 +258,14 @@ def test_declared_external_goal_is_governed_before_first_authority(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         now=OBSERVED_AT,
     )
 
     assert result.verified_goal_ids == []
-    assert result.external_completion["governed_goal_ids"] == [
-        "EXT-G001"
-    ]
+    assert result.external_completion["governed_goal_ids"] == ["EXT-G001"]
     decision = result.decisions["EXT-G001"]["external_completion"]
-    assert decision["results"][0]["reason_codes"] == [
-        "external_authority_not_supplied"
-    ]
+    assert decision["results"][0]["reason_codes"] == ["external_authority_not_supplied"]
 
 
 @pytest.mark.parametrize(
@@ -311,18 +295,14 @@ def test_external_authority_aliases_are_governed_during_reconciliation(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         now=OBSERVED_AT,
     )
 
     assert result.verified_goal_ids == []
     assert result.external_completion["governed_goal_ids"] == ["EXT-G001"]
     decision = result.decisions["EXT-G001"]["external_completion"]
-    assert decision["results"][0]["reason_codes"] == [
-        "external_authority_not_supplied"
-    ]
+    assert decision["results"][0]["reason_codes"] == ["external_authority_not_supplied"]
 
 
 def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
@@ -352,9 +332,7 @@ def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         completion_evidence_records={"EXT-G001": [locally_asserted]},
         external_completion_authority=marker_only,
         now=OBSERVED_AT,
@@ -362,12 +340,8 @@ def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
 
     assert first.verified_goal_ids == []
     assert first.provisional_goal_ids == ["EXT-G001"]
-    assert first.external_completion["results"][0]["reason_codes"] == [
-        "external_receipt_missing"
-    ]
-    marker_goal = parse_goal_heap(
-        objective_path.read_text(encoding="utf-8")
-    )[0]
+    assert first.external_completion["results"][0]["reason_codes"] == ["external_receipt_missing"]
+    marker_goal = parse_goal_heap(objective_path.read_text(encoding="utf-8"))[0]
     assert marker_goal.status == "provisionally_complete"
 
     _git(repo, "add", "objective.md")
@@ -377,17 +351,13 @@ def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=authority,
         now=OBSERVED_AT,
     )
     assert provisional.verified_goal_ids == ["EXT-G001"]
 
-    completed_goal = parse_goal_heap(
-        objective_path.read_text(encoding="utf-8")
-    )[0]
+    completed_goal = parse_goal_heap(objective_path.read_text(encoding="utf-8"))[0]
     assert completed_goal.status == "verified_complete"
     persisted = json.loads(completed_goal.fields["completion_evidence_records"])
     serialized = json.dumps(persisted, sort_keys=True)
@@ -405,9 +375,7 @@ def test_external_completion_is_two_phase_and_marker_text_is_not_authority(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=revoked,
         now=OBSERVED_AT,
     )
@@ -442,9 +410,7 @@ def test_verified_external_gate_stays_nonlocal_while_downstream_work_reopens(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=_authority(repo, objective_path),
         now=OBSERVED_AT,
     )
@@ -456,9 +422,7 @@ def test_verified_external_gate_stays_nonlocal_while_downstream_work_reopens(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=_authority(repo, objective_path),
         now=OBSERVED_AT,
     )
@@ -487,9 +451,7 @@ def test_verified_external_gate_stays_nonlocal_while_downstream_work_reopens(
         write_todo_vector_index=False,
     )
     assert [record.finding.goal_id for record in generated] == ["EXT-G002"]
-    downstream_payload = build_bundle_task_payloads(
-        bundle_dir / "index.json"
-    )[0]
+    downstream_payload = build_bundle_task_payloads(bundle_dir / "index.json")[0]
     assert downstream_payload["claimable"] is True
     assert downstream_payload["ready_member_task_ids"] == ["DOWNSTREAM-001"]
 
@@ -512,9 +474,7 @@ def test_verified_external_gate_stays_nonlocal_while_downstream_work_reopens(
     )
     legacy_schedule = legacy_external_task.schedule[0]
     assert legacy_schedule.claimable is False
-    assert "cid-legacy-external-gate" in (
-        legacy_external_task.invalid_task_cids
-    )
+    assert "cid-legacy-external-gate" in (legacy_external_task.invalid_task_cids)
     assert any(
         repair.kind == "external_authority_required"
         for repair in legacy_external_task.repair_evidence
@@ -570,9 +530,9 @@ def test_reopened_external_gate_cannot_advance_descendant_in_same_reconciliation
 
     assert result.reopened_goal_ids == ["EXT-G001"]
     assert "EXT-G002" not in result.decisions
-    goals = {goal.goal_id: goal for goal in parse_goal_heap(
-        objective_path.read_text(encoding="utf-8")
-    )}
+    goals = {
+        goal.goal_id: goal for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
     assert goals["EXT-G001"].status == "reopened"
     assert goals["EXT-G002"].status == "active"
 
@@ -646,10 +606,7 @@ def test_daemon_without_reconciliation_fences_recorded_gate_but_keeps_local_work
     payload = run_objective_daemon(args)
 
     assert payload["objective_completion_reconciliation_enabled"] is False
-    assert (
-        payload["recorded_external_completion_trusted_for_generation"]
-        is False
-    )
+    assert payload["recorded_external_completion_trusted_for_generation"] is False
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     generated_goal_ids = {
         str(task.get("goal_id") or "")
@@ -695,9 +652,7 @@ def test_external_completion_rejects_dirty_stale_and_incomplete_artifacts(
         now=OBSERVED_AT,
     )
     assert dirty_objective.evidence_records["EXT-G001"] == ()
-    assert "current_source_dirty" in (
-        dirty_objective.results[0].reason_codes
-    )
+    assert "current_source_dirty" in (dirty_objective.results[0].reason_codes)
 
     objective_path.write_text(original_objective, encoding="utf-8")
     (repo / "src" / "implementation.py").write_text(
@@ -739,9 +694,7 @@ def test_external_completion_rejects_dirty_stale_and_incomplete_artifacts(
         now=OBSERVED_AT,
     )
     assert incomplete_result.evidence_records["EXT-G001"] == ()
-    assert "external_artifacts_missing" in (
-        incomplete_result.results[0].reason_codes
-    )
+    assert "external_artifacts_missing" in (incomplete_result.results[0].reason_codes)
     assert source2.clean is True
 
 
@@ -778,8 +731,7 @@ def test_dirty_objective_heap_reopens_externally_verified_goal(tmp_path):
     current_authority = _authority(repo, objective_path)
     current_gate = _completion_gate(repo, objective_path)
     objective_path.write_text(
-        objective_path.read_text(encoding="utf-8")
-        + "\n<!-- uncommitted objective mutation -->\n",
+        objective_path.read_text(encoding="utf-8") + "\n<!-- uncommitted objective mutation -->\n",
         encoding="utf-8",
     )
 
@@ -793,9 +745,7 @@ def test_dirty_objective_heap_reopens_externally_verified_goal(tmp_path):
     )
 
     assert reopened.reopened_goal_ids == ["EXT-G001"]
-    assert "current_source_dirty" in reopened.external_completion[
-        "results"
-    ][0]["reason_codes"]
+    assert "current_source_dirty" in reopened.external_completion["results"][0]["reason_codes"]
 
 
 def test_omitting_explicit_authority_cannot_reuse_persisted_external_receipt(
@@ -807,9 +757,7 @@ def test_omitting_explicit_authority_cannot_reuse_persisted_external_receipt(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=authority,
         now=OBSERVED_AT,
     )
@@ -822,9 +770,7 @@ def test_omitting_explicit_authority_cannot_reuse_persisted_external_receipt(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=authority,
         now=OBSERVED_AT,
     )
@@ -836,25 +782,15 @@ def test_omitting_explicit_authority_cannot_reuse_persisted_external_receipt(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         now=OBSERVED_AT,
     )
 
     assert reopened.reopened_goal_ids == ["EXT-G001"]
-    external_result = reopened.decisions["EXT-G001"][
-        "external_completion"
-    ]["results"][0]
-    assert external_result["reason_codes"] == [
-        "external_authority_not_supplied"
-    ]
-    reopened_goal = parse_goal_heap(
-        objective_path.read_text(encoding="utf-8")
-    )[0]
-    assert json.loads(
-        reopened_goal.fields["completion_evidence_records"]
-    ) == []
+    external_result = reopened.decisions["EXT-G001"]["external_completion"]["results"][0]
+    assert external_result["reason_codes"] == ["external_authority_not_supplied"]
+    reopened_goal = parse_goal_heap(objective_path.read_text(encoding="utf-8"))[0]
+    assert json.loads(reopened_goal.fields["completion_evidence_records"]) == []
 
 
 def test_external_source_is_rechecked_after_legacy_migration_rewrite(
@@ -876,17 +812,13 @@ def test_external_source_is_rechecked_after_legacy_migration_rewrite(
         repo_root=repo,
         objective_path=objective_path,
         todo_path=todo_path,
-        completion_gate_records={
-            "EXT-G001": _completion_gate(repo, objective_path)
-        },
+        completion_gate_records={"EXT-G001": _completion_gate(repo, objective_path)},
         external_completion_authority=authority,
         now=OBSERVED_AT,
     )
 
     assert result.verified_goal_ids == []
-    assert "current_source_dirty" in result.external_completion[
-        "results"
-    ][0]["reason_codes"]
+    assert "current_source_dirty" in result.external_completion["results"][0]["reason_codes"]
     assert result.state_counts["verified_complete"] == 0
 
 
@@ -925,9 +857,7 @@ def test_external_reconciliation_never_reads_configured_excluded_bytes(
     )
 
     assert result.verified_goal_ids == []
-    assert "current_source_dirty" in result.external_completion[
-        "results"
-    ][0]["reason_codes"]
+    assert "current_source_dirty" in result.external_completion["results"][0]["reason_codes"]
 
 
 def test_external_completion_schema_rejects_duplicates_mismatches_and_disclosure(
@@ -944,9 +874,7 @@ def test_external_completion_schema_rejects_duplicates_mismatches_and_disclosure
     ]
     duplicate_artifact_payload.pop("receipt_cid")
     with pytest.raises(ValueError, match="duplicate artifact_id"):
-        ExternalOperationalCompletionReceipt.from_dict(
-            duplicate_artifact_payload
-        )
+        ExternalOperationalCompletionReceipt.from_dict(duplicate_artifact_payload)
 
     disclosure_payload = receipt.to_dict()
     disclosure_payload["artifact_path"] = "/private/corpus/result.json"
@@ -959,9 +887,7 @@ def test_external_completion_schema_rejects_duplicates_mismatches_and_disclosure
     status_disclosure_payload["status"] = "/private/corpus/result.json"
     status_disclosure_payload.pop("receipt_cid")
     with pytest.raises(ValueError, match="unsupported external receipt status"):
-        ExternalOperationalCompletionReceipt.from_dict(
-            status_disclosure_payload
-        )
+        ExternalOperationalCompletionReceipt.from_dict(status_disclosure_payload)
 
     unexpected_binding_receipt = ExternalOperationalCompletionReceipt(
         **{
@@ -1072,9 +998,7 @@ def test_external_completion_schema_rejects_duplicates_mismatches_and_disclosure
                         for key, value in valid.receipts[0].__dict__.items()
                         if key != "receipt_cid"
                     },
-                    "validator_receipt_cid": _cid(
-                        "second-validator-receipt"
-                    ),
+                    "validator_receipt_cid": _cid("second-validator-receipt"),
                 }
             ),
         ),
@@ -1087,9 +1011,7 @@ def test_external_completion_schema_rejects_duplicates_mismatches_and_disclosure
         now=datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc),
     )
     assert duplicate_result.evidence_records["EXT-G001"] == ()
-    assert duplicate_result.results[0].reason_codes == (
-        "external_receipt_duplicate",
-    )
+    assert duplicate_result.results[0].reason_codes == ("external_receipt_duplicate",)
 
 
 def test_external_source_identity_covers_recursive_gitlinks_without_paths(
@@ -1151,9 +1073,7 @@ def test_external_source_identity_covers_recursive_gitlinks_without_paths(
         objective_path=objective_path,
     )
     assert inspection.valid is True
-    assert sorted(
-        item.depth for item in inspection.identity.recursive_gitlinks
-    ) == [
+    assert sorted(item.depth for item in inspection.identity.recursive_gitlinks) == [
         0,
         1,
     ]
@@ -1224,15 +1144,10 @@ def test_objective_daemon_loads_explicit_external_authority_without_path_disclos
 
     payload = run_objective_daemon(args)
 
-    assert (
-        payload["objective_external_completion_authority_cid"]
-        == authority.authority_cid
-    )
-    assert payload["objective_external_completion_governed_goal_ids"] == [
-        "EXT-G001"
+    assert payload["objective_external_completion_authority_cid"] == authority.authority_cid
+    assert payload["objective_external_completion_governed_goal_ids"] == ["EXT-G001"]
+    assert payload["objective_external_completion"]["results"][0]["reason_codes"] == [
+        "external_receipt_missing"
     ]
-    assert payload["objective_external_completion"]["results"][0][
-        "reason_codes"
-    ] == ["external_receipt_missing"]
     assert "objective_external_completion_receipt_path" not in payload
     assert str(authority_path) not in json.dumps(payload, sort_keys=True)

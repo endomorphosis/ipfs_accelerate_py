@@ -54,9 +54,7 @@ FORMAL_VERIFICATION_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/formal-verification-policy@1"
 )
 PROOF_OUTCOME_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-policy-outcome@1"
-VALIDATION_OUTCOME_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/fallback-validation-outcome@1"
-)
+VALIDATION_OUTCOME_SCHEMA = "ipfs_accelerate_py/agent-supervisor/fallback-validation-outcome@1"
 OVERRIDE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-override-receipt@1"
 ROLLOUT_TRANSITION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-rollout-transition-receipt@1"
@@ -64,15 +62,9 @@ ROLLOUT_TRANSITION_RECEIPT_SCHEMA = (
 REQUIREMENT_GATE_RESULT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-requirement-gate-result@1"
 )
-POLICY_GATE_DECISION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-policy-gate-decision@1"
-)
-MERGE_PROOF_GATE_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/merge-proof-gate-receipt@1"
-)
-PROOF_ROLLOUT_STATUS_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-rollout-status@1"
-)
+POLICY_GATE_DECISION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-policy-gate-decision@1"
+MERGE_PROOF_GATE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/merge-proof-gate-receipt@1"
+PROOF_ROLLOUT_STATUS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-rollout-status@1"
 
 MAX_SCOPE_ITEMS = 256
 MAX_OVERRIDE_LIFETIME_SECONDS = 7 * 24 * 60 * 60
@@ -219,9 +211,7 @@ def _strings(
         if normalized not in result:
             result.append(normalized)
     if len(result) > MAX_SCOPE_ITEMS:
-        raise PolicyValidationError(
-            f"{field_name} exceeds the {MAX_SCOPE_ITEMS}-item policy bound"
-        )
+        raise PolicyValidationError(f"{field_name} exceeds the {MAX_SCOPE_ITEMS}-item policy bound")
     if required and not result:
         raise PolicyValidationError(f"{field_name} must not be empty")
     return tuple(result if preserve_order else sorted(result))
@@ -251,9 +241,7 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise PolicyValidationError(f"{field_name} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
-        bounds = (
-            f">= {minimum}" if maximum is None else f"between {minimum} and {maximum}"
-        )
+        bounds = f">= {minimum}" if maximum is None else f"between {minimum} and {maximum}"
         raise PolicyValidationError(f"{field_name} must be {bounds}")
     return value
 
@@ -331,9 +319,7 @@ def _timestamp(value: Any, field_name: str) -> tuple[str, datetime]:
     try:
         parsed = datetime.fromisoformat(candidate)
     except ValueError as exc:
-        raise PolicyValidationError(
-            f"{field_name} must be an ISO-8601 timestamp"
-        ) from exc
+        raise PolicyValidationError(f"{field_name} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise PolicyValidationError(f"{field_name} must include a timezone")
     parsed = parsed.astimezone(timezone.utc)
@@ -354,9 +340,7 @@ def _now(value: datetime | str | None) -> datetime:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise PolicyValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise PolicyValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
 @dataclass(frozen=True)
@@ -374,9 +358,7 @@ class ChangedScope(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _normalize_git_path(self.path))
-        object.__setattr__(
-            self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids")
-        )
+        object.__setattr__(self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids"))
         object.__setattr__(self, "risk", _enum(self.risk, RiskLevel, "risk"))
         object.__setattr__(
             self,
@@ -444,9 +426,7 @@ class ProofPolicyRule(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "rule_id", _text(self.rule_id, "rule_id", required=True)
-        )
+        object.__setattr__(self, "rule_id", _text(self.rule_id, "rule_id", required=True))
         object.__setattr__(
             self,
             "required_assurance",
@@ -495,13 +475,9 @@ class ProofPolicyRule(CanonicalContract):
             or self.minimum_risk is not RiskLevel.LOW
         )
         if not has_selector and not self.match_all:
-            raise PolicyValidationError(
-                "a rule needs a selector or explicit match_all=True"
-            )
+            raise PolicyValidationError("a rule needs a selector or explicit match_all=True")
         if self.allow_fallback and not self.fallback_validations:
-            raise PolicyValidationError(
-                "allow_fallback requires at least one fallback validation"
-            )
+            raise PolicyValidationError("allow_fallback requires at least one fallback validation")
 
     def matches(self, change: ChangedScope) -> bool:
         """Return whether all configured selector dimensions match ``change``."""
@@ -550,9 +526,7 @@ class ProofPolicyRule(CanonicalContract):
             ast_scope_patterns=tuple(payload.get("ast_scope_patterns") or ()),
             minimum_risk=payload.get("minimum_risk", RiskLevel.LOW),
             invariant_classes=tuple(payload.get("invariant_classes") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             fallback_validations=tuple(payload.get("fallback_validations") or ()),
             allow_fallback=payload.get("allow_fallback", False),
             match_all=payload.get("match_all", False),
@@ -581,13 +555,9 @@ class ProofRequirement(CanonicalContract):
     allow_fallback: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "scope_id", _text(self.scope_id, "scope_id", required=True)
-        )
+        object.__setattr__(self, "scope_id", _text(self.scope_id, "scope_id", required=True))
         object.__setattr__(self, "path", _normalize_git_path(self.path))
-        object.__setattr__(
-            self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids")
-        )
+        object.__setattr__(self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids"))
         object.__setattr__(self, "risk", _enum(self.risk, RiskLevel, "risk"))
         object.__setattr__(
             self,
@@ -612,9 +582,7 @@ class ProofRequirement(CanonicalContract):
         if not isinstance(self.allow_fallback, bool):
             raise PolicyValidationError("allow_fallback must be a boolean")
         if self.allow_fallback and not self.fallback_validations:
-            raise PolicyValidationError(
-                "allow_fallback requires at least one fallback validation"
-            )
+            raise PolicyValidationError("allow_fallback requires at least one fallback validation")
 
     @property
     def requirement_id(self) -> str:
@@ -643,9 +611,7 @@ class ProofRequirement(CanonicalContract):
             risk=payload.get("risk", RiskLevel.LOW),
             invariant_classes=tuple(payload.get("invariant_classes") or ()),
             matched_rule_ids=tuple(payload.get("matched_rule_ids") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             fallback_validations=tuple(payload.get("fallback_validations") or ()),
             allow_fallback=payload.get("allow_fallback", False),
         )
@@ -668,9 +634,7 @@ class PolicySelection(CanonicalContract):
     unprotected_scope_ids: Tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=True)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=True))
         object.__setattr__(
             self,
             "repository_tree_id",
@@ -743,11 +707,7 @@ class PolicySelection(CanonicalContract):
             repository_tree_id=payload.get("repository_tree_id", ""),
             rollout_mode=payload.get("rollout_mode", RolloutMode.DISABLED),
             requirements=tuple(
-                (
-                    item
-                    if isinstance(item, ProofRequirement)
-                    else ProofRequirement.from_dict(item)
-                )
+                (item if isinstance(item, ProofRequirement) else ProofRequirement.from_dict(item))
                 for item in payload.get("requirements") or ()
             ),
             unprotected_scope_ids=tuple(payload.get("unprotected_scope_ids") or ()),
@@ -787,9 +747,7 @@ class FormalVerificationPolicy(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _text(self.name, "name", required=True))
-        object.__setattr__(
-            self, "version", _text(self.version, "version", required=True)
-        )
+        object.__setattr__(self, "version", _text(self.version, "version", required=True))
         object.__setattr__(
             self, "rollout_mode", _enum(self.rollout_mode, RolloutMode, "rollout_mode")
         )
@@ -806,9 +764,7 @@ class FormalVerificationPolicy(CanonicalContract):
                 sorted(
                     {
                         _normalize_path_pattern(item)
-                        for item in _strings(
-                            self.canary_path_patterns, "canary_path_patterns"
-                        )
+                        for item in _strings(self.canary_path_patterns, "canary_path_patterns")
                     }
                 )
             ),
@@ -834,9 +790,7 @@ class FormalVerificationPolicy(CanonicalContract):
             "maximum_promotion_blocking_results",
             "maximum_promotion_overrides",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=0)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=0))
         object.__setattr__(self, "metadata", _mapping(self.metadata, "metadata"))
 
     @property
@@ -855,9 +809,7 @@ class FormalVerificationPolicy(CanonicalContract):
             "canary_salt": self.canary_salt,
             "max_override_seconds": self.max_override_seconds,
             "minimum_promotion_observations": self.minimum_promotion_observations,
-            "maximum_promotion_blocking_results": (
-                self.maximum_promotion_blocking_results
-            ),
+            "maximum_promotion_blocking_results": (self.maximum_promotion_blocking_results),
             "maximum_promotion_overrides": self.maximum_promotion_overrides,
             "metadata": self.metadata,
         }
@@ -873,15 +825,9 @@ class FormalVerificationPolicy(CanonicalContract):
             canary_path_patterns=tuple(payload.get("canary_path_patterns") or ()),
             canary_percent=payload.get("canary_percent", 0),
             canary_salt=payload.get("canary_salt", ""),
-            max_override_seconds=payload.get(
-                "max_override_seconds", DEFAULT_MAX_OVERRIDE_SECONDS
-            ),
-            minimum_promotion_observations=payload.get(
-                "minimum_promotion_observations", 1
-            ),
-            maximum_promotion_blocking_results=payload.get(
-                "maximum_promotion_blocking_results", 0
-            ),
+            max_override_seconds=payload.get("max_override_seconds", DEFAULT_MAX_OVERRIDE_SECONDS),
+            minimum_promotion_observations=payload.get("minimum_promotion_observations", 1),
+            maximum_promotion_blocking_results=payload.get("maximum_promotion_blocking_results", 0),
             maximum_promotion_overrides=payload.get("maximum_promotion_overrides", 0),
             metadata=payload.get("metadata") or {},
         )
@@ -901,19 +847,13 @@ class FormalVerificationPolicy(CanonicalContract):
         normalized_changes = tuple(
             sorted(
                 (
-                    (
-                        item
-                        if isinstance(item, ChangedScope)
-                        else ChangedScope.from_dict(item)
-                    )
+                    (item if isinstance(item, ChangedScope) else ChangedScope.from_dict(item))
                     for item in changes
                 ),
                 key=lambda item: item.scope_id,
             )
         )
-        if len({item.scope_id for item in normalized_changes}) != len(
-            normalized_changes
-        ):
+        if len({item.scope_id for item in normalized_changes}) != len(normalized_changes):
             raise PolicyValidationError("changed scopes must be unique")
 
         requirements = []
@@ -929,18 +869,12 @@ class FormalVerificationPolicy(CanonicalContract):
             )
             fallback_validations = tuple(
                 sorted(
-                    {
-                        validation
-                        for rule in matching
-                        for validation in rule.fallback_validations
-                    }
+                    {validation for rule in matching for validation in rule.fallback_validations}
                 )
             )
             # Every applicable policy constraint must permit fallback.  A
             # permissive broad rule cannot weaken a stricter matching rule.
-            allow_fallback = bool(matching) and all(
-                rule.allow_fallback for rule in matching
-            )
+            allow_fallback = bool(matching) and all(rule.allow_fallback for rule in matching)
             requirements.append(
                 ProofRequirement(
                     scope_id=change.scope_id,
@@ -990,10 +924,7 @@ class FormalVerificationPolicy(CanonicalContract):
     def is_canary_selected(self, requirement: ProofRequirement) -> bool:
         """Deterministically select a requirement for blocking canary."""
 
-        if any(
-            _path_matches(requirement.path, pattern)
-            for pattern in self.canary_path_patterns
-        ):
+        if any(_path_matches(requirement.path, pattern) for pattern in self.canary_path_patterns):
             return True
         if self.canary_percent <= 0:
             return False
@@ -1001,9 +932,9 @@ class FormalVerificationPolicy(CanonicalContract):
             return True
         # Hash the explicit policy, salt, and requirement identities so the
         # bucket remains stable across processes and changes when policy does.
-        key = (
-            f"{self.policy_id}\0{self.canary_salt}\0" f"{requirement.requirement_id}"
-        ).encode("utf-8")
+        key = (f"{self.policy_id}\0{self.canary_salt}\0{requirement.requirement_id}").encode(
+            "utf-8"
+        )
         bucket = int.from_bytes(hashlib.sha256(key).digest()[:8], "big") % 100
         return bucket < self.canary_percent
 
@@ -1012,15 +943,11 @@ class FormalVerificationPolicy(CanonicalContract):
 
         if self.rollout_mode is RolloutMode.CANARY:
             return (
-                RolloutMode.CANARY
-                if self.is_canary_selected(requirement)
-                else RolloutMode.SHADOW
+                RolloutMode.CANARY if self.is_canary_selected(requirement) else RolloutMode.SHADOW
             )
         return self.rollout_mode
 
-    def transition(
-        self, receipt: "RolloutTransitionReceipt"
-    ) -> "FormalVerificationPolicy":
+    def transition(self, receipt: "RolloutTransitionReceipt") -> "FormalVerificationPolicy":
         """Return a new policy after validating an explicit transition receipt.
 
         Rollout is configuration, not mutable provider state.  Besides mode
@@ -1045,9 +972,7 @@ class FormalVerificationPolicy(CanonicalContract):
             or self.rollout_mode.can_promote_to(target)
             or same_mode_canary_change
         ):
-            raise PolicyValidationError(
-                "rollout promotion must advance exactly one mode"
-            )
+            raise PolicyValidationError("rollout promotion must advance exactly one mode")
 
         target_canary_percent = (
             self.canary_percent
@@ -1066,9 +991,7 @@ class FormalVerificationPolicy(CanonicalContract):
             canary_path_patterns=target_canary_paths,
         )
         if updated.policy_id == self.policy_id:
-            raise PolicyValidationError(
-                "rollout transition must change policy configuration"
-            )
+            raise PolicyValidationError("rollout transition must change policy configuration")
 
         expands_canary = same_mode_canary_change and (
             target_canary_percent > self.canary_percent
@@ -1086,9 +1009,7 @@ class FormalVerificationPolicy(CanonicalContract):
             if receipt.override_count > self.maximum_promotion_overrides:
                 raise PolicyValidationError("overrides exceed promotion policy")
             if not receipt.evidence_receipt_ids:
-                raise PolicyValidationError(
-                    "promotion requires durable evidence receipts"
-                )
+                raise PolicyValidationError("promotion requires durable evidence receipts")
         return updated
 
     def evaluate_gate(
@@ -1215,8 +1136,7 @@ class FormalVerificationPolicy(CanonicalContract):
             results=tuple(results),
             override_receipt_id=(
                 override.receipt_id
-                if override is not None
-                and any(result.override_receipt_id for result in results)
+                if override is not None and any(result.override_receipt_id for result in results)
                 else ""
             ),
             override_rejection_reasons=override_reasons,
@@ -1244,9 +1164,7 @@ class ProofOutcome(CanonicalContract):
             "requirement_id",
             _text(self.requirement_id, "requirement_id", required=True),
         )
-        object.__setattr__(
-            self, "status", _enum(self.status, ProofResultStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, ProofResultStatus, "status"))
         object.__setattr__(
             self,
             "authoritative_assurance",
@@ -1356,16 +1274,12 @@ class ValidationOutcome(CanonicalContract):
 FallbackValidationResult = ValidationResult = ValidationOutcome
 
 
-def _outcome_map(
-    values: Any, requirements: Sequence[ProofRequirement]
-) -> dict[str, ProofOutcome]:
+def _outcome_map(values: Any, requirements: Sequence[ProofRequirement]) -> dict[str, ProofOutcome]:
     if values is None:
         return {}
     if isinstance(values, ProofReceipt):
         if len(requirements) != 1:
-            raise PolicyValidationError(
-                "a single proof receipt can only evaluate one requirement"
-            )
+            raise PolicyValidationError("a single proof receipt can only evaluate one requirement")
         outcome = ProofOutcome.from_receipt(requirements[0].requirement_id, values)
         return {outcome.requirement_id: outcome}
     if isinstance(values, ProofOutcome):
@@ -1397,9 +1311,7 @@ def _outcome_map(
     if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
         for raw in values:
             if not isinstance(raw, ProofOutcome):
-                raise PolicyValidationError(
-                    "proof outcomes must contain ProofOutcome values"
-                )
+                raise PolicyValidationError("proof outcomes must contain ProofOutcome values")
             result[raw.requirement_id] = raw
         return result
     raise PolicyValidationError("proof outcomes have an unsupported shape")
@@ -1426,9 +1338,7 @@ def _validation_map(values: Any) -> dict[str, ValidationOutcome]:
                     reason_code=raw.get("reason_code", ""),
                 )
             else:
-                raise PolicyValidationError(
-                    "fallback validation mapping values are invalid"
-                )
+                raise PolicyValidationError("fallback validation mapping values are invalid")
             result[outcome.validation_id] = outcome
         return result
     if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
@@ -1465,9 +1375,7 @@ class OverrideReceipt(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=True)
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=True))
         object.__setattr__(
             self,
             "repository_tree_id",
@@ -1491,14 +1399,10 @@ class OverrideReceipt(CanonicalContract):
         if expires <= issued:
             raise PolicyValidationError("expires_at must be after issued_at")
         if (expires - issued).total_seconds() > MAX_OVERRIDE_LIFETIME_SECONDS:
-            raise PolicyValidationError(
-                "override lifetime exceeds the hard safety bound"
-            )
+            raise PolicyValidationError("override lifetime exceeds the hard safety bound")
         object.__setattr__(self, "issued_at", issued_text)
         object.__setattr__(self, "expires_at", expires_text)
-        object.__setattr__(
-            self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids")
-        )
+        object.__setattr__(self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids"))
         object.__setattr__(
             self,
             "invariant_classes",
@@ -1506,10 +1410,7 @@ class OverrideReceipt(CanonicalContract):
         )
         modes = tuple(
             sorted(
-                {
-                    _enum(item, RolloutMode, "allowed_modes")
-                    for item in self.allowed_modes
-                },
+                {_enum(item, RolloutMode, "allowed_modes") for item in self.allowed_modes},
                 key=lambda item: item.rank,
             )
         )
@@ -1594,8 +1495,7 @@ class OverrideReceipt(CanonicalContract):
             ast_scope_ids=tuple(payload.get("ast_scope_ids") or ()),
             invariant_classes=tuple(payload.get("invariant_classes") or ()),
             allowed_modes=tuple(
-                payload.get("allowed_modes")
-                or (RolloutMode.CANARY, RolloutMode.ENFORCEMENT)
+                payload.get("allowed_modes") or (RolloutMode.CANARY, RolloutMode.ENFORCEMENT)
             ),
             actor=payload.get("actor", ""),
             reason=payload.get("reason", ""),
@@ -1615,14 +1515,14 @@ class OverrideReceipt(CanonicalContract):
         if mode not in self.allowed_modes or requirement.path not in self.paths:
             return False
         if self.ast_scope_ids:
-            if not requirement.ast_scope_ids or not set(
-                requirement.ast_scope_ids
-            ).issubset(self.ast_scope_ids):
+            if not requirement.ast_scope_ids or not set(requirement.ast_scope_ids).issubset(
+                self.ast_scope_ids
+            ):
                 return False
         if self.invariant_classes:
-            if not requirement.invariant_classes or not set(
-                requirement.invariant_classes
-            ).issubset(self.invariant_classes):
+            if not requirement.invariant_classes or not set(requirement.invariant_classes).issubset(
+                self.invariant_classes
+            ):
                 return False
         return True
 
@@ -1715,9 +1615,7 @@ class OverrideReceiptStore:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise PolicyValidationError(
-                "override receipt is unavailable or malformed"
-            ) from exc
+            raise PolicyValidationError("override receipt is unavailable or malformed") from exc
         if not isinstance(payload, Mapping):
             raise PolicyValidationError("override receipt must contain an object")
         receipt = OverrideReceipt.from_dict(payload)
@@ -1746,20 +1644,12 @@ class RolloutTransitionReceipt(CanonicalContract):
     target_canary_path_patterns: Tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id", required=True)
-        )
-        object.__setattr__(
-            self, "from_mode", _enum(self.from_mode, RolloutMode, "from_mode")
-        )
-        object.__setattr__(
-            self, "target_mode", _enum(self.target_mode, RolloutMode, "target_mode")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id", required=True))
+        object.__setattr__(self, "from_mode", _enum(self.from_mode, RolloutMode, "from_mode"))
+        object.__setattr__(self, "target_mode", _enum(self.target_mode, RolloutMode, "target_mode"))
         target_percent = self.target_canary_percent
         if target_percent is not None:
-            target_percent = _integer(
-                target_percent, "target_canary_percent", maximum=100
-            )
+            target_percent = _integer(target_percent, "target_canary_percent", maximum=100)
             object.__setattr__(self, "target_canary_percent", target_percent)
         target_patterns = self.target_canary_path_patterns
         if target_patterns is not None:
@@ -1767,18 +1657,12 @@ class RolloutTransitionReceipt(CanonicalContract):
                 sorted(
                     {
                         _normalize_path_pattern(item)
-                        for item in _strings(
-                            target_patterns, "target_canary_path_patterns"
-                        )
+                        for item in _strings(target_patterns, "target_canary_path_patterns")
                     }
                 )
             )
-            object.__setattr__(
-                self, "target_canary_path_patterns", target_patterns
-            )
-        changes_canary = (
-            target_percent is not None or target_patterns is not None
-        )
+            object.__setattr__(self, "target_canary_path_patterns", target_patterns)
+        changes_canary = target_percent is not None or target_patterns is not None
         same_mode_canary_change = (
             self.from_mode is RolloutMode.CANARY
             and self.target_mode is RolloutMode.CANARY
@@ -1789,9 +1673,7 @@ class RolloutTransitionReceipt(CanonicalContract):
                 "same-mode transition requires explicit canary configuration"
             )
         if changes_canary and self.target_mode is not RolloutMode.CANARY:
-            raise PolicyValidationError(
-                "canary configuration may only target canary mode"
-            )
+            raise PolicyValidationError("canary configuration may only target canary mode")
         if not (
             same_mode_canary_change
             or self.from_mode.can_promote_to(self.target_mode)
@@ -1809,17 +1691,11 @@ class RolloutTransitionReceipt(CanonicalContract):
             "blocking_result_count",
             "override_count",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=0)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=0))
         if self.blocking_result_count > self.observation_count:
-            raise PolicyValidationError(
-                "blocking_result_count cannot exceed observation_count"
-            )
+            raise PolicyValidationError("blocking_result_count cannot exceed observation_count")
         if self.override_count > self.observation_count:
-            raise PolicyValidationError(
-                "override_count cannot exceed observation_count"
-            )
+            raise PolicyValidationError("override_count cannot exceed observation_count")
         object.__setattr__(
             self,
             "evidence_receipt_ids",
@@ -1833,8 +1709,7 @@ class RolloutTransitionReceipt(CanonicalContract):
     @property
     def changes_canary_configuration(self) -> bool:
         return (
-            self.target_canary_percent is not None
-            or self.target_canary_path_patterns is not None
+            self.target_canary_percent is not None or self.target_canary_path_patterns is not None
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -1855,9 +1730,7 @@ class RolloutTransitionReceipt(CanonicalContract):
         if self.target_canary_percent is not None:
             payload["target_canary_percent"] = self.target_canary_percent
         if self.target_canary_path_patterns is not None:
-            payload["target_canary_path_patterns"] = (
-                self.target_canary_path_patterns
-            )
+            payload["target_canary_path_patterns"] = self.target_canary_path_patterns
         return payload
 
     @classmethod
@@ -1884,9 +1757,7 @@ class RolloutTransitionReceipt(CanonicalContract):
         )
         claimed = payload.get("receipt_id") or payload.get("content_id")
         if claimed and claimed != result.receipt_id:
-            raise PolicyValidationError(
-                "rollout transition receipt identity does not match"
-            )
+            raise PolicyValidationError("rollout transition receipt identity does not match")
         return result
 
 
@@ -1933,9 +1804,7 @@ class RequirementGateResult(CanonicalContract):
             _enum(self.proof_status, ProofResultStatus, "proof_status"),
         )
         for name in ("required_assurance", "authoritative_assurance"):
-            object.__setattr__(
-                self, name, _enum(getattr(self, name), AssuranceLevel, name)
-            )
+            object.__setattr__(self, name, _enum(getattr(self, name), AssuranceLevel, name))
         object.__setattr__(
             self,
             "proof_receipt_id",
@@ -1963,9 +1832,7 @@ class RequirementGateResult(CanonicalContract):
             "override_receipt_id",
             _text(self.override_receipt_id, "override_receipt_id"),
         )
-        object.__setattr__(
-            self, "reason_codes", _strings(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1994,18 +1861,14 @@ class RequirementGateResult(CanonicalContract):
             path=payload.get("path", ""),
             effective_mode=payload.get("effective_mode", RolloutMode.DISABLED),
             proof_status=payload.get("proof_status", ProofResultStatus.MISSING),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.UNVERIFIED),
             authoritative_assurance=payload.get(
                 "authoritative_assurance", AssuranceLevel.UNVERIFIED
             ),
             proof_receipt_id=payload.get("proof_receipt_id", ""),
             proof_satisfied=payload.get("proof_satisfied", False),
             fallback_satisfied=payload.get("fallback_satisfied", False),
-            missing_or_failed_validations=tuple(
-                payload.get("missing_or_failed_validations") or ()
-            ),
+            missing_or_failed_validations=tuple(payload.get("missing_or_failed_validations") or ()),
             requirement_satisfied=payload.get("requirement_satisfied", False),
             allowed=payload.get("allowed", False),
             would_block=payload.get("would_block", False),
@@ -2031,9 +1894,7 @@ class PolicyGateDecision(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("policy_id", "selection_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
         object.__setattr__(
             self,
             "repository_tree_id",
@@ -2046,9 +1907,7 @@ class PolicyGateDecision(CanonicalContract):
             raise PolicyValidationError("allowed must be a boolean")
         results = tuple(sorted(self.results, key=lambda result: result.requirement_id))
         if not all(isinstance(item, RequirementGateResult) for item in results):
-            raise PolicyValidationError(
-                "results must contain RequirementGateResult values"
-            )
+            raise PolicyValidationError("results must contain RequirementGateResult values")
         if self.allowed != all(item.allowed for item in results):
             raise PolicyValidationError("aggregate allowed result is inconsistent")
         object.__setattr__(self, "results", results)
@@ -2109,9 +1968,7 @@ class PolicyGateDecision(CanonicalContract):
                 for item in payload.get("results") or ()
             ),
             override_receipt_id=payload.get("override_receipt_id", ""),
-            override_rejection_reasons=tuple(
-                payload.get("override_rejection_reasons") or ()
-            ),
+            override_rejection_reasons=tuple(payload.get("override_rejection_reasons") or ()),
         )
         claimed = payload.get("decision_id") or payload.get("content_id")
         if claimed and claimed != result.decision_id:
@@ -2210,14 +2067,10 @@ def _merge_outcomes(
                     reason_code=raw.get("reason_code", ""),
                 )
             else:
-                raise PolicyValidationError(
-                    "proof outcome mapping values are invalid"
-                )
+                raise PolicyValidationError("proof outcome mapping values are invalid")
             normalized.append(outcome)
         raw_values = normalized
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (str, bytes, bytearray)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
         raw_values = values
     else:
         raise PolicyValidationError("proof outcomes have an unsupported shape")
@@ -2229,17 +2082,13 @@ def _merge_outcomes(
                 raise PolicyValidationError(
                     "a single proof receipt can only evaluate one requirement"
                 )
-            outcome = ProofOutcome.from_receipt(
-                requirements[0].requirement_id, raw
-            )
+            outcome = ProofOutcome.from_receipt(requirements[0].requirement_id, raw)
         elif isinstance(raw, ProofOutcome):
             outcome = raw
         elif isinstance(raw, Mapping):
             outcome = ProofOutcome.from_dict(raw)
         else:
-            raise PolicyValidationError(
-                "proof outcomes must contain ProofOutcome values"
-            )
+            raise PolicyValidationError("proof outcomes must contain ProofOutcome values")
         result.append(outcome)
 
     requirement_ids = {item.requirement_id for item in requirements}
@@ -2249,8 +2098,7 @@ def _merge_outcomes(
     foreign = sorted(set(outcome_ids) - requirement_ids)
     if foreign:
         raise PolicyValidationError(
-            "proof outcome references an unselected requirement: "
-            + ", ".join(foreign)
+            "proof outcome references an unselected requirement: " + ", ".join(foreign)
         )
     return tuple(sorted(result, key=lambda item: item.requirement_id))
 
@@ -2259,24 +2107,16 @@ def _merge_validations(values: Any) -> Tuple[ValidationOutcome, ...]:
     if values is None:
         return ()
     normalized = _validation_map(values)
-    if isinstance(values, Sequence) and not isinstance(
-        values, (str, bytes, bytearray)
-    ):
+    if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
         supplied_ids = [
             item.validation_id
             if isinstance(item, ValidationOutcome)
-            else str(
-                item.get("validation_id", "")
-                if isinstance(item, Mapping)
-                else ""
-            )
+            else str(item.get("validation_id", "") if isinstance(item, Mapping) else "")
             for item in values
         ]
         supplied_ids = [item for item in supplied_ids if item]
         if len(set(supplied_ids)) != len(supplied_ids):
-            raise PolicyValidationError(
-                "fallback validations contain duplicate validation IDs"
-            )
+            raise PolicyValidationError("fallback validations contain duplicate validation IDs")
     return tuple(sorted(normalized.values(), key=lambda item: item.validation_id))
 
 
@@ -2334,13 +2174,9 @@ class MergeProofGateReceipt(CanonicalContract):
         object.__setattr__(self, "decision", decision)
         object.__setattr__(self, "override", override)
 
-        tree_id = _text(
-            self.repository_tree_id, "repository_tree_id", required=True
-        )
+        tree_id = _text(self.repository_tree_id, "repository_tree_id", required=True)
         object.__setattr__(self, "repository_tree_id", tree_id)
-        plan_snapshot, plan_id = _merge_proof_plan_snapshot(
-            self.proof_plan, self.proof_plan_id
-        )
+        plan_snapshot, plan_id = _merge_proof_plan_snapshot(self.proof_plan, self.proof_plan_id)
         object.__setattr__(self, "proof_plan", plan_snapshot)
         object.__setattr__(self, "proof_plan_id", plan_id)
 
@@ -2352,9 +2188,7 @@ class MergeProofGateReceipt(CanonicalContract):
         receipts = tuple(
             sorted(
                 [
-                    item
-                    if isinstance(item, ProofReceipt)
-                    else ProofReceipt.from_dict(item)
+                    item if isinstance(item, ProofReceipt) else ProofReceipt.from_dict(item)
                     for item in self.proof_receipts
                 ],
                 key=lambda item: item.receipt_id,
@@ -2363,9 +2197,7 @@ class MergeProofGateReceipt(CanonicalContract):
         if len({item.receipt_id for item in receipts}) != len(receipts):
             raise PolicyValidationError("proof receipts contain duplicate identities")
         if receipts and not plan_snapshot:
-            raise PolicyValidationError(
-                "typed proof receipts require an exact proof plan snapshot"
-            )
+            raise PolicyValidationError("typed proof receipts require an exact proof plan snapshot")
         object.__setattr__(self, "proof_receipts", receipts)
         receipt_ids = _strings(self.proof_receipt_ids, "proof_receipt_ids")
         snapshot_ids = tuple(item.receipt_id for item in receipts)
@@ -2374,20 +2206,13 @@ class MergeProofGateReceipt(CanonicalContract):
                 "every proof receipt snapshot must be represented by proof_receipt_ids"
             )
         object.__setattr__(self, "proof_receipt_ids", receipt_ids)
-        validation_receipt_ids = _strings(
-            self.validation_receipt_ids, "validation_receipt_ids"
-        )
-        represented_validation_ids = {
-            item.receipt_id for item in validations if item.receipt_id
-        }
+        validation_receipt_ids = _strings(self.validation_receipt_ids, "validation_receipt_ids")
+        represented_validation_ids = {item.receipt_id for item in validations if item.receipt_id}
         if not represented_validation_ids.issubset(validation_receipt_ids):
             raise PolicyValidationError(
-                "every validation receipt must be represented by "
-                "validation_receipt_ids"
+                "every validation receipt must be represented by validation_receipt_ids"
             )
-        object.__setattr__(
-            self, "validation_receipt_ids", validation_receipt_ids
-        )
+        object.__setattr__(self, "validation_receipt_ids", validation_receipt_ids)
         evaluated_text, _ = _timestamp(self.evaluated_at, "evaluated_at")
         object.__setattr__(self, "evaluated_at", evaluated_text)
         object.__setattr__(
@@ -2395,9 +2220,7 @@ class MergeProofGateReceipt(CanonicalContract):
             "provider_status",
             _merge_status_mapping(self.provider_status, "provider_status"),
         )
-        object.__setattr__(
-            self, "provider_error", _text(self.provider_error, "provider_error")
-        )
+        object.__setattr__(self, "provider_error", _text(self.provider_error, "provider_error"))
         object.__setattr__(
             self,
             "cache_status",
@@ -2412,31 +2235,19 @@ class MergeProofGateReceipt(CanonicalContract):
         if decision.policy_id != policy.policy_id:
             raise PolicyValidationError("decision policy does not match receipt policy")
         if decision.selection_id != selection.selection_id:
-            raise PolicyValidationError(
-                "decision selection does not match receipt selection"
-            )
+            raise PolicyValidationError("decision selection does not match receipt selection")
         if decision.repository_tree_id != tree_id:
             raise PolicyValidationError("decision tree does not match merge tree")
         if decision.rollout_mode is not policy.rollout_mode:
-            raise PolicyValidationError(
-                "decision rollout mode does not match receipt policy"
-            )
-        expected_requirements = {
-            item.requirement_id for item in selection.requirements
-        }
-        decision_requirements = {
-            item.requirement_id for item in decision.results
-        }
+            raise PolicyValidationError("decision rollout mode does not match receipt policy")
+        expected_requirements = {item.requirement_id for item in selection.requirements}
+        decision_requirements = {item.requirement_id for item in decision.results}
         if decision_requirements != expected_requirements:
             raise PolicyValidationError(
                 "decision results do not exactly cover selected requirements"
             )
-        requirements_by_id = {
-            item.requirement_id: item for item in selection.requirements
-        }
-        validations_by_id = {
-            item.validation_id: item for item in validations
-        }
+        requirements_by_id = {item.requirement_id: item for item in selection.requirements}
+        validations_by_id = {item.validation_id: item for item in validations}
         for result in decision.results:
             if not result.fallback_satisfied:
                 continue
@@ -2464,9 +2275,7 @@ class MergeProofGateReceipt(CanonicalContract):
             if plan_tree and str(plan_tree) != tree_id:
                 raise PolicyValidationError("proof plan tree does not match")
             plan_obligations = {
-                str(item)
-                for item in plan_snapshot.get("obligation_ids", ()) or ()
-                if str(item)
+                str(item) for item in plan_snapshot.get("obligation_ids", ()) or () if str(item)
             }
             if plan_obligations:
                 foreign_obligations = sorted(
@@ -2490,12 +2299,8 @@ class MergeProofGateReceipt(CanonicalContract):
                 raise PolicyValidationError("proof receipt tree does not match")
             if plan_id and receipt.plan_id != plan_id:
                 raise PolicyValidationError("proof receipt plan does not match")
-        used_receipt_ids = {
-            item.receipt_id for item in outcomes if item.receipt_id
-        } | {
-            item.proof_receipt_id
-            for item in decision.results
-            if item.proof_receipt_id
+        used_receipt_ids = {item.receipt_id for item in outcomes if item.receipt_id} | {
+            item.proof_receipt_id for item in decision.results if item.proof_receipt_id
         }
         if not used_receipt_ids.issubset(receipt_ids):
             raise PolicyValidationError(
@@ -2505,30 +2310,18 @@ class MergeProofGateReceipt(CanonicalContract):
             item.requirement_id
             for item in outcomes
             if item.status is ProofResultStatus.PROVED
-            and (
-                not item.receipt_id
-                or item.receipt_id not in snapshots_by_id
-            )
+            and (not item.receipt_id or item.receipt_id not in snapshots_by_id)
         ]
         proof_results_without_snapshot = [
             item.requirement_id
             for item in decision.results
             if item.proof_satisfied
-            and (
-                not item.proof_receipt_id
-                or item.proof_receipt_id not in snapshots_by_id
-            )
+            and (not item.proof_receipt_id or item.proof_receipt_id not in snapshots_by_id)
         ]
         if proved_outcomes_without_snapshot or proof_results_without_snapshot:
-            missing = sorted(
-                set(
-                    proved_outcomes_without_snapshot
-                    + proof_results_without_snapshot
-                )
-            )
+            missing = sorted(set(proved_outcomes_without_snapshot + proof_results_without_snapshot))
             raise PolicyValidationError(
-                "proved merge outcomes require embedded typed proof receipts: "
-                + ", ".join(missing)
+                "proved merge outcomes require embedded typed proof receipts: " + ", ".join(missing)
             )
         for outcome in outcomes:
             receipt = snapshots_by_id.get(outcome.receipt_id)
@@ -2537,13 +2330,10 @@ class MergeProofGateReceipt(CanonicalContract):
             projected = ProofOutcome.from_receipt(outcome.requirement_id, receipt)
             if (
                 outcome.status is not projected.status
-                or outcome.authoritative_assurance
-                is not projected.authoritative_assurance
+                or outcome.authoritative_assurance is not projected.authoritative_assurance
                 or outcome.receipt_id != projected.receipt_id
             ):
-                raise PolicyValidationError(
-                    "proof outcome does not match its typed proof receipt"
-                )
+                raise PolicyValidationError("proof outcome does not match its typed proof receipt")
 
         if override is not None:
             if override.policy_id != policy.policy_id:
@@ -2552,9 +2342,7 @@ class MergeProofGateReceipt(CanonicalContract):
                 raise PolicyValidationError("override tree does not match")
         if decision.override_receipt_id:
             if override is None or decision.override_receipt_id != override.receipt_id:
-                raise PolicyValidationError(
-                    "decision override identity is not represented"
-                )
+                raise PolicyValidationError("decision override identity is not represented")
         reproduced_decision = policy.evaluate_gate(
             selection,
             outcomes,
@@ -2649,14 +2437,10 @@ class MergeProofGateReceipt(CanonicalContract):
             else PolicySelection.from_dict(selection)
         )
         normalized_receipts = tuple(
-            item
-            if isinstance(item, ProofReceipt)
-            else ProofReceipt.from_dict(item)
+            item if isinstance(item, ProofReceipt) else ProofReceipt.from_dict(item)
             for item in proof_receipts
         )
-        normalized_outcomes = _merge_outcomes(
-            outcomes, normalized_selection.requirements
-        )
+        normalized_outcomes = _merge_outcomes(outcomes, normalized_selection.requirements)
         if outcomes is None and normalized_receipts:
             derived = []
             unused = list(normalized_receipts)
@@ -2664,29 +2448,20 @@ class MergeProofGateReceipt(CanonicalContract):
                 matching = [
                     item
                     for item in unused
-                    if item.metadata.get("requirement_id")
-                    == requirement.requirement_id
+                    if item.metadata.get("requirement_id") == requirement.requirement_id
                 ]
                 if not matching and len(normalized_selection.requirements) == 1:
                     matching = list(unused)
                 if len(matching) == 1:
                     receipt = matching[0]
-                    derived.append(
-                        ProofOutcome.from_receipt(
-                            requirement.requirement_id, receipt
-                        )
-                    )
+                    derived.append(ProofOutcome.from_receipt(requirement.requirement_id, receipt))
                     unused.remove(receipt)
             normalized_outcomes = tuple(derived)
         normalized_validations = _merge_validations(validations)
         normalized_override = override
-        if normalized_override is not None and not isinstance(
-            normalized_override, OverrideReceipt
-        ):
+        if normalized_override is not None and not isinstance(normalized_override, OverrideReceipt):
             if not isinstance(normalized_override, Mapping):
-                raise PolicyValidationError(
-                    "override must be an OverrideReceipt or mapping"
-                )
+                raise PolicyValidationError("override must be an OverrideReceipt or mapping")
             normalized_override = OverrideReceipt.from_dict(normalized_override)
         evaluation_time = _now(now)
         decision = normalized_policy.evaluate_gate(
@@ -2709,17 +2484,9 @@ class MergeProofGateReceipt(CanonicalContract):
             )
         )
         validation_receipt_ids = tuple(
-            sorted(
-                {
-                    item.receipt_id
-                    for item in normalized_validations
-                    if item.receipt_id
-                }
-            )
+            sorted({item.receipt_id for item in normalized_validations if item.receipt_id})
         )
-        evaluated = evaluation_time.isoformat(timespec="microseconds").replace(
-            "+00:00", "Z"
-        )
+        evaluated = evaluation_time.isoformat(timespec="microseconds").replace("+00:00", "Z")
         return cls(
             policy=normalized_policy,
             selection=normalized_selection,
@@ -2733,9 +2500,7 @@ class MergeProofGateReceipt(CanonicalContract):
             validation_receipt_ids=validation_receipt_ids,
             decision=decision,
             override=normalized_override,
-            provider_status=_merge_status_mapping(
-                provider_status, "provider_status"
-            ),
+            provider_status=_merge_status_mapping(provider_status, "provider_status"),
             provider_error=provider_error,
             cache_status=_merge_status_mapping(cache_status, "cache_status"),
             evaluated_at=evaluated,
@@ -2753,24 +2518,17 @@ class MergeProofGateReceipt(CanonicalContract):
             proof_plan_id=payload.get("proof_plan_id", ""),
             proof_outcomes=tuple(
                 ProofOutcome.from_dict(item)
-                for item in payload.get("proof_outcomes", payload.get("outcomes", ()))
-                or ()
+                for item in payload.get("proof_outcomes", payload.get("outcomes", ())) or ()
             ),
             validation_outcomes=tuple(
                 ValidationOutcome.from_dict(item)
-                for item in payload.get(
-                    "validation_outcomes", payload.get("validations", ())
-                )
-                or ()
+                for item in payload.get("validation_outcomes", payload.get("validations", ())) or ()
             ),
             proof_receipts=tuple(
-                ProofReceipt.from_dict(item)
-                for item in payload.get("proof_receipts") or ()
+                ProofReceipt.from_dict(item) for item in payload.get("proof_receipts") or ()
             ),
             proof_receipt_ids=tuple(payload.get("proof_receipt_ids") or ()),
-            validation_receipt_ids=tuple(
-                payload.get("validation_receipt_ids") or ()
-            ),
+            validation_receipt_ids=tuple(payload.get("validation_receipt_ids") or ()),
             decision=PolicyGateDecision.from_dict(payload.get("decision") or {}),
             override=(
                 OverrideReceipt.from_dict(payload["override"])
@@ -2791,19 +2549,13 @@ class MergeProofGateReceipt(CanonicalContract):
         ):
             claimed = payload.get(name)
             if claimed is not None and str(claimed) != actual:
-                raise PolicyValidationError(
-                    f"merge proof gate {name} does not match snapshot"
-                )
+                raise PolicyValidationError(f"merge proof gate {name} does not match snapshot")
         claimed_allowed = payload.get("allowed")
         if claimed_allowed is not None and claimed_allowed is not result.allowed:
-            raise PolicyValidationError(
-                "merge proof gate allowed value does not match decision"
-            )
+            raise PolicyValidationError("merge proof gate allowed value does not match decision")
         claimed = payload.get("receipt_id") or payload.get("content_id")
         if claimed and claimed != result.receipt_id:
-            raise PolicyValidationError(
-                "merge proof gate receipt identity does not match"
-            )
+            raise PolicyValidationError("merge proof gate receipt identity does not match")
         return result
 
 
@@ -2871,24 +2623,16 @@ class ProofRolloutStatus(Mapping[str, Any]):
         if copied.get("schema") != PROOF_ROLLOUT_STATUS_SCHEMA:
             raise PolicyValidationError("unsupported proof rollout status schema")
         if copied.get("schema_version") != 1:
-            raise PolicyValidationError(
-                "unsupported proof rollout status schema version"
-            )
-        if copied.get("rollout_mode") not in {
-            item.value for item in RolloutMode
-        }:
+            raise PolicyValidationError("unsupported proof rollout status schema version")
+        if copied.get("rollout_mode") not in {item.value for item in RolloutMode}:
             raise PolicyValidationError("invalid proof rollout status mode")
         if copied.get("mode_authority") != "policy":
             raise PolicyValidationError("rollout mode authority must be policy")
         if copied.get("provider_health_can_change_mode") is not False:
-            raise PolicyValidationError(
-                "provider health cannot be a rollout mode authority"
-            )
+            raise PolicyValidationError("provider health cannot be a rollout mode authority")
         mode = RolloutMode(copied["rollout_mode"])
         if copied.get("blocking") is not mode.blocks:
-            raise PolicyValidationError(
-                "rollout blocking state must be derived from policy mode"
-            )
+            raise PolicyValidationError("rollout blocking state must be derived from policy mode")
         if not _text(copied.get("policy_id"), "policy_id", required=True):
             raise PolicyValidationError("proof rollout policy identity is required")
         allowed_fields = {
@@ -2919,8 +2663,7 @@ class ProofRolloutStatus(Mapping[str, Any]):
         unknown_fields = set(copied) - allowed_fields
         if unknown_fields:
             raise PolicyValidationError(
-                "unsupported proof rollout status fields: "
-                + ", ".join(sorted(unknown_fields))
+                "unsupported proof rollout status fields: " + ", ".join(sorted(unknown_fields))
             )
         sequence_limits = {
             "protected_scopes": MAX_SCOPE_ITEMS,
@@ -2936,52 +2679,35 @@ class ProofRolloutStatus(Mapping[str, Any]):
         }
         for field_name, limit in sequence_limits.items():
             values = copied.get(field_name)
-            if (
-                not isinstance(values, list)
-                or len(values) > limit
-            ):
-                raise PolicyValidationError(
-                    f"{field_name} must be a bounded list"
-                )
+            if not isinstance(values, list) or len(values) > limit:
+                raise PolicyValidationError(f"{field_name} must be a bounded list")
         for capability in copied["capability_health"]:
-            if (
-                not isinstance(capability, Mapping)
-                or capability.get("authoritative") is not False
-            ):
-                raise PolicyValidationError(
-                    "capability health must remain non-authoritative"
-                )
+            if not isinstance(capability, Mapping) or capability.get("authoritative") is not False:
+                raise PolicyValidationError("capability health must remain non-authoritative")
         for override in copied["overrides"]:
             if (
                 not isinstance(override, Mapping)
                 or override.get("rewrites_proof_verdict") is not False
             ):
-                raise PolicyValidationError(
-                    "override status cannot rewrite a proof verdict"
-                )
+                raise PolicyValidationError("override status cannot rewrite a proof verdict")
         try:
             validate_public_projection(copied)
         except ValueError as exc:
             raise PolicyValidationError(str(exc)) from exc
-        if len(
-            json.dumps(copied, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ) > MAX_ROLLOUT_STATUS_BYTES:
+        if (
+            len(json.dumps(copied, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+            > MAX_ROLLOUT_STATUS_BYTES
+        ):
             raise PolicyValidationError("proof rollout status exceeds its byte bound")
         supplied_id = str(copied.get("snapshot_id") or "")
         identity_material = dict(copied)
         identity_material.pop("snapshot_id", None)
         identity_material.pop("generated_at", None)
         expected_id = hashlib.sha256(
-            json.dumps(
-                identity_material, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
+            json.dumps(identity_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         if supplied_id != expected_id:
-            raise PolicyValidationError(
-                "proof rollout status identity is inconsistent"
-            )
+            raise PolicyValidationError("proof rollout status identity is inconsistent")
         object.__setattr__(self, "payload", copied)
 
     @property
@@ -3016,9 +2742,7 @@ def _rollout_capabilities(value: Any) -> list[dict[str, Any]]:
 
     if isinstance(value, Mapping):
         raw_items = sorted(value.items(), key=lambda item: str(item[0]))
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         raw_items = enumerate(value)
     else:
         raw_items = ()
@@ -3030,10 +2754,7 @@ def _rollout_capabilities(value: Any) -> list[dict[str, Any]]:
                 "status": raw.value if isinstance(raw, Enum) else raw,
             }
         name = _text(
-            record.get("capability")
-            or record.get("provider_id")
-            or record.get("name")
-            or str(key),
+            record.get("capability") or record.get("provider_id") or record.get("name") or str(key),
             "capability",
         )
         status = (
@@ -3052,12 +2773,8 @@ def _rollout_capabilities(value: Any) -> list[dict[str, Any]]:
                     if record.get("healthy") is not None
                     else status in {"available", "healthy", "ready", "ok"}
                 ),
-                "reason_code": _text(
-                    record.get("reason_code"), "capability.reason_code"
-                )[:256],
-                "version": _text(
-                    record.get("version"), "capability.version"
-                )[:128],
+                "reason_code": _text(record.get("reason_code"), "capability.reason_code")[:256],
+                "version": _text(record.get("version"), "capability.version")[:128],
                 "authoritative": False,
             }
         )
@@ -3070,16 +2787,8 @@ def _rollout_plans(values: Iterable[Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for raw in values:
         record = _rollout_record(raw)
-        plan = (
-            record.get("plan")
-            if isinstance(record.get("plan"), Mapping)
-            else record
-        )
-        snapshot = (
-            record.get("snapshot")
-            if isinstance(record.get("snapshot"), Mapping)
-            else {}
-        )
+        plan = record.get("plan") if isinstance(record.get("plan"), Mapping) else record
+        snapshot = record.get("snapshot") if isinstance(record.get("snapshot"), Mapping) else {}
         steps = (
             plan.get("steps")
             if isinstance(plan.get("steps"), Sequence)
@@ -3094,8 +2803,7 @@ def _rollout_plans(values: Iterable[Any]) -> list[dict[str, Any]]:
         )
         statuses = [
             _text(
-                _rollout_record(node).get("state")
-                or _rollout_record(node).get("status"),
+                _rollout_record(node).get("state") or _rollout_record(node).get("status"),
                 "plan.node.status",
             )
             for node in nodes[:MAX_SCOPE_ITEMS]
@@ -3118,8 +2826,7 @@ def _rollout_plans(values: Iterable[Any]) -> list[dict[str, Any]]:
                 )[:64],
                 "step_count": len(steps),
                 "active_step_count": sum(
-                    status.lower() in {"ready", "running", "pending"}
-                    for status in statuses
+                    status.lower() in {"ready", "running", "pending"} for status in statuses
                 ),
                 "failed_step_count": sum(
                     status.lower()
@@ -3137,9 +2844,7 @@ def build_proof_rollout_status(
     policy: FormalVerificationPolicy | Mapping[str, Any],
     *,
     selections: Iterable[PolicySelection | Mapping[str, Any]] = (),
-    decisions: Iterable[
-        PolicyGateDecision | MergeProofGateReceipt | Mapping[str, Any]
-    ] = (),
+    decisions: Iterable[PolicyGateDecision | MergeProofGateReceipt | Mapping[str, Any]] = (),
     capability_health: Any = None,
     active_plans: Iterable[Any] = (),
     overrides: Iterable[OverrideReceipt | Mapping[str, Any]] = (),
@@ -3156,28 +2861,18 @@ def build_proof_rollout_status(
     current = _now(generated_at)
     capability_rows = _rollout_capabilities(capability_health)
     protected_scopes = sorted(
-        {
-            pattern
-            for rule in normalized_policy.rules
-            for pattern in rule.path_patterns
-        }
+        {pattern for rule in normalized_policy.rules for pattern in rule.path_patterns}
     )[:MAX_SCOPE_ITEMS]
     selection_rows: list[dict[str, Any]] = []
     fallback_names: set[str] = set()
     for raw in selections:
-        selection = (
-            raw
-            if isinstance(raw, PolicySelection)
-            else PolicySelection.from_dict(raw)
-        )
+        selection = raw if isinstance(raw, PolicySelection) else PolicySelection.from_dict(raw)
         if selection.policy_id != normalized_policy.policy_id:
             raise PolicyValidationError(
                 "rollout status selection was produced by a different policy"
             )
         if selection.rollout_mode is not normalized_policy.rollout_mode:
-            raise PolicyValidationError(
-                "rollout status selection mode does not match policy"
-            )
+            raise PolicyValidationError("rollout status selection mode does not match policy")
         modes = {
             normalized_policy.effective_mode(requirement).value
             for requirement in selection.requirements
@@ -3213,9 +2908,7 @@ def build_proof_rollout_status(
         else:
             record = _rollout_record(raw)
             decision_record = (
-                record.get("decision")
-                if isinstance(record.get("decision"), Mapping)
-                else record
+                record.get("decision") if isinstance(record.get("decision"), Mapping) else record
             )
             decision = PolicyGateDecision.from_dict(decision_record)
             raw_outcomes = record.get("proof_outcomes")
@@ -3227,17 +2920,13 @@ def build_proof_rollout_status(
                         continue
                     outcome = ProofOutcome.from_dict(raw_outcome)
                     if outcome.reason_code:
-                        outcome_reason_codes[
-                            outcome.requirement_id
-                        ] = outcome.reason_code
+                        outcome_reason_codes[outcome.requirement_id] = outcome.reason_code
         if decision.policy_id != normalized_policy.policy_id:
             raise PolicyValidationError(
                 "rollout status decision was produced by a different policy"
             )
         if decision.rollout_mode is not normalized_policy.rollout_mode:
-            raise PolicyValidationError(
-                "rollout status decision mode does not match policy"
-            )
+            raise PolicyValidationError("rollout status decision mode does not match policy")
         for result in decision.results:
             assurance_counts[result.authoritative_assurance.value] += 1
             fallback_names.update(result.missing_or_failed_validations)
@@ -3311,9 +3000,7 @@ def build_proof_rollout_status(
 
     override_rows: list[dict[str, Any]] = []
     for raw in overrides:
-        receipt = (
-            raw if isinstance(raw, OverrideReceipt) else OverrideReceipt.from_dict(raw)
-        )
+        receipt = raw if isinstance(raw, OverrideReceipt) else OverrideReceipt.from_dict(raw)
         issued = _timestamp(receipt.issued_at, "issued_at")[1]
         expires = _timestamp(receipt.expires_at, "expires_at")[1]
         invalid_policy = receipt.policy_id != normalized_policy.policy_id
@@ -3359,8 +3046,7 @@ def build_proof_rollout_status(
                 "state": state,
                 "rejection_reasons": rejection_reasons,
                 "applicable_to_policy_mode": (
-                    state == "active"
-                    and normalized_policy.rollout_mode in receipt.allowed_modes
+                    state == "active" and normalized_policy.rollout_mode in receipt.allowed_modes
                 ),
                 # Underlying proof results live in decisions and are never
                 # replaced with an optimistic status here.
@@ -3396,8 +3082,7 @@ def build_proof_rollout_status(
             )
             and (
                 receipt.target_canary_path_patterns is None
-                or receipt.target_canary_path_patterns
-                == normalized_policy.canary_path_patterns
+                or receipt.target_canary_path_patterns == normalized_policy.canary_path_patterns
             )
         )
         if not (
@@ -3405,9 +3090,7 @@ def build_proof_rollout_status(
             or source_matches_current_configuration
             or target_matches_current_configuration
         ):
-            raise PolicyValidationError(
-                "rollout transition is not coherent with the status policy"
-            )
+            raise PolicyValidationError("rollout transition is not coherent with the status policy")
         if source_is_current:
             target_policy_id = normalized_policy.transition(receipt).policy_id
         elif source_matches_current_configuration:
@@ -3464,16 +3147,12 @@ def build_proof_rollout_status(
         "overrides": override_rows,
         "transitions": transition_rows,
         "provider_health_can_change_mode": False,
-        "generated_at": current.isoformat(timespec="microseconds").replace(
-            "+00:00", "Z"
-        ),
+        "generated_at": current.isoformat(timespec="microseconds").replace("+00:00", "Z"),
     }
     identity_material = dict(material)
     identity_material.pop("generated_at")
     snapshot_id = hashlib.sha256(
-        json.dumps(
-            identity_material, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        json.dumps(identity_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return ProofRolloutStatus({**material, "snapshot_id": snapshot_id})
 
@@ -3497,8 +3176,7 @@ def default_formal_verification_policy(
             ProofPolicyRule(
                 rule_id="critical-supervisor-invariants",
                 path_patterns=(
-                    "ipfs_datasets_py/ipfs_accelerate_py/"
-                    "ipfs_accelerate_py/agent_supervisor/**",
+                    "ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/**",
                 ),
                 minimum_risk=RiskLevel.CRITICAL,
                 invariant_classes=tuple(item.value for item in InvariantClass),

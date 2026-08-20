@@ -13,6 +13,7 @@ try:
         create_ai_model_server,
     )
 except Exception:
+
     def create_ai_model_server(*args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
         """Stub: returns None when legacy module is unavailable."""
         return None

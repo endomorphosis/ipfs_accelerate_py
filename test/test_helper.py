@@ -12,35 +12,36 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger('test_helper')
+logger = logging.getLogger("test_helper")
 
 # Add parent directory to import path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 # Import directly from the file
 def create_framework():
     """
     Create a framework instance directly using our implementation.
-    
+
     Returns:
         object: The IPFS Accelerate Python framework instance
     """
     # Import from the implementation file
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
     try:
         # Import the file module from its path
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "ipfs_accelerate_py_impl",
-            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ipfs_accelerate_py.py'))
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ipfs_accelerate_py.py")),
         )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        
+
         # Create an instance of the class
         framework = module.ipfs_accelerate_py()
         logger.info("Created framework instance directly from implementation file")
@@ -48,6 +49,7 @@ def create_framework():
     except Exception as e:
         logger.error(f"Failed to create framework: {e}")
         return None
+
 
 # Test function
 async def test_module():
@@ -62,6 +64,7 @@ async def test_module():
         logger.info(f"Hardware detection: {hardware}")
         return True
     return False
+
 
 if __name__ == "__main__":
     result = anyio.run(test_module())

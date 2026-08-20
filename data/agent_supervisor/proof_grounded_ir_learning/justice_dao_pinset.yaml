@@ -1,0 +1,168 @@
+schema: proof-grounded-ir-learning/justice-dao-pinset@1
+inspected_at: 2026-08-16T00:00:00Z
+organization: justicedao
+public_dataset_repository_count: 21
+public_model_repository_count: 0
+policy:
+  trust_remote_code: false
+  require_exact_revision: true
+  require_source_derivative_separation: true
+  default_training_admission: deny
+  unknown_rights_disposition: quarantine
+  broken_or_withdrawn_disposition: reject
+repositories:
+  - id: justicedao/patent-legal-ir-graphrag
+    revision: 845669408081f1334c54519d2bb7df6bf780ccd5
+    kind: derived_retrieval_release_with_source_projection
+    viewer: pass
+    source_records: 2174
+    training_qualified: false
+    reason: needs campaign-owned complete lineage and frozen split manifest
+  - id: justicedao/patent-legal-corpus
+    revision: 86c77cb650d30ee366983d1b2e25cd85e8c22e34
+    kind: source_registry
+    viewer: broken_no_supported_files
+    source_records: 2174
+    training_qualified: false
+    reason: card declares nonexistent parquet paths; actual source is JSONL
+  - id: justicedao/patent-legal-bm25
+    revision: 8d7f938a25a56a53d58d96d7f1cdde9f51eff694
+    kind: derived_bm25_registry
+    viewer: broken_no_supported_files
+    source_records: 0
+    derived_documents: 2174
+    derived_terms: 43107
+    logical_postings: 824019
+    training_qualified: false
+  - id: justicedao/patent-legal-vectors
+    revision: f215a9c115f2af1147b0fcbf2c047ec250cb54d7
+    kind: derived_vector_registry
+    viewer: broken_config_discovery
+    source_records: 0
+    derived_vectors: 2174
+    model: local-hashed-term-projection@1.0.0
+    tokenizer: patent-legal-tokens/v1@1.0.0
+    training_qualified: false
+  - id: justicedao/patent-legal-knowledge-graph
+    revision: f4ee31011dbd976b61f2f9144775ed9a12c16e62
+    kind: derived_graph_registry
+    viewer: broken_config_discovery
+    source_records: 0
+    derived_nodes: 7250
+    derived_edges: 29582
+    training_qualified: false
+  - id: justicedao/wetwijzer_netherlands_legal_corpus
+    revision: 827e9412f55cbe332f18824ff669bdbbae39005d
+    kind: unified_source_and_derivative_release
+    viewer: pass_all_9_configs
+    source_records: 4999
+    derived_articles: 89737
+    derived_cid_rows: 94736
+    derived_vector_rows: 94736
+    derived_bm25_documents: 94736
+    derived_bm25_terms: 120521
+    derived_graph_nodes: 94736
+    derived_graph_edges: 89737
+    derived_logic_relationships: 261720
+    training_qualified: false
+    reason: unresolved source/transformation rights and missing parser/normalizer/vector/graph code pins
+  - id: justicedao/ipfs_netherlands_laws
+    revision: 7fd7ba42d24c7f8f924ce69fe901f080e3ca4312
+    kind: source_component
+    training_qualified: false
+  - id: justicedao/ipfs_netherlands_laws_vector_index
+    revision: 753b523ce06de6f207365df97358f8be616c75ba
+    kind: derived_vector_component
+    training_qualified: false
+  - id: justicedao/ipfs_netherlands_laws_bm25_index
+    revision: 10ce83f4960e8d1a83c4e86d8a15db34806c5802
+    kind: derived_bm25_component
+    training_qualified: false
+  - id: justicedao/ipfs_netherlands_laws_knowledge_graph
+    revision: d10ca67e60f2d77e13d2a346d09430a973927a5e
+    kind: derived_graph_component
+    training_qualified: false
+  - id: justicedao/netherlands-laws-nl-normalized
+    revision: 4070ab39856db63ea6a8e0e730b3b757ae32011a
+    kind: historical_normalized_view
+    source_records: 151
+    derived_articles: 7775
+    training_qualified: false
+    reason: same lineage groups as newer Netherlands release, not independent examples
+  - id: justicedao/legal-ir-autoencoder-checkpoints
+    revision: 94ca549d102e3e31781370aec1247f91365440eb
+    kind: legacy_artifact_registry
+    viewer: broken_size_and_first_rows
+    checkpoint_id: legal-ir-autoencoder-canonical-20260630T221836Z
+    artifact_sha256: 7236de26bd3d7f8414ffa04805f1b6e8a8849f9e0103cec6edb4985b911658be
+    training_qualified: false
+    promotion_qualified: false
+    reason: dirty/unpinned source, missing data/compiler/decompiler/tokenizer/split identities, no proof evidence
+  - id: justicedao/ipfs_uscode
+    revision: a9720a26a52251526035c2ca8cebea418965bcf9
+    kind: source_and_derivative_release
+    viewer: broken_config_discovery
+    source_records: 60068
+    quarantined_records: 9
+    training_qualified: false
+    reason: external load broken, incomplete source-repository identity, unresolved rights
+  - id: justicedao/ipfs_state_laws
+    revision: 42f0546acc7c6cd55627eaf51fb820d5613b9021
+    kind: source_and_embedding_release
+    viewer: pass_with_manifest_mismatch
+    viewer_source_records: 47204
+    manifest_claimed_source_records: 20514
+    training_qualified: false
+  - id: justicedao/ipfs_state_admin_rules
+    revision: 42087d4600c497a908dce4901381b7f2dc046589
+    kind: heterogeneous_source_and_embedding_release
+    viewer: broken_size
+    manifest_source_records: 4969
+    training_qualified: false
+  - id: justicedao/ipfs_federal_register
+    revision: 720668ae016cc400916dda884c9005e03618edfa
+    kind: metadata_release
+    viewer: broken_feature_extraction
+    metadata_record_claim: 993703
+    full_text_included: false
+    training_qualified: false
+  - id: justicedao/ipfs_court_rules
+    revision: c4b34a54810561c75857f215ef6ed1d7d617c76f
+    kind: source_and_embedding_release
+    viewer: pass
+    source_records: 86
+    derived_embeddings: 76
+    training_qualified: false
+    reason: rights, source revisions, and build inputs are not qualified
+  - id: justicedao/ipfs_caselaw_access_project
+    revision: 32bb7493781dcc1245a64b59c5ad1fd6c47837f1
+    kind: large_source_release
+    viewer: pass
+    source_records: 7038450
+    training_qualified: false
+    reason: no card/license/build manifest/source revision/split contract
+  - id: justicedao/dedup_ipfs_caselaw_access_project
+    revision: 70db72d98d6b5581add8d62dfe5fea923af51b43
+    kind: broken_source_release
+    viewer: corrupt_parquet
+    training_qualified: false
+    disposition: reject
+  - id: justicedao/Caselaw_Access_Project_embeddings
+    revision: 53389cbc04d51d5fae69236906c4314058a1f559
+    kind: derived_embedding_registry
+    viewer: disabled
+    source_records: 0
+    training_qualified: false
+  - id: justicedao/american_municipal_law
+    revision: ec3e4457cb9ab7192db36b0292fd35bfbdc588aa
+    kind: source_candidate_with_derivatives
+    viewer: disabled
+    training_qualified: false
+    disposition: quarantine
+admission_summary:
+  proof_grounded_training_ready_repositories: 0
+  inventory_ready_source_candidates:
+    - justicedao/patent-legal-ir-graphrag@845669408081f1334c54519d2bb7df6bf780ccd5:corpus
+    - justicedao/wetwijzer_netherlands_legal_corpus@827e9412f55cbe332f18824ff669bdbbae39005d:laws
+  current_source_candidate_count: 7173
+  note: 7173 is an inventory count, not a qualified training count; WetWijzer remains rights-quarantined.

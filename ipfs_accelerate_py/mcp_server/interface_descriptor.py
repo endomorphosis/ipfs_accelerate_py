@@ -50,7 +50,9 @@ class InterfaceRepository(InterfaceDescriptorRegistry):
         if candidate is None:
             return CompatibilityVerdict(False, [f"unknown_interface:{interface_cid}"], [], [])
         if required is None:
-            return CompatibilityVerdict(False, [f"unknown_required_interface:{required_cid}"], [], [])
+            return CompatibilityVerdict(
+                False, [f"unknown_required_interface:{required_cid}"], [], []
+            )
 
         candidate_requires = set(candidate.get("requires", []))
         required_requires = set(required.get("requires", []))

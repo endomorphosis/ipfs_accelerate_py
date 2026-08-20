@@ -212,7 +212,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 spellcheck,
                 result_filter,
             )
-            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "total_results": 0,
+                "source": "fallback",
+            }
 
         async def _search_brave_news_fallback(
             query: str,
@@ -304,7 +310,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 lr,
                 gl,
             )
-            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "total_results": 0,
+                "source": "fallback",
+            }
 
         async def _search_google_images_fallback(
             query: str,
@@ -355,7 +367,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             page: int = 1,
         ) -> Dict[str, Any]:
             _ = api_token, sort, order, per_page, page
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _search_github_code_fallback(
             query: str,
@@ -366,7 +384,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             page: int = 1,
         ) -> Dict[str, Any]:
             _ = api_token, sort, order, per_page, page
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _search_github_users_fallback(
             query: str,
@@ -377,7 +401,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             page: int = 1,
         ) -> Dict[str, Any]:
             _ = api_token, sort, order, per_page, page
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _search_github_issues_fallback(
             query: str,
@@ -388,7 +418,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             page: int = 1,
         ) -> Dict[str, Any]:
             _ = api_token, sort, order, per_page, page
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _batch_search_github_fallback(
             queries: list[str],
@@ -418,7 +454,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             limit: int = 20,
         ) -> Dict[str, Any]:
             _ = api_token, filter_task, filter_library, filter_language, sort, direction, limit
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _search_huggingface_datasets_fallback(
             query: Optional[str] = None,
@@ -431,7 +473,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             limit: int = 20,
         ) -> Dict[str, Any]:
             _ = api_token, filter_task, filter_language, filter_size, sort, direction, limit
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _search_huggingface_spaces_fallback(
             query: Optional[str] = None,
@@ -442,14 +490,24 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             limit: int = 20,
         ) -> Dict[str, Any]:
             _ = api_token, filter_sdk, sort, direction, limit
-            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "total_count": 0,
+                "query": query,
+                "source": "fallback",
+            }
 
         async def _get_huggingface_model_info_fallback(
             model_id: str,
             api_token: Optional[str] = None,
         ) -> Dict[str, Any]:
             _ = api_token
-            return {"status": "error", "error": "HuggingFace model info backend unavailable", "model_id": model_id}
+            return {
+                "status": "error",
+                "error": "HuggingFace model info backend unavailable",
+                "model_id": model_id,
+            }
 
         async def _batch_search_huggingface_fallback(
             queries: list[str],
@@ -478,7 +536,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             creator: Optional[str] = None,
         ) -> Dict[str, Any]:
             _ = api_key, page, page_size, license_type, source, creator
-            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "total_results": 0,
+                "source": "fallback",
+            }
 
         async def _search_openverse_audio_fallback(
             query: str,
@@ -489,7 +553,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             source: Optional[str] = None,
         ) -> Dict[str, Any]:
             _ = api_key, page, page_size, license_type, source
-            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "total_results": 0,
+                "source": "fallback",
+            }
 
         async def _batch_search_openverse_fallback(
             queries: list[str],
@@ -519,7 +589,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             lang: Optional[str] = None,
         ) -> Dict[str, Any]:
             _ = api_key, engine, num, page, location, device, lang
-            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "total_results": 0,
+                "source": "fallback",
+            }
 
         async def _search_serpstack_images_fallback(
             query: str,
@@ -529,7 +605,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             location: Optional[str] = None,
         ) -> Dict[str, Any]:
             _ = api_key, engine, num, location
-            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+            return {
+                "status": "success",
+                "results": [],
+                "query": query,
+                "total_results": 0,
+                "source": "fallback",
+            }
 
         async def _batch_search_serpstack_fallback(
             queries: list[str],
@@ -558,7 +640,10 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             domain: str = "general",
         ) -> Dict[str, Any]:
             _ = max_results, mode, provider_allowlist, provider_denylist, offset, domain
-            return {"status": "success", "data": {"results": [], "query": query, "source": "fallback"}}
+            return {
+                "status": "success",
+                "data": {"results": [], "query": query, "source": "fallback"},
+            }
 
         async def _unified_fetch_fallback(
             url: str,
@@ -566,7 +651,10 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             domain: str = "general",
         ) -> Dict[str, Any]:
             _ = mode, domain
-            return {"status": "success", "data": {"url": url, "content": None, "source": "fallback"}}
+            return {
+                "status": "success",
+                "data": {"url": url, "content": None, "source": "fallback"},
+            }
 
         async def _unified_search_and_fetch_fallback(
             query: str,
@@ -1958,7 +2046,10 @@ async def search_github_users(
     if normalized_order not in {"asc", "desc"}:
         return {"status": "error", "error": "'order' must be one of: asc, desc."}
     if sort is not None and str(sort).strip() not in {"followers", "repositories", "joined"}:
-        return {"status": "error", "error": "'sort' must be one of: followers, repositories, joined, or null."}
+        return {
+            "status": "error",
+            "error": "'sort' must be one of: followers, repositories, joined, or null.",
+        }
     normalized_per_page = int(per_page)
     if normalized_per_page <= 0:
         return {"status": "error", "error": "'per_page' must be greater than 0."}
@@ -1994,8 +2085,16 @@ async def search_github_issues(
     normalized_order = str(order or "desc").strip().lower() or "desc"
     if normalized_order not in {"asc", "desc"}:
         return {"status": "error", "error": "'order' must be one of: asc, desc."}
-    if sort is not None and str(sort).strip() not in {"comments", "reactions", "created", "updated"}:
-        return {"status": "error", "error": "'sort' must be one of: comments, reactions, created, updated, or null."}
+    if sort is not None and str(sort).strip() not in {
+        "comments",
+        "reactions",
+        "created",
+        "updated",
+    }:
+        return {
+            "status": "error",
+            "error": "'sort' must be one of: comments, reactions, created, updated, or null.",
+        }
     normalized_per_page = int(per_page)
     if normalized_per_page <= 0:
         return {"status": "error", "error": "'per_page' must be greater than 0."}
@@ -2031,7 +2130,10 @@ async def batch_search_github(
         return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
     normalized_type = str(search_type or "repositories").strip().lower() or "repositories"
     if normalized_type not in {"repositories", "code", "users", "issues"}:
-        return {"status": "error", "error": "'search_type' must be one of: repositories, code, users, issues."}
+        return {
+            "status": "error",
+            "error": "'search_type' must be one of: repositories, code, users, issues.",
+        }
     if int(per_page) <= 0:
         return {"status": "error", "error": "'per_page' must be greater than 0."}
     if float(delay_seconds) < 0:
@@ -2062,7 +2164,10 @@ async def search_huggingface_models(
     """Search HuggingFace models via provider wrapper."""
     normalized_sort = str(sort or "downloads").strip().lower() or "downloads"
     if normalized_sort not in {"downloads", "created", "updated", "likes"}:
-        return {"status": "error", "error": "'sort' must be one of: downloads, created, updated, likes."}
+        return {
+            "status": "error",
+            "error": "'sort' must be one of: downloads, created, updated, likes.",
+        }
     normalized_direction = int(direction)
     if normalized_direction not in {-1, 1}:
         return {"status": "error", "error": "'direction' must be -1 or 1."}
@@ -2098,7 +2203,10 @@ async def search_huggingface_datasets(
     """Search HuggingFace datasets via provider wrapper."""
     normalized_sort = str(sort or "downloads").strip().lower() or "downloads"
     if normalized_sort not in {"downloads", "created", "updated", "likes"}:
-        return {"status": "error", "error": "'sort' must be one of: downloads, created, updated, likes."}
+        return {
+            "status": "error",
+            "error": "'sort' must be one of: downloads, created, updated, likes.",
+        }
     normalized_direction = int(direction)
     if normalized_direction not in {-1, 1}:
         return {"status": "error", "error": "'direction' must be -1 or 1."}
@@ -2186,7 +2294,10 @@ async def batch_search_huggingface(
         return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
     normalized_type = str(search_type or "models").strip().lower() or "models"
     if normalized_type not in {"models", "datasets", "spaces"}:
-        return {"status": "error", "error": "'search_type' must be one of: models, datasets, spaces."}
+        return {
+            "status": "error",
+            "error": "'search_type' must be one of: models, datasets, spaces.",
+        }
     if int(limit) <= 0:
         return {"status": "error", "error": "'limit' must be greater than 0."}
     if float(delay_seconds) < 0:
@@ -2318,7 +2429,10 @@ async def search_serpstack(
         return {"status": "error", "error": "'query' is required."}
     normalized_engine = str(engine or "google").strip().lower() or "google"
     if normalized_engine not in {"google", "bing", "yandex", "yahoo", "baidu"}:
-        return {"status": "error", "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu."}
+        return {
+            "status": "error",
+            "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu.",
+        }
     normalized_num = int(num)
     if normalized_num <= 0 or normalized_num > 100:
         return {"status": "error", "error": "'num' must be between 1 and 100."}
@@ -2353,7 +2467,10 @@ async def search_serpstack_images(
         return {"status": "error", "error": "'query' is required."}
     normalized_engine = str(engine or "google").strip().lower() or "google"
     if normalized_engine not in {"google", "bing", "yandex", "yahoo", "baidu"}:
-        return {"status": "error", "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu."}
+        return {
+            "status": "error",
+            "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu.",
+        }
     normalized_num = int(num)
     if normalized_num <= 0 or normalized_num > 100:
         return {"status": "error", "error": "'num' must be between 1 and 100."}
@@ -2385,7 +2502,10 @@ async def batch_search_serpstack(
         return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
     normalized_engine = str(engine or "google").strip().lower() or "google"
     if normalized_engine not in {"google", "bing", "yandex", "yahoo", "baidu"}:
-        return {"status": "error", "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu."}
+        return {
+            "status": "error",
+            "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu.",
+        }
     normalized_num = int(num)
     if normalized_num <= 0 or normalized_num > 100:
         return {"status": "error", "error": "'num' must be between 1 and 100."}
@@ -2422,7 +2542,10 @@ async def unified_search(
         return {"status": "error", "error": "'max_results' must be greater than 0."}
     normalized_mode = str(mode or "max_throughput").strip().lower() or "max_throughput"
     if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
-        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+        return {
+            "status": "error",
+            "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost.",
+        }
     normalized_offset = int(offset)
     if normalized_offset < 0:
         return {"status": "error", "error": "'offset' must be >= 0."}
@@ -2452,7 +2575,10 @@ async def unified_fetch(
         return {"status": "error", "error": "'url' is required."}
     normalized_mode = str(mode or "balanced").strip().lower() or "balanced"
     if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
-        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+        return {
+            "status": "error",
+            "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost.",
+        }
 
     result = _API["unified_fetch"](
         url=normalized_url,
@@ -2484,7 +2610,10 @@ async def unified_search_and_fetch(
         return {"status": "error", "error": "'max_documents' must be greater than 0."}
     normalized_mode = str(mode or "max_throughput").strip().lower() or "max_throughput"
     if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
-        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+        return {
+            "status": "error",
+            "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost.",
+        }
 
     result = _API["unified_search_and_fetch"](
         query=normalized_query,
@@ -2525,7 +2654,10 @@ async def unified_agentic_discover_and_fetch(
         return {"status": "error", "error": "'target_terms' must be a non-empty list."}
     normalized_target_terms = [str(t).strip() for t in target_terms if str(t).strip()]
     if not normalized_target_terms:
-        return {"status": "error", "error": "'target_terms' must contain at least one non-empty term."}
+        return {
+            "status": "error",
+            "error": "'target_terms' must contain at least one non-empty term.",
+        }
 
     normalized_max_hops = int(max_hops)
     if normalized_max_hops <= 0:
@@ -2536,7 +2668,10 @@ async def unified_agentic_discover_and_fetch(
 
     normalized_mode = str(mode or "balanced").strip().lower() or "balanced"
     if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
-        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+        return {
+            "status": "error",
+            "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost.",
+        }
 
     result = _API["unified_agentic_discover_and_fetch"](
         seed_urls=normalized_seed_urls,
@@ -3215,7 +3350,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "offset": {"type": "integer", "default": 0, "minimum": 0},
                 "search_lang": {"type": "string", "default": "en"},
                 "country": {"type": "string", "default": "US"},
-                "safesearch": {"type": "string", "enum": ["off", "moderate", "strict"], "default": "moderate"},
+                "safesearch": {
+                    "type": "string",
+                    "enum": ["off", "moderate", "strict"],
+                    "default": "moderate",
+                },
                 "freshness": {"type": ["string", "null"], "enum": ["pd", "pw", "pm", "py", None]},
                 "text_decorations": {"type": "boolean", "default": True},
                 "spellcheck": {"type": "boolean", "default": True},
@@ -3241,7 +3380,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "offset": {"type": "integer", "default": 0, "minimum": 0},
                 "search_lang": {"type": "string", "default": "en"},
                 "country": {"type": "string", "default": "US"},
-                "safesearch": {"type": "string", "enum": ["off", "moderate", "strict"], "default": "moderate"},
+                "safesearch": {
+                    "type": "string",
+                    "enum": ["off", "moderate", "strict"],
+                    "default": "moderate",
+                },
                 "freshness": {"type": ["string", "null"], "enum": ["pd", "pw", "pm", "py", None]},
             },
             "required": ["query"],
@@ -3264,7 +3407,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "offset": {"type": "integer", "default": 0, "minimum": 0},
                 "search_lang": {"type": "string", "default": "en"},
                 "country": {"type": "string", "default": "US"},
-                "safesearch": {"type": "string", "enum": ["off", "moderate", "strict"], "default": "moderate"},
+                "safesearch": {
+                    "type": "string",
+                    "enum": ["off", "moderate", "strict"],
+                    "default": "moderate",
+                },
             },
             "required": ["query"],
         },
@@ -3438,7 +3585,10 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "properties": {
                 "query": {"type": "string"},
                 "api_token": {"type": ["string", "null"]},
-                "sort": {"type": ["string", "null"], "enum": ["followers", "repositories", "joined", None]},
+                "sort": {
+                    "type": ["string", "null"],
+                    "enum": ["followers", "repositories", "joined", None],
+                },
                 "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
                 "per_page": {"type": "integer", "default": 30, "minimum": 1},
                 "page": {"type": "integer", "default": 1, "minimum": 1},
@@ -3459,7 +3609,10 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "properties": {
                 "query": {"type": "string"},
                 "api_token": {"type": ["string", "null"]},
-                "sort": {"type": ["string", "null"], "enum": ["comments", "reactions", "created", "updated", None]},
+                "sort": {
+                    "type": ["string", "null"],
+                    "enum": ["comments", "reactions", "created", "updated", None],
+                },
                 "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
                 "per_page": {"type": "integer", "default": 30, "minimum": 1},
                 "page": {"type": "integer", "default": 1, "minimum": 1},
@@ -3559,7 +3712,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "query": {"type": ["string", "null"]},
                 "api_token": {"type": ["string", "null"]},
                 "filter_sdk": {"type": ["string", "null"]},
-                "sort": {"type": "string", "enum": ["created", "updated", "likes"], "default": "likes"},
+                "sort": {
+                    "type": "string",
+                    "enum": ["created", "updated", "likes"],
+                    "default": "likes",
+                },
                 "direction": {"type": "integer", "enum": [-1, 1], "default": -1},
                 "limit": {"type": "integer", "default": 20, "minimum": 1},
             },
@@ -3595,7 +3752,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                "search_type": {"type": "string", "enum": ["models", "datasets", "spaces"], "default": "models"},
+                "search_type": {
+                    "type": "string",
+                    "enum": ["models", "datasets", "spaces"],
+                    "default": "models",
+                },
                 "api_token": {"type": ["string", "null"]},
                 "limit": {"type": "integer", "default": 20, "minimum": 1},
                 "delay_seconds": {"type": "number", "default": 0.5, "minimum": 0},

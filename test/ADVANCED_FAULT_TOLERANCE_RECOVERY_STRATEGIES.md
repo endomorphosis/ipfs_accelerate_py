@@ -127,9 +127,8 @@ The integrated circuit breaker now features:
 ### Basic Implementation
 
 ```python
-from distributed_testing.browser_recovery_strategies import (
-    recover_browser, BrowserType, ModelType
-)
+from distributed_testing.browser_recovery_strategies import recover_browser, BrowserType, ModelType
+
 
 async def run_browser_test():
     try:
@@ -141,13 +140,9 @@ async def run_browser_test():
         recovered = await recover_browser(
             bridge,
             error=e,
-            context={
-                "browser": "firefox",
-                "model": "whisper-tiny",
-                "platform": "webgpu"
-            }
+            context={"browser": "firefox", "model": "whisper-tiny", "platform": "webgpu"},
         )
-        
+
         if recovered:
             # Retry after successful recovery
             return await run_test_with_browser()
@@ -160,42 +155,42 @@ async def run_browser_test():
 
 ```python
 from distributed_testing.browser_recovery_strategies import (
-    ProgressiveRecoveryManager, BrowserType, ModelType, RecoveryLevel,
-    categorize_browser_failure
+    ProgressiveRecoveryManager,
+    BrowserType,
+    ModelType,
+    RecoveryLevel,
+    categorize_browser_failure,
 )
+
 
 async def run_with_progressive_recovery():
     # Create recovery manager
     recovery_manager = ProgressiveRecoveryManager()
-    
+
     try:
         # Setup browser and run test
         result = await run_test_with_browser()
         return result
     except Exception as e:
         # Categorize the failure
-        failure_info = categorize_browser_failure(e, {
-            "browser": "firefox",
-            "model": "whisper-tiny",
-            "platform": "webgpu"
-        })
-        
+        failure_info = categorize_browser_failure(
+            e, {"browser": "firefox", "model": "whisper-tiny", "platform": "webgpu"}
+        )
+
         # Attempt progressive recovery starting from an appropriate level
         # based on the failure type
         browser_type = BrowserType.FIREFOX
         model_type = ModelType.AUDIO
-        
+
         # Start with more aggressive recovery for resource issues
-        start_level = RecoveryLevel.AGGRESSIVE if "resource" in str(e).lower() else RecoveryLevel.MINIMAL
-        
-        recovered = await recovery_manager.execute_progressive_recovery(
-            bridge,
-            browser_type,
-            model_type,
-            failure_info,
-            start_level
+        start_level = (
+            RecoveryLevel.AGGRESSIVE if "resource" in str(e).lower() else RecoveryLevel.MINIMAL
         )
-        
+
+        recovered = await recovery_manager.execute_progressive_recovery(
+            bridge, browser_type, model_type, failure_info, start_level
+        )
+
         if recovered:
             # Retry after successful recovery
             return await run_test_with_browser()
@@ -216,8 +211,9 @@ circuit = CircuitBreaker(
     failure_threshold=3,
     recovery_timeout=10.0,
     half_open_max_calls=1,
-    success_threshold=2
+    success_threshold=2,
 )
+
 
 async def run_with_circuit_breaker():
     try:
@@ -229,12 +225,10 @@ async def run_with_circuit_breaker():
         return {"success": False, "error": "Circuit open"}
     except Exception as e:
         # Attempt recovery
-        recovered = await recover_browser(bridge, e, {
-            "browser": "firefox",
-            "model": "whisper-tiny",
-            "platform": "webgpu"
-        })
-        
+        recovered = await recover_browser(
+            bridge, e, {"browser": "firefox", "model": "whisper-tiny", "platform": "webgpu"}
+        )
+
         if recovered:
             # Retry operation after successful recovery
             try:
@@ -242,12 +236,17 @@ async def run_with_circuit_breaker():
                 # Add recovery information
                 if isinstance(result, dict):
                     result["recovered"] = True
-                    result["recovery_method"] = "settings_adjustment_audio" # Example
+                    result["recovery_method"] = "settings_adjustment_audio"  # Example
                 return result
             except Exception as retry_error:
                 return {"success": False, "error": str(retry_error), "recovery_attempted": True}
         else:
-            return {"success": False, "error": str(e), "recovery_attempted": True, "recovery_succeeded": False}
+            return {
+                "success": False,
+                "error": str(e),
+                "recovery_attempted": True,
+                "recovery_succeeded": False,
+            }
 ```
 
 ### Recovery Strategy Performance Analysis
@@ -346,16 +345,18 @@ print(f"Recoveries:        {metrics['recoveries']}")
 print(f"Recovery Rate:     {metrics['recovery_rate']:.2%}")
 
 # If circuit has opened
-if metrics['circuit_open_count'] > 0:
+if metrics["circuit_open_count"] > 0:
     print(f"Circuit Opens:     {metrics['circuit_open_count']}")
     print(f"Avg Downtime:      {metrics['avg_downtime_seconds']:.2f}s")
 
 # Show recent recovery history
-recovery_history = metrics['recovery_history']
+recovery_history = metrics["recovery_history"]
 if recovery_history:
     print("Recent Recoveries:")
     for i, recovery in enumerate(recovery_history[-3:]):  # Show last 3 recoveries
-        print(f"  {i+1}. {recovery['timestamp']} - {recovery['recovery_method']} ({recovery['browser']})")
+        print(
+            f"  {i + 1}. {recovery['timestamp']} - {recovery['recovery_method']} ({recovery['browser']})"
+        )
 ```
 
 ## Running Unit Tests

@@ -141,7 +141,13 @@ def _setup_semantic_chunking(self):
 ## _setup_semantic_chunking
 
 ```python
-async def _setup_semantic_chunking(self, embedding_model_name: str, device: Optional[str] = None, target_devices = None, embed_batch_size: Optional[int] = None):
+async def _setup_semantic_chunking(
+    self,
+    embedding_model_name: str,
+    device: Optional[str] = None,
+    target_devices=None,
+    embed_batch_size: Optional[int] = None,
+):
     """
     Legacy method for setting up semantic chunking.
     """
@@ -165,7 +171,9 @@ def _split_sentences(self, text: str) -> List[str]:
 ## chunk_semantically
 
 ```python
-def chunk_semantically(self, text: str, tokenizer: Optional[Tokenizer] = None, **kwargs) -> List[DocumentChunk]:
+def chunk_semantically(
+    self, text: str, tokenizer: Optional[Tokenizer] = None, **kwargs
+) -> List[DocumentChunk]:
     """
     Legacy method for semantic chunking.
     """
@@ -251,7 +259,9 @@ def chunk_text(self, text: str, metadata: Optional[Dict] = None) -> List[Documen
 
 ```python
 @abstractmethod
-async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> AsyncIterator[DocumentChunk]:
+async def chunk_text_async(
+    self, text: str, metadata: Optional[Dict] = None
+) -> AsyncIterator[DocumentChunk]:
     """
     Async version of chunk_text.
     """
@@ -263,7 +273,9 @@ async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> 
 ## chunk_text_async
 
 ```python
-async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> AsyncIterator[DocumentChunk]:
+async def chunk_text_async(
+    self, text: str, metadata: Optional[Dict] = None
+) -> AsyncIterator[DocumentChunk]:
     """
     Async version of fixed-size chunking.
     """
@@ -275,7 +287,9 @@ async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> 
 ## chunk_text_async
 
 ```python
-async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> AsyncIterator[DocumentChunk]:
+async def chunk_text_async(
+    self, text: str, metadata: Optional[Dict] = None
+) -> AsyncIterator[DocumentChunk]:
     """
     Async version of sentence chunking.
     """
@@ -287,7 +301,9 @@ async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> 
 ## chunk_text_async
 
 ```python
-async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> AsyncIterator[DocumentChunk]:
+async def chunk_text_async(
+    self, text: str, metadata: Optional[Dict] = None
+) -> AsyncIterator[DocumentChunk]:
     """
     Async version of sliding window chunking.
     """
@@ -299,7 +315,9 @@ async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> 
 ## chunk_text_async
 
 ```python
-async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> AsyncIterator[DocumentChunk]:
+async def chunk_text_async(
+    self, text: str, metadata: Optional[Dict] = None
+) -> AsyncIterator[DocumentChunk]:
     """
     Async version of semantic chunking.
     """
@@ -311,7 +329,9 @@ async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> 
 ## chunk_text_async
 
 ```python
-async def chunk_text_async(self, text: str, metadata: Optional[Dict] = None) -> AsyncIterator[DocumentChunk]:
+async def chunk_text_async(
+    self, text: str, metadata: Optional[Dict] = None
+) -> AsyncIterator[DocumentChunk]:
     """
     Async version of text chunking.
     """

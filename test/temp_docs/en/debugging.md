@@ -287,6 +287,7 @@ One solution is to go back a few steps before the values started growing too lar
 ```py
 import torch
 
+
 def forward(self, hidden_states):
     if torch.is_autocast_enabled():
         with torch.cuda.amp.autocast(enabled=False):
@@ -299,6 +300,7 @@ The report only returns inputs and outputs of full frames, so you may also want 
 
 ```py
 from debug_utils import detect_overflow
+
 
 class T5LayerFF(nn.Module):
     [...]

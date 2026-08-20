@@ -104,9 +104,7 @@ def _base_input(**overrides):
 
 
 def test_requirement_ids_and_registry_versions_are_stable():
-    assert PROVIDER_USAGE_ADAPTER_REQUIREMENT_ID == (
-        "requirement:provider-usage-adapter.v1"
-    )
+    assert PROVIDER_USAGE_ADAPTER_REQUIREMENT_ID == ("requirement:provider-usage-adapter.v1")
     assert ADAPTER_PARSER_VERSION == "1.0"
     assert ADAPTER_REGISTRY_VERSION == "1.0"
 
@@ -289,9 +287,7 @@ def test_openai_compatible_parses_usage_body_and_rate_limit_headers():
     assert UsageDimension.REQUESTS in dims
     assert UsageDimension.TOTAL_TOKENS in dims
     req_limit = next(
-        limit
-        for limit in observation.limits
-        if limit.dimension is UsageDimension.REQUESTS
+        limit for limit in observation.limits if limit.dimension is UsageDimension.REQUESTS
     )
     assert req_limit.ceiling.value == 100
     assert req_limit.remaining.value == 97
@@ -321,7 +317,11 @@ def test_openai_compatible_429_retry_after_and_billing_exhaustion():
     assert obs_rate.retry_after_ms == 12_000
     assert obs_rate.reset_at is not None
     assert any("subscription.usage_limit" in code for code in obs_rate.reason_codes)
-    assert any(limit.remaining.value == 0 for limit in obs_rate.limits if limit.remaining.kind is QuantityKind.FINITE)
+    assert any(
+        limit.remaining.value == 0
+        for limit in obs_rate.limits
+        if limit.remaining.kind is QuantityKind.FINITE
+    )
 
     obs_bill = parse_openai_compatible_observation(
         _base_input(
@@ -353,19 +353,13 @@ def test_anthropic_style_headers_and_usage_body():
                 "request-id": "req_ant_1",
                 "anthropic-ratelimit-requests-limit": "50",
                 "anthropic-ratelimit-requests-remaining": "49",
-                "anthropic-ratelimit-requests-reset": reset.isoformat().replace(
-                    "+00:00", "Z"
-                ),
+                "anthropic-ratelimit-requests-reset": reset.isoformat().replace("+00:00", "Z"),
                 "anthropic-ratelimit-input-tokens-limit": "40000",
                 "anthropic-ratelimit-input-tokens-remaining": "39800",
-                "anthropic-ratelimit-input-tokens-reset": reset.isoformat().replace(
-                    "+00:00", "Z"
-                ),
+                "anthropic-ratelimit-input-tokens-reset": reset.isoformat().replace("+00:00", "Z"),
                 "anthropic-ratelimit-output-tokens-limit": "8000",
                 "anthropic-ratelimit-output-tokens-remaining": "7920",
-                "anthropic-ratelimit-output-tokens-reset": reset.isoformat().replace(
-                    "+00:00", "Z"
-                ),
+                "anthropic-ratelimit-output-tokens-reset": reset.isoformat().replace("+00:00", "Z"),
             },
             usage_body={
                 "usage": {
@@ -563,11 +557,7 @@ def test_custom_adapter_with_field_map():
     )
     assert observation.retry_after_ms == 5_000
     req = next(
-        (
-            limit
-            for limit in observation.limits
-            if limit.dimension is UsageDimension.REQUESTS
-        ),
+        (limit for limit in observation.limits if limit.dimension is UsageDimension.REQUESTS),
         None,
     )
     assert req is not None
@@ -620,20 +610,12 @@ def test_never_raises_policy_ceiling_from_untrusted_observation():
             configured_limits=configured,
         )
     )
-    req = next(
-        limit
-        for limit in observation.limits
-        if limit.dimension is UsageDimension.REQUESTS
-    )
+    req = next(limit for limit in observation.limits if limit.dimension is UsageDimension.REQUESTS)
     assert req.ceiling.value == 100
     assert any("policy.ceiling_clamped" in code for code in req.provenance.reason_codes)
 
-    guarded = apply_policy_ceiling_guard(
-        observation.limits, policy_ceilings={"requests": 50}
-    )
-    g_req = next(
-        limit for limit in guarded if limit.dimension is UsageDimension.REQUESTS
-    )
+    guarded = apply_policy_ceiling_guard(observation.limits, policy_ceilings={"requests": 50})
+    g_req = next(limit for limit in guarded if limit.dimension is UsageDimension.REQUESTS)
     assert g_req.ceiling.value == 50
 
 
@@ -667,9 +649,7 @@ def test_rejects_scope_mismatch_negative_stale_conflicting_and_credentials():
     other = _scope(provider_id=_provider_id("other"))
 
     with pytest.raises(AdapterScopeError, match="scope_id"):
-        parse_provider_observation(
-            _base_input(scope=scope, claimed_scope_id=other.scope_id)
-        )
+        parse_provider_observation(_base_input(scope=scope, claimed_scope_id=other.scope_id))
 
     with pytest.raises(AdapterParseError, match="credential|forbidden"):
         parse_provider_observation(
@@ -711,8 +691,7 @@ def test_rejects_scope_mismatch_negative_stale_conflicting_and_credentials():
         )
     )
     assert any(
-        "reset.stale" in code or "header.reset" in code
-        for code in observation_stale.reason_codes
+        "reset.stale" in code or "header.reset" in code for code in observation_stale.reason_codes
     )
 
     # Contradictory resets: prefer earlier, mark conflict.
@@ -732,9 +711,7 @@ def test_rejects_scope_mismatch_negative_stale_conflicting_and_credentials():
     )
     assert observation_conflict.reset_at is not None
     # More restrictive (earlier) wins when conflict exceeds tolerance.
-    reset_dt = datetime.fromisoformat(
-        observation_conflict.reset_at.replace("Z", "+00:00")
-    )
+    reset_dt = datetime.fromisoformat(observation_conflict.reset_at.replace("Z", "+00:00"))
     assert reset_dt <= early + timedelta(seconds=1)
 
 
@@ -842,9 +819,7 @@ def test_malformed_and_adversarial_inputs_fail_closed():
     # Nested secret-shaped value rejected.
     with pytest.raises(AdapterParseError, match="credential"):
         parse_provider_observation(
-            _base_input(
-                error_body={"error": {"message": "ok", "token": "sk-" + ("z" * 24)}}
-            )
+            _base_input(error_body={"error": {"message": "ok", "token": "sk-" + ("z" * 24)}})
         )
     # Empty request id rejected.
     with pytest.raises(AdapterParseError):

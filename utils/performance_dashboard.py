@@ -60,7 +60,9 @@ class PerformanceDashboard:
         app.run(host=self.host, port=self.port, debug=False, use_reloader=False)
 
 
-def start_performance_dashboard(host: str = "0.0.0.0", port: int = 8080, background: bool = False) -> Optional[Any]:
+def start_performance_dashboard(
+    host: str = "0.0.0.0", port: int = 8080, background: bool = False
+) -> Optional[Any]:
     """Start the dashboard.
 
     If `background=True`, runs the server in a daemon thread and returns it.

@@ -152,12 +152,9 @@ Enhanced chat functionality:
 response = ollama.chat_with_system("llama2", messages, "You are a helpful assistant")
 
 # Stream chat with custom parameters
-for chunk in ollama.stream_chat_with_options("llama2", messages, {
-    "temperature": 0.7,
-    "top_p": 0.9,
-    "top_k": 40,
-    "num_predict": 100
-}):
+for chunk in ollama.stream_chat_with_options(
+    "llama2", messages, {"temperature": 0.7, "top_p": 0.9, "top_k": 40, "num_predict": 100}
+):
     print(chunk)
 ```
 

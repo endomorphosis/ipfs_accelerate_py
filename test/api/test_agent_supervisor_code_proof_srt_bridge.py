@@ -74,12 +74,8 @@ def _residual_entry(
         property_ids=("property:srt-fixture-r1",),
         claim_ids=("claim:fixture-1",),
         obligation_ids=("obligation:srt-fixture-1",),
-        counterexample_ref_ids=(
-            ("ce:fixture-1",) if with_counterexample else ()
-        ),
-        predicted_files=(
-            "ipfs_accelerate_py/agent_supervisor/code_proof_srt_bridge.py",
-        ),
+        counterexample_ref_ids=(("ce:fixture-1",) if with_counterexample else ()),
+        predicted_files=("ipfs_accelerate_py/agent_supervisor/code_proof_srt_bridge.py",),
         assumption_ids=("assumption:fixture-a",),
         status=status,
         summary="fixture residual for CBP-110",
@@ -97,9 +93,7 @@ def _plateau_fixture() -> dict:
         "obligation_ids": ("obligation:srt-fixture-1",),
         "assumption_ids": ("assumption:fixture-a",),
         "property_ids": ("property:srt-fixture-r1",),
-        "predicted_files": (
-            "ipfs_accelerate_py/agent_supervisor/code_proof_srt_bridge.py",
-        ),
+        "predicted_files": ("ipfs_accelerate_py/agent_supervisor/code_proof_srt_bridge.py",),
         "status": ClaimStatus.OPEN.value,
         "acceptance_ids": ("accept:srt-fixture",),
     }
@@ -127,12 +121,8 @@ def _admission_fixture() -> StructuralAdmission:
 
 
 def test_method_roles_map_measured_and_not_interchangeable() -> None:
-    assert resolve_method_role("autoencoder") is (
-        SrtMethodRole.BOUNDED_GUIDANCE_DIAGNOSTICS
-    )
-    assert resolve_method_role("spacy") is (
-        SrtMethodRole.BOUNDED_GUIDANCE_DIAGNOSTICS
-    )
+    assert resolve_method_role("autoencoder") is (SrtMethodRole.BOUNDED_GUIDANCE_DIAGNOSTICS)
+    assert resolve_method_role("spacy") is (SrtMethodRole.BOUNDED_GUIDANCE_DIAGNOSTICS)
     assert resolve_method_role("symai") is SrtMethodRole.ORCHESTRATION
     assert resolve_method_role("leanstral") is SrtMethodRole.PROPOSAL_TEACHER
     assert resolve_method_role("hammer") is SrtMethodRole.STRUCTURAL_GATE
@@ -143,14 +133,8 @@ def test_method_roles_map_measured_and_not_interchangeable() -> None:
     assert resolve_method_role("decompiler") is SrtMethodRole.EDIT_TARGET
 
     # Roles are distinct — guidance is not a structural gate.
-    assert (
-        resolve_method_role("autoencoder")
-        is not resolve_method_role("hammer")
-    )
-    assert (
-        resolve_method_role("leanstral")
-        is not resolve_method_role("lean")
-    )
+    assert resolve_method_role("autoencoder") is not resolve_method_role("hammer")
+    assert resolve_method_role("leanstral") is not resolve_method_role("lean")
 
     manifest = method_roles_manifest()
     assert manifest["methods_interchangeable"] is False
@@ -188,9 +172,7 @@ def test_residual_projects_to_typed_srt_structural_claim() -> None:
     assert claim.property_id == "property:srt-fixture-r1"
     assert claim.derived_assurance is AssuranceLevel.UNVERIFIED
     assert claim.metadata["semantic_authority"] is False
-    assert set(claim.metadata["promotion_authorities"]) == set(
-        PROMOTION_AUTHORITIES
-    )
+    assert set(claim.metadata["promotion_authorities"]) == set(PROMOTION_AUTHORITIES)
     assert claim.metadata["bridge"] == CODE_PROOF_SRT_BRIDGE_INTERFACE
     # Round-trip.
     restored = claim.__class__.from_dict(claim.to_dict())
@@ -199,9 +181,7 @@ def test_residual_projects_to_typed_srt_structural_claim() -> None:
 
 def test_residual_projects_to_counterexample_without_gold() -> None:
     entry = _residual_entry(with_counterexample=True, status=ClaimStatus.REFUTED.value)
-    ce = project_residual_to_counterexample(
-        entry, repository_tree_id="git-tree:srt-fixture"
-    )
+    ce = project_residual_to_counterexample(entry, repository_tree_id="git-tree:srt-fixture")
     payload = ce.to_dict()
     body = str(payload)
     assert "SECRET" not in body
@@ -227,9 +207,7 @@ def test_residual_projects_to_context_capsule() -> None:
     )
     assert capsule.tree_id == "git-tree:srt-fixture"
     assert capsule.authority["semantic_authority"] is False
-    assert set(capsule.authority["promotion_authorities"]) == set(
-        PROMOTION_AUTHORITIES
-    )
+    assert set(capsule.authority["promotion_authorities"]) == set(PROMOTION_AUTHORITIES)
     assert capsule.acceptance["requires_e2e_loss"] is True
     assert capsule.acceptance["requires_holdout_gate"] is True
     assert capsule.acceptance["structural_admission_insufficient"] is True
@@ -255,9 +233,7 @@ def test_residual_projects_to_code_edit_packet() -> None:
     assert packet.prover.semantic_authority is False
     assert packet.metadata["gold_ir_excluded"] is True
     assert packet.metadata["edit_target_role"] == SrtMethodRole.EDIT_TARGET.value
-    assert set(packet.metadata["promotion_authorities"]) == set(
-        PROMOTION_AUTHORITIES
-    )
+    assert set(packet.metadata["promotion_authorities"]) == set(PROMOTION_AUTHORITIES)
     body = str(packet.to_dict())
     assert "gold_ir_body" not in body
     assert "SECRET" not in body
@@ -318,9 +294,7 @@ def test_structural_admission_forces_non_semantic_authority() -> None:
     payload = admission.to_dict()
     assert payload["semantic_authority"] is False
     # Caller cannot force true via from_dict.
-    restored = StructuralAdmission.from_dict(
-        {**payload, "semantic_authority": True}
-    )
+    restored = StructuralAdmission.from_dict({**payload, "semantic_authority": True})
     assert restored.semantic_authority is False
 
 

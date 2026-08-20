@@ -41,7 +41,7 @@ quantized_model = AutoModelForCausalLM.from_pretrained(
     "meta-llama/Meta-Llama-3-8B",
     torch_dtype="auto",
     device_map="auto",
-    quantization_config=quantization_config
+    quantization_config=quantization_config,
 )
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B")
@@ -59,18 +59,40 @@ Run the code below to benchmark the quantized models performance.
 from torch._inductor.utils import do_bench_using_profiling
 from typing import Callable
 
+
 def benchmark_fn(func: Callable, *args, **kwargs) -> float:
     """Thin wrapper around do_bench_using_profiling"""
     no_args = lambda: func(*args, **kwargs)
     time = do_bench_using_profiling(no_args)
     return time * 1e3
 
-MAX_NEW_TOKENS = 1000
-print("int4wo-128 model:", benchmark_fn(quantized_model.generate, **input_ids, max_new_tokens=MAX_NEW_TOKENS, cache_implementation="static"))
 
-bf16_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", torch_dtype=torch.bfloat16)
-output = bf16_model.generate(**input_ids, max_new_tokens=10, cache_implementation="static") # auto-compile
-print("bf16 model:", benchmark_fn(bf16_model.generate, **input_ids, max_new_tokens=MAX_NEW_TOKENS, cache_implementation="static"))
+MAX_NEW_TOKENS = 1000
+print(
+    "int4wo-128 model:",
+    benchmark_fn(
+        quantized_model.generate,
+        **input_ids,
+        max_new_tokens=MAX_NEW_TOKENS,
+        cache_implementation="static",
+    ),
+)
+
+bf16_model = AutoModelForCausalLM.from_pretrained(
+    model_name, device_map="auto", torch_dtype=torch.bfloat16
+)
+output = bf16_model.generate(
+    **input_ids, max_new_tokens=10, cache_implementation="static"
+)  # auto-compile
+print(
+    "bf16 model:",
+    benchmark_fn(
+        bf16_model.generate,
+        **input_ids,
+        max_new_tokens=MAX_NEW_TOKENS,
+        cache_implementation="static",
+    ),
+)
 ```
 
 </hfoption>
@@ -92,7 +114,7 @@ quantized_model = AutoModelForCausalLM.from_pretrained(
     "meta-llama/Meta-Llama-3-8B",
     torch_dtype="auto",
     device_map="auto",
-    quantization_config=quantization_config
+    quantization_config=quantization_config,
 )
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B")
@@ -112,18 +134,40 @@ Run the code below to benchmark the quantized models performance.
 from torch._inductor.utils import do_bench_using_profiling
 from typing import Callable
 
+
 def benchmark_fn(func: Callable, *args, **kwargs) -> float:
     """Thin wrapper around do_bench_using_profiling"""
     no_args = lambda: func(*args, **kwargs)
     time = do_bench_using_profiling(no_args)
     return time * 1e3
 
-MAX_NEW_TOKENS = 1000
-print("autoquantized model:", benchmark_fn(quantized_model.generate, **input_ids, max_new_tokens=MAX_NEW_TOKENS, cache_implementation="static"))
 
-bf16_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", torch_dtype=torch.bfloat16)
-output = bf16_model.generate(**input_ids, max_new_tokens=10, cache_implementation="static") # auto-compile
-print("bf16 model:", benchmark_fn(bf16_model.generate, **input_ids, max_new_tokens=MAX_NEW_TOKENS, cache_implementation="static"))
+MAX_NEW_TOKENS = 1000
+print(
+    "autoquantized model:",
+    benchmark_fn(
+        quantized_model.generate,
+        **input_ids,
+        max_new_tokens=MAX_NEW_TOKENS,
+        cache_implementation="static",
+    ),
+)
+
+bf16_model = AutoModelForCausalLM.from_pretrained(
+    model_name, device_map="auto", torch_dtype=torch.bfloat16
+)
+output = bf16_model.generate(
+    **input_ids, max_new_tokens=10, cache_implementation="static"
+)  # auto-compile
+print(
+    "bf16 model:",
+    benchmark_fn(
+        bf16_model.generate,
+        **input_ids,
+        max_new_tokens=MAX_NEW_TOKENS,
+        cache_implementation="static",
+    ),
+)
 ```
 
 </hfoption>

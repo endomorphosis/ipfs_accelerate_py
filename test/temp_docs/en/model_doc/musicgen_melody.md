@@ -83,7 +83,7 @@ import torch
 
 wav = torch.tensor(sample["array"]).to(torch.float32)
 
-demucs = pretrained.get_model('htdemucs')
+demucs = pretrained.get_model("htdemucs")
 
 wav = convert_audio(wav[None], sample["sampling_rate"], demucs.samplerate, demucs.audio_channels)
 wav = apply_model(demucs, wav[None])

@@ -33,7 +33,10 @@ We have two images of cats sitting on top of fish nets, one of them is generated
 from PIL import Image
 import requests
 
-img_urls = ["https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png", "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.jpeg"]
+img_urls = [
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png",
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.jpeg",
+]
 image_real = Image.open(requests.get(img_urls[0], stream=True).raw).convert("RGB")
 image_gen = Image.open(requests.get(img_urls[1], stream=True).raw).convert("RGB")
 ```
@@ -44,9 +47,15 @@ Let's see the pipeline in action. First, initialize the pipeline. If you don't p
 import torch
 from transformers import pipeline
 from accelerate.test_utils.testing import get_backend
+
 # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 DEVICE, _, _ = get_backend()
-pipe = pipeline(task="image-feature-extraction", model_name="google/vit-base-patch16-384", device=DEVICE, pool=True)
+pipe = pipeline(
+    task="image-feature-extraction",
+    model_name="google/vit-base-patch16-384",
+    device=DEVICE,
+    pool=True,
+)
 ```
 
 To infer with `pipe` pass both images to it.
@@ -72,8 +81,7 @@ To get the similarity score, we need to pass them to a similarity function.
 ```python
 from torch.nn.functional import cosine_similarity
 
-similarity_score = cosine_similarity(torch.Tensor(outputs[0]),
-                                     torch.Tensor(outputs[1]), dim=1)
+similarity_score = cosine_similarity(torch.Tensor(outputs[0]), torch.Tensor(outputs[1]), dim=1)
 
 print(similarity_score)
 
@@ -83,7 +91,9 @@ print(similarity_score)
 If you want to get the last hidden states before pooling, avoid passing any value for the `pool` parameter, as it is set to `False` by default. These hidden states are useful for training new classifiers or models based on the features from the model.
 
 ```python
-pipe = pipeline(task="image-feature-extraction", model_name="google/vit-base-patch16-224", device=DEVICE)
+pipe = pipeline(
+    task="image-feature-extraction", model_name="google/vit-base-patch16-224", device=DEVICE
+)
 outputs = pipe(image_real)
 ```
 
@@ -91,6 +101,7 @@ Since the outputs are unpooled, we get the last hidden states where the first di
 
 ```python
 import numpy as np
+
 print(np.array(outputs).shape)
 # (1, 197, 768)
 ```
@@ -110,9 +121,9 @@ Let's write a simple function for inference. We will pass the inputs to the `pro
 
 ```python
 def infer(image):
-  inputs = processor(image, return_tensors="pt").to(DEVICE)
-  outputs = model(**inputs)
-  return outputs.pooler_output
+    inputs = processor(image, return_tensors="pt").to(DEVICE)
+    outputs = model(**inputs)
+    return outputs.pooler_output
 ```
 
 We can pass the images directly to this function and get the embeddings.

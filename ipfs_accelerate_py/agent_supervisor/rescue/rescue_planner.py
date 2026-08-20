@@ -90,27 +90,28 @@ class RescueParameterSpec:
     def __post_init__(self) -> None:
         if self.kind not in {"boolean", "integer", "string"}:
             raise RescuePlannerError(f"unsupported rescue parameter kind {self.kind!r}")
-        if self.kind != "integer" and (
-            self.minimum is not None or self.maximum is not None
-        ):
+        if self.kind != "integer" and (self.minimum is not None or self.maximum is not None):
             raise RescuePlannerError("only integer parameters may have numeric bounds")
-        if (
-            self.minimum is not None
-            and self.maximum is not None
-            and self.minimum > self.maximum
-        ):
+        if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             raise RescuePlannerError("parameter minimum exceeds maximum")
-        if self.choices and self.kind == "integer" and not all(
-            isinstance(item, int) and not isinstance(item, bool)
-            for item in self.choices
+        if (
+            self.choices
+            and self.kind == "integer"
+            and not all(
+                isinstance(item, int) and not isinstance(item, bool) for item in self.choices
+            )
         ):
             raise RescuePlannerError("integer parameter choices must be integers")
-        if self.choices and self.kind == "boolean" and not all(
-            isinstance(item, bool) for item in self.choices
+        if (
+            self.choices
+            and self.kind == "boolean"
+            and not all(isinstance(item, bool) for item in self.choices)
         ):
             raise RescuePlannerError("boolean parameter choices must be booleans")
-        if self.choices and self.kind == "string" and not all(
-            isinstance(item, str) and item for item in self.choices
+        if (
+            self.choices
+            and self.kind == "string"
+            and not all(isinstance(item, str) and item for item in self.choices)
         ):
             raise RescuePlannerError("string parameter choices must be nonempty text")
 
@@ -190,8 +191,7 @@ class RescueOperationSpec:
         return {
             "operation": self.operation.value,
             "parameters": {
-                name: spec.to_prompt_dict()
-                for name, spec in sorted(self.parameters.items())
+                name: spec.to_prompt_dict() for name, spec in sorted(self.parameters.items())
             },
             "additional_parameters": False,
             "expected_effects": list(self.expected_effects),
@@ -200,12 +200,10 @@ class RescueOperationSpec:
             "target_rule": (
                 "one exact incident target"
                 if not self.target_prefixes
-                else "one exact incident target with prefix "
-                + ", ".join(self.target_prefixes)
+                else "one exact incident target with prefix " + ", ".join(self.target_prefixes)
             ),
             "rollback_operations": [
-                None if item is None else item.value
-                for item in self.rollback_operations
+                None if item is None else item.value for item in self.rollback_operations
             ],
         }
 
@@ -250,11 +248,7 @@ def default_rescue_operation_catalog() -> Mapping[RescueOperation, RescueOperati
             "events_observed",
             "bounded incident events are observed",
             "stop after the bounded event page is observed",
-            parameters={
-                "limit": RescueParameterSpec(
-                    "integer", minimum=1, maximum=100
-                )
-            },
+            parameters={"limit": RescueParameterSpec("integer", minimum=1, maximum=100)},
         ),
         _spec(
             RescueOperation.RECONCILE_PROJECTION,
@@ -288,11 +282,7 @@ def default_rescue_operation_catalog() -> Mapping[RescueOperation, RescueOperati
             "retry_scheduled",
             "one policy-bounded retry is scheduled",
             "stop after one retry is scheduled or denied",
-            parameters={
-                "attempt_limit": RescueParameterSpec(
-                    "integer", minimum=1, maximum=3
-                )
-            },
+            parameters={"attempt_limit": RescueParameterSpec("integer", minimum=1, maximum=3)},
             target_prefixes=(
                 "task:",
                 "attempt:",
@@ -308,9 +298,7 @@ def default_rescue_operation_catalog() -> Mapping[RescueOperation, RescueOperati
             "the exact lane has a fresh process identity",
             "stop after one restart or if the lane becomes healthy",
             parameters={
-                "grace_period_ms": RescueParameterSpec(
-                    "integer", minimum=0, maximum=60_000
-                )
+                "grace_period_ms": RescueParameterSpec("integer", minimum=0, maximum=60_000)
             },
             target_prefixes=("lane:",),
         ),
@@ -326,9 +314,7 @@ def default_rescue_operation_catalog() -> Mapping[RescueOperation, RescueOperati
             "dirty_work_preservation_requested",
             "dirty work is preserved under existing worktree policy",
             "stop after preservation or on ownership ambiguity",
-            parameters={
-                "preserve_untracked": RescueParameterSpec("boolean")
-            },
+            parameters={"preserve_untracked": RescueParameterSpec("boolean")},
             target_prefixes=("worktree:",),
         ),
         _spec(
@@ -361,11 +347,7 @@ def default_rescue_operation_catalog() -> Mapping[RescueOperation, RescueOperati
             "independent_work_reassignment_requested",
             "only dependency-independent work is reassigned",
             "stop after one bounded reassignment or on dependency ambiguity",
-            parameters={
-                "max_tasks": RescueParameterSpec(
-                    "integer", minimum=1, maximum=8
-                )
-            },
+            parameters={"max_tasks": RescueParameterSpec("integer", minimum=1, maximum=8)},
             target_prefixes=("lane:", "task:"),
         ),
         _spec(
@@ -409,9 +391,7 @@ def _response_schema(
     max_actions: int | None = None,
 ) -> dict[str, Any]:
     selected_operations = tuple(
-        allowed_operations
-        if allowed_operations is not None
-        else operation_catalog
+        allowed_operations if allowed_operations is not None else operation_catalog
     )
     action_fields = [
         "schema",
@@ -458,13 +438,10 @@ def _response_schema(
             for name, parameter in sorted(spec.parameters.items())
         }
         required_parameters = [
-            name
-            for name, parameter in sorted(spec.parameters.items())
-            if parameter.required
+            name for name, parameter in sorted(spec.parameters.items()) if parameter.required
         ]
         rollback_values = [
-            None if item is None else item.value
-            for item in spec.rollback_operations
+            None if item is None else item.value for item in spec.rollback_operations
         ]
         properties: dict[str, Any] = {
             "schema": {"const": RESCUE_ACTION_SCHEMA},
@@ -522,11 +499,7 @@ def _response_schema(
     actions_schema: dict[str, Any] = {
         "type": "array",
         "minItems": 1,
-        "items": (
-            {"oneOf": action_variants}
-            if action_variants
-            else {"not": {}}
-        ),
+        "items": ({"oneOf": action_variants} if action_variants else {"not": {}}),
     }
     if max_actions is not None:
         actions_schema["maxItems"] = max_actions
@@ -586,9 +559,7 @@ class RescuePlannerPolicy:
     model: str = DEFAULT_RESCUE_MODEL
     allowed_providers: tuple[str, ...] = ("llm_router",)
     allowed_models: tuple[str, ...] = (DEFAULT_RESCUE_MODEL,)
-    allowed_operations: tuple[RescueOperation, ...] = tuple(
-        DEFAULT_RESCUE_OPERATION_CATALOG
-    )
+    allowed_operations: tuple[RescueOperation, ...] = tuple(DEFAULT_RESCUE_OPERATION_CATALOG)
     max_actions: int = 4
     max_prompt_tokens: int = 8_192
     max_provider_tokens: int = 2_048
@@ -622,9 +593,7 @@ class RescuePlannerPolicy:
         operations: list[RescueOperation] = []
         for item in self.allowed_operations:
             try:
-                operation = (
-                    item if isinstance(item, RescueOperation) else RescueOperation(item)
-                )
+                operation = item if isinstance(item, RescueOperation) else RescueOperation(item)
             except (TypeError, ValueError) as exc:
                 raise RescuePlannerError("policy contains an unknown operation") from exc
             if operation not in DEFAULT_RESCUE_OPERATION_CATALOG:
@@ -736,9 +705,7 @@ class RescueNoPlanGuidance:
             self,
             "next_steps",
             tuple(
-                item
-                if isinstance(item, RescueGuidanceStep)
-                else RescueGuidanceStep(item)
+                item if isinstance(item, RescueGuidanceStep) else RescueGuidanceStep(item)
                 for item in self.next_steps
             ),
         )
@@ -808,9 +775,7 @@ class RescuePlanningResult:
             "incident_cid": self.incident_cid,
             "exhaustion_receipt_cid": self.exhaustion_receipt_cid,
             "plan": None if self.plan is None else self.plan.to_dict(),
-            "guidance": (
-                None if self.guidance is None else self.guidance.to_dict()
-            ),
+            "guidance": (None if self.guidance is None else self.guidance.to_dict()),
             "provider_invoked": self.provider_invoked,
             "reused": self.reused,
             "reason_code": self.reason_code,
@@ -945,12 +910,8 @@ _FORBIDDEN_PLAN_TEXT = (
 
 def _json_depth(value: Any, depth: int = 0) -> int:
     if isinstance(value, Mapping):
-        return max(
-            (depth, *(_json_depth(item, depth + 1) for item in value.values()))
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+        return max((depth, *(_json_depth(item, depth + 1) for item in value.values())))
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return max((depth, *(_json_depth(item, depth + 1) for item in value)))
     return depth
 
@@ -1012,10 +973,7 @@ def _bounded_redacted_diagnostics(
                     not key
                     or normalized in _FORBIDDEN_DIAGNOSTIC_KEYS
                     or compact in _SECRET_FIELD_MARKERS
-                    or any(
-                        marker in compact
-                        for marker in _SECRET_FIELD_MARKERS - {"token"}
-                    )
+                    or any(marker in compact for marker in _SECRET_FIELD_MARKERS - {"token"})
                 ):
                     raise RescuePlannerValidationError(
                         "diagnostics contain a forbidden or unredacted field",
@@ -1029,9 +987,7 @@ def _bounded_redacted_diagnostics(
                 normalized_keys.add(normalized)
                 result[key] = visit(item[raw_key], depth + 1, key)
             return result
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return [visit(member, depth + 1, field_name) for member in item]
         raise RescuePlannerValidationError(
             "diagnostics contain an unsupported value",
@@ -1039,9 +995,9 @@ def _bounded_redacted_diagnostics(
         )
 
     result = visit(value, 0)
-    encoded = json.dumps(
-        result, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     if len(encoded) > policy.max_diagnostic_bytes:
         raise RescuePlannerValidationError(
             "diagnostics exceed the serialized byte bound",
@@ -1134,9 +1090,7 @@ def _scan_forbidden_plan_text(value: Any) -> None:
                 )
             _scan_forbidden_plan_text(item)
         return
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         for item in value:
             _scan_forbidden_plan_text(item)
 
@@ -1151,9 +1105,7 @@ def _parameter_schema_matches(
             reason_code="invalid_parameters",
         )
     expected = set(spec.parameters)
-    required = {
-        name for name, parameter in spec.parameters.items() if parameter.required
-    }
+    required = {name for name, parameter in spec.parameters.items() if parameter.required}
     actual = set(parameters)
     if not required.issubset(actual) or not actual.issubset(expected):
         raise RescuePlannerValidationError(
@@ -1192,9 +1144,7 @@ def _closed_operation_catalog(
             or canonical is None
             or spec != canonical
         ):
-            raise error_type(
-                "operation catalog differs from the closed rescue catalog"
-            )
+            raise error_type("operation catalog differs from the closed rescue catalog")
         normalized[operation] = spec
     if not normalized:
         raise error_type("operation catalog must not be empty")
@@ -1215,17 +1165,14 @@ def _validate_parse_context(
             "rescue parsing requires a typed incident",
             reason_code="invalid_incident",
         )
-    if not isinstance(
-        exhaustion_receipt, ProgrammaticRecoveryExhaustionReceipt
-    ):
+    if not isinstance(exhaustion_receipt, ProgrammaticRecoveryExhaustionReceipt):
         raise RescuePlannerValidationError(
             "rescue parsing requires a typed exhaustion receipt",
             reason_code="missing_exhaustion",
         )
     if (
         exhaustion_receipt.incident_cid != incident.incident_cid
-        or exhaustion_receipt.repository_root_cid
-        != incident.repository_root_cid
+        or exhaustion_receipt.repository_root_cid != incident.repository_root_cid
         or exhaustion_receipt.run_cid != incident.run_cid
         or exhaustion_receipt.policy_root != incident.policy_root
     ):
@@ -1253,10 +1200,7 @@ def _validate_parse_context(
             "incident has non-monotonic timestamps",
             reason_code="stale_incident",
         )
-    if any(
-        attempt.target_id not in incident.target_ids
-        for attempt in exhaustion_receipt.attempts
-    ):
+    if any(attempt.target_id not in incident.target_ids for attempt in exhaustion_receipt.attempts):
         raise RescuePlannerValidationError(
             "exhaustion attempts contain an unbound target",
             reason_code="exhaustion_mismatch",
@@ -1280,11 +1224,7 @@ def _validate_parse_context(
     references = tuple(evidence_reference_cids)
     allowed_references = {
         *incident.evidence_cids,
-        *(
-            attempt.receipt_cid
-            for attempt in exhaustion_receipt.attempts
-            if attempt.receipt_cid
-        ),
+        *(attempt.receipt_cid for attempt in exhaustion_receipt.attempts if attempt.receipt_cid),
     }
     if (
         not references
@@ -1349,9 +1289,7 @@ def parse_rescue_plan(
         "updated_at_ms",
     )
     _exact_fields(payload, plan_fields, RESCUE_PLAN_RESPONSE_NAME)
-    if payload.get("schema") != RESCUE_PLAN_SCHEMA or payload.get(
-        "contract_version"
-    ) != 1:
+    if payload.get("schema") != RESCUE_PLAN_SCHEMA or payload.get("contract_version") != 1:
         raise RescuePlannerValidationError(
             "provider returned an unsupported rescue plan version",
             reason_code="invalid_schema",
@@ -1456,9 +1394,10 @@ def parse_rescue_plan(
                 f"actions[{index}] contains {detail}",
                 reason_code="invalid_schema",
             )
-        if raw_action.get("schema") != RESCUE_ACTION_SCHEMA or raw_action.get(
-            "contract_version"
-        ) != 1:
+        if (
+            raw_action.get("schema") != RESCUE_ACTION_SCHEMA
+            or raw_action.get("contract_version") != 1
+        ):
             raise RescuePlannerValidationError(
                 f"actions[{index}] has an unsupported schema",
                 reason_code="invalid_schema",
@@ -1506,10 +1445,7 @@ def parse_rescue_plan(
                 reason_code="invalid_preconditions",
             )
         effects = raw_action.get("expected_effects")
-        if (
-            not isinstance(effects, list)
-            or tuple(effects) != spec.expected_effects
-        ):
+        if not isinstance(effects, list) or tuple(effects) != spec.expected_effects:
             raise RescuePlannerValidationError(
                 f"actions[{index}] expected effects are outside the catalog",
                 reason_code="invalid_expected_effects",
@@ -1526,9 +1462,7 @@ def parse_rescue_plan(
             )
         rollback = raw_action.get("rollback_operation")
         try:
-            typed_rollback = (
-                None if rollback is None else RescueOperation(rollback)
-            )
+            typed_rollback = None if rollback is None else RescueOperation(rollback)
         except (TypeError, ValueError) as exc:
             raise RescuePlannerValidationError(
                 f"actions[{index}] rollback operation is unknown",
@@ -1603,9 +1537,7 @@ def build_rescue_prompt(
         if diagnostics is None
         else diagnostics
     )
-    evidence_references = tuple(
-        request.evidence_reference_cids or incident.evidence_cids
-    )
+    evidence_references = tuple(request.evidence_reference_cids or incident.evidence_cids)
     closed_catalog = _closed_operation_catalog(operation_catalog)
     selected_operations = tuple(
         operation
@@ -1630,9 +1562,7 @@ def build_rescue_prompt(
             if not spec.target_prefixes or target.startswith(spec.target_prefixes)
         ]
         selected_catalog[operation.value] = entry
-    max_actions = min(
-        policy.max_actions, exhaustion.budget.max_rescue_actions
-    )
+    max_actions = min(policy.max_actions, exhaustion.budget.max_rescue_actions)
     provider_output_tokens = min(
         request.max_provider_tokens or policy.max_provider_tokens,
         policy.max_provider_tokens,
@@ -1842,10 +1772,7 @@ class RescuePlanner:
             return self._no_plan(request, "exhaustion_not_terminal"), None
         if exhaustion.updated_at_ms < exhaustion.created_at_ms:
             return self._no_plan(request, "stale_exhaustion"), None
-        if any(
-            attempt.target_id not in incident.target_ids
-            for attempt in exhaustion.attempts
-        ):
+        if any(attempt.target_id not in incident.target_ids for attempt in exhaustion.attempts):
             return self._no_plan(request, "exhaustion_mismatch"), None
         if (
             request.current_repository_root_cid != incident.repository_root_cid
@@ -1861,57 +1788,37 @@ class RescuePlanner:
         if incident.updated_at_ms < incident.observed_at_ms:
             return self._no_plan(request, "stale_incident"), None
         receipt_time = max(exhaustion.created_at_ms, exhaustion.updated_at_ms)
-        if (
-            receipt_time > now_ms
-            or now_ms - receipt_time > policy.max_receipt_age_ms
-        ):
+        if receipt_time > now_ms or now_ms - receipt_time > policy.max_receipt_age_ms:
             return self._no_plan(request, "stale_exhaustion"), None
         incident_time = max(incident.observed_at_ms, incident.updated_at_ms)
-        if (
-            incident_time > now_ms
-            or now_ms - incident_time > policy.max_receipt_age_ms
-        ):
+        if incident_time > now_ms or now_ms - incident_time > policy.max_receipt_age_ms:
             return self._no_plan(request, "stale_incident"), None
         if exhaustion.circuit_open:
-            return self._no_plan(
-                request, "programmatic_circuit_open", quarantine=True
-            ), None
+            return self._no_plan(request, "programmatic_circuit_open", quarantine=True), None
         if "cooldown" in exhaustion.exhaustion_reason.casefold():
             return self._no_plan(
                 request,
                 "programmatic_cooldown_active",
                 retry_after_ms=policy.cooldown_ms,
             ), None
-        if not isinstance(request.evidence_redacted, bool) or not (
-            request.evidence_redacted
-        ):
+        if not isinstance(request.evidence_redacted, bool) or not (request.evidence_redacted):
             return self._no_plan(request, "unredacted_evidence"), None
         try:
-            diagnostics = _bounded_redacted_diagnostics(
-                request.diagnostics, policy=policy
-            )
+            diagnostics = _bounded_redacted_diagnostics(request.diagnostics, policy=policy)
         except RescuePlannerValidationError as exc:
             return self._no_plan(request, exc.reason_code), None
         if not isinstance(diagnostics, Mapping) or not diagnostics:
             return self._no_plan(request, "missing_diagnostics"), None
         allowed_evidence_references = {
             *incident.evidence_cids,
-            *(
-                attempt.receipt_cid
-                for attempt in exhaustion.attempts
-                if attempt.receipt_cid
-            ),
+            *(attempt.receipt_cid for attempt in exhaustion.attempts if attempt.receipt_cid),
         }
-        evidence_references = tuple(
-            request.evidence_reference_cids or incident.evidence_cids
-        )
+        evidence_references = tuple(request.evidence_reference_cids or incident.evidence_cids)
         if (
             not evidence_references
             or any(not isinstance(item, str) for item in evidence_references)
             or len(set(evidence_references)) != len(evidence_references)
-            or not set(evidence_references).issubset(
-                allowed_evidence_references
-            )
+            or not set(evidence_references).issubset(allowed_evidence_references)
         ):
             return self._no_plan(request, "invalid_evidence_references"), None
         applicable_operations = tuple(
@@ -1922,9 +1829,7 @@ class RescuePlanner:
                 and operation not in exhaustion.inapplicable_operations
                 and any(
                     not self.operation_catalog[operation].target_prefixes
-                    or target.startswith(
-                        self.operation_catalog[operation].target_prefixes
-                    )
+                    or target.startswith(self.operation_catalog[operation].target_prefixes)
                     for target in incident.target_ids
                 )
             )
@@ -1982,11 +1887,7 @@ class RescuePlanner:
         invocation = LlmRouterInvocation(
             repo_root=Path(repository_root),
             model_name=self.policy.model,
-            provider=(
-                None
-                if self.policy.provider == "llm_router"
-                else self.policy.provider
-            ),
+            provider=(None if self.policy.provider == "llm_router" else self.policy.provider),
             allow_local_fallback=False,
             timeout_seconds=max(1, math.ceil(timeout_ms / 1_000)),
             max_new_tokens=output_tokens,
@@ -1996,9 +1897,9 @@ class RescuePlanner:
 
         # Migration is owned here with usage_migrate=False on the shared
         # helper so side-effecting work is never double-wrapped/retried.
-        mode_raw = str(
-            os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
-        ).strip().casefold()
+        mode_raw = (
+            str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
+        )
         if mode_raw in {"", "off"}:
             response, _ = _call_text_provider(
                 prompt,
@@ -2022,9 +1923,7 @@ class RescuePlanner:
         )
 
         mode = resolve_usage_mode(mode_raw)
-        provider_id = str(
-            invocation.provider or self.policy.provider or "llm_router:auto"
-        )
+        provider_id = str(invocation.provider or self.policy.provider or "llm_router:auto")
 
         def _invoke() -> str:
             response, _ = _call_text_provider(
@@ -2089,11 +1988,7 @@ class RescuePlanner:
         """Return one validated proposal or effect-free typed guidance."""
 
         with self._lock:
-            current_time = (
-                request.now_ms
-                if request.now_ms is not None
-                else self.clock_ms()
-            )
+            current_time = request.now_ms if request.now_ms is not None else self.clock_ms()
             if (
                 isinstance(current_time, bool)
                 or not isinstance(current_time, int)
@@ -2133,13 +2028,9 @@ class RescuePlanner:
                         "identical_incident_receipt_changed",
                         quarantine=True,
                     )
-                if (
-                    prior.guidance is not None
-                    and (
-                        prior.guidance.incident_cid != incident.incident_cid
-                        or prior.guidance.exhaustion_receipt_cid
-                        != exhaustion.receipt_cid
-                    )
+                if prior.guidance is not None and (
+                    prior.guidance.incident_cid != incident.incident_cid
+                    or prior.guidance.exhaustion_receipt_cid != exhaustion.receipt_cid
                 ):
                     self.state.open_circuits.add(cooldown_key)
                     return self._no_plan(
@@ -2153,14 +2044,11 @@ class RescuePlanner:
                             prior.plan.to_json(),
                             incident=incident,
                             exhaustion_receipt=exhaustion,
-                            current_repository_root_cid=(
-                                request.current_repository_root_cid
-                            ),
+                            current_repository_root_cid=(request.current_repository_root_cid),
                             current_run_cid=request.current_run_cid,
                             current_policy_root=request.current_policy_root,
                             evidence_reference_cids=tuple(
-                                request.evidence_reference_cids
-                                or incident.evidence_cids
+                                request.evidence_reference_cids or incident.evidence_cids
                             ),
                             policy=self.policy,
                             operation_catalog=self.operation_catalog,
@@ -2187,9 +2075,7 @@ class RescuePlanner:
                 )
                 return replace(guidance, reused=True)
             if cooldown_key in self.state.open_circuits:
-                return self._no_plan(
-                    request, "planner_circuit_open", quarantine=True
-                )
+                return self._no_plan(request, "planner_circuit_open", quarantine=True)
             failure_count = self.state.consecutive_failures.get(cooldown_key, 0)
             if (
                 isinstance(failure_count, bool)
@@ -2204,14 +2090,10 @@ class RescuePlanner:
                 )
             if failure_count >= self.policy.circuit_breaker_failures:
                 self.state.open_circuits.add(cooldown_key)
-                return self._no_plan(
-                    request, "planner_circuit_open", quarantine=True
-                )
+                return self._no_plan(request, "planner_circuit_open", quarantine=True)
             last_call = self.state.last_provider_call_ms.get(cooldown_key)
             if last_call is not None and (
-                isinstance(last_call, bool)
-                or not isinstance(last_call, int)
-                or last_call < 0
+                isinstance(last_call, bool) or not isinstance(last_call, int) or last_call < 0
             ):
                 self.state.open_circuits.add(cooldown_key)
                 return self._no_plan(
@@ -2219,10 +2101,7 @@ class RescuePlanner:
                     "planner_state_invalid",
                     quarantine=True,
                 )
-            if (
-                last_call is not None
-                and now_ms - last_call < self.policy.cooldown_ms
-            ):
+            if last_call is not None and now_ms - last_call < self.policy.cooldown_ms:
                 return self._no_plan(
                     request,
                     "cooldown_active",
@@ -2254,14 +2133,11 @@ class RescuePlanner:
                 exhaustion.budget.max_latency_ms,
             )
             cost_limit = min(
-                request.max_cost_microunits
-                or self.policy.max_cost_microunits,
+                request.max_cost_microunits or self.policy.max_cost_microunits,
                 self.policy.max_cost_microunits,
             )
             estimated_cost = math.ceil(
-                (prompt_tokens + output_tokens)
-                * self.policy.cost_per_1k_tokens_microunits
-                / 1_000
+                (prompt_tokens + output_tokens) * self.policy.cost_per_1k_tokens_microunits / 1_000
             )
             if estimated_cost > cost_limit:
                 return self._no_plan(
@@ -2289,9 +2165,7 @@ class RescuePlanner:
                         )
                     )
                 finally:
-                    self.state.in_flight_incidents.discard(
-                        incident.incident_cid
-                    )
+                    self.state.in_flight_incidents.discard(incident.incident_cid)
             except Exception:
                 elapsed = max(0, int(self.clock_ms()) - started)
                 result = self._no_plan(
@@ -2333,9 +2207,7 @@ class RescuePlanner:
                 return self._record_failure(request, result, cooldown_key)
             if (
                 not isinstance(response, str)
-                or (len(response.encode("utf-8", errors="surrogatepass")) + 3)
-                // 4
-                > output_tokens
+                or (len(response.encode("utf-8", errors="surrogatepass")) + 3) // 4 > output_tokens
             ):
                 result = self._no_plan(
                     request,
@@ -2356,8 +2228,7 @@ class RescuePlanner:
                     current_run_cid=request.current_run_cid,
                     current_policy_root=request.current_policy_root,
                     evidence_reference_cids=tuple(
-                        request.evidence_reference_cids
-                        or incident.evidence_cids
+                        request.evidence_reference_cids or incident.evidence_cids
                     ),
                     policy=self.policy,
                     operation_catalog=self.operation_catalog,

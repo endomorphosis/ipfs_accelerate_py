@@ -56,9 +56,7 @@ __all__: Final[tuple[str, ...]] = (
     "TASK_SOURCES_ALLOWED_DEPENDENCIES",
 )
 
-TASK_SOURCES_PACKAGE_NAME: Final[str] = (
-    "ipfs_accelerate_py.agent_supervisor.task_sources"
-)
+TASK_SOURCES_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.task_sources"
 
 # Stems owned by asref/task-sources in docs/architecture/asref/move_map.json.
 TASK_SOURCES_OWNED_MODULES: Final[tuple[str, ...]] = (
@@ -89,9 +87,7 @@ TASK_SOURCES_ALLOWED_DEPENDENTS: Final[tuple[str, ...]] = (
 )
 
 # Lower DAG packages this package may depend on.
-TASK_SOURCES_ALLOWED_DEPENDENCIES: Final[tuple[str, ...]] = (
-    "core",
-)
+TASK_SOURCES_ALLOWED_DEPENDENCIES: Final[tuple[str, ...]] = ("core",)
 
 # Packages that must not be imported by task_sources (DAG / cycle guard).
 TASK_SOURCES_FORBIDDEN_DEPENDENTS: Final[tuple[str, ...]] = (

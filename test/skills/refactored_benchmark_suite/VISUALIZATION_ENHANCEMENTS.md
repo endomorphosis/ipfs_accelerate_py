@@ -71,7 +71,7 @@ The visualization system leverages the hardware abstraction layer by:
 benchmark = ModelBenchmark(
     model_id="bert-base-uncased",
     hardware=["cpu", "cuda"],
-    metrics=["latency", "throughput", "memory", "flops"]
+    metrics=["latency", "throughput", "memory", "flops"],
 )
 results = benchmark.run()
 
@@ -91,11 +91,13 @@ from visualizers.plots import (
     plot_latency_comparison,
     plot_throughput_scaling,
     plot_memory_usage,
-    plot_flops_comparison
+    plot_flops_comparison,
 )
 
 # Customize output paths
-latency_plot = plot_latency_comparison(results, output_path="custom_latency.png", include_percentiles=True)
+latency_plot = plot_latency_comparison(
+    results, output_path="custom_latency.png", include_percentiles=True
+)
 memory_plot = plot_memory_usage(results, output_path="custom_memory.png", detailed=True)
 ```
 

@@ -116,8 +116,7 @@ def test_reviewed_conformance_fixtures_cover_required_semantics() -> None:
     }
 
     assert {
-        fixture.category: fixture.expected_verdict
-        for fixture in AUTHORIZATION_CONFORMANCE_FIXTURES
+        fixture.category: fixture.expected_verdict for fixture in AUTHORIZATION_CONFORMANCE_FIXTURES
     } == expected
     for fixture in AUTHORIZATION_CONFORMANCE_FIXTURES:
         decision = evaluate_authorization(fixture.policy, fixture.request)
@@ -131,9 +130,7 @@ def test_policy_request_grant_and_decision_are_canonical_round_trips() -> None:
     request = _request()
     decision = evaluate_authorization(policy, request)
 
-    assert (
-        AuthorizationGrant.from_dict(policy.grants[0].to_record()) == policy.grants[0]
-    )
+    assert AuthorizationGrant.from_dict(policy.grants[0].to_record()) == policy.grants[0]
     assert AuthorizationPolicy.from_dict(policy.to_record()) == policy
     assert AuthorizationRequest.from_dict(request.to_record()) == request
     assert AuthorizationDecision.from_dict(decision.to_record()) == decision
@@ -168,9 +165,7 @@ def test_parent_linked_delegation_preserves_capability_and_narrows_scope() -> No
     )
     policy = _policy(root, worker)
 
-    allowed = evaluate_authorization(
-        policy, _request(path="src/agent_supervisor/authorization.py")
-    )
+    allowed = evaluate_authorization(policy, _request(path="src/agent_supervisor/authorization.py"))
     denied = evaluate_authorization(policy, _request(path="src/unrelated.py"))
 
     assert allowed.permitted
@@ -233,14 +228,8 @@ def test_expiration_and_not_before_are_distinct_fail_closed_outcomes() -> None:
     future = _grant(not_before_ms=1_200, expires_at_ms=2_000)
     expired = _grant(not_before_ms=100, expires_at_ms=900)
 
-    assert (
-        evaluate_authorization(_policy(future), _request()).reason
-        is DenialReason.NOT_YET_VALID
-    )
-    assert (
-        evaluate_authorization(_policy(expired), _request()).reason
-        is DenialReason.EXPIRED
-    )
+    assert evaluate_authorization(_policy(future), _request()).reason is DenialReason.NOT_YET_VALID
+    assert evaluate_authorization(_policy(expired), _request()).reason is DenialReason.EXPIRED
 
 
 def test_authorized_revocation_is_transitive_and_unauthorized_one_is_ignored() -> None:
@@ -254,9 +243,7 @@ def test_authorized_revocation_is_transitive_and_unauthorized_one_is_ignored() -
         issuer="supervisor",
         parent_statement_id="root",
     )
-    root_revocation = Revocation(
-        "root-revocation", "root", "root", 900, "rotate supervisor"
-    )
+    root_revocation = Revocation("root-revocation", "root", "root", 900, "rotate supervisor")
     unauthorized = Revocation(
         "attacker-revocation", "attacker", "child", 900, "confused deputy attempt"
     )
@@ -368,9 +355,7 @@ def test_authorization_can_permit_action_but_never_code_correctness() -> None:
 
     assert decision.permits_action is True
     assert decision.establishes_generated_code_correctness is False
-    assert (
-        decision.generated_code_correctness is GeneratedCodeCorrectness.NOT_ESTABLISHED
-    )
+    assert decision.generated_code_correctness is GeneratedCodeCorrectness.NOT_ESTABLISHED
     assert report.permitted is True
     assert report.establishes_generated_code_correctness is False
     assert report.to_dict()["generated_code_correctness"] == "not_established"

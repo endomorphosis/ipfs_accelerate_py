@@ -272,9 +272,7 @@ def test_subgoal_satisfaction_is_typed_versioned_and_deterministic():
         bound=1,
         steps=(TraceStep(0), TraceStep(1, facts=(fact,))),
     )
-    assert evaluate_formula(
-        TDFOLVocabulary.subgoal_satisfaction("subgoal:contract", 1), trace
-    )
+    assert evaluate_formula(TDFOLVocabulary.subgoal_satisfaction("subgoal:contract", 1), trace)
 
 
 def test_revision_one_formula_identity_is_preserved_and_cannot_use_new_predicate():
@@ -363,9 +361,7 @@ def test_legacy_plan_without_subgoals_preserves_shape_and_identity():
         ("predicate", "model_invented_predicate", "predicate must be one of"),
     ),
 )
-def test_plan_rejects_unreviewed_formula_operators_and_predicates(
-    field, value, match
-):
+def test_plan_rejects_unreviewed_formula_operators_and_predicates(field, value, match):
     payload = _plan().to_dict()
     formula = next(item for item in payload["formulas"] if item["operator"] == "atom")
     formula[field] = value
@@ -376,9 +372,7 @@ def test_plan_rejects_unreviewed_formula_operators_and_predicates(
 def test_plan_rejects_unknown_sorts_and_formula_references():
     payload = _plan().to_dict()
     formula = next(
-        item
-        for item in payload["formulas"]
-        if item["operator"] == "atom" and item["terms"]
+        item for item in payload["formulas"] if item["operator"] == "atom" and item["terms"]
     )
     formula["terms"][0]["sort"] = "model_invented_sort"
     with pytest.raises(ContractValidationError, match="sort must be one of"):
@@ -445,6 +439,7 @@ def test_plan_rejects_unknown_and_cross_root_subgoal_parents():
     with pytest.raises(ContractValidationError, match="does not match goal_id"):
         FormalWorkPlan.from_dict(payload)
 
+
 def test_plan_rejects_conflicting_effects_for_one_transition():
     payload = _plan().to_dict()
     payload["effects"].append(
@@ -471,16 +466,10 @@ def test_dcec_exposes_only_reviewed_required_modalities_and_round_trips():
         DCECVocabulary.obligation("actor:codex", ready, 4),
         DCECVocabulary.permission("actor:codex", ready, 1),
         DCECVocabulary.prohibition("actor:codex", ready, 1),
-        DCECVocabulary.delegation(
-            "actor:supervisor", "actor:codex", "task:implement", 1
-        ),
-        DCECVocabulary.execution_event(
-            "actor:codex", "task:implement", "event:execute", 2
-        ),
+        DCECVocabulary.delegation("actor:supervisor", "actor:codex", "task:implement", 1),
+        DCECVocabulary.execution_event("actor:codex", "task:implement", "event:execute", 2),
     )
-    assert {formula.operator.value for formula in formulas} == {
-        item.value for item in DCECOperator
-    }
+    assert {formula.operator.value for formula in formulas} == {item.value for item in DCECOperator}
     assert all(Formula.from_dict(item.to_dict()) == item for item in formulas)
 
     with pytest.raises(ContractValidationError, match="one of"):
@@ -573,9 +562,7 @@ def test_tdfol_models_all_required_properties_over_a_finite_trace():
         TDFOLProperty.DEADLINE: TDFOLVocabulary.deadline("task:implement", 2),
         TDFOLProperty.LIVENESS: TDFOLVocabulary.liveness(completed, 3),
         TDFOLProperty.SAFETY: TDFOLVocabulary.safety(safe, 3),
-        TDFOLProperty.GOAL_SATISFACTION: TDFOLVocabulary.goal_satisfaction(
-            "goal:formal-plan", 3
-        ),
+        TDFOLProperty.GOAL_SATISFACTION: TDFOLVocabulary.goal_satisfaction("goal:formal-plan", 3),
     }
 
     assert all(evaluate_formula(formula, trace) for formula in formulas.values())
@@ -605,17 +592,14 @@ def test_frame_projection_is_versioned_bounded_and_not_a_code_proof():
     trace = _trace()
     nodes = tuple(EvidenceNode("e:%d" % index) for index in range(5))
     edges = tuple(
-        EvidenceEdge("e:%d" % index, "e:%d" % (index + 1), "supports")
-        for index in range(4)
+        EvidenceEdge("e:%d" % index, "e:%d" % (index + 1), "supports") for index in range(4)
     )
     projection = project_frame_logic(
         trace,
         evidence_nodes=nodes,
         evidence_edges=edges,
         seed_ids=("e:0",),
-        config=FrameProjectionConfig(
-            max_worlds=2, max_hops=1, max_nodes=2, max_edges=1
-        ),
+        config=FrameProjectionConfig(max_worlds=2, max_hops=1, max_nodes=2, max_edges=1),
     )
 
     assert len(projection.worlds) == 2

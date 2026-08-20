@@ -94,37 +94,32 @@ Different recovery strategies are effective for different failure types:
 ```python
 from distributed_testing.selenium_browser_bridge import BrowserConfiguration, SeleniumBrowserBridge
 
+
 async def main():
     # Create configuration
     config = BrowserConfiguration(
-        browser_name="firefox",
-        platform="webgpu",
-        headless=True,
-        timeout=30
+        browser_name="firefox", platform="webgpu", headless=True, timeout=30
     )
-    
+
     # Enable Firefox-specific optimizations for audio models
     config.compute_shaders = True
     config.custom_prefs = {"dom.webgpu.workgroup_size": "256,1,1"}
-    
+
     # Create browser bridge
     bridge = SeleniumBrowserBridge(config)
-    
+
     try:
         # Launch browser with simulation fallback
         success = await bridge.launch(allow_simulation=True)
         if not success:
             print("Failed to launch browser")
             return
-        
+
         # Run a test with an audio model
-        result = await bridge.run_test(
-            model_name="whisper-tiny",
-            input_data="This is a test input"
-        )
-        
+        result = await bridge.run_test(model_name="whisper-tiny", input_data="This is a test input")
+
         print(f"Test result: {result}")
-        
+
     except Exception as e:
         print(f"Error: {str(e)}")
     finally:
@@ -139,65 +134,56 @@ from distributed_testing.selenium_browser_bridge import BrowserConfiguration, Se
 from distributed_testing.browser_failure_injector import BrowserFailureInjector, FailureType
 from distributed_testing.circuit_breaker import CircuitBreaker
 
+
 async def main():
     # Create configuration and browser bridge
-    config = BrowserConfiguration(
-        browser_name="chrome",
-        platform="webgpu",
-        headless=True
-    )
+    config = BrowserConfiguration(browser_name="chrome", platform="webgpu", headless=True)
     bridge = SeleniumBrowserBridge(config)
-    
+
     # Create circuit breaker for failure monitoring
     circuit_breaker = CircuitBreaker(
-        failure_threshold=5,     # Open after 5 failures
-        recovery_timeout=60,     # Stay open for 60 seconds
-        half_open_after=30,      # Try half-open after 30 seconds
-        name="browser_test_circuit"
+        failure_threshold=5,  # Open after 5 failures
+        recovery_timeout=60,  # Stay open for 60 seconds
+        half_open_after=30,  # Try half-open after 30 seconds
+        name="browser_test_circuit",
     )
-    
+
     try:
         # Launch browser
         await bridge.launch(allow_simulation=True)
-        
+
         # Create failure injector with circuit breaker
         injector = BrowserFailureInjector(
-            bridge,
-            circuit_breaker=circuit_breaker,
-            use_circuit_breaker=True
+            bridge, circuit_breaker=circuit_breaker, use_circuit_breaker=True
         )
-        
+
         # Inject a resource exhaustion failure with moderate intensity
         result = await injector.inject_failure(
-            FailureType.RESOURCE_EXHAUSTION, 
-            intensity="moderate"
+            FailureType.RESOURCE_EXHAUSTION, intensity="moderate"
         )
-        
+
         print(f"Failure injection result: {result}")
-        
+
         # Get circuit breaker state
         print(f"Circuit state: {circuit_breaker.get_state()}")
         print(f"Failure count: {circuit_breaker.get_failure_count()}")
-        
+
         # Inject a severe failure (affects circuit breaker)
         if circuit_breaker.get_state() == "closed":
-            result = await injector.inject_failure(
-                FailureType.CRASH,
-                intensity="severe"
-            )
+            result = await injector.inject_failure(FailureType.CRASH, intensity="severe")
             print(f"Severe failure injection result: {result}")
             print(f"Circuit state after severe failure: {circuit_breaker.get_state()}")
-        
+
         # Get failure statistics (includes circuit breaker info)
         stats = injector.get_failure_stats()
         print(f"Failure stats: {stats}")
-        
+
     except Exception as e:
         print(f"Error: {str(e)}")
-        
+
         # Record failure in circuit breaker
         circuit_breaker.record_failure()
-        
+
     finally:
         await bridge.close()
 ```
@@ -586,14 +572,17 @@ async def execute(self, func: Callable[..., Awaitable[Any]], *args, **kwargs) ->
 
 **3. Adaptive Failure Injection:**
 ```python
-async def inject_random_failure(self, excluded_types: Optional[List[FailureType]] = None,
-                       exclude_severe: bool = False) -> Dict[str, Any]:
+async def inject_random_failure(
+    self, excluded_types: Optional[List[FailureType]] = None, exclude_severe: bool = False
+) -> Dict[str, Any]:
     """Inject a random failure type with circuit breaker awareness"""
     # Check circuit breaker state if enabled
     if self.use_circuit_breaker and self.circuit_breaker:
         circuit_state = self.circuit_breaker.get_state()
         if circuit_state == "open":
-            logger.warning(f"Circuit breaker is OPEN. Too many failures detected. Refusing to inject more failures.")
+            logger.warning(
+                f"Circuit breaker is OPEN. Too many failures detected. Refusing to inject more failures."
+            )
             return {
                 "timestamp": time.time(),
                 "failure_type": "random",
@@ -602,33 +591,38 @@ async def inject_random_failure(self, excluded_types: Optional[List[FailureType]
                 "platform": getattr(self.bridge, "platform", "unknown"),
                 "success": False,
                 "circuit_breaker_open": True,
-                "error": "Circuit breaker is open due to too many failures"
+                "error": "Circuit breaker is open due to too many failures",
             }
-    
+
     # Get all failure types
     all_failure_types = list(FailureType)
-    
+
     # Filter out excluded types
     if excluded_types:
         available_types = [ft for ft in all_failure_types if ft not in excluded_types]
     else:
         available_types = all_failure_types
-    
+
     # If circuit breaker is in half-open state, avoid severe failures
-    circuit_half_open = (self.use_circuit_breaker and self.circuit_breaker and 
-                        self.circuit_breaker.get_state() == "half-open")
-    
+    circuit_half_open = (
+        self.use_circuit_breaker
+        and self.circuit_breaker
+        and self.circuit_breaker.get_state() == "half-open"
+    )
+
     if circuit_half_open or exclude_severe:
         # Avoid severe intensity when circuit breaker is recovering
         intensities = ["mild", "moderate"]
-        logger.info("Circuit breaker in half-open state or exclude_severe=True, avoiding severe failures")
+        logger.info(
+            "Circuit breaker in half-open state or exclude_severe=True, avoiding severe failures"
+        )
     else:
         intensities = ["mild", "moderate", "severe"]
-    
+
     # Choose a random failure type and intensity
     failure_type = random.choice(available_types)
     intensity = random.choice(intensities)
-    
+
     # Inject the failure
     return await self.inject_failure(failure_type, intensity)
 ```
@@ -643,7 +637,7 @@ injector = BrowserFailureInjector(bridge, circuit_breaker=circuit)
 
 # In closed state, all intensities are allowed
 await injector.inject_failure(FailureType.CONNECTION_FAILURE, "mild")
-await injector.inject_failure(FailureType.RESOURCE_EXHAUSTION, "moderate")  
+await injector.inject_failure(FailureType.RESOURCE_EXHAUSTION, "moderate")
 await injector.inject_failure(FailureType.GPU_ERROR, "severe")  # Will affect circuit breaker
 
 # Check circuit breaker metrics
@@ -713,18 +707,14 @@ from distributed_testing.browser_failure_injector import BrowserFailureInjector,
 
 # Create a circuit breaker
 circuit_breaker = CircuitBreaker(
-    failure_threshold=5,     # Open after 5 failures
-    recovery_timeout=60,     # Stay open for 60 seconds
-    half_open_after=30,      # Try half-open after 30 seconds
-    name="test_circuit"
+    failure_threshold=5,  # Open after 5 failures
+    recovery_timeout=60,  # Stay open for 60 seconds
+    half_open_after=30,  # Try half-open after 30 seconds
+    name="test_circuit",
 )
 
 # Create failure injector with circuit breaker
-injector = BrowserFailureInjector(
-    bridge,
-    circuit_breaker=circuit_breaker,
-    use_circuit_breaker=True
-)
+injector = BrowserFailureInjector(bridge, circuit_breaker=circuit_breaker, use_circuit_breaker=True)
 
 # Inject failures - will be tracked by circuit breaker
 await injector.inject_failure(FailureType.CRASH, intensity="severe")
@@ -918,10 +908,10 @@ from distributed_testing.browser_failure_injector import BrowserFailureInjector
 
 # Create a circuit breaker
 circuit_breaker = CircuitBreaker(
-    failure_threshold=5,     # Open circuit after 5 failures
-    recovery_timeout=60,     # Stay open for 60 seconds
-    half_open_after=30,      # Try half-open after 30 seconds
-    name="browser_circuit"
+    failure_threshold=5,  # Open circuit after 5 failures
+    recovery_timeout=60,  # Stay open for 60 seconds
+    half_open_after=30,  # Try half-open after 30 seconds
+    name="browser_circuit",
 )
 
 # Use circuit breaker with browser bridge
@@ -984,8 +974,7 @@ recovery_manager = ProgressiveRecoveryManager()
 
 # Execute progressive recovery
 success = await recovery_manager.execute_progressive_recovery(
-    bridge, browser_type, model_type, failure_info, 
-    start_level=RecoveryLevel.MINIMAL
+    bridge, browser_type, model_type, failure_info, start_level=RecoveryLevel.MINIMAL
 )
 
 # Get strategy statistics

@@ -416,10 +416,13 @@ def test_grok_cli_auto_discovery_requires_auth(monkeypatch) -> None:
 
     calls.clear()
     monkeypatch.setattr(llm_router, "_grok_cli_auth_available", lambda: True)
-    assert llm_router._resolve_provider_uncached(
-        None,
-        deps=llm_router.get_default_router_deps(),
-    ) is grok
+    assert (
+        llm_router._resolve_provider_uncached(
+            None,
+            deps=llm_router.get_default_router_deps(),
+        )
+        is grok
+    )
     assert "grok_cli" in calls
 
 

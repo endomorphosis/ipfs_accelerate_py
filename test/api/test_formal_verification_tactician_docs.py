@@ -23,21 +23,10 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PRODUCT_DOC = REPO_ROOT / "docs" / "formal_verification_tactician.md"
-RUNBOOK_DOC = (
-    REPO_ROOT / "docs" / "operations" / "formal_verification_tactician_runbook.md"
-)
-MIGRATION_DOC = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "docs"
-    / "logic"
-    / "proof_tactician_migration.md"
-)
+RUNBOOK_DOC = REPO_ROOT / "docs" / "operations" / "formal_verification_tactician_runbook.md"
+MIGRATION_DOC = REPO_ROOT / "ipfs_datasets_py" / "docs" / "logic" / "proof_tactician_migration.md"
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
 
 INTERFACE = "FormalVerificationTacticianDocumentation@1"
@@ -458,8 +447,10 @@ def test_docs_do_not_promise_silent_success_for_missing_tools() -> None:
     corpus = _combined_corpus().lower()
     assert "never" in corpus
     assert "unavailable" in corpus
-    assert "silent success" in corpus or "never become silent success" in corpus or (
-        "not" in corpus and "silent" in corpus
+    assert (
+        "silent success" in corpus
+        or "never become silent success" in corpus
+        or ("not" in corpus and "silent" in corpus)
     )
 
 
@@ -467,7 +458,9 @@ def test_docs_disclose_unsupported_languages_tools_policy() -> None:
     corpus = _combined_corpus().lower()
     assert "unsupported" in corpus
     assert "language" in corpus or "languages" in corpus
-    assert "do not promise" in corpus or "not promise" in corpus or "unsupported languages" in corpus
+    assert (
+        "do not promise" in corpus or "not promise" in corpus or "unsupported languages" in corpus
+    )
 
 
 def test_migration_preserves_legacy_logic_api_name() -> None:

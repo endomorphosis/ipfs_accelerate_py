@@ -32,18 +32,10 @@ from .formal_verification_contracts import (
 
 
 TRANSLATION_VALIDATION_VERSION = 1
-TRANSLATION_CONTRACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/logic-translation-contract@1"
-)
-SEMANTIC_INVENTORY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/logic-semantic-inventory@1"
-)
-TRANSLATION_ARTIFACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/logic-translation-artifact@1"
-)
-TRANSLATION_VALIDATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/logic-translation-validation@1"
-)
+TRANSLATION_CONTRACT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/logic-translation-contract@1"
+SEMANTIC_INVENTORY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/logic-semantic-inventory@1"
+TRANSLATION_ARTIFACT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/logic-translation-artifact@1"
+TRANSLATION_VALIDATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/logic-translation-validation@1"
 
 
 class LogicForm(str, Enum):
@@ -207,14 +199,10 @@ def _sha256_text(text: str) -> str:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContractValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise ContractValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
-def _claimed_identity(
-    payload: Mapping[str, Any], actual: str, noun: str
-) -> None:
+def _claimed_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
     claimed = payload.get("content_id") or payload.get("identity")
     if claimed and claimed != actual:
         raise ContractValidationError(f"{noun} content identity does not match payload")
@@ -255,10 +243,7 @@ class SemanticInventory(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "validation_version": TRANSLATION_VALIDATION_VERSION,
-            **{
-                dimension.value: getattr(self, dimension.value)
-                for dimension in SemanticDimension
-            },
+            **{dimension.value: getattr(self, dimension.value) for dimension in SemanticDimension},
             "metadata": self.metadata,
         }
 
@@ -395,12 +380,8 @@ class TranslationContract(CanonicalContract):
             "fixture_set_id",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "source_form", _enum(self.source_form, LogicForm, "source_form")
-        )
-        object.__setattr__(
-            self, "target_form", _enum(self.target_form, LogicForm, "target_form")
-        )
+        object.__setattr__(self, "source_form", _enum(self.source_form, LogicForm, "source_form"))
+        object.__setattr__(self, "target_form", _enum(self.target_form, LogicForm, "target_form"))
         object.__setattr__(
             self,
             "translation_class",
@@ -425,9 +406,7 @@ class TranslationContract(CanonicalContract):
             )
         )
         object.__setattr__(self, "abstracted_dimensions", dimensions)
-        object.__setattr__(
-            self, "assumptions", _strings(self.assumptions, "assumptions")
-        )
+        object.__setattr__(self, "assumptions", _strings(self.assumptions, "assumptions"))
         object.__setattr__(
             self,
             "required_bounds",
@@ -437,9 +416,7 @@ class TranslationContract(CanonicalContract):
         selected = (
             maximum
             if self.permitted_assurance is None
-            else _enum(
-                self.permitted_assurance, AssuranceLevel, "permitted_assurance"
-            )
+            else _enum(self.permitted_assurance, AssuranceLevel, "permitted_assurance")
         )
         if selected.rank > maximum.rank:
             raise ContractValidationError(
@@ -453,10 +430,14 @@ class TranslationContract(CanonicalContract):
             "permitted_results",
             _strings(results, "permitted_results", required=True),
         )
-        if self.translation_class in (
-            TranslationClass.EXACT,
-            TranslationClass.EQUISATISFIABLE,
-        ) and dimensions:
+        if (
+            self.translation_class
+            in (
+                TranslationClass.EXACT,
+                TranslationClass.EQUISATISFIABLE,
+            )
+            and dimensions
+        ):
             raise ContractValidationError(
                 "exact and equisatisfiable contracts cannot declare abstracted dimensions"
             )
@@ -521,9 +502,7 @@ class TranslationContract(CanonicalContract):
             "permitted_results": self.permitted_results,
             "approximation_direction": self.approximation_direction,
             "assumptions": self.assumptions,
-            "abstracted_dimensions": tuple(
-                item.value for item in self.abstracted_dimensions
-            ),
+            "abstracted_dimensions": tuple(item.value for item in self.abstracted_dimensions),
             "required_bounds": self.required_bounds,
             "metadata": self.metadata,
         }
@@ -551,9 +530,7 @@ class TranslationContract(CanonicalContract):
                 "approximation_direction", ApproximationDirection.NONE
             ),
             assumptions=tuple(payload.get("assumptions") or ()),
-            abstracted_dimensions=tuple(
-                payload.get("abstracted_dimensions") or ()
-            ),
+            abstracted_dimensions=tuple(payload.get("abstracted_dimensions") or ()),
             required_bounds=tuple(payload.get("required_bounds") or ()),
             metadata=payload.get("metadata") or {},
         )
@@ -710,25 +687,17 @@ class TranslationValidationResult(CanonicalContract):
             _enum(self.maximum_assurance, AssuranceLevel, "maximum_assurance"),
         )
         if self.conformant != (not self.issues):
-            raise ContractValidationError(
-                "conformant must be true exactly when issues are empty"
-            )
+            raise ContractValidationError("conformant must be true exactly when issues are empty")
         if self.quarantine_required != bool(self.issues):
-            raise ContractValidationError(
-                "translation issues must require quarantine"
-            )
+            raise ContractValidationError("translation issues must require quarantine")
         if self.issues and self.maximum_assurance is not AssuranceLevel.UNVERIFIED:
-            raise ContractValidationError(
-                "non-conformant translations cannot retain assurance"
-            )
+            raise ContractValidationError("non-conformant translations cannot retain assurance")
 
     @property
     def promotion_allowed(self) -> bool:
         return self.conformant and self.maximum_assurance.rank > 0
 
-    def permits(
-        self, assurance: AssuranceLevel | str, *, bounded: bool = False
-    ) -> bool:
+    def permits(self, assurance: AssuranceLevel | str, *, bounded: bool = False) -> bool:
         requested = _enum(assurance, AssuranceLevel, "assurance")
         return (
             self.conformant
@@ -749,9 +718,7 @@ class TranslationValidationResult(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "TranslationValidationResult":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TranslationValidationResult":
         if not isinstance(payload, Mapping):
             raise ContractValidationError("translation validation must be an object")
         _schema(payload, cls.SCHEMA)
@@ -760,13 +727,9 @@ class TranslationValidationResult(CanonicalContract):
             artifact_identity=payload.get("artifact_identity", ""),
             conformant=payload.get("conformant", False),
             quarantine_required=payload.get("quarantine_required", False),
-            maximum_assurance=payload.get(
-                "maximum_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            maximum_assurance=payload.get("maximum_assurance", AssuranceLevel.UNVERIFIED),
             issues=tuple(
-                item
-                if isinstance(item, TranslationIssue)
-                else TranslationIssue.from_dict(item)
+                item if isinstance(item, TranslationIssue) else TranslationIssue.from_dict(item)
                 for item in (payload.get("issues") or ())
             ),
             bounded=payload.get("bounded", False),
@@ -881,11 +844,7 @@ def validate_translation(
         artifact_identity=artifact.content_id,
         conformant=conformant,
         quarantine_required=not conformant,
-        maximum_assurance=(
-            contract.maximum_assurance
-            if conformant
-            else AssuranceLevel.UNVERIFIED
-        ),
+        maximum_assurance=(contract.maximum_assurance if conformant else AssuranceLevel.UNVERIFIED),
         issues=tuple(issues),
         bounded=bounded,
     )
@@ -926,9 +885,7 @@ def project_translation_validation_to_canonical(
 
     from .canonical_logic_adapter import get_canonical_logic_adapter
 
-    return get_canonical_logic_adapter().project_translation_validation_receipt(
-        result
-    )
+    return get_canonical_logic_adapter().project_translation_validation_receipt(result)
 
 
 __all__ = [

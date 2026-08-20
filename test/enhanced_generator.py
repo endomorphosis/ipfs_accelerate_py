@@ -18,18 +18,147 @@ from pathlib import Path
 from typing import Dict, List, Any, Union, Optional, Tuple
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Define model architecture types for mapping
 ARCHITECTURE_TYPES = {
-    "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta", "albert", "bigbird", "canine", "convbert", "data2vec-text", "esm", "flaubert", "ibert", "luke", "megatron-bert", "mobilebert", "nystromformer", "roformer", "splinter", "xlm", "xmod", "xlm-roberta-xl", "nezha", "mra"],
-    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "codellama", "qwen", "codegen", "command-r", "gemma2", "gemma3", "llama-3", "mamba", "mistral-next", "nemotron", "olmo", "olmoe", "openai-gpt", "persimmon", "phi3", "phi4", "recurrent-gemma", "rwkv", "starcoder2", "stablelm"],
-    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan", "m2m-100", "seamless-m4t", "switch-transformers", "umt5"],
-    "vision": ["vit", "swin", "deit", "beit", "convnext", "dinov2", "mobilenet-v2", "beit3", "conditional-detr", "convnextv2", "depth-anything", "dinat", "dino", "imagegpt", "mobilenet-v1", "van", "vitdet", "swinv2", "cvt"],
-    "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip", "blip-2", "chinese-clip", "clipseg", "instructblip", "xclip"],
-    "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5", "speech-to-text", "speech-to-text-2", "wav2vec2-conformer"],
-    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava", "fuyu", "kosmos-2", "llava-next", "idefics2", "idefics3", "llava-next-video", "mllama", "qwen2-vl", "qwen3-vl", "siglip"]
+    "encoder-only": [
+        "bert",
+        "distilbert",
+        "roberta",
+        "electra",
+        "camembert",
+        "xlm-roberta",
+        "deberta",
+        "albert",
+        "bigbird",
+        "canine",
+        "convbert",
+        "data2vec-text",
+        "esm",
+        "flaubert",
+        "ibert",
+        "luke",
+        "megatron-bert",
+        "mobilebert",
+        "nystromformer",
+        "roformer",
+        "splinter",
+        "xlm",
+        "xmod",
+        "xlm-roberta-xl",
+        "nezha",
+        "mra",
+    ],
+    "decoder-only": [
+        "gpt2",
+        "gpt-j",
+        "gpt-neo",
+        "bloom",
+        "llama",
+        "mistral",
+        "falcon",
+        "phi",
+        "mixtral",
+        "mpt",
+        "codellama",
+        "qwen",
+        "codegen",
+        "command-r",
+        "gemma2",
+        "gemma3",
+        "llama-3",
+        "mamba",
+        "mistral-next",
+        "nemotron",
+        "olmo",
+        "olmoe",
+        "openai-gpt",
+        "persimmon",
+        "phi3",
+        "phi4",
+        "recurrent-gemma",
+        "rwkv",
+        "starcoder2",
+        "stablelm",
+    ],
+    "encoder-decoder": [
+        "t5",
+        "bart",
+        "pegasus",
+        "mbart",
+        "longt5",
+        "led",
+        "marian",
+        "mt5",
+        "flan",
+        "m2m-100",
+        "seamless-m4t",
+        "switch-transformers",
+        "umt5",
+    ],
+    "vision": [
+        "vit",
+        "swin",
+        "deit",
+        "beit",
+        "convnext",
+        "dinov2",
+        "mobilenet-v2",
+        "beit3",
+        "conditional-detr",
+        "convnextv2",
+        "depth-anything",
+        "dinat",
+        "dino",
+        "imagegpt",
+        "mobilenet-v1",
+        "van",
+        "vitdet",
+        "swinv2",
+        "cvt",
+    ],
+    "vision-text": [
+        "vision-encoder-decoder",
+        "vision-text-dual-encoder",
+        "clip",
+        "blip",
+        "blip-2",
+        "chinese-clip",
+        "clipseg",
+        "instructblip",
+        "xclip",
+    ],
+    "speech": [
+        "wav2vec2",
+        "hubert",
+        "whisper",
+        "bark",
+        "speecht5",
+        "speech-to-text",
+        "speech-to-text-2",
+        "wav2vec2-conformer",
+    ],
+    "multimodal": [
+        "llava",
+        "clip",
+        "blip",
+        "git",
+        "pix2struct",
+        "paligemma",
+        "video-llava",
+        "fuyu",
+        "kosmos-2",
+        "llava-next",
+        "idefics2",
+        "idefics3",
+        "llava-next-video",
+        "mllama",
+        "qwen2-vl",
+        "qwen3-vl",
+        "siglip",
+    ],
 }
 
 # Default models for each architecture type
@@ -40,7 +169,7 @@ DEFAULT_MODELS = {
     "vision": "google/vit-base-patch16-224",
     "vision-text": "openai/clip-vit-base-patch32",
     "speech": "openai/whisper-tiny",
-    "multimodal": "llava-hf/llava-1.5-7b-hf"
+    "multimodal": "llava-hf/llava-1.5-7b-hf",
 }
 
 # Model-specific mappings for each model type
@@ -51,910 +180,904 @@ MODEL_REGISTRY = {
         "default_model": "bert-base-uncased",
         "task": "fill-mask",
         "class": "BertForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "roberta": {
         "default_model": "roberta-base",
         "task": "fill-mask",
         "class": "RobertaForMaskedLM",
-        "test_input": "The quick brown fox jumps over the <mask> dog."
+        "test_input": "The quick brown fox jumps over the <mask> dog.",
     },
     "distilbert": {
         "default_model": "distilbert-base-uncased",
         "task": "fill-mask",
         "class": "DistilBertForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "albert": {
         "default_model": "albert-base-v2",
         "task": "fill-mask",
         "class": "AlbertForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "electra": {
         "default_model": "google/electra-small-discriminator",
         "task": "token-classification",
-        "class": "ElectraForTokenClassification", 
-        "test_input": "The quick brown fox jumps over the lazy dog."
+        "class": "ElectraForTokenClassification",
+        "test_input": "The quick brown fox jumps over the lazy dog.",
     },
     "camembert": {
         "default_model": "camembert-base",
         "task": "fill-mask",
         "class": "CamembertForMaskedLM",
-        "test_input": "Le renard <mask> saute par-dessus le chien paresseux."
+        "test_input": "Le renard <mask> saute par-dessus le chien paresseux.",
     },
     "xlm-roberta": {
         "default_model": "xlm-roberta-base",
         "task": "fill-mask",
-        "class": "XLMRobertaForMaskedLM", 
-        "test_input": "The quick brown fox jumps over the <mask> dog."
+        "class": "XLMRobertaForMaskedLM",
+        "test_input": "The quick brown fox jumps over the <mask> dog.",
     },
     "deberta": {
         "default_model": "microsoft/deberta-base",
         "task": "fill-mask",
         "class": "DebertaForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "deberta-v2": {
         "default_model": "microsoft/deberta-v2-xlarge",
         "task": "fill-mask",
         "class": "DebertaV2ForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "flaubert": {
         "default_model": "flaubert/flaubert_small_cased",
         "task": "fill-mask",
         "class": "FlaubertForMaskedLM",
-        "test_input": "Le <special:mask> est tombé dans la rivière."
+        "test_input": "Le <special:mask> est tombé dans la rivière.",
     },
     "ernie": {
         "default_model": "nghuyong/ernie-2.0-base-en",
         "task": "fill-mask",
         "class": "ErnieForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "rembert": {
         "default_model": "google/rembert",
         "task": "fill-mask",
         "class": "RemBertForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "luke": {
         "default_model": "studio-ousia/luke-base",
         "task": "fill-mask",
         "class": "LukeForMaskedLM",
-        "test_input": "The quick brown fox jumps over the [MASK] dog."
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "mpnet": {
         "default_model": "microsoft/mpnet-base",
         "task": "fill-mask",
         "class": "MPNetForMaskedLM",
-        "test_input": "The quick brown fox jumps over the <mask> dog."
+        "test_input": "The quick brown fox jumps over the <mask> dog.",
     },
     "canine": {
         "default_model": "google/canine-s",
         "task": "token-classification",
         "class": "CanineForTokenClassification",
-        "test_input": "The quick brown fox jumps over the lazy dog."
+        "test_input": "The quick brown fox jumps over the lazy dog.",
     },
     "layoutlm": {
         "default_model": "microsoft/layoutlm-base-uncased",
         "task": "token-classification",
         "class": "LayoutLMForTokenClassification",
-        "test_input": ["test.jpg", "Sample text for document understanding."]
+        "test_input": ["test.jpg", "Sample text for document understanding."],
     },
-    
     # Decoder-only models
     "gpt2": {
         "default_model": "gpt2",
         "task": "text-generation",
         "class": "GPT2LMHeadModel",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "gpt-j": {
         "default_model": "EleutherAI/gpt-j-6b",
         "task": "text-generation",
         "class": "GPTJForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "gpt-neo": {
         "default_model": "EleutherAI/gpt-neo-1.3B",
         "task": "text-generation",
         "class": "GPTNeoForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "bloom": {
         "default_model": "bigscience/bloom-560m",
         "task": "text-generation",
         "class": "BloomForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "llama": {
         "default_model": "meta-llama/Llama-2-7b-hf",
         "task": "text-generation",
         "class": "LlamaForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "mistral": {
         "default_model": "mistralai/Mistral-7B-v0.1",
         "task": "text-generation",
         "class": "MistralForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "falcon": {
         "default_model": "tiiuae/falcon-7b",
         "task": "text-generation",
         "class": "FalconForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "phi": {
         "default_model": "microsoft/phi-2",
         "task": "text-generation",
         "class": "PhiForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "mixtral": {
         "default_model": "mistralai/Mixtral-8x7B-v0.1",
         "task": "text-generation",
         "class": "MixtralForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "mpt": {
         "default_model": "mosaicml/mpt-7b",
         "task": "text-generation",
         "class": "MptForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "codellama": {
         "default_model": "codellama/CodeLlama-7b-hf",
         "task": "text-generation",
         "class": "LlamaForCausalLM",
-        "test_input": "def fibonacci(n):"
+        "test_input": "def fibonacci(n):",
     },
     "qwen": {
         "default_model": "Qwen/Qwen-7B",
         "task": "text-generation",
         "class": "QwenForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "mamba": {
         "default_model": "state-spaces/mamba-2.8b-hf",
         "task": "text-generation",
         "class": "MambaForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "olmo": {
         "default_model": "allenai/OLMo-7B",
         "task": "text-generation",
         "class": "OLMoForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "qwen2": {
         "default_model": "Qwen/Qwen2-7B",
         "task": "text-generation",
         "class": "Qwen2ForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "qwen3": {
         "default_model": "Qwen/Qwen3-7B",
         "task": "text-generation",
         "class": "Qwen3ForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "gemma": {
         "default_model": "google/gemma-7b",
         "task": "text-generation",
         "class": "GemmaForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "pythia": {
         "default_model": "EleutherAI/pythia-6.9b",
         "task": "text-generation",
         "class": "PythiaForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "stable-lm": {
         "default_model": "stabilityai/stablelm-3b-4e1t",
         "task": "text-generation",
         "class": "StableLmForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "xglm": {
         "default_model": "facebook/xglm-4.5B",
         "task": "text-generation",
         "class": "XGLMForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
     "gpt-neox": {
         "default_model": "EleutherAI/gpt-neox-20b",
         "task": "text-generation",
         "class": "GPTNeoXForCausalLM",
-        "test_input": "Once upon a time"
+        "test_input": "Once upon a time",
     },
-    
     # Encoder-decoder models
     "t5": {
         "default_model": "t5-small",
         "task": "text2text-generation",
         "class": "T5ForConditionalGeneration",
-        "test_input": "translate English to German: Hello, how are you?"
+        "test_input": "translate English to German: Hello, how are you?",
     },
     "bart": {
         "default_model": "facebook/bart-base",
         "task": "summarization",
         "class": "BartForConditionalGeneration",
-        "test_input": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side."
+        "test_input": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.",
     },
     "pegasus": {
         "default_model": "google/pegasus-xsum",
         "task": "summarization",
         "class": "PegasusForConditionalGeneration",
-        "test_input": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side."
+        "test_input": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.",
     },
     "mbart": {
         "default_model": "facebook/mbart-large-cc25",
         "task": "translation",
         "class": "MBartForConditionalGeneration",
-        "test_input": "Hello, how are you?"
+        "test_input": "Hello, how are you?",
     },
     "longt5": {
         "default_model": "google/long-t5-local-base",
         "task": "text2text-generation",
         "class": "LongT5ForConditionalGeneration",
-        "test_input": "summarize: The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side."
+        "test_input": "summarize: The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.",
     },
     "led": {
         "default_model": "allenai/led-base-16384",
         "task": "text2text-generation",
         "class": "LEDForConditionalGeneration",
-        "test_input": "summarize: The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side."
+        "test_input": "summarize: The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.",
     },
     "flan-t5": {
         "default_model": "google/flan-t5-small",
         "task": "text2text-generation",
         "class": "T5ForConditionalGeneration",
-        "test_input": "Translate to French: Hello, how are you?"
+        "test_input": "Translate to French: Hello, how are you?",
     },
     "marian": {
         "default_model": "Helsinki-NLP/opus-mt-en-fr",
         "task": "translation",
         "class": "MarianMTModel",
-        "test_input": "Hello, how are you?"
+        "test_input": "Hello, how are you?",
     },
     "mt5": {
         "default_model": "google/mt5-small",
         "task": "text2text-generation",
         "class": "MT5ForConditionalGeneration",
-        "test_input": "translate English to German: Hello, how are you?"
+        "test_input": "translate English to German: Hello, how are you?",
     },
     "umt5": {
         "default_model": "google/umt5-small",
         "task": "text2text-generation",
         "class": "UMT5ForConditionalGeneration",
-        "test_input": "translate English to German: Hello, how are you?"
+        "test_input": "translate English to German: Hello, how are you?",
     },
     "pegasus-x": {
         "default_model": "google/pegasus-x-base",
         "task": "summarization",
         "class": "PegasusXForConditionalGeneration",
-        "test_input": "The tower is 324 metres tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres on each side."
+        "test_input": "The tower is 324 metres tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres on each side.",
     },
     "plbart": {
         "default_model": "uclanlp/plbart-base",
         "task": "text2text-generation",
         "class": "PLBartForConditionalGeneration",
-        "test_input": "def fibonacci(n):"
+        "test_input": "def fibonacci(n):",
     },
     "m2m-100": {
         "default_model": "facebook/m2m100_418M",
         "task": "translation",
         "class": "M2M100ForConditionalGeneration",
-        "test_input": "Hello, how are you?"
+        "test_input": "Hello, how are you?",
     },
     "nllb": {
         "default_model": "facebook/nllb-200-distilled-600M",
         "task": "translation",
         "class": "NllbForConditionalGeneration",
-        "test_input": "Hello, how are you?"
+        "test_input": "Hello, how are you?",
     },
-    
     # Vision models
     "vit": {
         "default_model": "google/vit-base-patch16-224",
         "task": "image-classification",
         "class": "ViTForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "deit": {
         "default_model": "facebook/deit-base-patch16-224",
         "task": "image-classification",
         "class": "DeiTForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "beit": {
         "default_model": "microsoft/beit-base-patch16-224",
-        "task": "image-classification", 
+        "task": "image-classification",
         "class": "BeitForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "swin": {
         "default_model": "microsoft/swin-tiny-patch4-window7-224",
         "task": "image-classification",
-        "class": "SwinForImageClassification", 
-        "test_input": "test.jpg"
+        "class": "SwinForImageClassification",
+        "test_input": "test.jpg",
     },
     "convnext": {
         "default_model": "facebook/convnext-tiny-224",
         "task": "image-classification",
         "class": "ConvNextForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "dinov2": {
         "default_model": "facebook/dinov2-small",
         "task": "image-classification",
         "class": "Dinov2ForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "mobilenet-v2": {
         "default_model": "google/mobilenet_v2_1.0_224",
         "task": "image-classification",
         "class": "MobileNetV2ForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "detr": {
         "default_model": "facebook/detr-resnet-50",
         "task": "object-detection",
         "class": "DetrForObjectDetection",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "yolos": {
         "default_model": "hustvl/yolos-small",
         "task": "object-detection",
-        "class": "YolosForObjectDetection", 
-        "test_input": "test.jpg"
+        "class": "YolosForObjectDetection",
+        "test_input": "test.jpg",
     },
     "convnextv2": {
         "default_model": "facebook/convnextv2-tiny-1k-224",
         "task": "image-classification",
         "class": "ConvNextV2ForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "efficientnet": {
         "default_model": "google/efficientnet-b0",
         "task": "image-classification",
         "class": "EfficientNetForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "levit": {
         "default_model": "facebook/levit-128S",
         "task": "image-classification",
         "class": "LevitForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "mobilevit": {
         "default_model": "apple/mobilevit-small",
         "task": "image-classification",
         "class": "MobileViTForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "poolformer": {
         "default_model": "sail/poolformer_s12",
         "task": "image-classification",
         "class": "PoolFormerForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "resnet": {
         "default_model": "microsoft/resnet-50",
         "task": "image-classification",
         "class": "ResNetForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "swinv2": {
         "default_model": "microsoft/swinv2-tiny-patch4-window8-256",
         "task": "image-classification",
         "class": "Swinv2ForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "cvt": {
         "default_model": "microsoft/cvt-13",
         "task": "image-classification",
         "class": "CvtForImageClassification",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
-    
     # Vision-text models
     "clip": {
         "default_model": "openai/clip-vit-base-patch32",
         "task": "zero-shot-image-classification",
         "class": "CLIPModel",
-        "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog", "a photo of a person"]]
+        "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog", "a photo of a person"]],
     },
     "blip": {
         "default_model": "Salesforce/blip-image-captioning-base",
         "task": "image-to-text",
         "class": "BlipForConditionalGeneration",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "blip-2": {
         "default_model": "Salesforce/blip2-opt-2.7b",
         "task": "image-to-text",
         "class": "Blip2ForConditionalGeneration",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "chinese-clip": {
         "default_model": "OFA-Sys/chinese-clip-vit-base-patch16",
         "task": "zero-shot-image-classification",
         "class": "ChineseCLIPModel",
-        "test_input": ["test.jpg", ["一只猫的照片", "一只狗的照片", "一个人的照片"]]
+        "test_input": ["test.jpg", ["一只猫的照片", "一只狗的照片", "一个人的照片"]],
     },
     "clipseg": {
         "default_model": "CIDAS/clipseg-rd64-refined",
         "task": "image-segmentation",
         "class": "CLIPSegForImageSegmentation",
-        "test_input": ["test.jpg", "a cat"]
+        "test_input": ["test.jpg", "a cat"],
     },
-    
     # Speech models
     "whisper": {
         "default_model": "openai/whisper-tiny",
         "task": "automatic-speech-recognition",
         "class": "WhisperForConditionalGeneration",
-        "test_input": "test.mp3"
+        "test_input": "test.mp3",
     },
     "wav2vec2": {
         "default_model": "facebook/wav2vec2-base-960h",
         "task": "automatic-speech-recognition",
         "class": "Wav2Vec2ForCTC",
-        "test_input": "test.wav"
+        "test_input": "test.wav",
     },
     "hubert": {
         "default_model": "facebook/hubert-base-ls960",
         "task": "automatic-speech-recognition",
         "class": "HubertForCTC",
-        "test_input": "test.wav"
+        "test_input": "test.wav",
     },
     "bark": {
         "default_model": "suno/bark-small",
         "task": "text-to-audio",
         "class": "BarkModel",
-        "test_input": "Hello, my name is Suno. And, uh — and I like pizza. [laughs] But I also have other interests such as playing tic tac toe."
+        "test_input": "Hello, my name is Suno. And, uh — and I like pizza. [laughs] But I also have other interests such as playing tic tac toe.",
     },
     "speecht5": {
         "default_model": "microsoft/speecht5_tts",
         "task": "text-to-speech",
         "class": "SpeechT5ForTextToSpeech",
-        "test_input": "Hello, this is a test of the Speech T5 text to speech model."
+        "test_input": "Hello, this is a test of the Speech T5 text to speech model.",
     },
-    
     # Multimodal models
     "llava": {
         "default_model": "llava-hf/llava-1.5-7b-hf",
         "task": "image-to-text",
         "class": "LlavaForConditionalGeneration",
-        "test_input": ["test.jpg", "What is in this image?"]
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "git": {
         "default_model": "microsoft/git-base",
-        "task": "image-to-text", 
+        "task": "image-to-text",
         "class": "GitForCausalLM",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "paligemma": {
         "default_model": "google/paligemma-3b-mix-224-an",
         "task": "image-to-text",
         "class": "PaliGemmaForConditionalGeneration",
-        "test_input": ["test.jpg", "What is in this image?"]
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "video-llava": {
         "default_model": "LanguageBind/Video-LLaVA-7B",
         "task": "video-to-text",
         "class": "VideoLlavaForConditionalGeneration",
-        "test_input": ["test.mp4", "What is happening in this video?"]
+        "test_input": ["test.mp4", "What is happening in this video?"],
     },
     "fuyu": {
         "default_model": "adept/fuyu-8b",
         "task": "image-to-text",
         "class": "FuyuForCausalLM",
-        "test_input": ["test.jpg", "What is in this image?"]
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "kosmos-2": {
         "default_model": "microsoft/kosmos-2-patch14-224",
         "task": "image-to-text",
         "class": "Kosmos2ForConditionalGeneration",
-        "test_input": ["test.jpg", "What is in this image?"]
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "llava-next": {
         "default_model": "llava-hf/llava-v1.6-34b-hf",
         "task": "image-to-text",
         "class": "LlavaNextForConditionalGeneration",
-        "test_input": ["test.jpg", "What is in this image?"]
+        "test_input": ["test.jpg", "What is in this image?"],
     },
-    
     # Specialty models
     "imagebind": {
         "default_model": "facebook/imagebind-huge",
         "task": "multimodal-embedding",
         "class": "ImageBindModel",
-        "test_input": ["test.jpg", "test.wav", "A sample text"]
+        "test_input": ["test.jpg", "test.wav", "A sample text"],
     },
     "groupvit": {
         "default_model": "nvidia/groupvit-gcc-yfcc",
         "task": "zero-shot-image-classification",
         "class": "GroupViTModel",
-        "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog"]]
+        "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog"]],
     },
     "perceiver": {
         "default_model": "deepmind/language-perceiver",
         "task": "text-classification",
         "class": "PerceiverForSequenceClassification",
-        "test_input": "I really enjoyed this movie!"
+        "test_input": "I really enjoyed this movie!",
     },
     "mask2former": {
         "default_model": "facebook/mask2former-swin-tiny-coco-instance",
         "task": "instance-segmentation",
         "class": "Mask2FormerForUniversalSegmentation",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
     "segformer": {
         "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
         "task": "image-segmentation",
         "class": "SegformerForSemanticSegmentation",
-        "test_input": "test.jpg"
+        "test_input": "test.jpg",
     },
-
     "gemma2": {
         "default_model": "google/gemma2-9b",
         "task": "text-generation",
         "class": "Gemma2ForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "gemma3": {
         "default_model": "google/gemma3-7b",
         "task": "text-generation",
         "class": "Gemma3ForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "llama-3": {
         "default_model": "meta-llama/Llama-3-8b-hf",
         "task": "text-generation",
         "class": "Llama3ForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "phi3": {
         "default_model": "microsoft/phi-3-mini-4k-instruct",
         "task": "text-generation",
         "class": "Phi3ForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "phi4": {
         "default_model": "microsoft/phi-4-yi",
         "task": "text-generation",
         "class": "Phi4ForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "mistral-next": {
         "default_model": "mistralai/Mistral-Next-8x7b",
         "task": "text-generation",
         "class": "MistralNextForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "nemotron": {
         "default_model": "nvidia/nemotron-4-340b-instruct",
         "task": "text-generation",
         "class": "NemotronForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "persimmon": {
         "default_model": "adept/persimmon-8b-base",
         "task": "text-generation",
         "class": "PersimmonForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "recurrent-gemma": {
         "default_model": "google/recurrent-gemma-2b",
         "task": "text-generation",
         "class": "RecurrentGemmaForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "rwkv": {
         "default_model": "RWKV/rwkv-4-430m-pile",
         "task": "text-generation",
         "class": "RwkvForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "command-r": {
         "default_model": "CohereForAI/c4ai-command-r",
         "task": "text-generation",
         "class": "CommandRForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "codegen": {
         "default_model": "Salesforce/codegen-350M-mono",
         "task": "text-generation",
         "class": "CodeGenForCausalLM",
-        "test_input": 'def fibonacci(n):'
+        "test_input": "def fibonacci(n):",
     },
     "starcoder2": {
         "default_model": "bigcode/starcoder2-3b",
         "task": "text-generation",
         "class": "Starcoder2ForCausalLM",
-        "test_input": 'def fibonacci(n):'
+        "test_input": "def fibonacci(n):",
     },
     "openai-gpt": {
         "default_model": "openai-gpt",
         "task": "text-generation",
         "class": "OpenAIGPTLMHeadModel",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "seamless-m4t": {
         "default_model": "facebook/seamless-m4t-medium",
         "task": "translation",
         "class": "SeamlessM4TForTextToSpeech",
-        "test_input": 'Hello, how are you?'
+        "test_input": "Hello, how are you?",
     },
     "switch-transformers": {
         "default_model": "google/switch-base-8",
         "task": "text2text-generation",
         "class": "SwitchTransformersForConditionalGeneration",
-        "test_input": 'translate English to German: Hello, how are you?'
+        "test_input": "translate English to German: Hello, how are you?",
     },
     "bigbird": {
         "default_model": "google/bigbird-roberta-base",
         "task": "fill-mask",
         "class": "BigBirdForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "convbert": {
         "default_model": "YituTech/conv-bert-base",
         "task": "fill-mask",
         "class": "ConvBertForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "esm": {
         "default_model": "facebook/esm2_t33_650M_UR50D",
         "task": "fill-mask",
         "class": "EsmForMaskedLM",
-        "test_input": 'GCTVED[MASK]LYGV'
+        "test_input": "GCTVED[MASK]LYGV",
     },
     "ibert": {
         "default_model": "kssteven/ibert-roberta-base",
         "task": "fill-mask",
         "class": "IBertForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "megatron-bert": {
         "default_model": "nvidia/megatron-bert-uncased-345m",
         "task": "fill-mask",
         "class": "MegatronBertForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "mobilebert": {
         "default_model": "google/mobilebert-uncased",
         "task": "fill-mask",
         "class": "MobileBertForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "nystromformer": {
         "default_model": "EleutherAI/gpt-neox-1.3B",
         "task": "fill-mask",
         "class": "NystromformerForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "splinter": {
         "default_model": "tau/splinter-base",
         "task": "fill-mask",
         "class": "SplinterForPreTraining",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "roformer": {
         "default_model": "junnyu/roformer_chinese_base",
         "task": "fill-mask",
         "class": "RoFormerForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "xlm": {
         "default_model": "xlm-mlm-en-2048",
         "task": "fill-mask",
         "class": "XLMWithLMHeadModel",
-        "test_input": 'The quick brown fox jumps over the <mask> dog.'
+        "test_input": "The quick brown fox jumps over the <mask> dog.",
     },
     "xmod": {
         "default_model": "facebook/xmod-base",
         "task": "fill-mask",
         "class": "XmodForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "speech-to-text": {
         "default_model": "facebook/s2t-small-librispeech-asr",
         "task": "automatic-speech-recognition",
         "class": "Speech2TextForConditionalGeneration",
-        "test_input": 'test.mp3'
+        "test_input": "test.mp3",
     },
     "speech-to-text-2": {
         "default_model": "facebook/s2t-wav2vec2-large-en",
         "task": "automatic-speech-recognition",
         "class": "Speech2Text2ForCausalLM",
-        "test_input": 'test.mp3'
+        "test_input": "test.mp3",
     },
     "wav2vec2-conformer": {
         "default_model": "facebook/wav2vec2-conformer-rel-pos-large-960h",
         "task": "automatic-speech-recognition",
         "class": "Wav2Vec2ConformerForCTC",
-        "test_input": 'test.wav'
+        "test_input": "test.wav",
     },
     "beit3": {
         "default_model": "microsoft/beit-3-base",
         "task": "image-classification",
         "class": "Beit3ForImageClassification",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "conditional-detr": {
         "default_model": "microsoft/conditional-detr-resnet-50",
         "task": "object-detection",
         "class": "ConditionalDetrForObjectDetection",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "dino": {
         "default_model": "facebook/dino-vits16",
         "task": "image-classification",
         "class": "DinoForImageClassification",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "imagegpt": {
         "default_model": "openai/imagegpt-small",
         "task": "image-generation",
         "class": "ImageGPTForCausalImageModeling",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "mobilenet-v1": {
         "default_model": "google/mobilenet_v1_1.0_224",
         "task": "image-classification",
         "class": "MobileNetV1ForImageClassification",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "dinat": {
         "default_model": "microsoft/dinat-mini-224",
         "task": "image-classification",
         "class": "DinatForImageClassification",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "depth-anything": {
         "default_model": "LiheYoung/depth-anything-small",
         "task": "depth-estimation",
         "class": "DepthAnythingForDepthEstimation",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "vitdet": {
         "default_model": "facebook/vit-det-base",
         "task": "object-detection",
         "class": "VitDetForObjectDetection",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "van": {
         "default_model": "Visual-Attention-Network/van-base",
         "task": "image-classification",
         "class": "VanForImageClassification",
-        "test_input": 'test.jpg'
+        "test_input": "test.jpg",
     },
     "instructblip": {
         "default_model": "Salesforce/instructblip-vicuna-7b",
         "task": "image-to-text",
         "class": "InstructBlipForConditionalGeneration",
-        "test_input": ['test.jpg', 'What is in this image?']
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "xclip": {
         "default_model": "microsoft/xclip-base-patch32",
         "task": "video-classification",
         "class": "XCLIPModel",
-        "test_input": ['test.mp4', ['a video of a cat', 'a video of a dog', 'a video of a person']]
+        "test_input": ["test.mp4", ["a video of a cat", "a video of a dog", "a video of a person"]],
     },
     "idefics2": {
         "default_model": "HuggingFaceM4/idefics2-8b",
         "task": "image-to-text",
         "class": "Idefics2ForConditionalGeneration",
-        "test_input": ['test.jpg', 'What is in this image?']
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "idefics3": {
         "default_model": "HuggingFaceM4/idefics3-8b",
         "task": "image-to-text",
         "class": "Idefics3ForConditionalGeneration",
-        "test_input": ['test.jpg', 'What is in this image?']
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "llava-next-video": {
         "default_model": "llava-hf/llava-next-video-7b-hf",
         "task": "video-to-text",
         "class": "LlavaNextVideoForConditionalGeneration",
-        "test_input": ['test.mp4', 'What is happening in this video?']
+        "test_input": ["test.mp4", "What is happening in this video?"],
     },
     "mllama": {
         "default_model": "DAMO-NLP/mllama-1.5-7b",
         "task": "image-to-text",
         "class": "MLlamaForConditionalGeneration",
-        "test_input": ['test.jpg', 'What is in this image?']
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "qwen2-vl": {
         "default_model": "Qwen/Qwen2-VL-7B",
         "task": "image-to-text",
         "class": "Qwen2VLForConditionalGeneration",
-        "test_input": ['test.jpg', 'What is in this image?']
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "qwen3-vl": {
         "default_model": "Qwen/Qwen3-VL-7B",
         "task": "image-to-text",
         "class": "Qwen3VLForConditionalGeneration",
-        "test_input": ['test.jpg', 'What is in this image?']
+        "test_input": ["test.jpg", "What is in this image?"],
     },
     "siglip": {
         "default_model": "google/siglip-base-patch16-224",
         "task": "zero-shot-image-classification",
         "class": "SiglipModel",
-        "test_input": ['test.jpg', ['a photo of a cat', 'a photo of a dog', 'a photo of a person']]
+        "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog", "a photo of a person"]],
     },
     "stablelm": {
         "default_model": "stabilityai/stablelm-3b-4e1t",
         "task": "text-generation",
         "class": "StableLmForCausalLM",
-        "test_input": 'Once upon a time'
+        "test_input": "Once upon a time",
     },
     "data2vec-text": {
         "default_model": "facebook/data2vec-text-base",
         "task": "fill-mask",
         "class": "Data2VecTextForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "xlm-roberta-xl": {
         "default_model": "facebook/xlm-roberta-xl",
         "task": "fill-mask",
         "class": "XLMRobertaXLForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the <mask> dog.'
+        "test_input": "The quick brown fox jumps over the <mask> dog.",
     },
     "nezha": {
         "default_model": "sijunhe/nezha-cn-base",
         "task": "fill-mask",
         "class": "NezhaForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "mra": {
         "default_model": "uw-madison/mra-base-512-4l",
         "task": "fill-mask",
         "class": "MraForMaskedLM",
-        "test_input": 'The quick brown fox jumps over the [MASK] dog.'
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
     "olmoe": {
         "default_model": "allenai/OLMoE-8B",
         "task": "text-generation",
         "class": "OLMoEForCausalLM",
-        "test_input": 'Once upon a time'
-    },}
+        "test_input": "Once upon a time",
+    },
+}
+
 
 def get_model_architecture(model_type: str) -> str:
     """Determine the architecture type for a given model type."""
     # Handle hyphenated names by checking both original and normalized versions
     model_types_to_check = [model_type]
-    
+
     # Try with different normalizations
-    if '-' in model_type:
-        model_types_to_check.append(model_type.replace('-', '_'))
-        model_types_to_check.append(model_type.replace('-', ''))
-    
+    if "-" in model_type:
+        model_types_to_check.append(model_type.replace("-", "_"))
+        model_types_to_check.append(model_type.replace("-", ""))
+
     # Try with different word orders for compound names (e.g., "flan-t5" -> "t5-flan")
-    if '-' in model_type:
-        parts = model_type.split('-')
+    if "-" in model_type:
+        parts = model_type.split("-")
         if len(parts) == 2:
             model_types_to_check.append(f"{parts[1]}-{parts[0]}")
-    
+
     # Check all variants
     for model_variant in model_types_to_check:
         for arch, models in ARCHITECTURE_TYPES.items():
             # Check if the model type is in the models list
             if model_variant in models:
                 return arch
-            
+
             # Check if the model type starts with any prefix in the models list
             for prefix in models:
                 if model_variant.startswith(prefix) or prefix.startswith(model_variant):
                     return arch
-    
+
     # Special cases for popular hyphenated model names
     if model_type in ["flan-t5", "flan_t5"]:
         return "encoder-decoder"
@@ -966,7 +1089,7 @@ def get_model_architecture(model_type: str) -> str:
         return "encoder-only"
     elif model_type in ["kosmos-2", "kosmos_2"]:
         return "multimodal"
-    
+
     # Check for known prefixes even if full model name isn't in the list
     known_prefixes = {
         "bert": "encoder-only",
@@ -977,53 +1100,57 @@ def get_model_architecture(model_type: str) -> str:
         "whisper": "speech",
         "llava": "multimodal",
         "bart": "encoder-decoder",
-        "llama": "decoder-only"
+        "llama": "decoder-only",
     }
-    
+
     for prefix, arch in known_prefixes.items():
         if model_type.lower().startswith(prefix.lower()):
             return arch
-    
+
     return "unknown"
+
 
 def get_default_model(model_type: str) -> str:
     """Get the default model ID for a given model type."""
     if model_type in MODEL_REGISTRY:
         return MODEL_REGISTRY[model_type]["default_model"]
-    
+
     # Try to find based on architecture
     arch = get_model_architecture(model_type)
     if arch in DEFAULT_MODELS:
         return DEFAULT_MODELS[arch]
-    
+
     # Fallback to a reasonable default
     return f"{model_type}-base" if "-base" not in model_type else model_type
+
 
 def validate_generated_file(file_path: str) -> Tuple[bool, str]:
     """Validate a generated Python file by compiling it."""
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             source = f.read()
-        compile(source, file_path, 'exec')
+        compile(source, file_path, "exec")
         return True, "valid"
     except Exception as e:
         return False, f"invalid: {type(e).__name__}: {str(e)}"
+
 
 def write_test_file(content: str, output_dir: str, filename: str) -> str:
     """Write content to a file and return the file path."""
     os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, filename)
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(content)
     return file_path
+
 
 def generate_bert_test(model_id: str, output_dir: str) -> Dict[str, Any]:
     """Generate a test file for BERT models."""
     start_time = time.time()
-    
+
     model_type = "bert"
     architecture = get_model_architecture(model_type)
-    
+
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -1284,15 +1411,15 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     filename = "test_bert.py"
     output_file = write_test_file(content, output_dir, filename)
-    
+
     # Validate the generated file
     is_valid, validation_msg = validate_generated_file(output_file)
-    
+
     duration = time.time() - start_time
-    
+
     return {
         "success": True,
         "output_file": output_file,
@@ -1300,16 +1427,17 @@ if __name__ == "__main__":
         "architecture": architecture,
         "duration": duration,
         "validation": validation_msg,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
+
 
 def generate_gpt2_test(model_id: str, output_dir: str) -> Dict[str, Any]:
     """Generate a test file for GPT-2 models."""
     start_time = time.time()
-    
+
     model_type = "gpt2"
     architecture = get_model_architecture(model_type)
-    
+
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -1570,15 +1698,15 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     filename = "test_gpt2.py"
     output_file = write_test_file(content, output_dir, filename)
-    
+
     # Validate the generated file
     is_valid, validation_msg = validate_generated_file(output_file)
-    
+
     duration = time.time() - start_time
-    
+
     return {
         "success": True,
         "output_file": output_file,
@@ -1586,16 +1714,17 @@ if __name__ == "__main__":
         "architecture": architecture,
         "duration": duration,
         "validation": validation_msg,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
+
 
 def generate_t5_test(model_id: str, output_dir: str) -> Dict[str, Any]:
     """Generate a test file for T5 models."""
     start_time = time.time()
-    
+
     model_type = "t5"
     architecture = get_model_architecture(model_type)
-    
+
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -1856,15 +1985,15 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     filename = "test_t5.py"
     output_file = write_test_file(content, output_dir, filename)
-    
+
     # Validate the generated file
     is_valid, validation_msg = validate_generated_file(output_file)
-    
+
     duration = time.time() - start_time
-    
+
     return {
         "success": True,
         "output_file": output_file,
@@ -1872,16 +2001,17 @@ if __name__ == "__main__":
         "architecture": architecture,
         "duration": duration,
         "validation": validation_msg,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
+
 
 def generate_vit_test(model_id: str, output_dir: str) -> Dict[str, Any]:
     """Generate a test file for ViT models."""
     start_time = time.time()
-    
+
     model_type = "vit"
     architecture = get_model_architecture(model_type)
-    
+
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -2153,15 +2283,15 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     filename = "test_vit.py"
     output_file = write_test_file(content, output_dir, filename)
-    
+
     # Validate the generated file
     is_valid, validation_msg = validate_generated_file(output_file)
-    
+
     duration = time.time() - start_time
-    
+
     return {
         "success": True,
         "output_file": output_file,
@@ -2169,16 +2299,17 @@ if __name__ == "__main__":
         "architecture": architecture,
         "duration": duration,
         "validation": validation_msg,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
+
 
 def generate_clip_test(model_id: str, output_dir: str) -> Dict[str, Any]:
     """Generate a test file for CLIP models."""
     start_time = time.time()
-    
+
     model_type = "clip"
     architecture = get_model_architecture(model_type)
-    
+
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -2451,15 +2582,15 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     filename = "test_clip.py"
     output_file = write_test_file(content, output_dir, filename)
-    
+
     # Validate the generated file
     is_valid, validation_msg = validate_generated_file(output_file)
-    
+
     duration = time.time() - start_time
-    
+
     return {
         "success": True,
         "output_file": output_file,
@@ -2467,16 +2598,17 @@ if __name__ == "__main__":
         "architecture": architecture,
         "duration": duration,
         "validation": validation_msg,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
+
 
 def generate_whisper_test(model_id: str, output_dir: str) -> Dict[str, Any]:
     """Generate a test file for Whisper models."""
     start_time = time.time()
-    
+
     model_type = "whisper"
     architecture = get_model_architecture(model_type)
-    
+
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -2733,15 +2865,15 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     filename = "test_whisper.py"
     output_file = write_test_file(content, output_dir, filename)
-    
+
     # Validate the generated file
     is_valid, validation_msg = validate_generated_file(output_file)
-    
+
     duration = time.time() - start_time
-    
+
     return {
         "success": True,
         "output_file": output_file,
@@ -2749,17 +2881,18 @@ if __name__ == "__main__":
         "architecture": architecture,
         "duration": duration,
         "validation": validation_msg,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
+
 
 def generate_test(model_type: str, output_dir: str, model_id: str = None) -> Dict[str, Any]:
     """Main function to generate a test file for a specific model type."""
     if model_id is None:
         model_id = get_default_model(model_type)
-    
+
     # Handle hyphenated model types by converting to underscores when needed
-    normalized_model_type = model_type.replace('-', '_')
-    
+    normalized_model_type = model_type.replace("-", "_")
+
     # Try to find the model type in the registry (either directly or after normalization)
     if model_type in MODEL_REGISTRY:
         registry_key = model_type
@@ -2767,7 +2900,9 @@ def generate_test(model_type: str, output_dir: str, model_id: str = None) -> Dic
         registry_key = normalized_model_type
     else:
         # If not in registry, try to find a matching key based on prefix
-        matching_keys = [k for k in MODEL_REGISTRY.keys() if model_type.startswith(k) or k.startswith(model_type)]
+        matching_keys = [
+            k for k in MODEL_REGISTRY.keys() if model_type.startswith(k) or k.startswith(model_type)
+        ]
         if matching_keys:
             registry_key = matching_keys[0]
         else:
@@ -2775,8 +2910,11 @@ def generate_test(model_type: str, output_dir: str, model_id: str = None) -> Dic
             architecture = get_model_architecture(model_type)
             if architecture != "unknown":
                 # Try to find a default model for this architecture
-                architecture_models = [k for k, v in MODEL_REGISTRY.items() 
-                                      if get_model_architecture(k) == architecture]
+                architecture_models = [
+                    k
+                    for k, v in MODEL_REGISTRY.items()
+                    if get_model_architecture(k) == architecture
+                ]
                 if architecture_models:
                     registry_key = architecture_models[0]
                 else:
@@ -2788,10 +2926,10 @@ def generate_test(model_type: str, output_dir: str, model_id: str = None) -> Dic
                         raise ValueError(f"No models found for architecture: {architecture}")
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
-    
+
     # Get the architecture for the model
     architecture = get_model_architecture(registry_key)
-    
+
     # Map model architecture to the appropriate generator function
     if architecture == "encoder-only":
         return generate_bert_test(model_id, output_dir)
@@ -2812,15 +2950,16 @@ def generate_test(model_type: str, output_dir: str, model_id: str = None) -> Dic
         # If architecture is unknown but model is in registry, default to bert
         return generate_bert_test(model_id, output_dir)
 
+
 def generate_all_tests(output_dir: str) -> Dict[str, Any]:
     """Generate test files for all supported model types."""
     results = {}
     valid_count = 0
     total_count = 0
-    
+
     # Create output directory if needed
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Generate tests for key model types
     for model_type, model_data in MODEL_REGISTRY.items():
         result = generate_test(model_type, output_dir, model_data["default_model"])
@@ -2828,54 +2967,67 @@ def generate_all_tests(output_dir: str) -> Dict[str, Any]:
         total_count += 1
         if result.get("is_valid", False):
             valid_count += 1
-    
+
     return {
         "total": total_count,
         "successful": total_count,
         "valid_syntax": valid_count,
-        "results": results
+        "results": results,
     }
+
 
 def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Generate HuggingFace model test files")
-    parser.add_argument("--model-type", type=str, help="Model type to generate a test for (e.g., bert, gpt2, t5)")
-    parser.add_argument("--model-id", type=str, help="Specific model ID to use (e.g., bert-base-uncased)")
-    parser.add_argument("--output-dir", type=str, default="generated_tests", help="Output directory for generated tests")
-    parser.add_argument("--all", action="store_true", help="Generate tests for all supported model types")
+    parser.add_argument(
+        "--model-type", type=str, help="Model type to generate a test for (e.g., bert, gpt2, t5)"
+    )
+    parser.add_argument(
+        "--model-id", type=str, help="Specific model ID to use (e.g., bert-base-uncased)"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="generated_tests",
+        help="Output directory for generated tests",
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Generate tests for all supported model types"
+    )
     parser.add_argument("--validate", action="store_true", help="Validate the generated test files")
-    
+
     args = parser.parse_args()
-    
+
     if args.all:
         # Generate tests for all model types
         results = generate_all_tests(args.output_dir)
-        
+
         # Save validation results
         with open(os.path.join(args.output_dir, "validation_summary.json"), "w") as f:
             json.dump(results, f, indent=2)
-        
+
         print(f"Generated {results['successful']} of {results['total']} test files")
         print(f"Files with valid syntax: {results['valid_syntax']} of {results['total']}")
         print(f"Results saved to {os.path.join(args.output_dir, 'validation_summary.json')}")
-        
-        return 0 if results['successful'] == results['total'] else 1
-    
+
+        return 0 if results["successful"] == results["total"] else 1
+
     elif args.model_type:
         # Generate a test for a specific model type
         model_id = args.model_id or get_default_model(args.model_type)
         result = generate_test(args.model_type, args.output_dir, model_id)
-        
+
         print(f"Generated test file: {result['output_file']}")
         print(f"Model type: {result['model_type']}")
         print(f"Architecture: {result['architecture']}")
         print(f"Validation: {result['validation']}")
-        
+
         return 0 if result["success"] else 1
-    
+
     else:
         parser.print_help()
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

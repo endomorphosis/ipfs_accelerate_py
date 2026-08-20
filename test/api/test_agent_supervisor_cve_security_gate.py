@@ -199,9 +199,7 @@ def _code_facts(
         (CodeSecurityFactKind.EFFECT, effect),
         (CodeSecurityFactKind.CAPABILITY, "state_mutation"),
     )
-    facts = tuple(
-        CodeSecurityFact(kind, value, binding, scope) for kind, value in values
-    )
+    facts = tuple(CodeSecurityFact(kind, value, binding, scope) for kind, value in values)
     return CodeSecurityFactSet(
         tree_id=binding.tree_id,
         diff_id=binding.diff_id,
@@ -227,10 +225,7 @@ def test_maps_pinned_intent_and_code_independently_to_exact_root_bound_requests(
         assert request is not None
         assert request.security_root_artifact_id == policy.security_root_artifact_id
         assert request.security_root_cid_v1 == policy.security_root_cid_v1
-        assert (
-            request.security_root_supervisor_digest
-            == policy.security_root_supervisor_digest
-        )
+        assert request.security_root_supervisor_digest == policy.security_root_supervisor_digest
         assert dict(request.exact_inputs) == {
             "principal": "principal:worker",
             "action": "write",
@@ -334,17 +329,13 @@ def test_ambiguous_or_incomplete_mappings_are_explicit_unknowns():
         CVESecurityGateFindingCode.AMBIGUOUS_INTENT_MAPPING,
     )
     assert not ambiguous_code[0].exact
-    assert ambiguous_code[0].reason_codes == (
-        CVESecurityGateFindingCode.AMBIGUOUS_CODE_MAPPING,
-    )
+    assert ambiguous_code[0].reason_codes == (CVESecurityGateFindingCode.AMBIGUOUS_CODE_MAPPING,)
     assert not incomplete_mapping[0].exact
     assert incomplete_mapping[0].reason_codes == (
         CVESecurityGateFindingCode.INCOMPLETE_CODE_MAPPING,
     )
     findings = correlate_security_requests(ambiguous_intent, ambiguous_code)
-    assert {
-        item.code for item in findings
-    } == {
+    assert {item.code for item in findings} == {
         CVESecurityGateFindingCode.AMBIGUOUS_INTENT_MAPPING,
         CVESecurityGateFindingCode.AMBIGUOUS_CODE_MAPPING,
     }
@@ -359,9 +350,7 @@ def test_intent_permit_cannot_mask_code_deny_or_contradictory_effect():
         _context(policy),
     )
 
-    outcomes = {
-        item.stream: item.decision.outcome for item in result.decisions
-    }
+    outcomes = {item.stream: item.decision.outcome for item in result.decisions}
     assert outcomes[SecurityFactStream.INTENT] is SecurityDecisionOutcome.PERMIT
     assert outcomes[SecurityFactStream.CODE] is SecurityDecisionOutcome.DENY
     assert result.outcome is CVESecurityGateOutcome.REJECT
@@ -369,9 +358,7 @@ def test_intent_permit_cannot_mask_code_deny_or_contradictory_effect():
     assert result.fail_closed
     assert not result.grants_execution_authority
     assert not result.authorizes_completion
-    assert {
-        item.code for item in result.findings
-    } >= {
+    assert {item.code for item in result.findings} >= {
         CVESecurityGateFindingCode.CONTRADICTORY_CODE_EFFECT,
         CVESecurityGateFindingCode.CODE_SECURITY_REJECTED,
     }
@@ -392,10 +379,7 @@ def test_exact_matching_uses_existing_adapter_and_allows_both_streams():
     assert result.passed
     assert not result.findings
     assert len(result.decisions) == 2
-    assert all(
-        item.decision.outcome is SecurityDecisionOutcome.PERMIT
-        for item in result.decisions
-    )
+    assert all(item.decision.outcome is SecurityDecisionOutcome.PERMIT for item in result.decisions)
 
 
 def test_gate_rejects_context_bound_to_a_different_security_root():

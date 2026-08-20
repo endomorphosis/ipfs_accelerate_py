@@ -1379,7 +1379,7 @@ class MLAnomalyDetection:
     ):
         """
         Initialize ML-based anomaly detection.
-        
+
         Args:
             algorithms: List of anomaly detection algorithms to use
             forecasting: List of forecasting algorithms to use
@@ -1392,76 +1392,84 @@ class MLAnomalyDetection:
         self.visualization = visualization
         self.model_persistence_dir = model_persistence_dir
         self.confidence_threshold = confidence_threshold
-        
+
         # Initialize models, data storage, and visualization setup
-        
+
     def detect_anomalies(self, time_series, metric_name=None, algorithms=None):
         """
         Detect anomalies in a time series.
-        
+
         Args:
             time_series: List of (timestamp, value) tuples
             metric_name: Optional name of the metric
             algorithms: Specific algorithms to use (defaults to self.algorithms)
-            
+
         Returns:
             Dictionary of results by algorithm
         """
         # Implementation of multiple anomaly detection algorithms
-        
-    def forecast_trend(self, time_series, metric_name=None, forecast_periods=24, 
-                     methods=None, return_intermediate=False):
+
+    def forecast_trend(
+        self,
+        time_series,
+        metric_name=None,
+        forecast_periods=24,
+        methods=None,
+        return_intermediate=False,
+    ):
         """
         Forecast future values based on time series data.
-        
+
         Args:
             time_series: List of (timestamp, value) tuples
             metric_name: Optional name of the metric
             forecast_periods: Number of periods to forecast
             methods: Specific forecasting methods to use
             return_intermediate: Whether to return intermediate results
-            
+
         Returns:
             Dictionary of forecast results by method
         """
         # Implementation of time series forecasting
-        
+
     def analyze_trend(self, time_series, metric_name=None, window_size=10):
         """
         Analyze trend in time series data.
-        
+
         Args:
             time_series: List of (timestamp, value) tuples
             metric_name: Optional name of the metric
             window_size: Size of window for trend analysis
-            
+
         Returns:
             Dictionary with trend analysis results
         """
         # Implementation of trend analysis
-        
-    def generate_visualization(self, time_series, anomaly_results, forecast_results=None,
-                             title=None, output_file=None):
+
+    def generate_visualization(
+        self, time_series, anomaly_results, forecast_results=None, title=None, output_file=None
+    ):
         """
         Generate visualization of anomalies and forecasts.
-        
+
         Args:
             time_series: List of (timestamp, value) tuples
             anomaly_results: Results from detect_anomalies
             forecast_results: Results from forecast_trend
             title: Title for the visualization
             output_file: File to save visualization to
-            
+
         Returns:
             Path to saved visualization or matplotlib figure
         """
         # Implementation of visualization generation
-        
-    def create_grafana_dashboard(self, title, datasource, metrics, refresh="1m", 
-                               time_range="6h", include_anomaly_panels=True):
+
+    def create_grafana_dashboard(
+        self, title, datasource, metrics, refresh="1m", time_range="6h", include_anomaly_panels=True
+    ):
         """
         Create a Grafana dashboard for the given metrics.
-        
+
         Args:
             title: Dashboard title
             datasource: Prometheus datasource name
@@ -1469,7 +1477,7 @@ class MLAnomalyDetection:
             refresh: Dashboard refresh interval
             time_range: Dashboard time range
             include_anomaly_panels: Whether to include anomaly panels
-            
+
         Returns:
             Grafana dashboard JSON
         """

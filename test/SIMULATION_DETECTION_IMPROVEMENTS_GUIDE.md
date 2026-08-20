@@ -83,17 +83,18 @@ Key improvements to hardware detection:
 def _detect_hardware(self):
     # Initialize tracking for simulated hardware
     self._simulated_hardware = {}
-    
+
     # Detect QNN (Qualcomm Neural Networks)
     try:
         from hardware_detection.qnn_support import detect_qnn
+
         self.qnn_available, qnn_simulation = detect_qnn()
         if qnn_simulation:
             self._simulated_hardware["qnn"] = "QNN SDK not available"
     except ImportError:
         self.qnn_available = False
         self._simulated_hardware["qnn"] = "QNN support module not available"
-    
+
     # Similar code for other hardware platforms...
 ```
 
@@ -112,38 +113,38 @@ All report generators now include validation to check data authenticity:
 def _validate_data_authenticity(self, df):
     """
     Validate data authenticity and mark simulated results.
-    
+
     Args:
         df: DataFrame with benchmark results
-        
+
     Returns:
         Tuple of (DataFrame with authenticity flags, bool indicating if any simulation was detected)
     """
     logger.info("Validating data authenticity...")
     simulation_detected = False
-    
+
     # Add new column to track simulation status
-    if 'is_simulated' not in df.columns:
-        df['is_simulated'] = False
-    
+    if "is_simulated" not in df.columns:
+        df["is_simulated"] = False
+
     # Check database for simulation flags
     if self.conn:
         try:
             # Query simulation status from database
             simulation_query = "SELECT hardware_type, COUNT(*) as count, SUM(CASE WHEN is_simulated THEN 1 ELSE 0 END) as simulated_count FROM hardware_platforms GROUP BY hardware_type"
             sim_result = self.conn.execute(simulation_query).fetchdf()
-            
+
             if not sim_result.empty:
                 for _, row in sim_result.iterrows():
-                    hw = row['hardware_type']
-                    if row['simulated_count'] > 0:
+                    hw = row["hardware_type"]
+                    if row["simulated_count"] > 0:
                         # Mark rows with this hardware as simulated
-                        df.loc[df['hardware_type'] == hw, 'is_simulated'] = True
+                        df.loc[df["hardware_type"] == hw, "is_simulated"] = True
                         simulation_detected = True
                         logger.warning(f"Detected simulation data for hardware: {hw}")
         except Exception as e:
             logger.warning(f"Failed to check simulation status in database: {e}")
-    
+
     return df, simulation_detected
 ```
 

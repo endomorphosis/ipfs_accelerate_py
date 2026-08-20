@@ -154,7 +154,7 @@ client = VllmClient(
     base_url="http://localhost:8000",
     max_retries=3,
     max_concurrent_requests=10,
-    failure_threshold=5
+    failure_threshold=5,
 )
 
 # Run inference with priority levels
@@ -162,7 +162,7 @@ result = client.run_inference(
     model_id="meta-llama/Llama-2-7b-chat-hf",
     inputs="What is machine learning?",
     parameters={"temperature": 0.7, "max_tokens": 100},
-    priority=0  # 0=HIGH, 1=NORMAL, 2=LOW
+    priority=0,  # 0=HIGH, 1=NORMAL, 2=LOW
 )
 
 # Get metrics
@@ -246,16 +246,12 @@ Create handlers with different precision and optimization settings:
 ```python
 # Create a handler with temperature setting
 handler = vllm.create_vllm_endpoint_handler_with_params(
-    "http://localhost:8000",
-    model="meta-llama/Llama-2-7b-chat-hf",
-    parameters={"temperature": 0.7}
+    "http://localhost:8000", model="meta-llama/Llama-2-7b-chat-hf", parameters={"temperature": 0.7}
 )
 
 # Create a handler optimized for batch processing
 handler = vllm.create_vllm_endpoint_handler_with_params(
-    "http://localhost:8000",
-    model="meta-llama/Llama-2-7b-chat-hf",
-    parameters={"batch_size": 8}
+    "http://localhost:8000", model="meta-llama/Llama-2-7b-chat-hf", parameters={"batch_size": 8}
 )
 ```
 
@@ -266,9 +262,7 @@ Control inference parameters for each request:
 ```python
 # Format request with specific parameters
 result = vllm.format_request_with_params(
-    handler,
-    "Tell me about machine learning",
-    {"temperature": 0.7, "max_tokens": 100}
+    handler, "Tell me about machine learning", {"temperature": 0.7, "max_tokens": 100}
 )
 
 # Format a structured request
@@ -277,8 +271,8 @@ result = vllm.format_structured_request(
     {
         "prompt": "Tell me about machine learning",
         "context": "I'm a beginner in AI",
-        "options": {"return_logprobs": True}
-    }
+        "options": {"return_logprobs": True},
+    },
 )
 ```
 
@@ -291,7 +285,7 @@ Methods for efficient batch processing:
 results = vllm.process_batch(
     "http://localhost:8000",
     ["Tell me about Python", "Explain machine learning", "What is deep learning?"],
-    "meta-llama/Llama-2-7b-chat-hf"
+    "meta-llama/Llama-2-7b-chat-hf",
 )
 
 # Process a batch with parameters
@@ -299,14 +293,14 @@ results = vllm.process_batch_with_params(
     "http://localhost:8000",
     ["Tell me about Python", "Explain machine learning", "What is deep learning?"],
     "meta-llama/Llama-2-7b-chat-hf",
-    {"temperature": 0.7, "max_tokens": 100}
+    {"temperature": 0.7, "max_tokens": 100},
 )
 
 # Process a batch and retrieve metrics
 results, metrics = vllm.process_batch_with_metrics(
     "http://localhost:8000",
     ["Tell me about Python", "Explain machine learning", "What is deep learning?"],
-    "meta-llama/Llama-2-7b-chat-hf"
+    "meta-llama/Llama-2-7b-chat-hf",
 )
 ```
 
@@ -329,23 +323,17 @@ Methods for optimizing model execution:
 ```python
 # Optimize model for speed
 result = vllm.optimize_model(
-    "http://localhost:8000",
-    "meta-llama/Llama-2-7b-chat-hf",
-    optimization_type="speed"
+    "http://localhost:8000", "meta-llama/Llama-2-7b-chat-hf", optimization_type="speed"
 )
 
 # Optimize model for memory efficiency
 result = vllm.optimize_model(
-    "http://localhost:8000",
-    "meta-llama/Llama-2-7b-chat-hf",
-    optimization_type="memory"
+    "http://localhost:8000", "meta-llama/Llama-2-7b-chat-hf", optimization_type="memory"
 )
 
 # Balanced optimization
 result = vllm.optimize_model(
-    "http://localhost:8000",
-    "meta-llama/Llama-2-7b-chat-hf",
-    optimization_type="balanced"
+    "http://localhost:8000", "meta-llama/Llama-2-7b-chat-hf", optimization_type="balanced"
 )
 ```
 
@@ -355,23 +343,13 @@ Create and manage multiple endpoint configurations:
 
 ```python
 # Create multiple endpoints with different settings
-endpoint1 = client.create_endpoint(
-    api_key="key1",
-    max_concurrent_requests=5,
-    max_retries=3
-)
+endpoint1 = client.create_endpoint(api_key="key1", max_concurrent_requests=5, max_retries=3)
 
-endpoint2 = client.create_endpoint(
-    api_key="key2",
-    max_concurrent_requests=10,
-    max_retries=5
-)
+endpoint2 = client.create_endpoint(api_key="key2", max_concurrent_requests=10, max_retries=5)
 
 # Make request using specific endpoint
 result = client.make_request_with_endpoint(
-    endpoint_id=endpoint1,
-    data=input_prompt,
-    model="meta-llama/Llama-2-7b-chat-hf"
+    endpoint_id=endpoint1, data=input_prompt, model="meta-llama/Llama-2-7b-chat-hf"
 )
 
 # Get statistics for specific endpoint

@@ -93,10 +93,7 @@ def test_persistent_model_manager_mapping_preserves_revision_and_timestamps():
     assert result.models[0].display_name == "Example Model"
     assert result.models[0].architecture == "ExampleForCausalLM"
     assert result.models[0].provenance[0].source_record_id == "org/example-model"
-    assert (
-        result.models[0].provenance[0].observed_at
-        == "2026-07-20T09:15:00.000000Z"
-    )
+    assert result.models[0].provenance[0].observed_at == "2026-07-20T09:15:00.000000Z"
     labels = dict(result.models[0].labels)
     assert labels["source.revision"] == "weights-rev-3"
     assert labels["source.updated-at"] == "2026-07-20T09:15:00.000000Z"
@@ -197,9 +194,7 @@ def test_output_order_is_deterministic_for_unordered_inventories():
     assert [item.provider_id for item in left.providers] == sorted(
         item.provider_id for item in left.providers
     )
-    assert [item.model_id for item in left.models] == sorted(
-        item.model_id for item in left.models
-    )
+    assert [item.model_id for item in left.models] == sorted(item.model_id for item in left.models)
 
 
 def test_explicit_json_and_jsonl_paths_are_the_only_file_inputs(tmp_path):
@@ -221,21 +216,16 @@ def test_explicit_json_and_jsonl_paths_are_the_only_file_inputs(tmp_path):
     )
     from_json = PersistentCatalogSource(path=document).load()
     assert from_json.source_revision == "file-r1"
-    assert from_json.models[0].capabilities[0].operations == (
-        Operation.EMBEDDING_GENERATE,
-    )
+    assert from_json.models[0].capabilities[0].operations == (Operation.EMBEDDING_GENERATE,)
 
     lines = tmp_path / "models.jsonl"
     lines.write_text(
-        '{"provider":"b","model":"two"}\nnot-json\n'
-        '{"provider":"a","model":"one"}\n',
+        '{"provider":"b","model":"two"}\nnot-json\n{"provider":"a","model":"one"}\n',
         encoding="utf-8",
     )
     from_jsonl = StaticCatalogSource(path=lines).read()
     assert {item.name for item in from_jsonl.models} == {"one", "two"}
-    assert len(
-        [item for item in from_jsonl.diagnostics if item.code == "malformed_row"]
-    ) == 1
+    assert len([item for item in from_jsonl.diagnostics if item.code == "malformed_row"]) == 1
 
     with pytest.raises(ValueError, match="exactly one"):
         StaticCatalogSource()
@@ -275,9 +265,7 @@ def test_explicit_duckdb_model_manager_path_is_read_only_and_bounded(tmp_path):
     assert result.models[0].name == "db-model"
     assert result.models[0].display_name == "Database Model"
     assert result.models[0].architecture == "DbArchitecture"
-    assert result.models[0].provenance[0].observed_at == (
-        "2026-07-02T00:00:00.000000Z"
-    )
+    assert result.models[0].provenance[0].observed_at == ("2026-07-02T00:00:00.000000Z")
 
 
 def test_injected_records_do_not_trigger_path_reads(monkeypatch):
@@ -340,9 +328,7 @@ def test_datetime_objects_are_preserved_without_using_the_current_clock():
             }
         ]
     )
-    assert result.models[0].provenance[0].observed_at == (
-        "2026-07-02T10:00:00.000000Z"
-    )
+    assert result.models[0].provenance[0].observed_at == ("2026-07-02T10:00:00.000000Z")
 
 
 def test_canonical_snapshot_inputs_retain_identity_but_not_dynamic_state():

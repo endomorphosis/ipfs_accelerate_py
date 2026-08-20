@@ -62,7 +62,9 @@ def _load_monitoring_api() -> Dict[str, Any]:
             "manage_alerts": _manage_alerts,
         }
     except Exception:
-        logger.warning("Source monitoring_tools import unavailable, using fallback monitoring functions")
+        logger.warning(
+            "Source monitoring_tools import unavailable, using fallback monitoring functions"
+        )
 
         async def _health_fallback(
             check_type: str = "basic",
@@ -243,7 +245,9 @@ async def health_check(
         }
 
     if components is not None:
-        if not isinstance(components, list) or not all(isinstance(item, str) for item in components):
+        if not isinstance(components, list) or not all(
+            isinstance(item, str) for item in components
+        ):
             return {
                 "status": "error",
                 "message": "components must be an array of strings when provided",
@@ -294,15 +298,15 @@ async def get_performance_metrics(
     if normalized_time_range not in _VALID_TIME_RANGES:
         return {
             "status": "error",
-            "error": (
-                "time_range must be one of: " + ", ".join(sorted(_VALID_TIME_RANGES))
-            ),
+            "error": ("time_range must be one of: " + ", ".join(sorted(_VALID_TIME_RANGES))),
             "time_range": normalized_time_range,
             "metrics": {},
         }
 
     if metric_types is not None:
-        if not isinstance(metric_types, list) or not all(isinstance(item, str) for item in metric_types):
+        if not isinstance(metric_types, list) or not all(
+            isinstance(item, str) for item in metric_types
+        ):
             return {
                 "status": "error",
                 "error": "metric_types must be an array of strings when provided",
@@ -536,7 +540,10 @@ async def collect_metrics(
             "message": "aggregation must be one of: average, min, max, sum",
             "aggregation": aggregation,
         }
-    for name, value in {"include_trends": include_trends, "include_anomalies": include_anomalies}.items():
+    for name, value in {
+        "include_trends": include_trends,
+        "include_anomalies": include_anomalies,
+    }.items():
         if not isinstance(value, bool):
             return {"status": "error", "message": f"{name} must be a boolean", name: value}
     normalized_export = str(export_format or "json").strip().lower()
@@ -684,7 +691,9 @@ async def manage_alerts(
         payload.setdefault("alert_id", normalized_alert_id)
         payload.setdefault("success", True)
         payload.setdefault("timestamp", datetime.now().isoformat())
-        payload.setdefault("message", f"Alert {normalized_alert_id} {normalized_action}d successfully")
+        payload.setdefault(
+            "message", f"Alert {normalized_alert_id} {normalized_action}d successfully"
+        )
     elif normalized_action == "configure_thresholds":
         payload.setdefault("updated_thresholds", threshold_config or {})
         payload.setdefault("current_thresholds", threshold_config or {})
@@ -720,10 +729,13 @@ async def get_server_status() -> Dict[str, Any]:
             try:
                 inst = mod._ipfs_instance
                 status = inst.get_status() if hasattr(inst, "get_status") else {}
-                return _normalize_payload(status if isinstance(status, dict) else {"status_data": status})
+                return _normalize_payload(
+                    status if isinstance(status, dict) else {"status_data": status}
+                )
             except Exception:
                 pass
         import time as _time
+
         return _normalize_payload(
             {
                 "server": "ipfs-accelerate",
@@ -760,7 +772,9 @@ async def end_session(session_id: str) -> Dict[str, Any]:
         import time as _time
 
         if session_id not in _SESSION_STORE:
-            return _normalize_payload({"status": "error", "error": f"Session {session_id!r} not found"})
+            return _normalize_payload(
+                {"status": "error", "error": f"Session {session_id!r} not found"}
+            )
         session = dict(_SESSION_STORE[session_id])
         session["ended_at"] = _time.time()
         session["active"] = False
@@ -781,7 +795,9 @@ async def log_operation(
         import time as _time
 
         if session_id not in _SESSION_STORE:
-            return _normalize_payload({"status": "error", "error": f"Session {session_id!r} not found"})
+            return _normalize_payload(
+                {"status": "error", "error": f"Session {session_id!r} not found"}
+            )
         entry = {
             "operation": operation,
             "timestamp": _time.time(),
@@ -828,7 +844,11 @@ async def get_system_logs(
         mod = _LOGS_API.get("_module")
         if mod is not None and hasattr(mod, "get_system_logs"):
             result = mod.get_system_logs(lines=lines, level=level, service=service)
-            return _normalize_payload(result if isinstance(result, dict) else {"logs": result, "count": len(result) if isinstance(result, list) else 0})
+            return _normalize_payload(
+                result
+                if isinstance(result, dict)
+                else {"logs": result, "count": len(result) if isinstance(result, list) else 0}
+            )
         return _normalize_payload({"logs": [], "count": 0, "backend_available": False})
     except Exception as exc:
         return _normalize_payload({"status": "error", "error": str(exc)})
@@ -840,8 +860,14 @@ async def get_recent_errors(hours: int = 24, service: str = "ipfs-accelerate") -
         mod = _LOGS_API.get("_module")
         if mod is not None and hasattr(mod, "get_recent_errors"):
             result = mod.get_recent_errors(hours=hours, service=service)
-            return _normalize_payload(result if isinstance(result, dict) else {"errors": result, "count": len(result) if isinstance(result, list) else 0})
-        return _normalize_payload({"errors": [], "count": 0, "hours": hours, "backend_available": False})
+            return _normalize_payload(
+                result
+                if isinstance(result, dict)
+                else {"errors": result, "count": len(result) if isinstance(result, list) else 0}
+            )
+        return _normalize_payload(
+            {"errors": [], "count": 0, "hours": hours, "backend_available": False}
+        )
     except Exception as exc:
         return _normalize_payload({"status": "error", "error": str(exc)})
 
@@ -867,7 +893,9 @@ async def get_mcp_manifest(include_schemas: bool = True) -> Dict[str, Any]:
         from ipfs_accelerate_py.tool_manifest import extract_mcp_manifest  # type: ignore
 
         manifest = extract_mcp_manifest(None, include_schemas=bool(include_schemas))
-        return _normalize_payload(manifest if isinstance(manifest, dict) else {"manifest": manifest})
+        return _normalize_payload(
+            manifest if isinstance(manifest, dict) else {"manifest": manifest}
+        )
     except Exception as exc:
         logger.warning("get_mcp_manifest extract_mcp_manifest failed: %s", exc)
 
@@ -915,7 +943,11 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "time_range": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "1h"},
+                "time_range": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "1h",
+                },
                 "metric_types": {"type": ["array", "null"], "items": {"type": "string"}},
                 "include_history": {"type": "boolean", "default": True},
             },
@@ -933,7 +965,11 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["status", "start", "stop", "restart"], "default": "status"},
+                "action": {
+                    "type": "string",
+                    "enum": ["status", "start", "stop", "restart"],
+                    "default": "status",
+                },
                 "services": {"type": ["array", "null"], "items": {"type": "string"}},
                 "check_interval": {"type": "integer", "minimum": 1, "default": 30},
             },
@@ -983,7 +1019,10 @@ def register_native_monitoring_tools(manager: Any) -> None:
                     "enum": ["basic", "standard", "comprehensive"],
                     "default": "standard",
                 },
-                "services": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "services": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "include_recommendations": {"type": "boolean", "default": True},
             },
             "required": [],
@@ -1000,12 +1039,24 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "time_window": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "1h"},
+                "time_window": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "1h",
+                },
                 "metrics": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                "aggregation": {"type": "string", "enum": ["average", "min", "max", "sum"], "default": "average"},
+                "aggregation": {
+                    "type": "string",
+                    "enum": ["average", "min", "max", "sum"],
+                    "default": "average",
+                },
                 "include_trends": {"type": "boolean", "default": True},
                 "include_anomalies": {"type": "boolean", "default": False},
-                "export_format": {"type": "string", "enum": ["json", "csv", "parquet"], "default": "json"},
+                "export_format": {
+                    "type": "string",
+                    "enum": ["json", "csv", "parquet"],
+                    "default": "json",
+                },
             },
             "required": [],
         },
@@ -1021,10 +1072,20 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["list", "acknowledge", "resolve", "configure_thresholds"]},
-                "severity_filter": {"type": ["string", "null"], "enum": ["info", "warning", "critical", None]},
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "acknowledge", "resolve", "configure_thresholds"],
+                },
+                "severity_filter": {
+                    "type": ["string", "null"],
+                    "enum": ["info", "warning", "critical", None],
+                },
                 "resolved_filter": {"type": ["boolean", "null"]},
-                "time_range": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "24h"},
+                "time_range": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "24h",
+                },
                 "include_metrics": {"type": "boolean", "default": True},
                 "alert_id": {"type": ["string", "null"]},
                 "threshold_config": {"type": ["object", "null"]},
@@ -1103,9 +1164,7 @@ def register_native_monitoring_tools(manager: Any) -> None:
         description="Get details for a specific monitoring session.",
         input_schema={
             "type": "object",
-            "properties": {
-                "session_id": {"type": "string", "description": "Session identifier."}
-            },
+            "properties": {"session_id": {"type": "string", "description": "Session identifier."}},
             "required": ["session_id"],
         },
         runtime="fastapi",

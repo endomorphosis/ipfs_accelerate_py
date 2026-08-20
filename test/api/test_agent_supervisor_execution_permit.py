@@ -310,8 +310,7 @@ def test_pre_effect_verifier_rejects_changed_scope_and_authority(
     assert caught.value.code is code
 
 
-def test_rejects_changed_arguments_targets_effects_task_principal_and_receipts(
-) -> None:
+def test_rejects_changed_arguments_targets_effects_task_principal_and_receipts() -> None:
     issuer, permit = _permit()
     base = permit.decision_request
     cases: list[tuple[dict[str, object], PermitVerificationCode]] = []
@@ -356,9 +355,7 @@ def test_rejects_changed_arguments_targets_effects_task_principal_and_receipts(
             {
                 "decision_request": replace(
                     base,
-                    expected_effects=(
-                        replace(base.expected_effects[0], description="Changed"),
-                    ),
+                    expected_effects=(replace(base.expected_effects[0], description="Changed"),),
                 )
             },
             PermitVerificationCode.CHANGED_EFFECT,

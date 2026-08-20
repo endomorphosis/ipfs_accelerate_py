@@ -40,6 +40,8 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "durable_process",
     "event_log",
     "grok_cli_runner",
+    "learning_checkpoint",
+    "operational_campaign",
     "multi_supervisor_runner",
     "provider_batch_scheduler",
     "provider_command_binding",

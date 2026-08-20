@@ -69,10 +69,12 @@ All requirements from the problem statement have been fully implemented and test
 # Each peer maintains vector clock
 vector = {peer_id: timestamp}
 
+
 # On local event: increment timestamp
 def tick():
     vector[self.node_id] += 1
     merkle_root = hash(sorted(vector))
+
 
 # On message from peer: merge clocks
 def update(other_clock):

@@ -124,12 +124,8 @@ class FakeRuntime:
             return CommandResult(returncode=0, stdout="SymbolicTool 1.2.3\n")
         is_fixture = any("fixture." in item for item in request.command)
         if is_fixture:
-            return self.fixture_result or CommandResult(
-                returncode=0, stdout=self.fixture_output
-            )
-        return self.model_result or CommandResult(
-            returncode=0, stdout=self.model_output
-        )
+            return self.fixture_result or CommandResult(returncode=0, stdout=self.fixture_output)
+        return self.model_result or CommandResult(returncode=0, stdout=self.model_output)
 
 
 def _executable(tmp_path: Path, name: str) -> Path:
@@ -150,12 +146,8 @@ def _fixture_output(tool: ProtocolTool) -> str:
 
 def _verified_output(model: ProtocolModel, tool: ProtocolTool) -> str:
     if tool is ProtocolTool.TAMARIN:
-        return "\n".join(
-            f"{query.tamarin_name}: verified" for query in model.queries
-        )
-    return "\n".join(
-        f"RESULT {query.proverif_label} is true." for query in model.queries
-    )
+        return "\n".join(f"{query.tamarin_name}: verified" for query in model.queries)
+    return "\n".join(f"RESULT {query.proverif_label} is true." for query in model.queries)
 
 
 @pytest.mark.parametrize("adapter_type", (TamarinAdapter, ProVerifAdapter))
@@ -174,9 +166,9 @@ def test_executable_presence_or_install_success_cannot_replace_fixture(
     tmp_path: Path, adapter_type, name: str
 ) -> None:
     runtime = FakeRuntime(_executable(tmp_path, name))
-    capability = adapter_type(
-        which=runtime.which, command_runner=runtime.run
-    ).probe(run_conformance=False)
+    capability = adapter_type(which=runtime.which, command_runner=runtime.run).probe(
+        run_conformance=False
+    )
 
     assert capability.status is ToolCapabilityStatus.UNAVAILABLE
     assert not capability.available
@@ -196,9 +188,7 @@ def test_executable_presence_or_install_success_cannot_replace_fixture(
 def test_only_complete_end_to_end_fixture_promotes_a_lane(
     tmp_path: Path, adapter_type, tool: ProtocolTool, name: str
 ) -> None:
-    runtime = FakeRuntime(
-        _executable(tmp_path, name), fixture_output=_fixture_output(tool)
-    )
+    runtime = FakeRuntime(_executable(tmp_path, name), fixture_output=_fixture_output(tool))
     capability = adapter_type(
         which=runtime.which,
         command_runner=runtime.run,
@@ -236,12 +226,8 @@ def test_fixture_must_both_prove_safe_queries_and_detect_attack(
         "\n".join(full[1:]),
         "installation succeeded",
     ):
-        runtime = FakeRuntime(
-            _executable(tmp_path, name), fixture_output=incomplete
-        )
-        capability = adapter_type(
-            which=runtime.which, command_runner=runtime.run
-        ).probe()
+        runtime = FakeRuntime(_executable(tmp_path, name), fixture_output=incomplete)
+        capability = adapter_type(which=runtime.which, command_runner=runtime.run).probe()
         assert capability.status is ToolCapabilityStatus.NONCONFORMANT
         assert not capability.available
         assert capability.conformance_receipt is not None
@@ -294,28 +280,20 @@ def _conformant_adapter(tmp_path: Path, adapter_type, model: ProtocolModel):
 def test_passing_model_run_has_exact_authoritative_receipts(
     tmp_path: Path, model: ProtocolModel, adapter_type
 ) -> None:
-    adapter, capability, runtime = _conformant_adapter(
-        tmp_path, adapter_type, model
-    )
+    adapter, capability, runtime = _conformant_adapter(tmp_path, adapter_type, model)
     result = adapter.verify(model, capability)
 
     assert result.verdict is ProtocolVerdict.VERIFIED
     assert result.authoritative
     assert len(result.query_results) == len(model.queries)
-    assert all(
-        item.verdict is ProtocolVerdict.VERIFIED
-        for item in result.query_results
-    )
+    assert all(item.verdict is ProtocolVerdict.VERIFIED for item in result.query_results)
     receipt = result.toolchain_receipt
     assert receipt is not None
     assert receipt.model_identity == model.content_id
     assert receipt.model_source_identity == model.source_identity_for(adapter.tool)
     assert receipt.query_set_identity == model.query_set_identity
     assert receipt.capability_identity == capability.content_id
-    assert (
-        receipt.conformance_receipt_identity
-        == capability.conformance_receipt.content_id
-    )
+    assert receipt.conformance_receipt_identity == capability.conformance_receipt.content_id
     assert receipt.executable_identity == capability.executable_identity
     assert receipt.stdout_sha256.startswith("sha256:")
     assert ProtocolToolchainReceipt.from_dict(receipt.to_record()) == receipt
@@ -324,9 +302,7 @@ def test_passing_model_run_has_exact_authoritative_receipts(
 
 
 @pytest.mark.parametrize("adapter_type", (TamarinAdapter, ProVerifAdapter))
-def test_attack_becomes_canonical_redacted_counterexample(
-    tmp_path: Path, adapter_type
-) -> None:
+def test_attack_becomes_canonical_redacted_counterexample(tmp_path: Path, adapter_type) -> None:
     query = CORE_PROTOCOL_MODEL.queries[1]
     tool = adapter_type.tool
     if tool is ProtocolTool.TAMARIN:
@@ -342,10 +318,7 @@ def test_attack_becomes_canonical_redacted_counterexample(
             )
         )
     else:
-        lines = [
-            f"RESULT {item.proverif_label} is true."
-            for item in CORE_PROTOCOL_MODEL.queries
-        ]
+        lines = [f"RESULT {item.proverif_label} is true." for item in CORE_PROTOCOL_MODEL.queries]
         lines[1] = f"RESULT {query.proverif_label} is false."
         lines.append(
             f"TRACE query={query.query_id} step=7 "
@@ -363,9 +336,7 @@ def test_attack_becomes_canonical_redacted_counterexample(
     result = adapter.verify(CORE_PROTOCOL_MODEL, capability)
 
     assert result.verdict is ProtocolVerdict.VIOLATED
-    attacked = next(
-        item for item in result.query_results if item.query_id == query.query_id
-    )
+    attacked = next(item for item in result.query_results if item.query_id == query.query_id)
     assert attacked.verdict is ProtocolVerdict.VIOLATED
     counterexample = attacked.counterexample
     assert counterexample is not None
@@ -376,9 +347,7 @@ def test_attack_becomes_canonical_redacted_counterexample(
     serialized = counterexample.to_json()
     assert "TOP-SECRET-SIGNED-CLAIM" not in serialized
     assert "contains_raw_transcript" in serialized
-    assert ProtocolAttackCounterexample.from_dict(
-        counterexample.to_record()
-    ) == counterexample
+    assert ProtocolAttackCounterexample.from_dict(counterexample.to_record()) == counterexample
 
 
 def test_canonical_counterexample_is_deterministic_and_abstraction_bound() -> None:
@@ -393,12 +362,8 @@ def test_canonical_counterexample_is_deterministic_and_abstraction_bound() -> No
             "actor=old_claimant message=lease-token-0",
         )
     )
-    left = canonicalize_attack_trace(
-        CORE_PROTOCOL_MODEL, ProtocolTool.TAMARIN, query, output
-    )
-    right = canonicalize_attack_trace(
-        CORE_PROTOCOL_MODEL, ProtocolTool.TAMARIN, query, output
-    )
+    left = canonicalize_attack_trace(CORE_PROTOCOL_MODEL, ProtocolTool.TAMARIN, query, output)
+    right = canonicalize_attack_trace(CORE_PROTOCOL_MODEL, ProtocolTool.TAMARIN, query, output)
 
     assert left == right
     assert left.content_id == right.content_id
@@ -433,16 +398,12 @@ def test_toolchain_drift_invalidates_conformant_capability(tmp_path: Path) -> No
 
 
 def test_suite_requires_both_authoritative_lanes(tmp_path: Path) -> None:
-    tamarin, tamarin_cap, _ = _conformant_adapter(
-        tmp_path, TamarinAdapter, CORE_PROTOCOL_MODEL
-    )
+    tamarin, tamarin_cap, _ = _conformant_adapter(tmp_path, TamarinAdapter, CORE_PROTOCOL_MODEL)
     proverif = ProVerifAdapter(which=lambda _name: None)
     proverif_cap = proverif.probe()
     verifier = ProtocolVerifier((tamarin, proverif))
 
-    partial = verifier.verify(
-        CORE_PROTOCOL_MODEL, capabilities=(tamarin_cap, proverif_cap)
-    )
+    partial = verifier.verify(CORE_PROTOCOL_MODEL, capabilities=(tamarin_cap, proverif_cap))
     assert partial.complete is False
     assert partial.verdict is ProtocolVerdict.UNAVAILABLE
     assert len(partial.lane_results) == 2

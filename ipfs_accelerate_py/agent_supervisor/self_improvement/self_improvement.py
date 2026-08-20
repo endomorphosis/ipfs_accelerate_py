@@ -70,24 +70,16 @@ from ..objectives.scan_receipts import (
 )
 
 
-SUCCESSOR_REFILL_REQUIREMENT_ID = (
-    "020061024173618462922348580596364003627"
-)
+SUCCESSOR_REFILL_REQUIREMENT_ID = "020061024173618462922348580596364003627"
 """Opaque ASI-G109 requirement: bounded novel successors are created once."""
 
-EPOCH_IDEMPOTENCY_REQUIREMENT_ID = (
-    "065313778069923158401871898168782520190"
-)
+EPOCH_IDEMPOTENCY_REQUIREMENT_ID = "065313778069923158401871898168782520190"
 """Opaque ASI-G110 requirement: an identical epoch is idempotent."""
 
-HEALTHY_EXHAUSTION_REQUIREMENT_ID = (
-    "119294002389522221490347364495731444366"
-)
+HEALTHY_EXHAUSTION_REQUIREMENT_ID = "119294002389522221490347364495731444366"
 """Opaque ASI-G111 requirement: a healthy epoch creates no busywork."""
 
-SELF_IMPROVEMENT_EPOCH_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch.v1"
-)
+SELF_IMPROVEMENT_EPOCH_SCHEMA = "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch.v1"
 HEALTHY_EXHAUSTION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.healthy_exhaustion_evidence.v1"
 )
@@ -97,27 +89,17 @@ SUCCESSOR_REFILL_EVIDENCE_SCHEMA = (
 EPOCH_REPLAY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_replay.v1"
 )
-BENCHMARK_OBSERVATION_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.self_improvement_benchmark.v1"
-)
-SELF_IMPROVEMENT_LEDGER_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.self_improvement_ledger.v1"
-)
+BENCHMARK_OBSERVATION_SCHEMA = "ipfs_accelerate_py.agent_supervisor.self_improvement_benchmark.v1"
+SELF_IMPROVEMENT_LEDGER_SCHEMA = "ipfs_accelerate_py.agent_supervisor.self_improvement_ledger.v1"
 SELF_IMPROVEMENT_ANALYZER_VERSION = "self-improvement-benchmark-analyzer/v1"
-SELF_IMPROVEMENT_EVIDENCE_PRODUCER_VERSION = (
-    "healthy-exhaustion-evidence-producer/v1"
-)
+SELF_IMPROVEMENT_EVIDENCE_PRODUCER_VERSION = "healthy-exhaustion-evidence-producer/v1"
 DEFAULT_SELF_IMPROVEMENT_GOAL_ID = "ASI-G111"
 DEFAULT_SUCCESSOR_REFILL_GOAL_ID = "ASI-G109"
 DEFAULT_EPOCH_IDEMPOTENCY_GOAL_ID = "ASI-G110"
 DEFAULT_SELF_IMPROVEMENT_PARENT_GOAL_ID = "ASI-G080"
 SELF_IMPROVEMENT_OBJECTIVE_REVISION = "ASI-G080@asi-087"
-SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION = (
-    "self-improvement-parent-completion@1"
-)
-SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION = (
-    "self-improvement-parent-completion-policy@1"
-)
+SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION = "self-improvement-parent-completion@1"
+SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION = "self-improvement-parent-completion-policy@1"
 SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS = 2
 SELF_IMPROVEMENT_PRODUCING_TASK_IDS = ("ASI-022",)
 SELF_IMPROVEMENT_CHILD_GOAL_IDS = ("ASI-G109", "ASI-G110", "ASI-G111")
@@ -162,9 +144,7 @@ def evaluate_self_improvement_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: datetime | str | None = None,
     freshness_seconds: float = 3600.0,
     clock_skew_seconds: float = 300.0,
@@ -184,8 +164,7 @@ def evaluate_self_improvement_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured "
@@ -195,11 +174,7 @@ def evaluate_self_improvement_completion(
         ("freshness_seconds", freshness_seconds),
         ("clock_skew_seconds", clock_skew_seconds),
     ):
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or float(value) < 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0:
             raise ValueError(f"{name} must be a non-negative number")
     repository_id = str(repository_id or "").strip()
     repository_tree = str(repository_tree or "").strip()
@@ -224,9 +199,7 @@ def evaluate_self_improvement_completion(
             result = value
         elif isinstance(value, str) and value.strip():
             try:
-                result = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -242,16 +215,11 @@ def evaluate_self_improvement_completion(
     def fresh(value: Any) -> bool:
         observed = parsed_time(value)
         return bool(
-            observed is not None
-            and observed <= current + skew
-            and current - observed <= max_age
+            observed is not None and observed <= current + skew and current - observed <= max_age
         )
 
     task_values = [payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     successful_states = {
         "complete",
         "completed",
@@ -263,41 +231,30 @@ def evaluate_self_improvement_completion(
     }
     producers_complete = bool(
         len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(SELF_IMPROVEMENT_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(SELF_IMPROVEMENT_PRODUCING_TASK_IDS))
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in successful_states
+            normalized(item.get("status", item.get("state", ""))) in successful_states
             for item in task_values
         )
     )
 
     evidence_records = [
-        item
-        if isinstance(item, CompletionEvidence)
-        else CompletionEvidence.from_dict(item)
+        item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
         for item in evidence
     ]
-    expected_criteria = {
-        normalized(item) for item in SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA
-    }
-    evidence_criteria = [
-        normalized(item.acceptance_criterion) for item in evidence_records
-    ]
+    expected_criteria = {normalized(item) for item in SELF_IMPROVEMENT_ACCEPTANCE_CRITERIA}
+    evidence_criteria = [normalized(item.acceptance_criterion) for item in evidence_records]
     receipt_ids_by_criterion: dict[str, set[str]] = {}
     for item in evidence_records:
         criterion = normalized(item.acceptance_criterion)
         if criterion and item.provenance_cid:
-            receipt_ids_by_criterion.setdefault(criterion, set()).add(
-                item.provenance_cid
-            )
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(item.provenance_cid)
     evidence_population_complete = bool(
         len(evidence_records) == len(expected_criteria)
         and len(evidence_criteria) == len(set(evidence_criteria))
         and set(evidence_criteria) == expected_criteria
         and all(
-            len(receipt_ids_by_criterion.get(criterion, ())) == 1
-            for criterion in expected_criteria
+            len(receipt_ids_by_criterion.get(criterion, ())) == 1 for criterion in expected_criteria
         )
     )
 
@@ -308,13 +265,10 @@ def evaluate_self_improvement_completion(
         # evidence because it does not identify the population that was
         # closed before ASI-G080 requested completion.
         "producing_task_closure": {
-            "required_task_ids": list(
-                SELF_IMPROVEMENT_PRODUCING_TASK_IDS
-            ),
+            "required_task_ids": list(SELF_IMPROVEMENT_PRODUCING_TASK_IDS),
             "submitted_task_ids": task_ids,
             "submitted_task_statuses": [
-                str(item.get("status", item.get("state", "")) or "")
-                for item in task_values
+                str(item.get("status", item.get("state", "")) or "") for item in task_values
             ],
             "population_complete": producers_complete,
             "caller_tasks_complete": tasks_complete is True,
@@ -361,16 +315,9 @@ def evaluate_self_improvement_completion(
         )
         if isinstance(value, str):
             value = (value,)
-        if not (
-            isinstance(value, Sequence)
-            and not isinstance(value, (str, bytes, bytearray))
-        ):
+        if not (isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))):
             return set()
-        return {
-            str(item or "").strip()
-            for item in value
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in value if str(item or "").strip()}
 
     coverage_bound = bool(
         evidence_population_complete
@@ -432,17 +379,11 @@ def evaluate_self_improvement_completion(
         "objective_id": DEFAULT_SELF_IMPROVEMENT_PARENT_GOAL_ID,
         "objective_revision": SELF_IMPROVEMENT_OBJECTIVE_REVISION,
         "analyzer_version": SELF_IMPROVEMENT_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (SELF_IMPROVEMENT_COMPLETION_CONFIGURATION_REVISION),
     }
     health_value = payload(analyzer_health)
     health_binding_value = health_value.get("binding")
-    health_binding = (
-        dict(health_binding_value)
-        if isinstance(health_binding_value, Mapping)
-        else {}
-    )
+    health_binding = dict(health_binding_value) if isinstance(health_binding_value, Mapping) else {}
     health_valid = bool(
         health_binding == expected_binding
         and normalized(health_value.get("status")) == "healthy"
@@ -460,28 +401,17 @@ def evaluate_self_improvement_completion(
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     quorum_binding_value = quorum_value.get("binding")
-    quorum_binding = (
-        dict(quorum_binding_value)
-        if isinstance(quorum_binding_value, Mapping)
-        else {}
-    )
+    quorum_binding = dict(quorum_binding_value) if isinstance(quorum_binding_value, Mapping) else {}
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
         health_valid
-        and quorum_value.get("required_members")
-        == SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and quorum_value.get("required_members") == SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
         and len(members) == SELF_IMPROVEMENT_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
@@ -513,11 +443,7 @@ def evaluate_self_improvement_completion(
         gate_value = child.get("completion_gate", child.get("gate"))
         gate = gate_value if isinstance(gate_value, Mapping) else {}
         evaluated_value = gate.get("evaluated_evidence")
-        evaluated = (
-            evaluated_value
-            if isinstance(evaluated_value, Mapping)
-            else {}
-        )
+        evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
         validations = evaluated.get("validation_evidence")
         proof_requirements = child.get(
             "proof_requirements",
@@ -526,8 +452,7 @@ def evaluate_self_improvement_completion(
         if isinstance(proof_requirements, Mapping):
             proof_requirements = (proof_requirements,)
         return bool(
-            normalized(child.get("state", child.get("next_state", "")))
-            == "verified_complete"
+            normalized(child.get("state", child.get("next_state", ""))) == "verified_complete"
             and child.get("verified") is True
             and gate.get("passed") is True
             and evaluated.get("repository_id") == repository_id
@@ -540,8 +465,7 @@ def evaluate_self_improvement_completion(
                 and item.get("valid") is True
                 and isinstance(item.get("evidence"), Mapping)
                 and item["evidence"].get("repository_id") == repository_id
-                and item["evidence"].get("repository_tree")
-                == repository_tree
+                and item["evidence"].get("repository_tree") == repository_tree
                 for item in validations
             )
             and isinstance(proof_requirements, (list, tuple))
@@ -552,8 +476,7 @@ def evaluate_self_improvement_completion(
                 and str(item.get("provenance_id") or "").strip()
                 and item.get("assurance_satisfied") is True
                 and item.get("contradicted") is not True
-                and normalized(item.get("proof_verdict"))
-                in {"proved", "verified", "valid"}
+                and normalized(item.get("proof_verdict")) in {"proved", "verified", "valid"}
                 and normalized(item.get("freshness")) in {"current", "fresh"}
                 and not item.get("reason_codes")
                 for item in proof_requirements
@@ -562,13 +485,11 @@ def evaluate_self_improvement_completion(
 
     child_values = [payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
     child_population_complete = bool(
         len(child_ids) == len(set(child_ids))
-        and tuple(sorted(child_ids))
-        == tuple(sorted(SELF_IMPROVEMENT_CHILD_GOAL_IDS))
+        and tuple(sorted(child_ids)) == tuple(sorted(SELF_IMPROVEMENT_CHILD_GOAL_IDS))
         and all(child_is_current(item) for item in child_values)
     )
     if not child_population_complete:
@@ -579,9 +500,7 @@ def evaluate_self_improvement_completion(
                 "verified": False,
                 "completion_gate": {
                     "passed": False,
-                    "reason_code": (
-                        "required_child_population_or_binding_incomplete"
-                    ),
+                    "reason_code": ("required_child_population_or_binding_incomplete"),
                 },
             }
         )
@@ -657,17 +576,11 @@ def _required_text(value: Any, field_name: str) -> str:
 def _string_tuple(value: Any, *, field_name: str) -> tuple[str, ...]:
     if isinstance(value, str):
         values: Iterable[Any] = (value,)
-    elif isinstance(value, Iterable) and not isinstance(
-        value, (bytes, bytearray, Mapping)
-    ):
+    elif isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray, Mapping)):
         values = value
     else:
         raise TypeError(f"{field_name} must be a sequence of strings")
-    result = tuple(
-        dict.fromkeys(
-            str(item).strip() for item in values if str(item).strip()
-        )
-    )
+    result = tuple(dict.fromkeys(str(item).strip() for item in values if str(item).strip()))
     return tuple(sorted(result))
 
 
@@ -690,9 +603,7 @@ def _strict_keys(
 ) -> None:
     unknown = sorted(str(key) for key in payload if str(key) not in allowed)
     if unknown:
-        raise ValueError(
-            f"{record_name} contains unknown fields: {', '.join(unknown)}"
-        )
+        raise ValueError(f"{record_name} contains unknown fields: {', '.join(unknown)}")
 
 
 def _fsync_parent(path: Path) -> None:
@@ -781,9 +692,7 @@ class SelfImprovementPolicy:
     minimum_successor_novelty: float = 0.5
 
     def __post_init__(self) -> None:
-        dimensions = _string_tuple(
-            self.required_dimensions, field_name="required_dimensions"
-        )
+        dimensions = _string_tuple(self.required_dimensions, field_name="required_dimensions")
         triggers = _string_tuple(self.next_triggers, field_name="next_triggers")
         if not dimensions:
             raise ValueError("required_dimensions must not be empty")
@@ -794,9 +703,7 @@ class SelfImprovementPolicy:
             or not isinstance(self.required_independent_channels, int)
             or self.required_independent_channels < 2
         ):
-            raise ValueError(
-                "required_independent_channels must be an integer of at least two"
-            )
+            raise ValueError("required_independent_channels must be an integer of at least two")
         for name in (
             "max_new_successor_goals",
             "max_open_successor_goals",
@@ -817,23 +724,16 @@ class SelfImprovementPolicy:
             object.__setattr__(self, name, value)
         object.__setattr__(self, "required_dimensions", dimensions)
         object.__setattr__(self, "next_triggers", triggers)
-        object.__setattr__(
-            self, "policy_name", _required_text(self.policy_name, "policy_name")
-        )
+        object.__setattr__(self, "policy_name", _required_text(self.policy_name, "policy_name"))
 
     @property
     def policy_id(self) -> str:
         return content_identity(
             {
-                "schema": (
-                    "ipfs_accelerate_py.agent_supervisor."
-                    "self_improvement_policy.v1"
-                ),
+                "schema": ("ipfs_accelerate_py.agent_supervisor.self_improvement_policy.v1"),
                 "policy_name": self.policy_name,
                 "required_dimensions": self.required_dimensions,
-                "required_independent_channels": (
-                    self.required_independent_channels
-                ),
+                "required_independent_channels": (self.required_independent_channels),
                 "next_triggers": self.next_triggers,
                 "max_new_successor_goals": self.max_new_successor_goals,
                 "max_open_successor_goals": self.max_open_successor_goals,
@@ -847,16 +747,11 @@ class SelfImprovementPolicy:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                "self_improvement_policy.v1"
-            ),
+            "schema": ("ipfs_accelerate_py.agent_supervisor.self_improvement_policy.v1"),
             "policy_name": self.policy_name,
             "policy_id": self.policy_id,
             "required_dimensions": list(self.required_dimensions),
-            "required_independent_channels": (
-                self.required_independent_channels
-            ),
+            "required_independent_channels": (self.required_independent_channels),
             "next_triggers": list(self.next_triggers),
             "max_new_successor_goals": self.max_new_successor_goals,
             "max_open_successor_goals": self.max_open_successor_goals,
@@ -885,21 +780,13 @@ class SelfImprovementPolicy:
             "minimum_successor_novelty",
         }
         _strict_keys(payload, allowed, record_name="self-improvement policy")
-        if (
-            payload.get("schema")
-            != (
-                "ipfs_accelerate_py.agent_supervisor."
-                "self_improvement_policy.v1"
-            )
+        if payload.get("schema") != (
+            "ipfs_accelerate_py.agent_supervisor.self_improvement_policy.v1"
         ):
             raise ValueError("unsupported self-improvement policy schema")
         result = cls(
-            required_dimensions=tuple(
-                payload.get("required_dimensions") or ()
-            ),
-            required_independent_channels=payload.get(
-                "required_independent_channels"
-            ),
+            required_dimensions=tuple(payload.get("required_dimensions") or ()),
+            required_independent_channels=payload.get("required_independent_channels"),
             next_triggers=tuple(payload.get("next_triggers") or ()),
             policy_name=str(payload.get("policy_name") or ""),
             max_new_successor_goals=payload.get("max_new_successor_goals", 3),
@@ -907,12 +794,8 @@ class SelfImprovementPolicy:
             max_successor_depth=payload.get("max_successor_depth", 3),
             max_successor_breadth=payload.get("max_successor_breadth", 4),
             successor_token_budget=payload.get("successor_token_budget", 8192),
-            minimum_successor_confidence=payload.get(
-                "minimum_successor_confidence", 0.5
-            ),
-            minimum_successor_novelty=payload.get(
-                "minimum_successor_novelty", 0.5
-            ),
+            minimum_successor_confidence=payload.get("minimum_successor_confidence", 0.5),
+            minimum_successor_novelty=payload.get("minimum_successor_novelty", 0.5),
         )
         if payload.get("policy_id") != result.policy_id:
             raise ValueError("self-improvement policy identity does not match")
@@ -934,9 +817,7 @@ class SelfImprovementEpochBinding:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
 
     @property
     def epoch_id(self) -> str:
@@ -955,9 +836,7 @@ class SelfImprovementEpochBinding:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "SelfImprovementEpochBinding":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SelfImprovementEpochBinding":
         allowed = {
             "schema",
             "epoch_id",
@@ -966,12 +845,7 @@ class SelfImprovementEpochBinding:
         _strict_keys(payload, allowed, record_name="epoch binding")
         if payload.get("schema") != SELF_IMPROVEMENT_EPOCH_SCHEMA:
             raise ValueError("unsupported self-improvement epoch schema")
-        result = cls(
-            **{
-                name: str(payload.get(name) or "")
-                for name in cls.__dataclass_fields__
-            }
-        )
+        result = cls(**{name: str(payload.get(name) or "") for name in cls.__dataclass_fields__})
         if payload.get("epoch_id") != result.epoch_id:
             raise ValueError("self-improvement epoch identity does not match")
         return result
@@ -1012,9 +886,7 @@ class BenchmarkObservation:
             "command",
             "toolchain",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         try:
             disposition = (
                 self.disposition
@@ -1022,29 +894,19 @@ class BenchmarkObservation:
                 else BenchmarkDisposition(str(self.disposition))
             )
         except ValueError as exc:
-            raise ValueError(
-                f"unknown benchmark disposition: {self.disposition!r}"
-            ) from exc
+            raise ValueError(f"unknown benchmark disposition: {self.disposition!r}") from exc
         scope = _string_tuple(self.scope, field_name="scope")
         if not scope:
             raise ValueError("scope must not be empty")
         if not isinstance(self.result, Mapping) or not self.result:
             raise ValueError("result must be a non-empty mapping")
-        reasons = _string_tuple(
-            self.actionable_reasons, field_name="actionable_reasons"
-        )
+        reasons = _string_tuple(self.actionable_reasons, field_name="actionable_reasons")
         if disposition is not BenchmarkDisposition.HEALTHY and not reasons:
-            raise ValueError(
-                "a non-healthy benchmark disposition requires a reason"
-            )
+            raise ValueError("a non-healthy benchmark disposition requires a reason")
         if disposition is BenchmarkDisposition.HEALTHY and reasons:
-            raise ValueError(
-                "a healthy benchmark observation cannot be actionable"
-            )
+            raise ValueError("a healthy benchmark observation cannot be actionable")
         observed = _utc_datetime(self.observed_at, field_name="observed_at")
-        fresh_until = _utc_datetime(
-            self.fresh_until, field_name="fresh_until"
-        )
+        fresh_until = _utc_datetime(self.fresh_until, field_name="fresh_until")
         if fresh_until < observed:
             raise ValueError("fresh_until must not precede observed_at")
         if not isinstance(self.complete, bool):
@@ -1103,9 +965,7 @@ class BenchmarkObservation:
                 if self.disposition is BenchmarkDisposition.HEALTHY
                 else self.disposition.value
             ),
-            "validation_passed": (
-                self.disposition is BenchmarkDisposition.HEALTHY
-            ),
+            "validation_passed": (self.disposition is BenchmarkDisposition.HEALTHY),
             "coverage_complete": self.complete,
         }
 
@@ -1135,9 +995,7 @@ class BenchmarkObservation:
             repository_id=str(payload.get("repository_id") or ""),
             repository_tree=str(payload.get("repository_tree") or ""),
             policy_id=str(payload.get("policy_id") or ""),
-            capability_snapshot_id=str(
-                payload.get("capability_snapshot_id") or ""
-            ),
+            capability_snapshot_id=str(payload.get("capability_snapshot_id") or ""),
             command=str(payload.get("command") or ""),
             toolchain=str(payload.get("toolchain") or ""),
             scope=tuple(payload.get("scope") or ()),
@@ -1159,9 +1017,7 @@ class BenchmarkObservation:
             "coverage_complete",
         ):
             if payload.get(name) != projected[name]:
-                raise ValueError(
-                    f"benchmark observation {name} projection does not match"
-                )
+                raise ValueError(f"benchmark observation {name} projection does not match")
         return result
 
 
@@ -1213,9 +1069,7 @@ class HealthyExhaustionEvidence:
             else SelfImprovementPolicy.from_dict(self.policy)
         )
         observations = tuple(
-            item
-            if isinstance(item, BenchmarkObservation)
-            else BenchmarkObservation.from_dict(item)
+            item if isinstance(item, BenchmarkObservation) else BenchmarkObservation.from_dict(item)
             for item in self.observations
         )
         quorum = (
@@ -1236,15 +1090,10 @@ class HealthyExhaustionEvidence:
             raise ValueError("policy does not match the epoch binding")
         channel_dimensions: dict[str, list[str]] = {}
         for item in observations:
-            channel_dimensions.setdefault(item.evidence_channel, []).append(
-                item.dimension
-            )
-        if (
-            len(channel_dimensions) < policy.required_independent_channels
-            or any(
-                tuple(sorted(dimensions)) != policy.required_dimensions
-                for dimensions in channel_dimensions.values()
-            )
+            channel_dimensions.setdefault(item.evidence_channel, []).append(item.dimension)
+        if len(channel_dimensions) < policy.required_independent_channels or any(
+            tuple(sorted(dimensions)) != policy.required_dimensions
+            for dimensions in channel_dimensions.values()
         ):
             raise ValueError(
                 "each independent benchmark channel must cover the complete "
@@ -1257,8 +1106,7 @@ class HealthyExhaustionEvidence:
                 item.repository_id != binding.repository_id
                 or item.repository_tree != binding.repository_tree
                 or item.policy_id != binding.policy_id
-                or item.capability_snapshot_id
-                != binding.capability_snapshot_id
+                or item.capability_snapshot_id != binding.capability_snapshot_id
             )
             for item in observations
         ):
@@ -1267,8 +1115,7 @@ class HealthyExhaustionEvidence:
         if (
             exact_binding.repository_id != binding.repository_id
             or exact_binding.tree_id != binding.repository_tree
-            or exact_binding.analyzer_version
-            != SELF_IMPROVEMENT_ANALYZER_VERSION
+            or exact_binding.analyzer_version != SELF_IMPROVEMENT_ANALYZER_VERSION
             or exact_binding.configuration_revision != binding.policy_id
             or exact_binding.objective_revision != binding.objective_revision
         ):
@@ -1344,20 +1191,10 @@ class HealthyExhaustionEvidence:
     def _receipt_provenance(self) -> dict[str, Any]:
         """Project the exact benchmark inputs required by source policy."""
 
-        commands = tuple(
-            sorted({item.command for item in self.observations})
-        )
-        toolchains = tuple(
-            sorted({item.toolchain for item in self.observations})
-        )
+        commands = tuple(sorted({item.command for item in self.observations}))
+        toolchains = tuple(sorted({item.toolchain for item in self.observations}))
         scope = tuple(
-            sorted(
-                {
-                    scope_item
-                    for item in self.observations
-                    for scope_item in item.scope
-                }
-            )
+            sorted({scope_item for item in self.observations for scope_item in item.scope})
         )
         return {
             "producer_kind": "benchmark",
@@ -1372,12 +1209,8 @@ class HealthyExhaustionEvidence:
             "scope": list(scope),
             "result": {
                 "status": "healthy_exhausted",
-                "benchmark_dimension_count": len(
-                    self.policy.required_dimensions
-                ),
-                "independent_channel_count": (
-                    self.exhaustion_quorum.count
-                ),
+                "benchmark_dimension_count": len(self.policy.required_dimensions),
+                "independent_channel_count": (self.exhaustion_quorum.count),
                 "classified_gap_count": self.classified_gap_count,
                 "candidate_count": self.candidate_count,
                 "admitted_count": self.admitted_count,
@@ -1411,9 +1244,7 @@ class HealthyExhaustionEvidence:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "HealthyExhaustionEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "HealthyExhaustionEvidence":
         allowed = {
             *cls.__dataclass_fields__.keys(),
             "schema",
@@ -1451,14 +1282,10 @@ class HealthyExhaustionEvidence:
             or int(payload.get("version", 0)) != 1
         ):
             raise ValueError("unsupported healthy exhaustion evidence schema")
-        if payload.get("proved_requirement_ids") != [
-            HEALTHY_EXHAUSTION_REQUIREMENT_ID
-        ]:
+        if payload.get("proved_requirement_ids") != [HEALTHY_EXHAUSTION_REQUIREMENT_ID]:
             raise ValueError("healthy exhaustion proved-requirement projection is invalid")
         result = cls(
-            binding=SelfImprovementEpochBinding.from_dict(
-                payload.get("binding") or {}
-            ),
+            binding=SelfImprovementEpochBinding.from_dict(payload.get("binding") or {}),
             goal_projection=payload.get("goal_projection") or {},
             policy=payload.get("policy") or {},
             observations=tuple(payload.get("observations") or ()),
@@ -1525,9 +1352,7 @@ class HealthyExhaustionEvidence:
             if name in provenance_fields and name not in payload:
                 continue
             if payload.get(name) != projected[name]:
-                raise ValueError(
-                    f"healthy exhaustion {name} projection does not match"
-                )
+                raise ValueError(f"healthy exhaustion {name} projection does not match")
         return result
 
     def completion_evidence(self) -> CompletionEvidence:
@@ -1626,9 +1451,7 @@ class SuccessorRefillEvidence:
             raise ValueError("successor evidence requires candidates")
         if not values["admitted_proposal_ids"]:
             raise ValueError("successor evidence requires admitted proposals")
-        if not set(values["admitted_proposal_ids"]).issubset(
-            values["candidate_proposal_ids"]
-        ):
+        if not set(values["admitted_proposal_ids"]).issubset(values["candidate_proposal_ids"]):
             raise ValueError("every admitted proposal must be a candidate")
         if len(values["admitted_proposal_ids"]) != len(values["created_goal_ids"]):
             raise ValueError("every admitted proposal must create exactly one goal")
@@ -1695,12 +1518,9 @@ class SuccessorRefillEvidence:
             "tree_id": self.binding.repository_tree,
             "policy_id": self.binding.policy_id,
             "command": (
-                "commit_objective_goal_materialization ; "
-                "record_objective_backlog_findings"
+                "commit_objective_goal_materialization ; record_objective_backlog_findings"
             ),
-            "toolchain": (
-                "objective-tracker+objective-graph+backlog-refinery/v1"
-            ),
+            "toolchain": ("objective-tracker+objective-graph+backlog-refinery/v1"),
             "scope": [
                 *self.actionable_dimensions,
                 *self.created_goal_ids,
@@ -1873,23 +1693,15 @@ class SelfImprovementEpochReceipt:
             field_name="observation_receipt_ids",
         )
         blockers = _string_tuple(self.blocker_codes, field_name="blocker_codes")
-        actionable = _string_tuple(
-            self.actionable_dimensions, field_name="actionable_dimensions"
-        )
+        actionable = _string_tuple(self.actionable_dimensions, field_name="actionable_dimensions")
         created = _string_tuple(self.created_goal_ids, field_name="created_goal_ids")
         evidence = self.evidence
-        if evidence is not None and not isinstance(
-            evidence, HealthyExhaustionEvidence
-        ):
+        if evidence is not None and not isinstance(evidence, HealthyExhaustionEvidence):
             evidence = HealthyExhaustionEvidence.from_dict(evidence)
         successor = self.successor_evidence
-        if successor is not None and not isinstance(
-            successor, SuccessorRefillEvidence
-        ):
+        if successor is not None and not isinstance(successor, SuccessorRefillEvidence):
             successor = SuccessorRefillEvidence.from_dict(successor)
-        created_tasks = _string_tuple(
-            self.created_task_ids, field_name="created_task_ids"
-        )
+        created_tasks = _string_tuple(self.created_task_ids, field_name="created_task_ids")
         if status is SelfImprovementEpochStatus.HEALTHY_EXHAUSTED:
             if (
                 evidence is None
@@ -1934,10 +1746,7 @@ class SelfImprovementEpochReceipt:
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                "self_improvement_epoch_receipt.v1"
-            ),
+            "schema": ("ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_receipt.v1"),
             "version": 1,
             "binding": self.binding.to_dict(),
             "status": self.status.value,
@@ -1947,9 +1756,7 @@ class SelfImprovementEpochReceipt:
             "actionable_dimensions": self.actionable_dimensions,
             "evidence": self.evidence.to_dict() if self.evidence else None,
             "successor_evidence": (
-                self.successor_evidence.to_dict()
-                if self.successor_evidence
-                else None
+                self.successor_evidence.to_dict() if self.successor_evidence else None
             ),
             "created_goal_ids": self.created_goal_ids,
             "created_task_ids": self.created_task_ids,
@@ -1972,9 +1779,7 @@ class SelfImprovementEpochReceipt:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "SelfImprovementEpochReceipt":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SelfImprovementEpochReceipt":
         allowed = {
             "schema",
             "version",
@@ -1995,26 +1800,17 @@ class SelfImprovementEpochReceipt:
         _strict_keys(payload, allowed, record_name="self-improvement epoch receipt")
         if (
             payload.get("schema")
-            != (
-                "ipfs_accelerate_py.agent_supervisor."
-                "self_improvement_epoch_receipt.v1"
-            )
+            != ("ipfs_accelerate_py.agent_supervisor.self_improvement_epoch_receipt.v1")
             or int(payload.get("version", 0)) != 1
         ):
             raise ValueError("unsupported self-improvement epoch receipt schema")
         result = cls(
-            binding=SelfImprovementEpochBinding.from_dict(
-                payload.get("binding") or {}
-            ),
+            binding=SelfImprovementEpochBinding.from_dict(payload.get("binding") or {}),
             status=str(payload.get("status") or ""),
             observed_at=str(payload.get("observed_at") or ""),
-            observation_receipt_ids=tuple(
-                payload.get("observation_receipt_ids") or ()
-            ),
+            observation_receipt_ids=tuple(payload.get("observation_receipt_ids") or ()),
             blocker_codes=tuple(payload.get("blocker_codes") or ()),
-            actionable_dimensions=tuple(
-                payload.get("actionable_dimensions") or ()
-            ),
+            actionable_dimensions=tuple(payload.get("actionable_dimensions") or ()),
             evidence=(
                 HealthyExhaustionEvidence.from_dict(payload["evidence"])
                 if isinstance(payload.get("evidence"), Mapping)
@@ -2031,9 +1827,7 @@ class SelfImprovementEpochReceipt:
         )
         if payload.get("epoch_id") != result.binding.epoch_id:
             raise ValueError("epoch receipt epoch_id does not match")
-        if payload.get("proved_requirement_ids") != list(
-            result.proved_requirement_ids
-        ):
+        if payload.get("proved_requirement_ids") != list(result.proved_requirement_ids):
             raise ValueError("epoch receipt requirement projection does not match")
         return result
 
@@ -2090,9 +1884,7 @@ class EpochReplayEvidence:
             "taskboard_state_id",
             "producer_version",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         expected = content_identity(self._identity_payload())
         supplied = str(self.evidence_id or "").strip()
         if supplied and supplied != expected:
@@ -2195,9 +1987,7 @@ class EpochReplayEvidence:
         ):
             raise ValueError("unsupported epoch replay evidence schema")
         result = cls(
-            binding=SelfImprovementEpochBinding.from_dict(
-                payload.get("binding") or {}
-            ),
+            binding=SelfImprovementEpochBinding.from_dict(payload.get("binding") or {}),
             goal_projection=payload.get("goal_projection") or {},
             original_receipt_id=str(payload.get("original_receipt_id") or ""),
             objective_state_id=str(payload.get("objective_state_id") or ""),
@@ -2215,10 +2005,7 @@ class EpochReplayEvidence:
         for name in allowed - set(cls.__dataclass_fields__):
             if name in {"schema", "version"}:
                 continue
-            if (
-                name in {"command", "toolchain", "scope", "result"}
-                and name not in payload
-            ):
+            if name in {"command", "toolchain", "scope", "result"} and name not in payload:
                 continue
             if payload.get(name) != projected[name]:
                 raise ValueError(f"epoch replay {name} projection does not match")
@@ -2280,11 +2067,7 @@ class SelfImprovementEpochRun:
             dict.fromkeys(
                 (
                     *self.receipt.proved_requirement_ids,
-                    *(
-                        self.replay_evidence.proved_requirement_ids
-                        if self.replay_evidence
-                        else ()
-                    ),
+                    *(self.replay_evidence.proved_requirement_ids if self.replay_evidence else ()),
                 )
             )
         )
@@ -2335,9 +2118,7 @@ def _observation_scan_receipts(
                     "configuration_revision": binding.policy_id,
                     "objective_revision": binding.objective_revision,
                     "exhaustion_binding": exact_binding.to_dict(),
-                    "benchmark_receipt_ids": [
-                        item.receipt_id for item in members
-                    ],
+                    "benchmark_receipt_ids": [item.receipt_id for item in members],
                 },
             )
         )
@@ -2363,9 +2144,7 @@ def evaluate_self_improvement_epoch(
 
     now = _utc_datetime(observed_at, field_name="observed_at")
     normalized: tuple[BenchmarkObservation, ...] = tuple(
-        item
-        if isinstance(item, BenchmarkObservation)
-        else BenchmarkObservation.from_dict(item)
+        item if isinstance(item, BenchmarkObservation) else BenchmarkObservation.from_dict(item)
         for item in observations
     )
     blockers: list[str] = []
@@ -2387,12 +2166,9 @@ def evaluate_self_improvement_epoch(
         blockers.append("taskboard_written_during_epoch")
     by_channel: dict[str, list[BenchmarkObservation]] = {}
     for observation in normalized:
-        by_channel.setdefault(observation.evidence_channel, []).append(
-            observation
-        )
+        by_channel.setdefault(observation.evidence_channel, []).append(observation)
     if not by_channel or any(
-        tuple(sorted(item.dimension for item in members))
-        != policy.required_dimensions
+        tuple(sorted(item.dimension for item in members)) != policy.required_dimensions
         for members in by_channel.values()
     ):
         blockers.append("benchmark_population_incomplete")
@@ -2414,10 +2190,7 @@ def evaluate_self_improvement_epoch(
         if (
             not item.complete
             or item.observed_at > now
-            or (
-                item.disposition is not BenchmarkDisposition.STALE
-                and now > item.fresh_until
-            )
+            or (item.disposition is not BenchmarkDisposition.STALE and now > item.fresh_until)
         )
     ]
     if temporally_invalid:
@@ -2425,13 +2198,7 @@ def evaluate_self_improvement_epoch(
     if any(not item.disposition.conclusive for item in normalized):
         blockers.append("benchmark_analyzer_inconclusive")
     actionable = tuple(
-        sorted(
-            {
-                item.dimension
-                for item in normalized
-                if item.disposition.actionable
-            }
-        )
+        sorted({item.dimension for item in normalized if item.disposition.actionable})
     )
     observation_ids = tuple(item.receipt_id for item in normalized)
     # Binding, population, freshness, board-state, and artifact-integrity
@@ -2455,9 +2222,7 @@ def evaluate_self_improvement_epoch(
             blocker_codes=tuple(blockers),
             actionable_dimensions=actionable,
         )
-    scan_receipts = _observation_scan_receipts(
-        normalized, binding=binding, observed_at=now
-    )
+    scan_receipts = _observation_scan_receipts(normalized, binding=binding, observed_at=now)
     exact_binding = ExhaustionBinding(
         repository_id=binding.repository_id,
         tree_id=binding.repository_tree,
@@ -2503,10 +2268,7 @@ def evaluate_self_improvement_epoch(
 def _artifact_content_id(data: bytes, *, kind: str) -> str:
     return content_identity(
         {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                f"self_improvement_{kind}.v1"
-            ),
+            "schema": (f"ipfs_accelerate_py.agent_supervisor.self_improvement_{kind}.v1"),
             "content": data.decode("utf-8", errors="surrogateescape"),
         }
     )
@@ -2546,9 +2308,7 @@ def build_self_improvement_epoch_binding(
             objective_path=objective_path,
             journal_path=(
                 materialization_journal_path
-                or objective_path.with_name(
-                    f".{objective_path.name}.self-improvement.json"
-                )
+                or objective_path.with_name(f".{objective_path.name}.self-improvement.json")
             ),
             control_paths=control_paths,
         )
@@ -2600,17 +2360,13 @@ def _load_epoch_ledger(path: Path) -> dict[str, SelfImprovementEpochReceipt]:
     return result
 
 
-def _persist_epoch_ledger(
-    path: Path, receipts: Mapping[str, SelfImprovementEpochReceipt]
-) -> None:
+def _persist_epoch_ledger(path: Path, receipts: Mapping[str, SelfImprovementEpochReceipt]) -> None:
     _atomic_write_json(
         path,
         {
             "schema": SELF_IMPROVEMENT_LEDGER_SCHEMA,
             "version": 1,
-            "epochs": {
-                key: receipts[key].to_dict() for key in sorted(receipts)
-            },
+            "epochs": {key: receipts[key].to_dict() for key in sorted(receipts)},
         },
     )
 
@@ -2641,11 +2397,7 @@ def _project_wait_state(
 
 def _require_authoritative_goal_evidence(
     objective_text: str,
-    evidence: (
-        HealthyExhaustionEvidence
-        | SuccessorRefillEvidence
-        | EpochReplayEvidence
-    ),
+    evidence: (HealthyExhaustionEvidence | SuccessorRefillEvidence | EpochReplayEvidence),
     *,
     now: datetime | str,
 ) -> str:
@@ -2661,11 +2413,7 @@ def _require_authoritative_goal_evidence(
     )
     if not reconciliation.satisfied:
         reasons = sorted(
-            {
-                reason
-                for binding in reconciliation.bindings
-                for reason in binding.reason_codes
-            }
+            {reason for binding in reconciliation.bindings for reason in binding.reason_codes}
         )
         raise RuntimeError(
             "self-improvement evidence failed objective reconciliation"
@@ -2721,9 +2469,7 @@ def materialize_self_improvement_successors(
         expected_parent_goal_id=expected_parent_goal_id,
     )
     normalized = tuple(
-        item
-        if isinstance(item, ObjectiveWorkProposal)
-        else ObjectiveWorkProposal.from_dict(item)
+        item if isinstance(item, ObjectiveWorkProposal) else ObjectiveWorkProposal.from_dict(item)
         for item in proposals
     )
     if not normalized:
@@ -2735,9 +2481,7 @@ def materialize_self_improvement_successors(
         observed_at=observed_at or receipt.observed_at,
     )
     rejection_reasons = {
-        item.canonical_id: item.reason
-        for item in candidate_filter.rejected
-        if item.canonical_id
+        item.canonical_id: item.reason for item in candidate_filter.rejected if item.canonical_id
     }
     eligible = candidate_filter.eligible
     if not eligible:
@@ -2748,17 +2492,10 @@ def materialize_self_improvement_successors(
             rejection_reasons=rejection_reasons,
             recorded_at=observed_at or receipt.observed_at,
         )
-        reasons = sorted(
-            {
-                item.reason
-                for item in candidate_filter.rejected
-                if item.reason
-            }
-        )
+        reasons = sorted({item.reason for item in candidate_filter.rejected if item.reason})
         raise ValueError(
             "no successor candidate survived lifecycle and cooldown "
-            "deduplication"
-            + (": " + ", ".join(reasons) if reasons else "")
+            "deduplication" + (": " + ", ".join(reasons) if reasons else "")
         )
     low_quality_reasons: dict[str, str] = {}
     for item in eligible:
@@ -2770,9 +2507,7 @@ def materialize_self_improvement_successors(
             ObjectiveWorkKind.GOAL,
             ObjectiveWorkKind.SUBGOAL,
         }:
-            low_quality_reasons[item.canonical_id] = (
-                "unsupported_successor_kind"
-            )
+            low_quality_reasons[item.canonical_id] = "unsupported_successor_kind"
     if low_quality_reasons:
         record_self_improvement_successor_admission(
             strategy_path,
@@ -2811,14 +2546,10 @@ def materialize_self_improvement_successors(
             *(item.reason for item in preview.rejected),
         ]
         preview_rejections = {
-            item.canonical_id: item.reason
-            for item in preview.rejected
-            if item.canonical_id
+            item.canonical_id: item.reason for item in preview.rejected if item.canonical_id
         }
         default_reason = (
-            "objective_preview_fatal"
-            if preview.fatal_reasons
-            else "objective_preview_rejected"
+            "objective_preview_fatal" if preview.fatal_reasons else "objective_preview_rejected"
         )
         record_self_improvement_successor_admission(
             strategy_path,
@@ -2854,8 +2585,7 @@ def materialize_self_improvement_successors(
     )
     if transaction.state is not ObjectiveMaterializationTransactionState.COMMITTED:
         raise RuntimeError(
-            "successor objective transaction did not commit: "
-            + ", ".join(transaction.reason_codes)
+            "successor objective transaction did not commit: " + ", ".join(transaction.reason_codes)
         )
     admitted_proposal_ids = transaction.admitted_proposal_ids
     record_self_improvement_successor_admission(
@@ -2911,18 +2641,10 @@ def materialize_self_improvement_successors(
         created_goal_ids=goal_ids,
         created_task_ids=tuple(task_by_goal[goal_id] for goal_id in goal_ids),
         transaction_id=transaction.transaction_id,
-        objective_before_id=_artifact_content_id(
-            objective_before, kind="objective"
-        ),
-        objective_after_id=_artifact_content_id(
-            objective_after, kind="objective"
-        ),
-        taskboard_before_id=_artifact_content_id(
-            taskboard_before, kind="taskboard"
-        ),
-        taskboard_after_id=_artifact_content_id(
-            taskboard_after, kind="taskboard"
-        ),
+        objective_before_id=_artifact_content_id(objective_before, kind="objective"),
+        objective_after_id=_artifact_content_id(objective_after, kind="objective"),
+        taskboard_before_id=_artifact_content_id(taskboard_before, kind="taskboard"),
+        taskboard_after_id=_artifact_content_id(taskboard_after, kind="taskboard"),
         observed_at=observed_at or receipt.observed_at,
     )
     _require_authoritative_goal_evidence(
@@ -2989,7 +2711,9 @@ def run_self_improvement_epoch(
         "self-improvement-objective-materialization.json"
     )
     resolved_discovery_dir = discovery_dir or repo_root / "data" / "agent_supervisor" / "discovery"
-    resolved_bundle_dir = bundle_dir or repo_root / "data" / "agent_supervisor" / "objective_bundles"
+    resolved_bundle_dir = (
+        bundle_dir or repo_root / "data" / "agent_supervisor" / "objective_bundles"
+    )
     objective_before = objective_path.read_bytes()
     taskboard_before = todo_path.read_bytes()
     objective_version_before = _file_version(objective_path)
@@ -3039,12 +2763,8 @@ def run_self_improvement_epoch(
             binding=binding,
             goal_projection=projection,
             original_receipt_id=original.receipt_id,
-            objective_state_id=_artifact_content_id(
-                objective_before, kind="objective"
-            ),
-            taskboard_state_id=_artifact_content_id(
-                taskboard_before, kind="taskboard"
-            ),
+            objective_state_id=_artifact_content_id(objective_before, kind="objective"),
+            taskboard_state_id=_artifact_content_id(taskboard_before, kind="taskboard"),
             replayed_at=observed_at,
         )
         _require_authoritative_goal_evidence(
@@ -3063,12 +2783,8 @@ def run_self_improvement_epoch(
             replayed=True,
             replay_evidence=replay_evidence_for(existing),
         )
-    current_objective_state = _artifact_content_id(
-        objective_before, kind="objective"
-    )
-    current_taskboard_state = _artifact_content_id(
-        taskboard_before, kind="taskboard"
-    )
+    current_objective_state = _artifact_content_id(objective_before, kind="objective")
+    current_taskboard_state = _artifact_content_id(taskboard_before, kind="taskboard")
     for prior in receipts.values():
         successor = prior.successor_evidence
         if successor is None:
@@ -3077,8 +2793,7 @@ def run_self_improvement_epoch(
             prior.binding.repository_id == binding.repository_id
             and prior.binding.repository_tree == binding.repository_tree
             and prior.binding.policy_id == binding.policy_id
-            and prior.binding.capability_snapshot_id
-            == binding.capability_snapshot_id
+            and prior.binding.capability_snapshot_id == binding.capability_snapshot_id
             and prior.binding.observation_window == binding.observation_window
             and prior.binding.operator_revision == binding.operator_revision
         )
@@ -3113,24 +2828,12 @@ def run_self_improvement_epoch(
         policy=active_policy,
         observations=observations,
         board_drained=board_drained,
-        objective_before_id=_artifact_content_id(
-            objective_before, kind="objective"
-        ),
-        objective_after_id=_artifact_content_id(
-            objective_after, kind="objective"
-        ),
-        taskboard_before_id=_artifact_content_id(
-            taskboard_before, kind="taskboard"
-        ),
-        taskboard_after_id=_artifact_content_id(
-            taskboard_after, kind="taskboard"
-        ),
-        objective_written_during_epoch=(
-            objective_version_before != objective_version_after
-        ),
-        taskboard_written_during_epoch=(
-            taskboard_version_before != taskboard_version_after
-        ),
+        objective_before_id=_artifact_content_id(objective_before, kind="objective"),
+        objective_after_id=_artifact_content_id(objective_after, kind="objective"),
+        taskboard_before_id=_artifact_content_id(taskboard_before, kind="taskboard"),
+        taskboard_after_id=_artifact_content_id(taskboard_after, kind="taskboard"),
+        objective_written_during_epoch=(objective_version_before != objective_version_after),
+        taskboard_written_during_epoch=(taskboard_version_before != taskboard_version_after),
         observed_at=now,
     )
     if receipt.evidence is not None:
@@ -3139,10 +2842,7 @@ def run_self_improvement_epoch(
             receipt.evidence,
             now=now,
         )
-    if (
-        receipt.status is SelfImprovementEpochStatus.ACTIONABLE
-        and proposal_provider is not None
-    ):
+    if receipt.status is SelfImprovementEpochStatus.ACTIONABLE and proposal_provider is not None:
         proposals = tuple(proposal_provider(binding, observations))
         receipt = materialize_self_improvement_successors(
             receipt=receipt,

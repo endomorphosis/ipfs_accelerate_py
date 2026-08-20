@@ -211,14 +211,12 @@ Complete demonstration of:
 
 ```python
 from ipfs_accelerate_py.unified_inference_service import (
-    start_unified_service, InferenceServiceConfig
+    start_unified_service,
+    InferenceServiceConfig,
 )
 
 config = InferenceServiceConfig(
-    enable_backend_manager=True,
-    enable_hf_server=True,
-    enable_websocket=True,
-    enable_libp2p=True
+    enable_backend_manager=True, enable_hf_server=True, enable_websocket=True, enable_libp2p=True
 )
 
 service = await start_unified_service(config)

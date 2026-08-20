@@ -48,15 +48,20 @@ def generate_test_file(model_family, output_dir="."):
         # Use the specialized function for hyphenated models
         try:
             from simplified_fix_hyphenated import create_hyphenated_test_file
+
             logger.info(f"Using specialized hyphenated model generator for {model_family}")
             result = create_hyphenated_test_file(model_family, output_dir)
             if result[0]:  # Success
                 return True
             else:
-                logger.warning(f"Specialized generator failed: {result[1]}, falling back to standard approach")
+                logger.warning(
+                    f"Specialized generator failed: {result[1]}, falling back to standard approach"
+                )
         except ImportError:
-            logger.warning("simplified_fix_hyphenated.py not available, using standard approach for hyphenated model")
-    
+            logger.warning(
+                "simplified_fix_hyphenated.py not available, using standard approach for hyphenated model"
+            )
+
     # Standard approach for non-hyphenated models...
 ```
 

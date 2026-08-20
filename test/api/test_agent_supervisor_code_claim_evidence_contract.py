@@ -309,17 +309,16 @@ def test_evidence_tiers_and_assurance_ceilings() -> None:
     assert EvidenceTier.OBSERVATION.max_assurance is AssuranceLevel.CANDIDATE
     assert EvidenceTier.SOLVER_CANDIDATE.max_assurance is AssuranceLevel.SOLVER_CHECKED
     assert EvidenceTier.KERNEL_PROOF.max_assurance is AssuranceLevel.KERNEL_VERIFIED
-    assert (
-        EvidenceTier.CRYPTOGRAPHIC_ATTESTATION.max_assurance is AssuranceLevel.ATTESTED
-    )
+    assert EvidenceTier.CRYPTOGRAPHIC_ATTESTATION.max_assurance is AssuranceLevel.ATTESTED
 
     assert not EvidenceTier.QUERY_FACT.can_mint_kernel_assurance
     assert not EvidenceTier.OBSERVATION.can_mint_kernel_assurance
     assert EvidenceTier.KERNEL_PROOF.can_mint_kernel_assurance
 
-    assert max_assurance_for_tiers(
-        (EvidenceTier.QUERY_FACT, EvidenceTier.OBSERVATION)
-    ) is AssuranceLevel.CANDIDATE
+    assert (
+        max_assurance_for_tiers((EvidenceTier.QUERY_FACT, EvidenceTier.OBSERVATION))
+        is AssuranceLevel.CANDIDATE
+    )
     assert not tiers_can_independently_mint_kernel(
         (EvidenceTier.QUERY_FACT, EvidenceTier.OBSERVATION, EvidenceTier.SOLVER_CANDIDATE)
     )
@@ -496,14 +495,8 @@ def test_claim_families_resolve_from_templates() -> None:
         resolve_claim_family(template_id="projection-equivalence")
         is ClaimFamily.SEMANTIC_EQUIVALENCE
     )
-    assert (
-        resolve_claim_family(template_id="merge-idempotence")
-        is ClaimFamily.SUPERVISOR_LIFECYCLE
-    )
-    assert (
-        resolve_claim_family(invariant_class="srt.structural")
-        is ClaimFamily.SRT_STRUCTURAL
-    )
+    assert resolve_claim_family(template_id="merge-idempotence") is ClaimFamily.SUPERVISOR_LIFECYCLE
+    assert resolve_claim_family(invariant_class="srt.structural") is ClaimFamily.SRT_STRUCTURAL
     assert resolve_claim_family() is ClaimFamily.UNSUPPORTED
 
 

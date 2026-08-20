@@ -88,9 +88,7 @@ def test_refreshable_gradio_file_reuploads_before_retry() -> None:
         path = str(reference["path"])
         operation_paths.append(path)
         if len(operation_paths) == 1:
-            raise RuntimeError(
-                f"FileNotFoundError: no such file or directory: {path}"
-            )
+            raise RuntimeError(f"FileNotFoundError: no such file or directory: {path}")
         return "completed"
 
     reference = RefreshableGradioFile(upload, sleeper=delays.append)
@@ -98,9 +96,7 @@ def test_refreshable_gradio_file_reuploads_before_retry() -> None:
         operation,
         max_retries=1,
         retry_backoff_seconds=0.25,
-        on_retry=lambda error, attempt: retries.append(
-            (type(error).__name__, attempt)
-        ),
+        on_retry=lambda error, attempt: retries.append((type(error).__name__, attempt)),
     )
 
     assert result == "completed"
@@ -116,11 +112,14 @@ def test_endpoint_contract_resolution_and_arity() -> None:
 
     assert client.dependency_api_names(config) == ["/gen_single"]
     assert client.resolve_fn_index("/gen_single", config) == 6
-    assert client.resolve_fn_index(
-        "/missing",
-        config,
-        fallback_markers=("generate",),
-    ) == 6
+    assert (
+        client.resolve_fn_index(
+            "/missing",
+            config,
+            fallback_markers=("generate",),
+        )
+        == 6
+    )
     assert client.lookup_dependency_input_count(6, config) == 24
 
 
@@ -136,9 +135,7 @@ def test_config_is_cached_but_can_be_refreshed() -> None:
     assert first is second
     assert refreshed == first
     assert session.get.call_count == 2
-    assert session.get.call_args_list[0].args == (
-        "https://example.hf.space/config",
-    )
+    assert session.get.call_args_list[0].args == ("https://example.hf.space/config",)
 
 
 def test_upload_uses_gradio_api_and_preserves_multipart_boundary() -> None:
@@ -162,9 +159,7 @@ def test_upload_uses_gradio_api_and_preserves_multipart_boundary() -> None:
     )
 
     assert uploaded[0]["path"] == "/tmp/reference.wav"
-    assert session.post.call_args.args[0] == (
-        "https://example.hf.space/gradio_api/upload"
-    )
+    assert session.post.call_args.args[0] == ("https://example.hf.space/gradio_api/upload")
     headers = session.post.call_args.kwargs["headers"]
     assert headers["Authorization"] == "Bearer test"
     assert not any(key.lower() == "content-type" for key in headers)
@@ -208,9 +203,7 @@ def test_queue_join_and_sse_completion() -> None:
         "session_hash": "session with spaces",
     }
     assert result["data"][0]["path"] == "/tmp/result.wav"
-    assert session.get.call_args.args[0].endswith(
-        "session_hash=session%20with%20spaces"
-    )
+    assert session.get.call_args.args[0].endswith("session_hash=session%20with%20spaces")
 
 
 def test_queue_stream_reconnects_same_session_after_chunk_truncation() -> None:
@@ -220,9 +213,7 @@ def test_queue_stream_reconnects_same_session_after_chunk_truncation() -> None:
 
     def interrupted_events() -> object:
         yield 'data: {"msg":"estimation","rank":0}'
-        raise requests.exceptions.ChunkedEncodingError(
-            "Response ended prematurely"
-        )
+        raise requests.exceptions.ChunkedEncodingError("Response ended prematurely")
 
     interrupted_response.iter_lines.return_value = interrupted_events()
     completed_response = _response()
@@ -249,13 +240,8 @@ def test_queue_stream_reconnects_same_session_after_chunk_truncation() -> None:
     assert result["data"][0]["path"] == "/tmp/result.wav"
     assert session.post.call_count == 1
     assert session.get.call_count == 2
-    assert {
-        call.args[0] for call in session.get.call_args_list
-    } == {
-        (
-            "https://example.hf.space/gradio_api/queue/data?"
-            "session_hash=stable-session"
-        )
+    assert {call.args[0] for call in session.get.call_args_list} == {
+        ("https://example.hf.space/gradio_api/queue/data?session_hash=stable-session")
     }
 
 
@@ -275,9 +261,7 @@ def test_fetch_file_supports_inline_and_relative_gradio_urls() -> None:
     session = Mock()
     client = HFSpaceClient("https://example.hf.space", session=session)
 
-    inline = client.fetch_file(
-        {"name": "result.wav", "_inline_bytes": b"RIFF"}
-    )
+    inline = client.fetch_file({"name": "result.wav", "_inline_bytes": b"RIFF"})
     assert inline == (b"RIFF", "audio/x-wav")
     session.get.assert_not_called()
 
@@ -285,9 +269,7 @@ def test_fetch_file_supports_inline_and_relative_gradio_urls() -> None:
     file_response.content = b"audio"
     file_response.headers = {"Content-Type": "audio/mpeg"}
     session.get.return_value = file_response
-    downloaded = client.fetch_file(
-        {"url": "/gradio_api/file=/tmp/result.mp3"}
-    )
+    downloaded = client.fetch_file({"url": "/gradio_api/file=/tmp/result.mp3"})
     assert downloaded == (b"audio", "audio/mpeg")
     assert session.get.call_args.args[0] == (
         "https://example.hf.space/gradio_api/file=/tmp/result.mp3"
@@ -331,10 +313,7 @@ def test_bucket_exists_uses_current_read_only_hf_cli(
             "hf",
             "buckets",
             "list",
-            (
-                "hf://buckets/Publicus/abby-voice/run/"
-                "audio/response.mp3"
-            ),
+            ("hf://buckets/Publicus/abby-voice/run/audio/response.mp3"),
             "--json",
         ]
     ]
@@ -423,10 +402,7 @@ def test_bucket_exists_accepts_exact_full_uri_entry(
                 [
                     {
                         "type": "blob",
-                        "path": (
-                            "hf://buckets/Publicus/abby-voice/"
-                            "run/audio/response.mp3"
-                        ),
+                        "path": ("hf://buckets/Publicus/abby-voice/run/audio/response.mp3"),
                     },
                 ]
             ),
@@ -704,9 +680,7 @@ def test_batch_checkpoint_invalid_save_preserves_previous_state(
 ) -> None:
     state_file = tmp_path / "state.json"
     processor = _batch_processor(state_file)
-    processor.save_state(
-        BatchState(total_items=10, next_offset=4, batch_size=4)
-    )
+    processor.save_state(BatchState(total_items=10, next_offset=4, batch_size=4))
     previous = state_file.read_bytes()
 
     with pytest.raises(ValueError, match="outside valid bounds"):

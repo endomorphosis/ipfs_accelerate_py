@@ -11,7 +11,7 @@ from templates.base_pipeline import BasePipelineTemplate
 
 class ImagePipelineTemplate(BasePipelineTemplate):
     """Image pipeline template implementation."""
-    
+
     def __init__(self):
         """Initialize the image pipeline template."""
         super().__init__()
@@ -22,7 +22,7 @@ class ImagePipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 16  # Images typically need more memory
-    
+
     def get_import_statements(self) -> str:
         """Get image-specific import statements."""
         return """
@@ -35,7 +35,7 @@ from typing import List, Dict, Union, Any
 from PIL import Image
 import io
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get image-specific preprocessing code."""
         if task_type == "image_classification":
@@ -199,7 +199,7 @@ except Exception as e:
 # Move inputs to the correct device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get image-specific postprocessing code."""
         if task_type == "image_classification":
@@ -257,7 +257,7 @@ result = outputs
 if hasattr(result, 'cpu'):
     result = result.cpu().detach().numpy()
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get image-specific result formatting code."""
         if task_type == "image_classification":
@@ -289,7 +289,7 @@ return {{"success": True,
         "device": device,
         "hardware": hardware_label}}
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get image-specific mock input code."""
         return """
@@ -304,7 +304,7 @@ mock_buffer = io.BytesIO()
 mock_image.save(mock_buffer, format='PNG')
 mock_image_base64 = base64.b64encode(mock_buffer.getvalue()).decode('utf-8')
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get image-specific mock output code."""
         return """
@@ -328,7 +328,7 @@ else:
     # Generic mock output
     return torch.zeros((batch_size, hidden_size))
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get image-specific utility functions."""
         return """
@@ -353,15 +353,12 @@ def encode_image_base64(image):
     image.save(buffer, format='PNG')
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check image pipeline compatibility with architecture type."""
         # Image pipeline is compatible with vision-based architectures
-        return arch_type in [
-            "vision",
-            "vision-encoder-text-decoder"
-        ]
-    
+        return arch_type in ["vision", "vision-encoder-text-decoder"]
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check image pipeline compatibility with task type."""
         # Image pipeline is compatible with vision-based tasks
@@ -370,5 +367,5 @@ def encode_image_base64(image):
             "object_detection",
             "image_segmentation",
             "image_to_text",
-            "vision_embedding"
+            "vision_embedding",
         ]

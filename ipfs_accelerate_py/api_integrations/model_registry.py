@@ -120,8 +120,7 @@ _OPERATION_TO_PIPELINE = {
     Operation.AUDIO_SYNTHESIZE: "text-to-speech",
 }
 _PIPELINE_TO_OPERATION = {
-    pipeline: operation.value
-    for operation, pipeline in _OPERATION_TO_PIPELINE.items()
+    pipeline: operation.value for operation, pipeline in _OPERATION_TO_PIPELINE.items()
 }
 _PIPELINE_TO_OPERATION["image-to-text"] = Operation.VISION_GENERATE.value
 
@@ -569,9 +568,7 @@ def _make_seed_rows() -> Tuple[Mapping[str, Any], ...]:
                     "provider": provider,
                     "model_id": canonical_name,
                     "model_name": legacy_name,
-                    "pipeline_types": list(
-                        _infer_pipeline_types(backend, qualified_name)
-                    ),
+                    "pipeline_types": list(_infer_pipeline_types(backend, qualified_name)),
                     "legacy_rich": False,
                     "legacy_order": order,
                     "legacy_backend_models": {},
@@ -610,22 +607,12 @@ def _make_seed_rows() -> Tuple[Mapping[str, Any], ...]:
             "legacy.order": str(row["legacy_order"]),
             "legacy.pipeline-types": _json_label(row.get("pipeline_types", ())),
             "legacy.cost": _json_label(row.get("cost_per_1k_tokens")),
-            "legacy.supports-streaming": _json_label(
-                bool(row.get("supports_streaming", False))
-            ),
-            "legacy.is-multimodal": _json_label(
-                bool(row.get("is_multimodal", False))
-            ),
-            "legacy.vision-capable": _json_label(
-                bool(row.get("vision_capable", False))
-            ),
-            "legacy.function-calling": _json_label(
-                bool(row.get("function_calling", False))
-            ),
+            "legacy.supports-streaming": _json_label(bool(row.get("supports_streaming", False))),
+            "legacy.is-multimodal": _json_label(bool(row.get("is_multimodal", False))),
+            "legacy.vision-capable": _json_label(bool(row.get("vision_capable", False))),
+            "legacy.function-calling": _json_label(bool(row.get("function_calling", False))),
             "legacy.json-mode": _json_label(bool(row.get("json_mode", False))),
-            "legacy.backend-models": _json_label(
-                row.get("legacy_backend_models", {})
-            ),
+            "legacy.backend-models": _json_label(row.get("legacy_backend_models", {})),
             "legacy.rich": _json_label(bool(row.get("legacy_rich", False))),
         }
         output = dict(row)
@@ -657,9 +644,7 @@ def _freeze_seed_value(value: Any) -> Any:
     """Recursively freeze seed data so callers cannot fork static knowledge."""
 
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze_seed_value(item) for key, item in value.items()}
-        )
+        return MappingProxyType({key: _freeze_seed_value(item) for key, item in value.items()})
     if isinstance(value, (list, tuple)):
         return tuple(_freeze_seed_value(item) for item in value)
     return value
@@ -693,9 +678,7 @@ def _labels(record: ModelDescriptor) -> Dict[str, str]:
     return dict(record.labels)
 
 
-def _decode_label(
-    labels: Mapping[str, str], name: str, default: Any
-) -> Any:
+def _decode_label(labels: Mapping[str, str], name: str, default: Any) -> Any:
     value = labels.get(name)
     if value is None:
         return default
@@ -710,9 +693,7 @@ def _provider_type(name: str) -> APIProviderType:
     return APIProviderType(canonical)
 
 
-def _descriptor_to_api_model(
-    descriptor: ModelDescriptor, provider_name: str
-) -> APIModel:
+def _descriptor_to_api_model(descriptor: ModelDescriptor, provider_name: str) -> APIModel:
     labels = _labels(descriptor)
     pipelines = _decode_label(labels, "legacy.pipeline-types", None)
     if not isinstance(pipelines, list):
@@ -734,9 +715,7 @@ def _descriptor_to_api_model(
         None,
     )
     operations = {
-        operation
-        for capability in descriptor.capabilities
-        for operation in capability.operations
+        operation for capability in descriptor.capabilities for operation in capability.operations
     }
     vision = bool(
         _decode_label(labels, "legacy.vision-capable", False)
@@ -754,9 +733,7 @@ def _descriptor_to_api_model(
         ),
         cost_per_1k_tokens=cost,
         description=descriptor.description,
-        is_multimodal=bool(
-            _decode_label(labels, "legacy.is-multimodal", False) or vision
-        ),
+        is_multimodal=bool(_decode_label(labels, "legacy.is-multimodal", False) or vision),
         vision_capable=vision,
         function_calling=bool(
             _decode_label(labels, "legacy.function-calling", False)
@@ -788,9 +765,7 @@ def _api_model_to_row(model: APIModel, order: int) -> Mapping[str, Any]:
         "context_length": model.context_length,
         "supports_streaming": model.supports_streaming if operations else False,
         "cost_per_1k_tokens": (
-            None
-            if model.cost_per_1k_tokens is None
-            else dict(model.cost_per_1k_tokens)
+            None if model.cost_per_1k_tokens is None else dict(model.cost_per_1k_tokens)
         ),
         "description": model.description,
         "is_multimodal": model.is_multimodal,
@@ -884,9 +859,7 @@ class RuntimeAPIModelCatalogSource:
                 for key in sorted(
                     self._rows,
                     key=lambda item: int(
-                        dict(self._rows[item].get("labels", {})).get(
-                            "legacy.order", 0
-                        )
+                        dict(self._rows[item].get("labels", {})).get("legacy.order", 0)
                     ),
                 )
             )
@@ -931,9 +904,7 @@ class APIModelRegistry:
                 strict=True,
             )
         existing_sources = {state.name for state in self._catalog.source_states()}
-        self._runtime_source_registered = (
-            self._runtime_source.source not in existing_sources
-        )
+        self._runtime_source_registered = self._runtime_source.source not in existing_sources
         if self._runtime_source_registered:
             self._catalog.register_source(
                 self._runtime_source.source,
@@ -955,9 +926,7 @@ class APIModelRegistry:
         self, include_deprecated: bool = True
     ) -> List[Tuple[ModelDescriptor, str]]:
         snapshot = self._catalog.snapshot()
-        provider_names = {
-            provider.provider_id: provider.name for provider in snapshot.providers
-        }
+        provider_names = {provider.provider_id: provider.name for provider in snapshot.providers}
 
         def key(item: ModelDescriptor) -> Tuple[int, str, str]:
             labels = _labels(item)
@@ -997,23 +966,18 @@ class APIModelRegistry:
         canonical_alias = provider_name + "/" + name
         if canonical_alias != requested:
             try:
-                descriptor = self._catalog.get(
-                    canonical_alias, record_type="models"
-                )
+                descriptor = self._catalog.get(canonical_alias, record_type="models")
             except ValueError:
                 descriptor = None
             if descriptor is not None:
                 return descriptor
 
         snapshot = self._catalog.snapshot()
-        providers = {
-            provider.provider_id: provider.name for provider in snapshot.providers
-        }
+        providers = {provider.provider_id: provider.name for provider in snapshot.providers}
         matches = [
             model
             for model in snapshot.models
-            if model.name == name
-            and providers.get(model.provider_id) == provider_name
+            if model.name == name and providers.get(model.provider_id) == provider_name
         ]
         return matches[0] if len(matches) == 1 else None
 
@@ -1024,12 +988,9 @@ class APIModelRegistry:
         if descriptor is None:
             return None
         providers = {
-            provider.provider_id: provider.name
-            for provider in self._catalog.snapshot().providers
+            provider.provider_id: provider.name for provider in self._catalog.snapshot().providers
         }
-        return _descriptor_to_api_model(
-            descriptor, providers[descriptor.provider_id]
-        )
+        return _descriptor_to_api_model(descriptor, providers[descriptor.provider_id])
 
     def resolve_model_id(self, model_id: str) -> Optional[str]:
         """Resolve any model alias to its stable catalog model ID."""
@@ -1102,9 +1063,7 @@ class APIModelRegistry:
                 canonical = _canonical_provider(provider)
             except ValueError:
                 return []
-            models = [
-                model for model in models if model.provider.value == canonical
-            ]
+            models = [model for model in models if model.provider.value == canonical]
         if pipeline_type is not None:
             selected = pipeline_type.casefold()
             models = [
@@ -1163,26 +1122,21 @@ class APIModelRegistry:
                 model
                 for model in models
                 if model.cost_per_1k_tokens is None
-                or (
-                    sum(model.cost_per_1k_tokens.values())
-                    / max(len(model.cost_per_1k_tokens), 1)
-                )
+                or (sum(model.cost_per_1k_tokens.values()) / max(len(model.cost_per_1k_tokens), 1))
                 <= max_cost_per_1k
             ]
         if min_context_length is not None:
             models = [
                 model
                 for model in models
-                if model.context_length is not None
-                and model.context_length >= min_context_length
+                if model.context_length is not None and model.context_length >= min_context_length
             ]
 
         def rank(model: APIModel) -> Tuple[float, int, str, str]:
             cost = (
                 float("inf")
                 if model.cost_per_1k_tokens is None
-                else sum(model.cost_per_1k_tokens.values())
-                / max(len(model.cost_per_1k_tokens), 1)
+                else sum(model.cost_per_1k_tokens.values()) / max(len(model.cost_per_1k_tokens), 1)
             )
             return (
                 cost,
@@ -1249,13 +1203,9 @@ class APIModelRegistry:
         """Publish a runtime addition through the registered runtime source."""
 
         if not self._runtime_source_registered:
-            raise RuntimeError(
-                "injected catalog already owns the runtime API model source"
-            )
+            raise RuntimeError("injected catalog already owns the runtime API model source")
         self._runtime_source.upsert(model)
-        result = self._catalog.refresh(
-            (self._runtime_source.source,), raise_on_error=True
-        )
+        result = self._catalog.refresh((self._runtime_source.source,), raise_on_error=True)
         if self._runtime_source.source not in result.refreshed:
             raise RuntimeError("runtime API model source was not refreshed")
         provider = _canonical_provider(model.provider)
@@ -1272,10 +1222,7 @@ class APIModelRegistry:
         """Export the legacy list shape as JSON-compatible dictionaries."""
 
         return [
-            model.to_dict()
-            for model in self.get_all_models(
-                include_deprecated=include_deprecated
-            )
+            model.to_dict() for model in self.get_all_models(include_deprecated=include_deprecated)
         ]
 
     def export_catalog(self) -> Dict[str, Any]:
@@ -1295,25 +1242,17 @@ class APIModelRegistry:
                 order = int(labels.get("legacy.order", "1000000000"))
             except ValueError:
                 order = 1000000000
-            backend_models = _decode_label(
-                labels, "legacy.backend-models", {}
-            )
+            backend_models = _decode_label(labels, "legacy.backend-models", {})
             if not isinstance(backend_models, dict) or not backend_models:
                 model = _descriptor_to_api_model(descriptor, provider_name)
                 backend = _default_backend_for_model(model)
                 prefix = "openvino" if provider_name == "ovms" else provider_name
-                backend_models = {
-                    backend: prefix + "/" + descriptor.name
-                }
+                backend_models = {backend: prefix + "/" + descriptor.name}
             for backend, qualified_name in backend_models.items():
                 if isinstance(backend, str) and isinstance(qualified_name, str):
-                    result.setdefault(backend, []).append(
-                        (order, qualified_name)
-                    )
+                    result.setdefault(backend, []).append((order, qualified_name))
         return {
-            backend: [
-                name for _, name in sorted(values, key=lambda item: item)
-            ]
+            backend: [name for _, name in sorted(values, key=lambda item: item)]
             for backend, values in sorted(result.items())
         }
 
@@ -1353,9 +1292,7 @@ def _rich_compatibility_models(provider: APIProviderType) -> List[APIModel]:
 
 
 APIModelRegistry.OPENAI_MODELS = _rich_compatibility_models(APIProviderType.OPENAI)
-APIModelRegistry.ANTHROPIC_MODELS = _rich_compatibility_models(
-    APIProviderType.ANTHROPIC
-)
+APIModelRegistry.ANTHROPIC_MODELS = _rich_compatibility_models(APIProviderType.ANTHROPIC)
 APIModelRegistry.GOOGLE_MODELS = _rich_compatibility_models(APIProviderType.GOOGLE)
 APIModelRegistry.GROQ_MODELS = _rich_compatibility_models(APIProviderType.GROQ)
 APIModelRegistry.COHERE_MODELS = _rich_compatibility_models(APIProviderType.COHERE)
@@ -1379,17 +1316,13 @@ def get_global_api_model_registry() -> APIModelRegistry:
 def get_api_models_for_pipeline(pipeline_type: str) -> List[APIModel]:
     """Return API models supporting a legacy pipeline type."""
 
-    return get_global_api_model_registry().get_models_by_pipeline_type(
-        pipeline_type
-    )
+    return get_global_api_model_registry().get_models_by_pipeline_type(pipeline_type)
 
 
 def get_all_pipeline_types() -> Set[str]:
     """Return all legacy pipeline names as the established set shape."""
 
-    return set(
-        get_global_api_model_registry().get_supported_pipeline_types()
-    )
+    return set(get_global_api_model_registry().get_supported_pipeline_types())
 
 
 __all__ = [

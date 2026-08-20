@@ -11,7 +11,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class RocmHardwareTemplate(BaseHardwareTemplate):
     """ROCm hardware template implementation for AMD GPUs."""
-    
+
     def __init__(self):
         """Initialize the ROCm hardware template."""
         super().__init__()
@@ -22,9 +22,9 @@ class RocmHardwareTemplate(BaseHardwareTemplate):
         self.supports_dynamic_shapes = True
         self.resource_requirements = {
             "vram_minimum": 2048,  # 2GB minimum VRAM
-            "recommended_batch_size": 4
+            "recommended_batch_size": 4,
         }
-    
+
     def get_import_statements(self) -> str:
         """Get ROCm-specific import statements."""
         return """
@@ -33,7 +33,7 @@ import os
 import torch
 import numpy as np
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get ROCm-specific initialization code."""
         return f"""
@@ -70,7 +70,7 @@ model.eval()
 if hasattr(model, "hf_device_map"):
     print(f"Device map: {{model.hf_device_map}}")
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get ROCm-specific handler creation code."""
         return f"""
@@ -83,7 +83,7 @@ handler = self.create_rocm_{task_type}_endpoint_handler(
     tokenizer=tokenizer
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get ROCm-specific inference code."""
         if task_type == "text_embedding":
@@ -136,14 +136,14 @@ predictions = scores.cpu().numpy().tolist()
 # ROCm inference for {task_type}
 outputs = endpoint(**inputs)
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get ROCm-specific cleanup code."""
         return """
 # ROCm cleanup
 torch.cuda.empty_cache()  # Works the same as CUDA for ROCm
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get ROCm-specific mock implementation code."""
         return """
@@ -154,7 +154,7 @@ mock_model.to.return_value = mock_model  # Mock the to() method
 mock_model.eval.return_value = mock_model  # Mock the eval() method
 mock_model.device = "cuda"  # Pretend we're on an AMD GPU
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get ROCm-specific hardware detection code."""
         return """
@@ -184,14 +184,16 @@ def is_available():
         print(f"Error checking ROCm availability: {e}")
         return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check ROCm compatibility with architecture type."""
         # ROCm is compatible with most architectures
         # except very specific ones that might need special attention
-        incompatible_archs = ["mixture-of-experts"]  # MoE models might be too large for ROCm devices
+        incompatible_archs = [
+            "mixture-of-experts"
+        ]  # MoE models might be too large for ROCm devices
         return arch_type not in incompatible_archs
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if ROCm is not available."""
         return "cpu"

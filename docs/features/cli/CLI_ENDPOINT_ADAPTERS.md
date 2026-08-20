@@ -107,35 +107,24 @@ from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
     ClaudeCodeAdapter,
     OpenAICodexAdapter,
     GeminiCLIAdapter,
-    register_cli_endpoint
+    register_cli_endpoint,
 )
 
 # Register Claude Code
 claude = ClaudeCodeAdapter(
     endpoint_id="claude_primary",
-    config={
-        "model": "claude-3-sonnet",
-        "max_tokens": 4096,
-        "temperature": 0.7
-    }
+    config={"model": "claude-3-sonnet", "max_tokens": 4096, "temperature": 0.7},
 )
 register_cli_endpoint(claude)
 
 # Register OpenAI
 openai = OpenAICodexAdapter(
-    endpoint_id="openai_primary",
-    config={
-        "model": "gpt-4",
-        "max_tokens": 2048
-    }
+    endpoint_id="openai_primary", config={"model": "gpt-4", "max_tokens": 2048}
 )
 register_cli_endpoint(openai)
 
 # Register Gemini
-gemini = GeminiCLIAdapter(
-    endpoint_id="gemini_primary",
-    config={"model": "gemini-pro"}
-)
+gemini = GeminiCLIAdapter(endpoint_id="gemini_primary", config={"model": "gemini-pro"})
 register_cli_endpoint(gemini)
 ```
 
@@ -158,7 +147,7 @@ result = execute_cli_inference(
     endpoint_id="claude_primary",
     prompt="Explain quantum computing in simple terms",
     task_type="text_generation",
-    timeout=30
+    timeout=30,
 )
 
 if result["status"] == "success":
@@ -176,12 +165,12 @@ result = multiplex_inference(
     prompt="Generate a Python function to sort a list",
     task_type="code_generation",
     model_preferences=[
-        "claude_cli/claude-3-sonnet",    # Try CLI first
-        "openai_cli/gpt-4",              # Fallback to OpenAI CLI
-        "openai/gpt-3.5-turbo",          # Fallback to API
-        "local/gpt2"                     # Final fallback
+        "claude_cli/claude-3-sonnet",  # Try CLI first
+        "openai_cli/gpt-4",  # Fallback to OpenAI CLI
+        "openai/gpt-3.5-turbo",  # Fallback to API
+        "local/gpt2",  # Final fallback
     ],
-    max_retries=3
+    max_retries=3,
 )
 ```
 
@@ -218,7 +207,7 @@ result = mcp.call_tool(
     cli_type="claude_cli",
     endpoint_id="my_claude_endpoint",
     model="claude-3-sonnet",
-    temperature=0.7
+    temperature=0.7,
 )
 ```
 
@@ -241,7 +230,7 @@ result = mcp.call_tool(
     endpoint_id="my_claude_endpoint",
     prompt="Your prompt here",
     task_type="text_generation",
-    timeout=30
+    timeout=30,
 )
 ```
 
@@ -262,13 +251,13 @@ All adapters support the following configuration parameters:
 
 ```python
 config = {
-    "model": "model-name",           # Model to use (required)
-    "max_tokens": 4096,              # Maximum output tokens
-    "temperature": 0.7,              # Sampling temperature (0.0-1.0)
-    "env_vars": {                    # Custom environment variables
+    "model": "model-name",  # Model to use (required)
+    "max_tokens": 4096,  # Maximum output tokens
+    "temperature": 0.7,  # Sampling temperature (0.0-1.0)
+    "env_vars": {  # Custom environment variables
         "API_KEY": "your-key",
-        "CUSTOM_VAR": "value"
-    }
+        "CUSTOM_VAR": "value",
+    },
 }
 ```
 
@@ -280,7 +269,7 @@ If the CLI tool is not in PATH, specify the path explicitly:
 adapter = ClaudeCodeAdapter(
     endpoint_id="claude_custom",
     cli_path="/usr/local/bin/claude",
-    config={"model": "claude-3-sonnet"}
+    config={"model": "claude-3-sonnet"},
 )
 ```
 
@@ -290,9 +279,7 @@ The adapters provide comprehensive error handling:
 
 ```python
 result = execute_cli_inference(
-    endpoint_id="my_endpoint",
-    prompt="Test prompt",
-    task_type="text_generation"
+    endpoint_id="my_endpoint", prompt="Test prompt", task_type="text_generation"
 )
 
 if result["status"] == "success":
@@ -355,7 +342,7 @@ CLI tools may take longer than API calls:
 result = execute_cli_inference(
     endpoint_id="my_endpoint",
     prompt=prompt,
-    timeout=60  # Longer timeout for complex tasks
+    timeout=60,  # Longer timeout for complex tasks
 )
 ```
 
@@ -365,9 +352,9 @@ Combine CLI tools with API endpoints for resilience:
 
 ```python
 model_preferences = [
-    "claude_cli/claude-3-sonnet",    # Fast, local
-    "openai/gpt-4",                  # Reliable API fallback
-    "local/gpt2"                     # Always available
+    "claude_cli/claude-3-sonnet",  # Fast, local
+    "openai/gpt-4",  # Reliable API fallback
+    "local/gpt2",  # Always available
 ]
 ```
 
@@ -378,7 +365,7 @@ Regularly check endpoint statistics to identify issues:
 ```python
 endpoints = list_cli_endpoints()
 for endpoint in endpoints:
-    if endpoint['stats']['failures'] > 10:
+    if endpoint["stats"]["failures"] > 10:
         print(f"Warning: {endpoint['endpoint_id']} has high failure rate")
 ```
 

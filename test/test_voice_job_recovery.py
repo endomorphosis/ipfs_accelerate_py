@@ -118,9 +118,7 @@ def test_submit_with_outcome_reports_exact_replays(tmp_path):
     assert queue.submit_with_outcome(**request) == ("voice-task", False)
     assert queue.submit_with_outcome(**request) == ("voice-task", True)
     with pytest.raises(ValueError, match="different work"):
-        queue.submit_with_outcome(
-            **{**request, "payload": {"text": "changed"}}
-        )
+        queue.submit_with_outcome(**{**request, "payload": {"text": "changed"}})
 
 
 def test_submit_with_outcome_reports_concurrent_replay(tmp_path):
@@ -179,10 +177,7 @@ def test_claims_are_highest_priority_first_with_fifo_tie_break(tmp_path):
 def test_atomic_priority_microbatch_claims_do_not_overlap(tmp_path):
     path = str(tmp_path / "queue.duckdb")
     queue = TaskQueue(path)
-    expected = {
-        _submit(queue, f"task-{index}", priority=(index % 10) + 1)
-        for index in range(12)
-    }
+    expected = {_submit(queue, f"task-{index}", priority=(index % 10) + 1) for index in range(12)}
     barrier = threading.Barrier(3)
     claimed: list[list[str]] = []
     errors: list[BaseException] = []
@@ -227,17 +222,23 @@ def test_owned_heartbeat_extends_lease_and_expired_claim_recovers(tmp_path):
     assert claim.attempt == 1
     assert claim.lease_until is not None
 
-    assert queue.heartbeat(
-        task_id=task_id,
-        worker_id="worker-b",
-        now=claim.heartbeat_at + 1,
-    ) is False
-    assert queue.heartbeat(
-        task_id=task_id,
-        worker_id="worker-a",
-        lease_seconds=20,
-        now=claim.heartbeat_at + 1,
-    ) is True
+    assert (
+        queue.heartbeat(
+            task_id=task_id,
+            worker_id="worker-b",
+            now=claim.heartbeat_at + 1,
+        )
+        is False
+    )
+    assert (
+        queue.heartbeat(
+            task_id=task_id,
+            worker_id="worker-a",
+            lease_seconds=20,
+            now=claim.heartbeat_at + 1,
+        )
+        is True
+    )
     renewed = queue.get(task_id)
     assert renewed["lease_until"] == pytest.approx(claim.heartbeat_at + 21)
     assert queue.recover_expired_leases(now=claim.heartbeat_at + 15) == 0
@@ -295,18 +296,24 @@ def test_stale_worker_cannot_finish_recovered_claim(tmp_path):
 
     second = queue.claim_next(worker_id="worker-b")
     assert second is not None
-    assert queue.complete(
-        task_id=task_id,
-        worker_id="worker-a",
-        status="completed",
-        result={"audio": "stale"},
-    ) is False
-    assert queue.complete(
-        task_id=task_id,
-        worker_id="worker-b",
-        status="completed",
-        result={"audio": "current"},
-    ) is True
+    assert (
+        queue.complete(
+            task_id=task_id,
+            worker_id="worker-a",
+            status="completed",
+            result={"audio": "stale"},
+        )
+        is False
+    )
+    assert (
+        queue.complete(
+            task_id=task_id,
+            worker_id="worker-b",
+            status="completed",
+            result={"audio": "current"},
+        )
+        is True
+    )
     completed = queue.get(task_id)
     assert completed["status"] == "completed"
     assert completed["result"]["audio"] == "current"
@@ -433,10 +440,7 @@ def test_publicus_audio_aliases_use_physical_multi_member_batches(provider_id):
         ),
     ) as scheduler:
         results = scheduler.execute_many(
-            [
-                _provider_request(request_id, provider_id=provider_id)
-                for request_id in request_ids
-            ],
+            [_provider_request(request_id, provider_id=provider_id) for request_id in request_ids],
             wait_timeout=2,
         )
 
@@ -671,8 +675,7 @@ def test_resource_saturation_backpressures_the_candidate_wave(
     """existing `ResourceScheduler` CPU/RAM/disk/GPU/provider backpressure assertions."""
 
     lanes = [
-        LaneResourceRequirements(lane_id=f"voice-{index}", **requirements)
-        for index in range(3)
+        LaneResourceRequirements(lane_id=f"voice-{index}", **requirements) for index in range(3)
     ]
     schedule = ResourceScheduler(ResourcePolicy(max_lanes=3)).schedule(
         lanes,
@@ -731,9 +734,7 @@ def test_g016_residual_scan_closure_receipt_is_discoverable():
         Path(__file__).resolve().parents[1] / ".." / G016_RESIDUAL_SCAN_CLOSURE,
     ]
     residual_path = next((path for path in candidates if path.is_file()), None)
-    assert residual_path is not None, (
-        f"missing residual scan closure: {G016_RESIDUAL_SCAN_CLOSURE}"
-    )
+    assert residual_path is not None, f"missing residual scan closure: {G016_RESIDUAL_SCAN_CLOSURE}"
 
     residual_text = residual_path.read_text(encoding="utf-8")
     # The residual receipt must keep the repaired map and the same frozen terms.

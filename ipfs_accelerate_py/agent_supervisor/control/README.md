@@ -18,12 +18,14 @@ Transport-neutral control plane. Python, CLI, and MCP build the same OperationRe
 | Module | Path |
 | --- | --- |
 | `authorization_logic` | `control/authorization_logic.py` |
+| `campaign_public_api` | `control/campaign_public_api.py` |
 | `control_cli` | `control/control_cli.py` |
 | `control_contracts` | `control/control_contracts.py` |
 | `control_plane` | `control/control_plane.py` |
 | `execution_permit` | `control/execution_permit.py` |
 | `launch_profile_housekeeping` | `control/launch_profile_housekeeping.py` |
 | `lifecycle_orchestrator` | `control/lifecycle_orchestrator.py` |
+| `promotion_admission` | `control/promotion_admission.py` |
 
 ## Preferred imports
 

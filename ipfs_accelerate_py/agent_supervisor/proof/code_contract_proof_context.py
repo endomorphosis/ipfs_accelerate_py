@@ -28,24 +28,18 @@ from .formal_verification_contracts import (
 
 PROOF_CONTEXT_VERSION = 1
 MINIMAL_PROOF_CONTEXT_EVIDENCE = "vfs/minimal-proof-context@1"
-PROOF_CONTEXT_ITEM_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context-item@1"
-)
+PROOF_CONTEXT_ITEM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context-item@1"
 PROOF_CONTEXT_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context-request@1"
 )
-PROOF_CONTEXT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context@1"
-)
+PROOF_CONTEXT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context@1"
 PROOF_CONTEXT_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context-receipt@1"
 )
 PROOF_CONTEXT_DELTA_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-proof-context-delta@1"
 )
-EXPANSION_HANDLE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-context-expansion-handle@1"
-)
+EXPANSION_HANDLE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-context-expansion-handle@1"
 DEFAULT_MAX_CONTEXT_BYTES = 12_288
 DEFAULT_MAX_CONTEXT_ITEMS = 256
 
@@ -119,9 +113,7 @@ def _optional_text(value: Any, name: str) -> str:
 
 def _sorted_ids(values: Iterable[Any], name: str) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray, memoryview)):
-        raise CodeContractProofContextError(
-            f"{name} values must be an iterable of identifiers"
-        )
+        raise CodeContractProofContextError(f"{name} values must be an iterable of identifiers")
     result: set[str] = set()
     for value in values or ():
         result.add(_required_text(value, name))
@@ -147,34 +139,25 @@ def _plain(value: Any, path: str = "value") -> Any:
         result: dict[str, Any] = {}
         for raw_key, raw_value in value.items():
             if not isinstance(raw_key, str) or not raw_key.strip():
-                raise CodeContractProofContextError(
-                    f"{path} keys must be non-empty strings"
-                )
+                raise CodeContractProofContextError(f"{path} keys must be non-empty strings")
             key = raw_key.strip()
             if key.casefold() in _FORBIDDEN_EMBEDDED_KEYS:
                 raise CodeContractProofContextError(
-                    f"{path}.{key} embeds source or a full graph; use an "
-                    "expansion handle"
+                    f"{path}.{key} embeds source or a full graph; use an expansion handle"
                 )
             result[key] = _plain(raw_value, f"{path}.{key}")
         return result
     if isinstance(value, Sequence):
         return [_plain(item, f"{path}[]") for item in value]
-    raise CodeContractProofContextError(
-        f"{path} has unsupported value type {type(value).__name__}"
-    )
+    raise CodeContractProofContextError(f"{path} has unsupported value type {type(value).__name__}")
 
 
 def _freeze(value: Any) -> Any:
     """Recursively freeze canonical data retained by a frozen dataclass."""
 
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze(item) for key, item in value.items()}
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return tuple(_freeze(item) for item in value)
     return value
 
@@ -184,9 +167,7 @@ def _thaw(value: Any) -> Any:
 
     if isinstance(value, Mapping):
         return {key: _thaw(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_thaw(item) for item in value]
     return value
 
@@ -197,9 +178,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(str(value or "").strip())
     except ValueError as exc:
-        raise CodeContractProofContextError(
-            f"unsupported {name}: {value!r}"
-        ) from exc
+        raise CodeContractProofContextError(f"unsupported {name}: {value!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -213,9 +192,7 @@ class ProofContextLimits:
         for name in ("max_bytes", "max_items"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise CodeContractProofContextError(
-                    f"{name} must be a positive integer"
-                )
+                raise CodeContractProofContextError(f"{name} must be a positive integer")
 
     def to_dict(self) -> dict[str, int]:
         return {"max_bytes": self.max_bytes, "max_items": self.max_items}
@@ -255,9 +232,7 @@ class ProofContextItem:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "item_id", _required_text(self.item_id, "item_id"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProofContextItemKind, "item kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ProofContextItemKind, "item kind"))
         if not isinstance(self.payload, Mapping):
             raise CodeContractProofContextError("payload must be a mapping")
         if not isinstance(self.metadata, Mapping):
@@ -289,9 +264,7 @@ class ProofContextItem:
         )
         if self.item_id in self.dependency_ids:
             # Self references add no information and make "smallest" ambiguous.
-            raise CodeContractProofContextError(
-                f"item {self.item_id!r} cannot depend on itself"
-            )
+            raise CodeContractProofContextError(f"item {self.item_id!r} cannot depend on itself")
 
     @property
     def content_id(self) -> str:
@@ -347,9 +320,7 @@ class ExpansionHandle:
 
     def __post_init__(self) -> None:
         for name in ("item_id", "item_kind", "target_content_id"):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         object.__setattr__(self, "locator", _optional_text(self.locator, "locator"))
         object.__setattr__(self, "reason", _optional_text(self.reason, "reason"))
 
@@ -399,9 +370,7 @@ class InclusionDecision:
             _sorted_ids(self.required_by, "required_by"),
         )
         for name in ("item_content_id", "expansion_handle_id"):
-            object.__setattr__(
-                self, name, _optional_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_text(getattr(self, name), name))
 
     @property
     def included(self) -> bool:
@@ -443,26 +412,20 @@ class ProgramGraphSliceReference:
     def __post_init__(self) -> None:
         object.__setattr__(self, "slice_id", _required_text(self.slice_id, "slice_id"))
         for name in ("query_id", "forest_id", "graph_id"):
-            object.__setattr__(
-                self, name, _optional_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_text(getattr(self, name), name))
         for name in ("complete", "minimal", "dependency_complete", "truncated"):
             if not isinstance(getattr(self, name), bool):
                 raise CodeContractProofContextError(f"{name} must be a boolean")
         for name in ("node_count", "edge_count"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise CodeContractProofContextError(
-                    f"{name} must be a non-negative integer"
-                )
+                raise CodeContractProofContextError(f"{name} must be a non-negative integer")
         for name in (
             "missing_node_ids",
             "omitted_dependencies",
             "truncation_reasons",
         ):
-            object.__setattr__(
-                self, name, _sorted_ids(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _sorted_ids(getattr(self, name), name))
 
     @property
     def incomplete(self) -> bool:
@@ -519,13 +482,9 @@ class ProgramGraphSliceReference:
             if values is None:
                 continue
             if isinstance(values, (str, bytes, bytearray, memoryview)):
-                raise CodeContractProofContextError(
-                    f"{name} must be a collection"
-                )
+                raise CodeContractProofContextError(f"{name} must be a collection")
             if not isinstance(values, (Sequence, set, frozenset)):
-                raise CodeContractProofContextError(
-                    f"{name} must be a collection"
-                )
+                raise CodeContractProofContextError(f"{name} must be a collection")
         return cls(
             slice_id=slice_id,
             query_id=raw.get("query_id", ""),
@@ -535,16 +494,8 @@ class ProgramGraphSliceReference:
             minimal=raw.get("minimal", False),
             dependency_complete=raw.get("dependency_complete", False),
             truncated=raw.get("truncated", False),
-            node_count=(
-                raw["node_count"]
-                if "node_count" in raw
-                else len(node_ids or ())
-            ),
-            edge_count=(
-                raw["edge_count"]
-                if "edge_count" in raw
-                else len(edge_ids or ())
-            ),
+            node_count=(raw["node_count"] if "node_count" in raw else len(node_ids or ())),
+            edge_count=(raw["edge_count"] if "edge_count" in raw else len(edge_ids or ())),
             missing_node_ids=tuple(raw.get("missing_node_ids") or ()),
             omitted_dependencies=tuple(raw.get("omitted_dependencies") or ()),
             truncation_reasons=tuple(raw.get("truncation_reasons") or ()),
@@ -572,17 +523,13 @@ class ProofContextRequest:
         items: list[ProofContextItem] = []
         for value in self.items or ():
             item = (
-                value
-                if isinstance(value, ProofContextItem)
-                else ProofContextItem.from_dict(value)
+                value if isinstance(value, ProofContextItem) else ProofContextItem.from_dict(value)
             )
             items.append(item)
         ids = [item.item_id for item in items]
         if len(ids) != len(set(ids)):
             raise CodeContractProofContextError("item_id values must be unique")
-        object.__setattr__(
-            self, "items", tuple(sorted(items, key=lambda item: item.item_id))
-        )
+        object.__setattr__(self, "items", tuple(sorted(items, key=lambda item: item.item_id)))
         object.__setattr__(
             self,
             "required_item_ids",
@@ -597,9 +544,7 @@ class ProofContextRequest:
         object.__setattr__(self, "policy_id", _required_text(self.policy_id, "policy_id"))
         if not isinstance(self.metadata, Mapping):
             raise CodeContractProofContextError("metadata must be a mapping")
-        object.__setattr__(
-            self, "metadata", _freeze(_plain(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", _freeze(_plain(self.metadata, "metadata")))
 
     @property
     def request_id(self) -> str:
@@ -614,9 +559,7 @@ class ProofContextRequest:
             "required_item_ids": list(self.required_item_ids),
             "limits": self.limits.to_dict(),
             "program_graph_slice": (
-                self.program_graph_slice.to_dict()
-                if self.program_graph_slice is not None
-                else None
+                self.program_graph_slice.to_dict() if self.program_graph_slice is not None else None
             ),
             "policy_id": self.policy_id,
             "metadata": _thaw(self.metadata),
@@ -679,25 +622,17 @@ class ProofContextReceipt:
             "dependency_fingerprint",
             "decision_digest",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "status", _enum(self.status, ProofContextStatus, "status")
-        )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        object.__setattr__(self, "status", _enum(self.status, ProofContextStatus, "status"))
         for name in (
             "included_item_ids",
             "included_content_ids",
             "incomplete_reasons",
             "invalidated_receipt_ids",
         ):
-            object.__setattr__(
-                self, name, _sorted_ids(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _sorted_ids(getattr(self, name), name))
         if not isinstance(self.metrics, ProofContextMetrics):
-            raise CodeContractProofContextError(
-                "metrics must be ProofContextMetrics"
-            )
+            raise CodeContractProofContextError("metrics must be ProofContextMetrics")
 
     @property
     def receipt_id(self) -> str:
@@ -770,9 +705,7 @@ class CompiledProofContext:
             status=self.status,
             incomplete_reasons=self.incomplete_reasons,
             metrics=self.metrics,
-            decision_digest=content_identity(
-                [decision.to_dict() for decision in self.decisions]
-            ),
+            decision_digest=content_identity([decision.to_dict() for decision in self.decisions]),
             invalidated_receipt_ids=self.invalidated_receipt_ids,
         )
 
@@ -784,9 +717,7 @@ class CompiledProofContext:
             "obligation_id": self.obligation_id,
             "items": [item.to_dict() for item in self.items],
             "decisions": [decision.to_dict() for decision in self.decisions],
-            "expansion_handles": [
-                handle.to_dict() for handle in self.expansion_handles
-            ],
+            "expansion_handles": [handle.to_dict() for handle in self.expansion_handles],
             "status": self.status.value,
             "complete": self.complete,
             "incomplete_reasons": list(self.incomplete_reasons),
@@ -794,9 +725,7 @@ class CompiledProofContext:
             "request_id": self.request_id,
             "metrics": self.metrics.to_dict(),
             "program_graph_slice": (
-                self.program_graph_slice.to_dict()
-                if self.program_graph_slice is not None
-                else None
+                self.program_graph_slice.to_dict() if self.program_graph_slice is not None else None
             ),
             "invalidated_receipt_ids": list(self.invalidated_receipt_ids),
             "required_inputs_truncated": False,
@@ -858,9 +787,7 @@ def _missing_handle(item_id: str) -> ExpansionHandle:
     )
 
 
-def _transmitted_payload(
-    obligation_id: str, items: Sequence[ProofContextItem]
-) -> dict[str, Any]:
+def _transmitted_payload(obligation_id: str, items: Sequence[ProofContextItem]) -> dict[str, Any]:
     return {
         "schema": PROOF_CONTEXT_SCHEMA,
         "version": PROOF_CONTEXT_VERSION,
@@ -904,9 +831,7 @@ def _compile(
     roots = (request.obligation_id, *request.required_item_ids)
     selected_ids, missing = _closure(roots, item_by_id)
     if obligation is not None and obligation.kind is not ProofContextItemKind.OBLIGATION:
-        raise CodeContractProofContextError(
-            "obligation_id must identify an obligation item"
-        )
+        raise CodeContractProofContextError("obligation_id must identify an obligation item")
 
     items = tuple(item_by_id[item_id] for item_id in sorted(selected_ids))
     reverse_required_by: dict[str, set[str]] = {
@@ -992,14 +917,8 @@ def _compile(
         obligation_id=request.obligation_id,
         items=items,
         decisions=tuple(sorted(decisions, key=lambda item: item.item_id)),
-        expansion_handles=tuple(
-            handles_by_id[item_id] for item_id in sorted(handles_by_id)
-        ),
-        status=(
-            ProofContextStatus.INCOMPLETE
-            if reasons
-            else ProofContextStatus.COMPLETE
-        ),
+        expansion_handles=tuple(handles_by_id[item_id] for item_id in sorted(handles_by_id)),
+        status=(ProofContextStatus.INCOMPLETE if reasons else ProofContextStatus.COMPLETE),
         incomplete_reasons=reasons,
         dependency_fingerprint=content_identity(dependency_payload),
         request_id=request.request_id,
@@ -1048,13 +967,9 @@ class ProofContextDelta:
             "items": [item.to_dict() for item in self.items],
             "transmitted_item_ids": list(self.transmitted_item_ids),
             "decisions": [item.to_dict() for item in self.decisions],
-            "expansion_handles": [
-                item.to_dict() for item in self.expansion_handles
-            ],
+            "expansion_handles": [item.to_dict() for item in self.expansion_handles],
             "counterexample_item_ids": list(self.counterexample_item_ids),
-            "requested_evidence_item_ids": list(
-                self.requested_evidence_item_ids
-            ),
+            "requested_evidence_item_ids": list(self.requested_evidence_item_ids),
             "status": self.status.value,
             "complete": self.complete,
             "incomplete_reasons": list(self.incomplete_reasons),
@@ -1084,8 +999,7 @@ def _receipt_matches_compiled_base(
     expected = current.receipt
     return bool(
         receipt.obligation_id == expected.obligation_id
-        and receipt.dependency_fingerprint
-        == expected.dependency_fingerprint
+        and receipt.dependency_fingerprint == expected.dependency_fingerprint
         and receipt.included_item_ids == expected.included_item_ids
         and receipt.included_content_ids == expected.included_content_ids
         and receipt.status is expected.status
@@ -1106,11 +1020,7 @@ def _invalid_delta(
 
     metrics = ProofContextMetrics(
         item_count=0,
-        byte_count=len(
-            canonical_json_bytes(
-                _transmitted_payload(request.obligation_id, ())
-            )
-        ),
+        byte_count=len(canonical_json_bytes(_transmitted_payload(request.obligation_id, ()))),
         item_bytes=0,
         max_items=request.limits.max_items,
         max_bytes=request.limits.max_bytes,
@@ -1146,15 +1056,11 @@ class CodeContractProofContextCompiler:
         previous_receipt: ProofContextReceipt | None = None,
     ) -> CompiledProofContext:
         if not isinstance(request, ProofContextRequest):
-            raise CodeContractProofContextError(
-                "request must be ProofContextRequest"
-            )
+            raise CodeContractProofContextError("request must be ProofContextRequest")
         invalidated: tuple[str, ...] = ()
         if previous_receipt is not None:
             if not isinstance(previous_receipt, ProofContextReceipt):
-                raise CodeContractProofContextError(
-                    "previous_receipt must be ProofContextReceipt"
-                )
+                raise CodeContractProofContextError("previous_receipt must be ProofContextReceipt")
             if self._receipt_matches_request(previous_receipt, request):
                 invalidated = previous_receipt.invalidated_receipt_ids
             else:
@@ -1196,24 +1102,13 @@ class CodeContractProofContextCompiler:
         requested_evidence_item_ids: Iterable[str] = (),
     ) -> ProofContextDelta:
         if not isinstance(request, ProofContextRequest):
-            raise CodeContractProofContextError(
-                "request must be ProofContextRequest"
-            )
+            raise CodeContractProofContextError("request must be ProofContextRequest")
         if not isinstance(base_receipt, ProofContextReceipt):
-            raise CodeContractProofContextError(
-                "base_receipt must be ProofContextReceipt"
-            )
-        counterexample_ids = _sorted_ids(
-            counterexample_item_ids, "counterexample_item_id"
-        )
-        evidence_ids = _sorted_ids(
-            requested_evidence_item_ids, "requested_evidence_item_id"
-        )
+            raise CodeContractProofContextError("base_receipt must be ProofContextReceipt")
+        counterexample_ids = _sorted_ids(counterexample_item_ids, "counterexample_item_id")
+        evidence_ids = _sorted_ids(requested_evidence_item_ids, "requested_evidence_item_id")
         current = _compile(request)
-        if (
-            base_receipt.dependency_fingerprint
-            != current.dependency_fingerprint
-        ):
+        if base_receipt.dependency_fingerprint != current.dependency_fingerprint:
             return _invalid_delta(
                 request,
                 base_receipt,
@@ -1237,9 +1132,7 @@ class CodeContractProofContextCompiler:
                 raise CodeContractProofContextError(
                     f"counterexample item {item_id!r} has kind {item.kind.value!r}"
                 )
-        selected, missing = _closure(
-            (*counterexample_ids, *evidence_ids), item_by_id
-        )
+        selected, missing = _closure((*counterexample_ids, *evidence_ids), item_by_id)
         already_sent = set(base_receipt.included_item_ids)
         transmitted_ids = selected - already_sent
         items = tuple(item_by_id[item_id] for item_id in sorted(transmitted_ids))
@@ -1248,9 +1141,7 @@ class CodeContractProofContextCompiler:
         root_kinds: dict[str, str] = {
             item_id: "new_counterexample" for item_id in counterexample_ids
         }
-        root_kinds.update(
-            {item_id: "requested_evidence" for item_id in evidence_ids}
-        )
+        root_kinds.update({item_id: "requested_evidence" for item_id in evidence_ids})
         for item in items:
             reason = root_kinds.get(item.item_id, "new_required_dependency")
             handle = _handle_for(item, reason)
@@ -1295,16 +1186,10 @@ class CodeContractProofContextCompiler:
             base_dependency_fingerprint=base_receipt.dependency_fingerprint,
             items=items,
             decisions=tuple(sorted(decisions, key=lambda item: item.item_id)),
-            expansion_handles=tuple(
-                sorted(handles, key=lambda item: item.item_id)
-            ),
+            expansion_handles=tuple(sorted(handles, key=lambda item: item.item_id)),
             counterexample_item_ids=counterexample_ids,
             requested_evidence_item_ids=evidence_ids,
-            status=(
-                ProofContextStatus.INCOMPLETE
-                if reasons
-                else ProofContextStatus.COMPLETE
-            ),
+            status=(ProofContextStatus.INCOMPLETE if reasons else ProofContextStatus.COMPLETE),
             incomplete_reasons=tuple(sorted(reasons)),
             metrics=metrics,
         )
@@ -1323,9 +1208,7 @@ def compile_code_contract_proof_context(
 ) -> CompiledProofContext:
     """Compile and cache the smallest closed context for ``request``."""
 
-    return (compiler or _DEFAULT_COMPILER).compile(
-        request, previous_receipt=previous_receipt
-    )
+    return (compiler or _DEFAULT_COMPILER).compile(request, previous_receipt=previous_receipt)
 
 
 compile_proof_context = compile_code_contract_proof_context

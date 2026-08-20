@@ -98,7 +98,9 @@ class TestMCPServerUNI132DevelopmentTools(unittest.TestCase):
         async def _run() -> None:
             result = await vscode_cli_execute(command=["--version"], timeout=0)
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("timeout must be an integer between 1 and 300", str(result.get("error", "")))
+            self.assertIn(
+                "timeout must be an integer between 1 and 300", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

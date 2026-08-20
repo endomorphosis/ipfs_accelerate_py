@@ -96,9 +96,7 @@ def _policy(
                 minimum_risk=RiskLevel.HIGH,
                 invariant_classes=(INVARIANT,),
                 required_assurance=AssuranceLevel.KERNEL_VERIFIED,
-                fallback_validations=(
-                    ("pytest:lease-regression",) if allow_fallback else ()
-                ),
+                fallback_validations=(("pytest:lease-regression",) if allow_fallback else ()),
                 allow_fallback=allow_fallback,
             ),
         ),
@@ -257,9 +255,7 @@ def test_shadow_missing_assurance_promotes_and_records_exact_would_block(
     assert receipt.decision.results[0].proof_status is ProofResultStatus.MISSING
     assert receipt.provider_status == {"status": "unavailable"}
     attempt_receipt = next((tmp_path / "train-state/proof-gates/attempts").glob("*.json"))
-    persisted = MergeProofGateReceipt.from_dict(
-        json.loads(attempt_receipt.read_text())
-    )
+    persisted = MergeProofGateReceipt.from_dict(json.loads(attempt_receipt.read_text()))
     assert persisted.receipt_id == receipt.receipt_id
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
 
@@ -321,11 +317,7 @@ def test_enforcement_missing_or_timed_out_assurance_blocks_before_callback(
     merge_calls: list[str] = []
 
     def gate(_request: Any, **_kwargs: Any) -> dict[str, Any]:
-        return (
-            {"provider_status": {"status": provider_status}}
-            if provider_status
-            else {}
-        )
+        return {"provider_status": {"status": provider_status}} if provider_status else {}
 
     result = _train(
         repo,
@@ -401,9 +393,7 @@ def test_fallback_requires_named_passing_validation_with_durable_receipt(
             selection=selection,
             repository_tree_id=tree_id,
             outcomes=[unsupported],
-            validations=[
-                ValidationOutcome("pytest:lease-regression", True, receipt_id="")
-            ],
+            validations=[ValidationOutcome("pytest:lease-regression", True, receipt_id="")],
             now="2026-07-23T12:00:00Z",
         )
 
@@ -423,9 +413,7 @@ def test_fallback_requires_named_passing_validation_with_durable_receipt(
     )
     assert receipt.allowed is True
     assert receipt.decision.results[0].fallback_satisfied is True
-    assert receipt.validation_receipt_ids == (
-        "validation-receipt:lease-regression",
-    )
+    assert receipt.validation_receipt_ids == ("validation-receipt:lease-regression",)
 
 
 def test_bounded_operator_override_is_bound_into_success_receipt(
@@ -540,9 +528,7 @@ def test_provider_timeout_retry_cannot_repin_candidate_to_weaker_policy(
         queue,
         tmp_path,
         policy=enforcement,
-        proof_gate=lambda _request, **_kwargs: {
-            "provider_status": {"status": "timed_out"}
-        },
+        proof_gate=lambda _request, **_kwargs: {"provider_status": {"status": "timed_out"}},
         merge_callback=lambda _request: {"merged": True},
         max_attempts=3,
     )
@@ -628,7 +614,5 @@ def test_builtin_rebase_refuses_to_promote_a_tree_different_from_proved_tree(
 
     assert result is not None
     assert result["reason"] == "proof_gate_tree_mismatch"
-    assert result["proof_repository_tree_id"] != result[
-        "integration_repository_tree_id"
-    ]
+    assert result["proof_repository_tree_id"] != result["integration_repository_tree_id"]
     assert _git(repo, "rev-parse", "main") == target_before

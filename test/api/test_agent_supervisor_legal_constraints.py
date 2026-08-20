@@ -73,9 +73,7 @@ def _normalized(
     )
     registry = IRRegistry()
     registry.register_local_artifact(reference, encoded)
-    loaded = registry.load(
-        IRLoadRequest(reference=reference, family=IRFamily.LEGAL)
-    )
+    loaded = registry.load(IRLoadRequest(reference=reference, family=IRFamily.LEGAL))
     assert loaded.status is IRLoadStatus.VERIFIED
     return IRAdapterRegistry().normalize(loaded).require_artifact()
 
@@ -148,30 +146,21 @@ def test_exact_selection_compiles_norms_views_dependencies_and_source_bindings()
 
     assert result.status is LegalCompilationStatus.COMPLETE
     assert result.outcome is LegalApplicabilityOutcome.APPLICABLE
-    assert [item.provision_id for item in result.obligations] == [
-        "norm:obligation"
-    ]
+    assert [item.provision_id for item in result.obligations] == ["norm:obligation"]
     assert {item.provision_id for item in result.inapplicable} == {
         "norm:similar-but-wrong-action",
         "norm:similar-but-wrong-jurisdiction",
     }
     assert result.selected_formal_view_ids == ("view:deontic",)
-    assert [item.provision_id for item in result.assumptions] == [
-        "assumption:reviewed-source"
-    ]
-    assert [item.obligation_id for item in result.proof_obligations] == [
-        "proof:compliance"
-    ]
+    assert [item.provision_id for item in result.assumptions] == ["assumption:reviewed-source"]
+    assert [item.obligation_id for item in result.proof_obligations] == ["proof:compliance"]
     constraint = result.obligations[0]
     assert constraint.source_binding.legal_root_cid_v1 == artifact.root_cid_v1
     assert constraint.source_binding.source_references
     assert constraint.source_binding.provenance_references
     assert result.authoritative_scan_complete
     assert not result.to_dict()["semantic_candidates_are_authority"]
-    assert (
-        result.to_dict()["requirement_id"]
-        == LEGAL_APPLICABILITY_REQUIREMENT_ID
-    )
+    assert result.to_dict()["requirement_id"] == LEGAL_APPLICABILITY_REQUIREMENT_ID
 
 
 def test_legal_permission_without_securityir_authorization_never_admits_action() -> None:
@@ -181,9 +170,7 @@ def test_legal_permission_without_securityir_authorization_never_admits_action()
 
     assert result.status is LegalCompilationStatus.COMPLETE
     assert result.legally_permitted
-    assert [item.modality for item in result.permissions] == [
-        LegalModality.PERMISSION
-    ]
+    assert [item.modality for item in result.permissions] == [LegalModality.PERMISSION]
     assert not result.grants_security_authorization
     assert not result.grants_execution_authority
     assert not result.action_admitted
@@ -238,16 +225,10 @@ def test_exceptions_precedence_conflict_expiry_and_supersession_are_explicit() -
         "norm:conflict-permission",
         "norm:conflict-prohibition",
     }
-    assert [item.provision_id for item in result.expired] == [
-        "norm:old-permission"
-    ]
-    assert [item.provision_id for item in result.superseded] == [
-        "norm:superseded-permission"
-    ]
+    assert [item.provision_id for item in result.expired] == ["norm:old-permission"]
+    assert [item.provision_id for item in result.superseded] == ["norm:superseded-permission"]
     excepted = next(
-        item
-        for item in result.constraints
-        if item.provision_id == "norm:excepted-prohibition"
+        item for item in result.constraints if item.provision_id == "norm:excepted-prohibition"
     )
     assert excepted.outcome is LegalApplicabilityOutcome.APPLICABLE
     assert not excepted.active
@@ -265,12 +246,8 @@ def test_higher_precedence_norm_deterministically_defeats_opposed_norm() -> None
     result = compile_legal_constraints(artifact, _query(artifact))
 
     assert result.status is LegalCompilationStatus.PROHIBITED
-    assert [item.provision_id for item in result.prohibitions] == [
-        "norm:prohibition"
-    ]
-    assert [item.provision_id for item in result.superseded] == [
-        "norm:permission"
-    ]
+    assert [item.provision_id for item in result.prohibitions] == ["norm:prohibition"]
+    assert [item.provision_id for item in result.superseded] == ["norm:permission"]
     assert result.superseded[0].defeated_by == ("norm:prohibition",)
 
 
@@ -304,13 +281,9 @@ def test_sourced_applicability_conditions_are_exact_and_missing_facts_are_unknow
     missing = compile_legal_constraints(artifact, _query(artifact))
 
     assert applicable.status is LegalCompilationStatus.COMPLETE
-    assert [item.provision_id for item in applicable.permissions] == [
-        "norm:conditional"
-    ]
+    assert [item.provision_id for item in applicable.permissions] == ["norm:conditional"]
     assert missing.status is LegalCompilationStatus.UNKNOWN
-    assert missing.unknown[0].reason_codes == (
-        "missing_required_applicability_fact",
-    )
+    assert missing.unknown[0].reason_codes == ("missing_required_applicability_fact",)
 
 
 @pytest.mark.parametrize(
@@ -358,9 +331,7 @@ def test_mandatory_exception_modality_and_source_fail_closed(
         LegalCompilationStatus.UNKNOWN,
         LegalCompilationStatus.REVIEW_REQUIRED,
     }
-    assert reason in {
-        code for item in result.constraints for code in item.reason_codes
-    }
+    assert reason in {code for item in result.constraints for code in item.reason_codes}
 
 
 def test_unknown_missing_scope_and_changed_or_missing_root_fail_closed() -> None:

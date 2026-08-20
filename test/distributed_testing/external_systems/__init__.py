@@ -18,10 +18,10 @@ different systems and make it easy to add new connectors.
 
 # Import standardized interface
 from .api_interface import (
-    ExternalSystemInterface, 
+    ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,
-    ExternalSystemFactory
+    ExternalSystemFactory,
 )
 
 # Import implementation classes
@@ -39,5 +39,5 @@ __all__ = [
     "JiraConnector",
     "SlackConnector",
     "DiscordConnector",
-    "TelegramConnector"
+    "TelegramConnector",
 ]
