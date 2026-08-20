@@ -112,7 +112,12 @@ from .provider_capacity_monitor import (
     ProviderCapacityMonitorConfig,
     count_active_cli_processes,
 )
-from .resource_scheduler import sample_host_resources
+from .resource_scheduler import (
+    GENERIC_BUNDLE_RESOURCE_CLASSES,
+    LEGACY_RESOURCE_CLASSES,
+    PROOF_RESOURCE_CLASSES,
+    sample_host_resources,
+)
 
 SCHEDULER_SCHEMA_PATTERN = re.compile(
     r"^ipfs_accelerate_py\.agent_supervisor\."
@@ -1107,6 +1112,29 @@ def _plan_authority_roots(
     )
 
 
+def _configured_board_host_slots(board: "ConfiguredBoard") -> tuple[int, int]:
+    """Return configured CPU/process slot ceilings, at least max_lanes."""
+
+    host_payload = board.payload.get("host_capacity")
+    if host_payload is None:
+        return board.max_lanes, board.max_lanes
+    if not isinstance(host_payload, Mapping):
+        raise ConfiguredBoardError("host_capacity must be an object")
+    cpu_slots = _positive_int(
+        host_payload.get("cpu_slots"),
+        field="host_capacity.cpu_slots",
+    )
+    process_slots = _positive_int(
+        host_payload.get("process_slots"),
+        field="host_capacity.process_slots",
+    )
+    if cpu_slots < board.max_lanes or process_slots < board.max_lanes:
+        raise ConfiguredBoardError(
+            "host_capacity slots must be at least max_lanes"
+        )
+    return cpu_slots, process_slots
+
+
 def configured_board_capacity_observation(
     board: "ConfiguredBoard",
     *,
@@ -1122,23 +1150,37 @@ def configured_board_capacity_observation(
     """
 
     if now_ms is None:
-        # Freshness is measured only against this process's trusted local
-        # clock.  Provider observations are evidence, never clock authority;
-        # in particular a future-dated record must not advance its own
-        # freshness boundary.
-        current_ms = int(time.time() * 1000)
+        current_ms = None
     elif isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms <= 0:
         raise ConfiguredBoardError("capacity observation time is invalid")
     else:
         current_ms = now_ms
-    host = dict(
-        host_capacity_snapshot
-        or sample_host_resources(
+    cpu_slots, process_slots = _configured_board_host_slots(board)
+    worker_limit = max(board.max_lanes, cpu_slots, process_slots)
+    if host_capacity_snapshot is None:
+        host = sample_host_resources(
             board.repo_root,
-            worker_limit=board.max_lanes,
+            worker_limit=worker_limit,
             active_phase="execution",
         ).to_dict()
-    )
+        host["cpu_slots"] = cpu_slots
+        host["process_slots"] = process_slots
+        host["worker_limit"] = worker_limit
+        host["available_worker_capacity"] = max(
+            0, worker_limit - int(host.get("active_workers") or 0)
+        )
+        if _eaaef_plan_bound_profile(board):
+            host["resource_classes"] = list(
+                dict.fromkeys(
+                    (
+                        *LEGACY_RESOURCE_CLASSES,
+                        *GENERIC_BUNDLE_RESOURCE_CLASSES,
+                        *PROOF_RESOURCE_CLASSES,
+                    )
+                )
+            )
+    else:
+        host = dict(host_capacity_snapshot)
     provider_payload = board.payload.get("provider")
     provider_payload = (
         provider_payload if isinstance(provider_payload, Mapping) else {}
@@ -1193,6 +1235,12 @@ def configured_board_capacity_observation(
         providers = tuple(dict(item) for item in provider_capacity_snapshots)
     if not providers:
         raise ConfiguredBoardError("fresh provider capacity evidence is required")
+    if current_ms is None:
+        # Freshness is measured only against this process's trusted local
+        # clock, and only after the samples for this observation exist.
+        # Provider timestamps are evidence, never clock authority; a
+        # future-dated record must not advance its own freshness boundary.
+        current_ms = int(time.time() * 1000)
     return host, providers, current_ms
 
 
@@ -2356,6 +2404,22 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "provider.max_concurrency is lower than max_lanes"
         )
+    host_capacity_cfg = payload.get("host_capacity")
+    if host_capacity_cfg is not None:
+        if not isinstance(host_capacity_cfg, dict):
+            raise ConfiguredBoardError("host_capacity must be an object")
+        host_cpu_slots = _positive_int(
+            host_capacity_cfg.get("cpu_slots"),
+            field="host_capacity.cpu_slots",
+        )
+        host_process_slots = _positive_int(
+            host_capacity_cfg.get("process_slots"),
+            field="host_capacity.process_slots",
+        )
+        if host_cpu_slots < max_lanes or host_process_slots < max_lanes:
+            raise ConfiguredBoardError(
+                "host_capacity slots must be at least max_lanes"
+            )
     for field in (
         "strict_task_sharding",
         "exit_when_all_tracks_terminal",

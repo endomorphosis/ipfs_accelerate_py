@@ -15,6 +15,10 @@
   "materialization_attempt_history_path": "docs/architecture/external_agent_autonomous_execution_fabric/bootstrap_materialization_attempts.json",
   "merge_target_branch": "integration/external-agent-autonomous-execution-fabric-v1",
   "max_lanes": 5,
+  "host_capacity": {
+    "cpu_slots": 64,
+    "process_slots": 64
+  },
   "lanes": [
     {"index": 0, "name": "eaaef-lane-0", "strict_shard_remainder": 0},
     {"index": 1, "name": "eaaef-lane-1", "strict_shard_remainder": 1},
@@ -205,7 +209,7 @@
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_trigger": "primary_quota_or_auth_unavailable",
     "fallback_reasoning_effort": "high",
-    "max_concurrency": 5,
+    "max_concurrency": 64,
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false,
     "route_authorization_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/provider-route-authorization-117ca803538e4f1063401c8b91fc047fd5419557.json"
