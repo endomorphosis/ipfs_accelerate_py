@@ -1,0 +1,36 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.autonomy.paired-benchmark-manifest@1",
+  "program_id": "agent-supervisor-autonomous-meta-controller-v1",
+  "baseline": {
+    "repository_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "repository_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+    "objective_revision": "APMC-G000-bootstrap-v1",
+    "provider_fixture": "hermetic-no-paid-provider-v1",
+    "model_configuration": "no-live-model-quality-claim",
+    "capability_fixture": "duckdb-1.5.5-quack-c154811-ducklake-projection-held-v1",
+    "fault_schedule": "apmc-fixed-fault-schedule-v1",
+    "policy": "apmc-closed-autonomy-baseline-v1",
+    "token_accounting": "existing-provider-usage-and-token-ledgers-v1",
+    "human_decision_fixture": "apmc-bounded-human-answers-v1"
+  },
+  "candidate": {
+    "repository_commit": "unsealed",
+    "repository_tree": "unsealed"
+  },
+  "corpus": {
+    "path": "benchmarks/agent_supervisor/autonomous_meta_controller/cases.json",
+    "sha256": "942c5dbbcd0eaf8fc27cb8fdcf672ce1e6fd5795e9c0bcd590bcb7beb33b2709",
+    "seed": 20260820,
+    "case_count": 16
+  },
+  "measurements": {
+    "status": "not_run",
+    "baseline_receipt_id": null,
+    "candidate_receipt_id": null,
+    "token_and_model_call_change": null,
+    "human_intervention_change": null,
+    "safety_gate_result": null
+  },
+  "promotion_eligible": false,
+  "non_promotion_reason": "paired baseline and candidate execution have not run"
+}

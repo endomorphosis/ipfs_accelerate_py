@@ -1,0 +1,210 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.autonomous-meta-controller.scheduler_config@1",
+  "taskboard_path": "docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_autonomous_meta_controller.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_AUTONOMOUS_META_CONTROLLER_PLAN.md",
+  "validator_path": "scripts/validate_agent_supervisor_autonomous_meta_controller_board.py",
+  "task_prefix": "APMC-",
+  "goal_prefix": "APMC-G",
+  "board_namespace": "agent-supervisor-autonomous-meta-controller-v1",
+  "merge_target_branch": "codex/agent-supervisor-autonomous-meta-controller-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "accelerator_required_branch": "codex/agent-supervisor-autonomous-meta-controller-v1",
+    "require_clean_checkout_at_launch": true,
+    "record_repository_revision_at_launch": true,
+    "bootstrap_task_source": "duckdb",
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 21,
+    "completed_task_ids": [],
+    "ready_task_ids": [
+      "APMC-000"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "APMC-020",
+    "goal_count": 12,
+    "root_goal_id": "APMC-G000"
+  },
+  "database_program": {
+    "authority_mode": "quack",
+    "task_source_kind": "duckdb",
+    "endpoint_secret_handle": "handle:apmc-20260820",
+    "quack_endpoint": "quack:127.0.0.1:45231",
+    "store_id": "state/agent_supervisor_autonomous_meta_controller/control.duckdb",
+    "store_generation": "1",
+    "schema_revision": "1",
+    "event_store_path": "state/agent_supervisor_autonomous_meta_controller/events",
+    "runtime_registry_path": "state/agent_supervisor_autonomous_meta_controller/registry",
+    "worktree_root": "state/agent_supervisor_autonomous_meta_controller/worktrees",
+    "export_profile": "apmc-v1",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": false
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": true,
+  "idle_lane_work_stealing": "virgin-transfer",
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 15,
+  "check_interval_seconds": 10,
+  "stale_seconds": 900,
+  "watchdog_startup_grace_seconds": 180,
+  "max_restarts": 5,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 10800,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/AGENT_SUPERVISOR_AUTONOMOUS_META_CONTROLLER_PLAN.md",
+    "docs/architecture/agent_supervisor_autonomous_meta_controller.objectives.md",
+    "docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md",
+    "config/agent_supervisor_autonomous_meta_controller_scheduler.json",
+    "scripts/validate_agent_supervisor_autonomous_meta_controller_board.py",
+    "scripts/materialize_agent_supervisor_autonomous_meta_controller_board.py",
+    "scripts/ops/agent_supervisor/quack_state_server.py",
+    "scripts/lgswf_start_quack_control.py",
+    "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
+    "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py",
+    "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py"
+  ],
+  "runtime_paths": {
+    "root": "state/agent_supervisor_autonomous_meta_controller",
+    "state": "state/agent_supervisor_autonomous_meta_controller/state",
+    "worktrees": "state/agent_supervisor_autonomous_meta_controller/worktrees",
+    "merge_queue": "state/agent_supervisor_autonomous_meta_controller/merge-queue",
+    "logs": "state/agent_supervisor_autonomous_meta_controller/logs",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "apmc-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [],
+      "initial_focus": "contracts-decision-graph-and-runtime"
+    },
+    {
+      "index": 1,
+      "name": "apmc-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [],
+      "initial_focus": "budget-scheduler-and-experience"
+    },
+    {
+      "index": 2,
+      "name": "apmc-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [
+        "APMC-000"
+      ],
+      "initial_focus": "authority-seal-policy-and-benchmark"
+    },
+    {
+      "index": 3,
+      "name": "apmc-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_task_ids": [],
+      "initial_focus": "suffix-repair-human-memory-and-control"
+    }
+  ],
+  "task_groups": {
+    "APMC-G010": [
+      "APMC-000"
+    ],
+    "APMC-G020": [
+      "APMC-001"
+    ],
+    "APMC-G030": [
+      "APMC-002",
+      "APMC-003",
+      "APMC-004",
+      "APMC-005"
+    ],
+    "APMC-G040": [
+      "APMC-006",
+      "APMC-007",
+      "APMC-008",
+      "APMC-009"
+    ],
+    "APMC-G050": [
+      "APMC-010",
+      "APMC-011"
+    ],
+    "APMC-G060": [
+      "APMC-012",
+      "APMC-013"
+    ],
+    "APMC-G070": [
+      "APMC-014",
+      "APMC-015"
+    ],
+    "APMC-G080": [
+      "APMC-016"
+    ],
+    "APMC-G090": [
+      "APMC-017"
+    ],
+    "APMC-G100": [
+      "APMC-018"
+    ],
+    "APMC-G110": [
+      "APMC-019",
+      "APMC-020"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.6",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "duckdb_transactional_state_authoritative": true,
+    "quack_exclusive_transport_required": true,
+    "automatic_file_fallback_from_quack": false,
+    "ducklake_projection_authoritative": false,
+    "ducklake_projection_required_for_scheduling": false,
+    "raw_model_sql_allowed": false,
+    "implementation_provider_receives_state_credentials": false,
+    "static_analysis_precedes_model_dispatch": true,
+    "decision_runtime_remains_effect_authority": true,
+    "current_validation_and_merge_evidence_required": true,
+    "unknown_stale_ambiguous_or_unsupported_disposition": "abstain_or_require_approval"
+  },
+  "release_safety_floors": {
+    "false_completions": 0,
+    "unauthorized_mutations": 0,
+    "simulated_as_live_outcomes": 0,
+    "stale_authoritative_cache_hits": 0,
+    "confirmation_replays": 0,
+    "path_or_scope_escapes": 0,
+    "hidden_validation_reductions": 0,
+    "escaped_critical_seeded_defects": 0,
+    "self_authorized_policy_promotions": 0,
+    "silent_quack_to_file_fallbacks": 0
+  }
+}
