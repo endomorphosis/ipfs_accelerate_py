@@ -857,7 +857,7 @@ control/lease/fence/merge authorities.
 
 ## APMC-021 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
