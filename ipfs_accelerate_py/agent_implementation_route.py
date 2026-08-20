@@ -200,7 +200,7 @@ _AGENT_IMPLEMENTATION_PROBE_PROMPT = (
 )
 _AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
     "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
-    "model": "grok-4.5",
+    "model": "grok-4.6",
     "mode": "chat",
     "max_turns": 1,
     "permission_mode": "dontAsk",
@@ -470,7 +470,7 @@ def valid_agent_implementation_failure_receipt(
         and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
         and receipt.get("nonce") == nonce
         and receipt.get("primary_provider") == "grok"
-        and receipt.get("primary_model") == model == "grok-4.5"
+        and receipt.get("primary_model") == model == "grok-4.6"
         and receipt.get("primary_dispatched") is False
         and isinstance(evidence_size, int)
         and not isinstance(evidence_size, bool)
@@ -3161,7 +3161,7 @@ def _canonical_agent_quota_verifier_command(
     expected = [
         str(executable),
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--max-turns",
         "1",
         "--cwd",
@@ -3224,7 +3224,7 @@ def validate_agent_implementation_quota_evidence(
         else ()
     )
     if (
-        expected_model != "grok-4.5"
+        expected_model != "grok-4.6"
         or not isinstance(preflight_receipt_id, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", preflight_receipt_id) is None
         or not isinstance(preflight_nonce, str)
@@ -3584,7 +3584,7 @@ def _valid_agent_implementation_quota_evidence(
         != failure_receipt.get("primary_provider")
         or evidence.primary_model
         != failure_receipt.get("primary_model")
-        or evidence.primary_model != "grok-4.5"
+        or evidence.primary_model != "grok-4.6"
         or evidence.verifier_provider != "grok_cli"
         or evidence.verifier_model != evidence.primary_model
         or isinstance(evidence.verifier_returncode, bool)
@@ -4108,7 +4108,7 @@ def _agent_verify_historical_authority_snapshot(
     expected_route = {
         "route_id": _V3_AGENT_IMPLEMENTATION_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -4531,7 +4531,7 @@ def _agent_implementation_route_plan(
 ) -> AgentImplementationRoutePlan:
     values = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": fallback_trigger,
@@ -4845,7 +4845,7 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization bounds are invalid") from exc
     expected_route = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -7248,5 +7248,4 @@ def decide_agent_implementation_fallback(
         reason_code="independent_quota_not_confirmed",
         verifier_status="not_confirmed",
     )
-
 

@@ -1031,6 +1031,11 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
     }
     for name, value in hostile_environment.items():
         monkeypatch.setenv(name, value)
+    configured_grok = "/opt/reviewed/bin/grok"
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_GROK_BIN",
+        configured_grok,
+    )
     observed_environment: dict[str, str] = {}
 
     def fail_identity(_self, _pid, _profile):
@@ -1104,7 +1109,11 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         route_environment = {
             *multi_runner_module.ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
             *multi_runner_module._ROUTE_AUTHORIZATION_ENV_NAMES,
+            *multi_runner_module._PROVIDER_EXECUTABLE_ENV_NAMES,
         }
+        assert observed_environment["IPFS_ACCELERATE_AGENT_GROK_BIN"] == (
+            configured_grok
+        )
         assert lifecycle_environment.issubset(observed_environment)
         assert set(observed_environment).issubset(
             lifecycle_environment | ambient_environment | route_environment
@@ -1572,6 +1581,47 @@ def test_static_objective_heap_disables_goal_refinement(
         load_configured_board(config_path, repo_root=repo)
 
 
+def test_configured_board_can_disable_dynamic_task_guardrails(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    fields_and_flags = {
+        "retry_budget_guardrail_enabled": "--no-retry-budget-guardrail",
+        "dependency_guardrail_enabled": "--no-dependency-guardrail",
+        "reconciliation_guardrail_enabled": "--no-reconciliation-guardrail",
+    }
+    default_board = load_configured_board(config_path, repo_root=repo)
+    default_common = scheduler_module.configured_board_common_args(
+        default_board,
+        implement=True,
+    )
+    assert not set(fields_and_flags.values()).intersection(default_common)
+
+    payload.update({field: False for field in fields_and_flags})
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    common = scheduler_module.configured_board_common_args(
+        board,
+        implement=True,
+    )
+    for disabled_flag in fields_and_flags.values():
+        assert common.count(disabled_flag) == 1
+
+    for field in fields_and_flags:
+        invalid_payload = {**payload, field: "false"}
+        _write(
+            config_path,
+            json.dumps(invalid_payload, indent=2, sort_keys=True) + "\n",
+        )
+        with pytest.raises(
+            ConfiguredBoardError,
+            match=rf"{field} must be boolean",
+        ):
+            load_configured_board(config_path, repo_root=repo)
+
+
 def test_ordered_provider_contract_requires_complete_unambiguous_fields(
     tmp_path: Path,
 ) -> None:
@@ -1714,7 +1764,7 @@ def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1734,6 +1784,85 @@ def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
     assert plan["environment"][scheduler_module.CODEX_REASONING_EFFORT_ENV] == (
         reasoning_effort
     )
+
+
+def test_ordered_provider_contract_carries_absolute_primary_executable(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    executable = tmp_path / "grok"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "primary_executable": str(executable),
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260819T000000Z",
+    )
+
+    assert plan["environment"][scheduler_module.GROK_BIN_ENV] == str(
+        executable
+    )
+    assert scheduler_module.GROK_BIN_ENV in (
+        *multi_runner_module.ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+        *multi_runner_module._ROUTE_AUTHORIZATION_ENV_NAMES,
+        *multi_runner_module._PROVIDER_EXECUTABLE_ENV_NAMES,
+    )
+
+
+@pytest.mark.parametrize("primary_executable", ("relative/grok", "/missing/grok"))
+def test_ordered_provider_contract_rejects_invalid_primary_executable(
+    tmp_path: Path,
+    primary_executable: str,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "primary_executable": primary_executable,
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(ConfiguredBoardError, match="primary_executable"):
+        load_configured_board(config_path, repo_root=repo)
+
+
+def test_primary_executable_alone_cannot_bypass_ordered_route_validation(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    executable = tmp_path / "grok"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "primary_executable": str(executable),
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(ConfiguredBoardError, match="primary_provider_id"):
+        load_configured_board(config_path, repo_root=repo)
 
 
 def test_legacy_provider_launch_environment_remains_backward_compatible(

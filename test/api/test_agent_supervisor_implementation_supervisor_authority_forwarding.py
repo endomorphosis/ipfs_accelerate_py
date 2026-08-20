@@ -109,6 +109,8 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
             "quack",
             "--endpoint-secret-handle",
             "env://QUACK_TOKEN",
+            "--quack-endpoint",
+            "quack:127.0.0.1:45123",
             "--state-store-id",
             "control.duckdb",
             "--state-store-generation",
@@ -133,6 +135,7 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
     assert program.authority_mode == "quack"
     assert program.task_source_kind == "duckdb"
     assert program.endpoint_secret_handle == "env://QUACK_TOKEN"
+    assert program.quack_endpoint == "quack:127.0.0.1:45123"
     assert program.store_id == "control.duckdb"
     assert program.store_generation == "gen-7"
     assert program.schema_revision == "schema-v1"

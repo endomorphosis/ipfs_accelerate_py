@@ -36,6 +36,18 @@ ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = (
 ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@2"
 )
+PIPELINE_OVERLAP_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.pipeline-overlap-receipt@1"
+)
+BACKPRESSURE_FAIRNESS_OVERLAP_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.backpressure-fairness-overlap-receipt@1"
+)
+STAGE_ADMISSION_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.stage-admission-profile@1"
+)
+CAMPAIGN_RESOURCE_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.campaign-resource-profile@1"
+)
 ADAPTIVE_STAGES = (
     "analysis",
     "inference",
@@ -6572,4 +6584,3 @@ class BackpressureFairnessOverlapReceipt:
         payload = self._unsigned_dict()
         payload["content_digest"] = self.content_digest
         return payload
-

@@ -129,6 +129,7 @@ CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 )
+GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 ROUTE_BOARD_NAMESPACE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
 )
@@ -159,6 +160,7 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
+    GROK_BIN_ENV,
     ROUTE_BOARD_NAMESPACE_ENV,
     ROUTE_AUTHORIZATION_PATH_ENV,
     ROUTE_AUTHORIZATION_SHA256_ENV,
@@ -175,6 +177,11 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_model_id",
     "fallback_trigger",
     "fallback_reasoning_effort",
+)
+ORDERED_PRIMARY_EXECUTABLE_FIELD = "primary_executable"
+ORDERED_PROVIDER_DETECTION_FIELDS = (
+    *ORDERED_PROVIDER_FIELDS,
+    ORDERED_PRIMARY_EXECUTABLE_FIELD,
 )
 ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
 ORDERED_PRIMARY_MODEL_ID = "grok-4.6"
@@ -1848,7 +1855,9 @@ def load_configured_board(
     provider = payload.get("provider")
     if not isinstance(provider, dict):
         raise ConfiguredBoardError("provider must be an object")
-    ordered_provider = any(field in provider for field in ORDERED_PROVIDER_FIELDS)
+    ordered_provider = any(
+        field in provider for field in ORDERED_PROVIDER_DETECTION_FIELDS
+    )
     if ordered_provider:
         primary_provider_id = _provider_string(
             provider,
@@ -1911,6 +1920,27 @@ def load_configured_board(
             repo_root=root,
             board_namespace=board_namespace,
         )
+        primary_executable = _optional_provider_string(
+            provider,
+            ORDERED_PRIMARY_EXECUTABLE_FIELD,
+        )
+        if primary_executable:
+            executable_path = Path(primary_executable)
+            if (
+                not executable_path.is_absolute()
+                or os.path.abspath(primary_executable) != primary_executable
+            ):
+                raise ConfiguredBoardError(
+                    "provider.primary_executable must be a normalized "
+                    "absolute path"
+                )
+            if not executable_path.is_file() or not os.access(
+                executable_path,
+                os.X_OK,
+            ):
+                raise ConfiguredBoardError(
+                    "provider.primary_executable must name an executable file"
+                )
     else:
         provider_id = _optional_provider_string(
             provider,
@@ -1947,6 +1977,13 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "objective_goal_refinement_enabled must be boolean"
         )
+    for field in (
+        "retry_budget_guardrail_enabled",
+        "dependency_guardrail_enabled",
+        "reconciliation_guardrail_enabled",
+    ):
+        if field in payload and not isinstance(payload.get(field), bool):
+            raise ConfiguredBoardError(f"{field} must be boolean")
 
     for field in (
         "poll_interval_seconds",
@@ -2684,7 +2721,9 @@ def configured_board_launch_plan(
 
     provider = board.payload.get("provider")
     provider = provider if isinstance(provider, dict) else {}
-    ordered_provider = any(field in provider for field in ORDERED_PROVIDER_FIELDS)
+    ordered_provider = any(
+        field in provider for field in ORDERED_PROVIDER_DETECTION_FIELDS
+    )
     if ordered_provider:
         route_plan = _resolved_ordered_provider_route(
             provider,
@@ -2692,6 +2731,12 @@ def configured_board_launch_plan(
             board_namespace=board.board_namespace,
         )
         environment = route_plan.as_environment()
+        primary_executable = _optional_provider_string(
+            provider,
+            ORDERED_PRIMARY_EXECUTABLE_FIELD,
+        )
+        if primary_executable:
+            environment[GROK_BIN_ENV] = primary_executable
     else:
         provider_id = str(provider.get("provider_id") or "").strip()
         model_id = str(provider.get("model_id") or "").strip()
