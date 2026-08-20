@@ -64,7 +64,7 @@
     "target_generation": "lgcvf-run-v17",
     "target_runtime_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17",
     "duckdb_runtime_cid": "baguqeera6qddq7z7wmygdeohvgyareg4pivlffvcum5t3kkzma4l75qp5h7a",
-    "qualification_runtime_cid": "baguqeerajncosumx3gk74pomklkimuvk3rgtiblzcg24oe7wpm2pj7ifhj2a",
+    "qualification_runtime_cid": "baguqeeraplja5xnw7llmmlfpnxjnku447xuou2uxjaln6jbgukbtjwxsfrvq",
     "verification_python_executable": "/usr/bin/python3.12",
     "verification_python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
     "retained_revision_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/evidence/plan-revisions/baguqeerapaf6fqpovv7oagcn7yhlmpqnvywq6dh3wuarq3zcy7x3icty575a.json",
