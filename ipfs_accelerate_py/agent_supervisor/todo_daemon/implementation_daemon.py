@@ -2228,7 +2228,7 @@ def _grok_cli_command(
             or os.environ.get("GROK_CLI_MODEL", "").strip()
             or os.environ.get("GROK_MODEL", "").strip()
             or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-            or "grok-4.6"
+            or ("grok-4.6" if is_eaaef_route else "grok-4.5")
         )
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
@@ -45373,6 +45373,102 @@ class PortalImplementationDaemon:
             "generation_recoveries": list(receipt.get("generation_recoveries") or ()),
         }
 
+    def _run_pytest_file_isolation(
+        self,
+        *,
+        workspace_path: Path,
+        validation_result: Mapping[str, Any],
+        validation_commands: Sequence[str],
+    ) -> dict[str, Any]:
+        """Re-run failed pytest files in isolated processes. No provider call."""
+
+        from ..validation.implementation_auto_rescue import (
+            pytest_isolation_argv,
+            pytest_isolation_files,
+        )
+
+        stdout = str(
+            validation_result.get("stdout")
+            or validation_result.get("output")
+            or ""
+        )
+        argv: list[str] = []
+        for command in validation_commands:
+            try:
+                argv = shlex.split(str(command))
+            except ValueError:
+                argv = []
+            if argv:
+                break
+        files = pytest_isolation_files(argv=argv, stdout=stdout)
+        if not files:
+            return {
+                "attempted": False,
+                "passed": False,
+                "reason": "no_pytest_files_to_isolate",
+                "process_started": False,
+            }
+        results: list[dict[str, Any]] = []
+        for path in files:
+            completed = subprocess.run(
+                pytest_isolation_argv(path),
+                cwd=workspace_path,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=1800,
+            )
+            results.append(
+                {
+                    "path": path,
+                    "returncode": completed.returncode,
+                    "passed": completed.returncode == 0,
+                }
+            )
+            if completed.returncode != 0:
+                return {
+                    "attempted": True,
+                    "passed": False,
+                    "reason": "isolated_pytest_file_failed",
+                    "failed_path": path,
+                    "stdout": completed.stdout[-800:],
+                    "stderr": completed.stderr[-400:],
+                    "results": results,
+                    "process_started": False,
+                }
+        return {
+            "attempted": True,
+            "passed": True,
+            "reason": "isolated_pytest_files_passed",
+            "results": results,
+            "process_started": False,
+        }
+
+    def _run_host_evidence_materialize(self) -> dict[str, Any]:
+        """Produce host-gated 185-187 evidence without live supervisor launch."""
+
+        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+            materialize_host_evidence,
+        )
+
+        try:
+            result = materialize_host_evidence()
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "process_started": False,
+                "configured_board_launch": False,
+                "live_launch_allowed": False,
+                "reason": "eaaef_host_evidence_materialize_failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        payload = dict(result) if isinstance(result, dict) else {}
+        payload["attempted"] = True
+        payload["process_started"] = False
+        payload["configured_board_launch"] = False
+        payload["live_launch_allowed"] = False
+        return payload
+
     def _stage_declared_candidate_outputs(
         self,
         workspace_path: Path,
@@ -45746,6 +45842,37 @@ class PortalImplementationDaemon:
                 result["auto_rescue_steps"] = list(steps)
                 result["auto_rescue_terminal"] = True
                 result["host_bootstrap_recovery"] = recovery
+                break
+
+            if plan.action is AutoRescueAction.HOST_EVIDENCE_MATERIALIZE:
+                evidence = self._run_host_evidence_materialize()
+                steps[-1]["host_evidence_materialize"] = evidence
+                result = dict(result)
+                result["auto_rescue"] = True
+                result["auto_rescue_action"] = plan.action.value
+                result["auto_rescue_steps"] = list(steps)
+                result["auto_rescue_terminal"] = True
+                result["host_evidence_materialize"] = evidence
+                result["configured_board_launch"] = False
+                result["live_launch_allowed"] = False
+                result["process_started"] = False
+                break
+
+            if plan.action is AutoRescueAction.PYTEST_FILE_ISOLATION:
+                isolation = self._run_pytest_file_isolation(
+                    workspace_path=workspace_path,
+                    validation_result=result,
+                    validation_commands=validation_commands,
+                )
+                steps[-1]["pytest_file_isolation"] = isolation
+                result = dict(result)
+                result["auto_rescue"] = True
+                result["auto_rescue_action"] = plan.action.value
+                result["auto_rescue_steps"] = list(steps)
+                result["auto_rescue_terminal"] = True
+                result["pytest_file_isolation"] = isolation
+                if isolation.get("passed") is True:
+                    result["passed"] = True
                 break
 
             if plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE:

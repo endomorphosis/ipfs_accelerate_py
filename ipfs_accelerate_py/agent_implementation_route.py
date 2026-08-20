@@ -6793,8 +6793,15 @@ def _agent_control_plane_git_state(
     *,
     expected_head: str,
     expected_tree: str,
+    allow_dirty_worktree: bool = False,
 ) -> tuple[str, str]:
-    """Require one exact, clean repository generation at ``root``."""
+    """Require one exact repository generation at ``root``.
+
+    The default path still requires a porcelain-clean worktree.  Independently
+    signed EAAEF-191 host-bundle admission may overlay host-evidence and
+    nested worktree dirt after HEAD is frozen; the capsule still binds only
+    HEAD blobs for control-plane Python.
+    """
 
     top_level = Path(
         os.fsdecode(
@@ -6811,15 +6818,17 @@ def _agent_control_plane_git_state(
     tree = os.fsdecode(
         _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{tree}"))
     ).strip()
-    status = _agent_git_output(
-        root,
-        (
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-        ),
-    )
+    status = b""
+    if not allow_dirty_worktree:
+        status = _agent_git_output(
+            root,
+            (
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ),
+        )
     if (
         exact_top_level != root
         or head != expected_head
@@ -6915,6 +6924,7 @@ def materialize_agent_implementation_control_plane_capsule(
     capsule_parent: Path | str,
     source_head: str,
     source_tree: str,
+    allow_dirty_worktree: bool = False,
 ) -> AgentImplementationControlPlanePin:
     """Snapshot the daemon's loaded source generation into a private capsule."""
 
@@ -6930,6 +6940,7 @@ def materialize_agent_implementation_control_plane_capsule(
         root,
         expected_head=source_head,
         expected_tree=source_tree,
+        allow_dirty_worktree=allow_dirty_worktree,
     )
     files = _agent_control_plane_source_files(root, verify_loaded_origins=True)
     payloads = _agent_control_plane_head_payloads(
@@ -6947,6 +6958,7 @@ def materialize_agent_implementation_control_plane_capsule(
         root,
         expected_head=source_head,
         expected_tree=source_tree,
+        allow_dirty_worktree=allow_dirty_worktree,
     )
     digests = {
         relative: "sha256:" + hashlib.sha256(raw).hexdigest()

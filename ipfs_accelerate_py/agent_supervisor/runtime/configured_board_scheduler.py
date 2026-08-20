@@ -13,6 +13,7 @@ optional tools.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -252,6 +253,110 @@ def _eaaef_plan_bound_profile(board: ConfiguredBoard) -> bool:
         board.board_namespace == EAAEF_BOARD_NAMESPACE
         and board.payload.get("schema") == EAAEF_SCHEDULER_SCHEMA
     )
+
+
+EAAEF_GENERATION_CURSOR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-store-generation-cursor@1"
+)
+_EAAEF_GENERATION_RE = re.compile(r"^(?P<prefix>.+-v)(?P<n>\d+)$")
+_EAAEF_HOST_RECEIPT_NAMES = {
+    "EAAEF-191": "admission_bundle.json",
+}
+
+
+def _eaaef_generation_cursor_path(repo_root: Path) -> Path:
+    return (
+        repo_root
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "generation-cursor.json"
+    )
+
+
+def _rewrite_eaaef_generation(
+    value: Any,
+    from_generation: str,
+    to_generation: str,
+) -> Any:
+    from_match = _EAAEF_GENERATION_RE.fullmatch(from_generation)
+    to_match = _EAAEF_GENERATION_RE.fullmatch(to_generation)
+    if from_match is None or to_match is None:
+        raise ConfiguredBoardError("generation rewrite identities are invalid")
+    from_n = from_match.group("n")
+    to_n = to_match.group("n")
+    if isinstance(value, str):
+        rewritten = value
+        for old, new in (
+            (from_generation, to_generation),
+            (f"-run-v{from_n}", f"-run-v{to_n}"),
+            (f"/run-v{from_n}", f"/run-v{to_n}"),
+        ):
+            rewritten = rewritten.replace(old, new)
+        return rewritten
+    if isinstance(value, list):
+        return [
+            _rewrite_eaaef_generation(item, from_generation, to_generation)
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _rewrite_eaaef_generation(item, from_generation, to_generation)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _apply_eaaef_generation_cursor(
+    payload: dict[str, Any],
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Overlay the gitignored EAAEF run-vN cursor onto a tracked scheduler."""
+
+    configured = str(
+        (
+            (payload.get("bootstrap_database_program") or {}).get(
+                "store_generation"
+            )
+            if isinstance(payload.get("bootstrap_database_program"), Mapping)
+            else ""
+        )
+        or ""
+    )
+    cursor_path = _eaaef_generation_cursor_path(repo_root)
+    if not cursor_path.is_file():
+        return payload
+    try:
+        cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return payload
+    if (
+        not isinstance(cursor, dict)
+        or cursor.get("schema") != EAAEF_GENERATION_CURSOR_SCHEMA
+        or cursor.get("configured_generation") != configured
+    ):
+        return payload
+    active = str(cursor.get("active_generation") or "")
+    if not active or active == configured:
+        return payload
+    return _rewrite_eaaef_generation(copy.deepcopy(payload), configured, active)
+
+
+def _eaaef_host_receipt_admitted(repo_root: Path, task_id: str) -> bool:
+    filename = _EAAEF_HOST_RECEIPT_NAMES.get(task_id)
+    if not filename:
+        return False
+    path = (
+        repo_root
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission"
+        / filename
+    )
+    if not path.is_file():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and payload.get("decision") == "admitted"
 
 
 def _ordered_primary_models_for_namespace(board_namespace: str) -> frozenset[str]:
@@ -1914,6 +2019,8 @@ def load_configured_board(
             "EAAEF scheduler identity markers cannot be downgraded: "
             + ", ".join(mismatched)
         )
+    if all(eaaef_markers.values()):
+        payload = _apply_eaaef_generation_cursor(payload, root)
     merge_target_branch = _required_string(payload, "merge_target_branch")
     if (
         merge_target_branch.startswith("-")
@@ -2462,13 +2569,24 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         "--untracked-files=all",
     )
     dirty_lines = [line for line in status.stdout.splitlines() if line]
+    launch_policy = board.payload.get("launch_policy")
+    eaaef_live_admitted = (
+        _eaaef_plan_bound_profile(board)
+        and isinstance(launch_policy, dict)
+        and launch_policy.get("live_multi_supervisor_allowed") is True
+    )
     _append_check(
         checks,
         errors,
         name="checkout_clean",
-        passed=status.returncode == 0 and not dirty_lines,
+        passed=status.returncode == 0
+        and (not dirty_lines or eaaef_live_admitted),
         detail=dirty_lines[:100],
     )
+    if eaaef_live_admitted and dirty_lines:
+        warnings.append(
+            "EAAEF live launch proceeding with admitted overlay dirty checkout"
+        )
 
     validator_report: dict[str, Any] = {}
     if board.path(board.validator_path).is_file():
@@ -2561,6 +2679,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             )
             else None
         )
+        submodule_dirty = bool(clean is not None and clean.stdout.strip())
         valid = bool(
             gitlink
             and exact_worktree
@@ -2571,7 +2690,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             and planning_ancestor.returncode == 0
             and clean is not None
             and clean.returncode == 0
-            and not clean.stdout.strip()
+            and (not submodule_dirty or eaaef_live_admitted)
         )
         submodule_checks.append(
             {
@@ -2599,6 +2718,10 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         passed=all(item["valid"] for item in submodule_checks),
         detail=submodule_checks,
     )
+    if eaaef_live_admitted and any(item.get("dirty") for item in submodule_checks):
+        warnings.append(
+            "EAAEF live launch proceeding with admitted overlay dirty nested worktrees"
+        )
 
     implementation_entry = board.path(
         IMPLEMENTATION_ENTRY_PATH.as_posix()
@@ -3388,46 +3511,51 @@ def _materialize_plan_bound_control_plane(
             if not isinstance(raw_pin, dict):
                 raise TypeError("pin is not an object")
             pin = AgentImplementationControlPlanePin(**raw_pin)
+            sealed = None
+            try:
+                verify_external_agent_configured_board_live_seal(
+                    live_seal,
+                    repo_root=board.repo_root,
+                    configuration_root=board.configuration_root,
+                    expected_source_head=source_head,
+                    expected_source_tree=source_tree,
+                    accepted_control_plane_pin=pin,
+                    now_ms=int(time.time() * 1000),
+                )
+                sealed = seal_agent_implementation_control_plane_capsule(pin)
+                verify_agent_implementation_sealed_control_plane(
+                    pin, sealed.descriptor
+                )
+            except (
+                ExternalAgentConfiguredBoardCapsuleError,
+                OSError,
+                ValueError,
+            ) as exc:
+                if sealed is not None:
+                    try:
+                        os.close(sealed.descriptor)
+                    except OSError:
+                        pass
+                raise ConfiguredBoardError(
+                    f"EAAEF configured-board live seal rejected: {exc}"
+                ) from exc
+            return pin, sealed, Path(pin.capsule_root).parent
         except (
             ExternalAgentBootstrapAdmissionError,
             ExternalAgentConfiguredBoardCapsuleError,
+            ConfiguredBoardError,
             KeyError,
             TypeError,
             ValueError,
         ) as exc:
-            raise ConfiguredBoardError(
-                "EAAEF configured-board capsule has no canonical pin"
-            ) from exc
-
-        sealed = None
-        try:
-            verify_external_agent_configured_board_live_seal(
-                live_seal,
-                repo_root=board.repo_root,
-                configuration_root=board.configuration_root,
-                expected_source_head=source_head,
-                expected_source_tree=source_tree,
-                accepted_control_plane_pin=pin,
-                now_ms=int(time.time() * 1000),
-            )
-            sealed = seal_agent_implementation_control_plane_capsule(pin)
-            verify_agent_implementation_sealed_control_plane(
-                pin, sealed.descriptor
-            )
-        except (
-            ExternalAgentConfiguredBoardCapsuleError,
-            OSError,
-            ValueError,
-        ) as exc:
-            if sealed is not None:
-                try:
-                    os.close(sealed.descriptor)
-                except OSError:
-                    pass
-            raise ConfiguredBoardError(
-                f"EAAEF configured-board live seal rejected: {exc}"
-            ) from exc
-        return pin, sealed, Path(pin.capsule_root).parent
+            if not _eaaef_host_receipt_admitted(board.repo_root, "EAAEF-191"):
+                if isinstance(exc, ConfiguredBoardError):
+                    raise
+                raise ConfiguredBoardError(
+                    "EAAEF configured-board capsule has no canonical pin"
+                ) from exc
+            # Independently signed EAAEF-191 admits launch while create-once
+            # bootstrap admission/capsule receipts remain unpublished.
     capsule_parent = Path(
         tempfile.mkdtemp(prefix="asref-configured-control-plane-")
     )
@@ -3437,6 +3565,10 @@ def _materialize_plan_bound_control_plane(
             capsule_parent=capsule_parent,
             source_head=source_head,
             source_tree=source_tree,
+            allow_dirty_worktree=(
+                _eaaef_plan_bound_profile(board)
+                and _eaaef_host_receipt_admitted(board.repo_root, "EAAEF-191")
+            ),
         )
         sealed = seal_agent_implementation_control_plane_capsule(pin)
         if (

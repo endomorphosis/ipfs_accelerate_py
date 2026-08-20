@@ -1438,7 +1438,7 @@ def test_eaaef_scheduler_identity_markers_cannot_be_downgraded(
         load_configured_board(config_path, repo_root=repo)
 
 
-def test_real_eaaef_config_loads_as_static_fail_closed_board() -> None:
+def test_real_eaaef_config_loads_as_live_admitted_board() -> None:
     config_path = REPO_ROOT / scheduler_module.EAAEF_CONFIG_PATH
     board = load_configured_board(config_path, repo_root=REPO_ROOT)
     assert board.board_namespace == scheduler_module.EAAEF_BOARD_NAMESPACE
@@ -1447,7 +1447,18 @@ def test_real_eaaef_config_loads_as_static_fail_closed_board() -> None:
         board.payload["taskboard_json_path"]
         == scheduler_module.EAAEF_TASKBOARD_JSON_PATH
     )
-    assert board.payload["launch_policy"]["live_multi_supervisor_allowed"] is False
+    assert board.payload["launch_policy"]["live_multi_supervisor_allowed"] is True
+    assert board.payload["launch_policy"]["blockers"] == []
+    assert board.payload["container_policy"]["live_dispatch_allowed"] is True
+    assert board.payload["container_policy"]["bootstrap_image_status"] == "admitted"
+    cursor_path = scheduler_module._eaaef_generation_cursor_path(REPO_ROOT)
+    if cursor_path.is_file():
+        cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+        active = str(cursor.get("active_generation") or "")
+        if active:
+            assert (
+                board.payload["database_program"]["store_generation"] == active
+            )
 
 
 def test_plan_bound_policy_no_go_rejects_before_any_coordinator_effect(

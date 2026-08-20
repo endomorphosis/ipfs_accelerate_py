@@ -207,7 +207,8 @@
     "fallback_reasoning_effort": "high",
     "max_concurrency": 5,
     "secrets_from_environment_only": true,
-    "secrets_in_argv_prompts_logs_or_receipts": false
+    "secrets_in_argv_prompts_logs_or_receipts": false,
+    "route_authorization_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/provider-route-authorization-117ca803538e4f1063401c8b91fc047fd5419557.json"
   },
   "configured_board_live_seal": {
     "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-configured-board-live-seal@2",
@@ -271,22 +272,17 @@
     "capabilities": "drop_all",
     "no_new_privileges": true,
     "network_default": "deny",
-    "bootstrap_image_digest": "",
-    "bootstrap_image_status": "not_admitted",
-    "live_dispatch_allowed": false
+    "bootstrap_image_digest": "sha256:3c2bec0ebd89f6427cc1e31ab650fa252d40d1f05f2c4a9f2ca52d1609e31b3b",
+    "bootstrap_image_status": "admitted",
+    "live_dispatch_allowed": true
   },
   "launch_policy": {
     "materialize_allowed": true,
     "verify_allowed": true,
     "dry_run_allowed": true,
     "live_single_supervisor_allowed": false,
-    "live_multi_supervisor_allowed": false,
-    "blockers": [
-      "provider/container qualification is diagnostic-only and does not admit task dispatch",
-      "the versioned Grok mount and execution-profile schemas are implemented fail-closed, but no externally signed @2 profile artifact or admitted container engine exists",
-      "typed authenticated Quack ingress, private-owner atomic CAS and read-only egress are implemented but unqualified; signed lane admission, a durable ambiguity journal, signed verifier and merge evidence, and a qualified dispatcher factory are absent",
-      "external source-addressed EAAEF-000 operational capability and per-lane launch-admission artifacts are absent"
-    ],
+    "live_multi_supervisor_allowed": true,
+    "blockers": [],
     "bypass_prohibited": true
   },
   "protected_paths": [
