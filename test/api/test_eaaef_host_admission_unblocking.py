@@ -204,17 +204,25 @@ def test_plan_r2_receipt_contract() -> None:
 
 def test_admission_bundle_receipt_contract() -> None:
     payload = _receipt("admission_bundle.json")
+    evidence = payload["evidence"]
     assert payload["schema"] == BUNDLE_SCHEMA
     assert payload["decision"] == "no_go"
-    assert payload["evidence"]["prospective_supervisor_signature_rejected"] is True
-    assert payload["evidence"]["independent_operator_signature"] == ""
-    assert payload["evidence"]["independent_security_reviewer_signature"] == ""
-    child_cids = payload["evidence"]["child_receipt_cids"]
+    assert evidence["prospective_supervisor_signature_rejected"] is True
+    assert evidence["launch_plan_allowed"] is False
+    child_cids = evidence["child_receipt_cids"]
     for task_id, filename in RECEIPT_FILES.items():
         if task_id == "EAAEF-191":
             continue
         child = _receipt(filename)
         assert child_cids[task_id] == child["receipt_cid"]
+    if evidence.get("independent_signature_present") is True:
+        assert evidence["independent_operator_signature"]
+        assert evidence["independent_security_reviewer_signature"]
+        assert evidence.get("operator_did", "").startswith("did:key:z")
+        assert evidence.get("security_reviewer_did", "").startswith("did:key:z")
+    else:
+        assert evidence["independent_operator_signature"] == ""
+        assert evidence["independent_security_reviewer_signature"] == ""
     assert _tasks()["EAAEF-191"]["completion_mode"] == "manual"
     assert _tasks()["EAAEF-183"]["completion_mode"] == "auto"
     assert _tasks()["EAAEF-184"]["completion_mode"] == "auto"

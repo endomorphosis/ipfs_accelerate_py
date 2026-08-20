@@ -1,0 +1,11 @@
+{
+  "configured_board_launch": false,
+  "decision": "no_go",
+  "operator_did": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+  "operator_signature": "3x0zUYnle14CnV7f8TgO+px5tswGFkBihuGp6eIlNjgscOsXbNUicSpKsjP5SRdU6yEps6sGOQDLEeyqoi0oDw==",
+  "payload_sha256": "sha256:61a455ed43cdb5efb372c1ed46d7f60a5580f2bae6ffc26743d7b20d824f3701",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-signatures@1",
+  "security_reviewer_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+  "security_reviewer_signature": "ora3zGVbh5VW0jLCHbJ7FTS2/KpSL0ivpGt+qlhPOX/Ya74yRgg4fGdO9jpulisEVF8p28h0R3APhl2+1/qiDg==",
+  "supervisor_signed": false
+}

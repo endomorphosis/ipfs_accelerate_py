@@ -1,5 +1,5 @@
 {
-  "board_cid": "sha256:982190e50bbc2738bf8d7a8b1846446ffc2c163d5c5c3566f2f8e5559e56d6bd",
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
   "control_artifact_ownership": [
     {
@@ -26523,15 +26523,23 @@
       "epic": "S",
       "execution_outputs": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/held_board_catalog.json",
         "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
         "scripts/collect_eaaef_host_admission_receipts.py",
-        "test/api/test_eaaef_host_admission_unblocking.py"
+        "scripts/ingest_eaaef_held_board_into_duckdb.py",
+        "scripts/run_eaaef_host_admission_supervisor.py",
+        "test/api/test_eaaef_host_admission_unblocking.py",
+        "test/api/test_eaaef_duckdb_board_catalog.py"
       ],
       "execution_owned_files": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/held_board_catalog.json",
         "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
         "scripts/collect_eaaef_host_admission_receipts.py",
-        "test/api/test_eaaef_host_admission_unblocking.py"
+        "scripts/ingest_eaaef_held_board_into_duckdb.py",
+        "scripts/run_eaaef_host_admission_supervisor.py",
+        "test/api/test_eaaef_host_admission_unblocking.py",
+        "test/api/test_eaaef_duckdb_board_catalog.py"
       ],
       "execution_validation": [
         {
@@ -26570,7 +26578,7 @@
           "schema": "VerificationBundle@1"
         }
       ],
-      "idempotency_key": "sha256:c992d2ff553c6c27cc0b224044063af2925128036d80f67807b7c10d61fb8a6d",
+      "idempotency_key": "sha256:49f1b4f8c02a766729f8daed3be469b06531a5a0575602f668e178472c2c9ee0",
       "initial_population": true,
       "integration_conflict_keys": [],
       "is_schedulable": true,
@@ -26600,16 +26608,24 @@
       },
       "outputs": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/held_board_catalog.json",
         "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
         "scripts/collect_eaaef_host_admission_receipts.py",
-        "test/api/test_eaaef_host_admission_unblocking.py"
+        "scripts/ingest_eaaef_held_board_into_duckdb.py",
+        "scripts/run_eaaef_host_admission_supervisor.py",
+        "test/api/test_eaaef_host_admission_unblocking.py",
+        "test/api/test_eaaef_duckdb_board_catalog.py"
       ],
       "overlap_merge_contracts": [],
       "owned_files": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/held_board_catalog.json",
         "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
         "scripts/collect_eaaef_host_admission_receipts.py",
-        "test/api/test_eaaef_host_admission_unblocking.py"
+        "scripts/ingest_eaaef_held_board_into_duckdb.py",
+        "scripts/run_eaaef_host_admission_supervisor.py",
+        "test/api/test_eaaef_host_admission_unblocking.py",
+        "test/api/test_eaaef_duckdb_board_catalog.py"
       ],
       "owning_repository": "ipfs_accelerate_py",
       "parent_goal_id": "EAAEF-G000",
@@ -26700,7 +26716,7 @@
       "stable_task_id": "EAAEF-180",
       "status": "todo",
       "subgoal_id": "EAAEF-G190",
-      "task_spec_cid": "sha256:77b00956b5f90ed3dd92c37979bb99f3235dfab15bcad67edcd01f7ad0126292",
+      "task_spec_cid": "sha256:ac0e9d1e1d84dbaca92be98956e557cb2dea1205b6599130c17a7392f7e48a67",
       "terminal_status": "not_terminal",
       "test_requirements": {
         "affected_integration": "select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv",
@@ -26715,9 +26731,13 @@
       "validation": "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k inventory",
       "write_scope": [
         "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/blocker_inventory.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/held_board_catalog.json",
         "ipfs_accelerate_py/agent_supervisor/validation/eaaef_host_admission.py",
         "scripts/collect_eaaef_host_admission_receipts.py",
-        "test/api/test_eaaef_host_admission_unblocking.py"
+        "scripts/ingest_eaaef_held_board_into_duckdb.py",
+        "scripts/run_eaaef_host_admission_supervisor.py",
+        "test/api/test_eaaef_host_admission_unblocking.py",
+        "test/api/test_eaaef_duckdb_board_catalog.py"
       ]
     },
     {
@@ -28985,10 +29005,14 @@
       ],
       "epic": "S",
       "execution_outputs": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.signatures.json",
+        "scripts/issue_eaaef_admission_bundle.py"
       ],
       "execution_owned_files": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.signatures.json",
+        "scripts/issue_eaaef_admission_bundle.py"
       ],
       "execution_validation": [
         {
@@ -29027,7 +29051,7 @@
           "schema": "VerificationBundle@1"
         }
       ],
-      "idempotency_key": "sha256:3e468f5ed94856fd54fc4e92287974a994b1e5c97feede80c59d356b40bd5be5",
+      "idempotency_key": "sha256:7482db3f47dc653f698ad453e09462ae1e01a2a19af68b67a1d9f0d5b5a23e8a",
       "initial_population": true,
       "integration_conflict_keys": [],
       "is_schedulable": true,
@@ -29056,11 +29080,15 @@
         "unsupported_language": "completed"
       },
       "outputs": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.signatures.json",
+        "scripts/issue_eaaef_admission_bundle.py"
       ],
       "overlap_merge_contracts": [],
       "owned_files": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.signatures.json",
+        "scripts/issue_eaaef_admission_bundle.py"
       ],
       "owning_repository": "ipfs_accelerate_py",
       "parent_goal_id": "EAAEF-G000",
@@ -29151,7 +29179,7 @@
       "stable_task_id": "EAAEF-191",
       "status": "todo",
       "subgoal_id": "EAAEF-G190",
-      "task_spec_cid": "sha256:5fbfbbc98c1c0598bd70c989e2d239b42a7918b9fc311e1563de5cba9de19992",
+      "task_spec_cid": "sha256:cf7f84db41c08570e7bce62ed2149c5fc2396b954e79671e6fc8035e8da6a7a5",
       "terminal_status": "not_terminal",
       "test_requirements": {
         "affected_integration": "select current affected suites from the source/provenance graph and ProjectAdapter; record exact structured argv",
@@ -29165,7 +29193,9 @@
       "track": "host-gated-bootstrap-admission-evidence",
       "validation": "python3 -m pytest -q test/api/test_eaaef_host_admission_unblocking.py -k admission_bundle",
       "write_scope": [
-        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json"
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.json",
+        "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/admission_bundle.signatures.json",
+        "scripts/issue_eaaef_admission_bundle.py"
       ]
     }
   ]

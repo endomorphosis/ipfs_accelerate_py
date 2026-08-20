@@ -1,24 +1,25 @@
 {
-  "board_cid": "sha256:982190e50bbc2738bf8d7a8b1846446ffc2c163d5c5c3566f2f8e5559e56d6bd",
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
   "decision": "no_go",
   "evidence": {
     "bootstrap_admission_statement_cid": null,
     "child_receipt_cids": {
-      "EAAEF-180": "sha256:e43fab66218be18e9f56b67425b826182480cdbc845c6e481ba1125ff6d9b766",
-      "EAAEF-181": "sha256:23b50001adda0e58b4bbd5d4d906423cc4a97ef952985e2d24bab6f02e022158",
-      "EAAEF-182": "sha256:44f1129efb00a51f132d9b3a306e93440ab9d3fe4936b7bb45c48027de9c22de",
-      "EAAEF-183": "sha256:7ab4e9f01d851ec20dddaff58df21ac5d773d037fba9b15375cb762f53582c55",
-      "EAAEF-184": "sha256:9cad26153644ef17fa9d87256945b6f30120f47046e440af099adb0fd65d1ecf",
-      "EAAEF-185": "sha256:ec91825b4020679ae2432bf894fd4e9d4286e1f0c58d69dd5b1ca1ae955c89ce",
-      "EAAEF-186": "sha256:129c542ff6bbccec804d61f0432fe4d77fee466df28bc658e62bd1d0a70c82ee",
-      "EAAEF-187": "sha256:45b58b8274c2876c753c40a6a634ac3cdada1913e7e4cbabc38443021aae2058",
-      "EAAEF-188": "sha256:983d62cc000417cec1a0506f81eb85a13bfba834cfaa90568aa2e25f74c6d8d5",
-      "EAAEF-189": "sha256:91f54a18586c97fbe82f9a4fc57185a7f41f71d06e7e14bd4a986acafc565191",
-      "EAAEF-190": "sha256:5fc57a5da51e98b4bdd4e828c7bbf03ca9702f26b351df7eddd74ab2bfda5d7f"
+      "EAAEF-180": "sha256:131588043a0b8d9b53ef24d50cf71509eab179f17a5cfb43046e95e80a3644d7",
+      "EAAEF-181": "sha256:f91a0273f14e621713714d8fe04582682a281f728a7726fedb3328d918fded09",
+      "EAAEF-182": "sha256:e13ae2802aaec5f1ee842e5380dac04d76416aba27b2903a97c6c38f283b0a84",
+      "EAAEF-183": "sha256:aa7968d0fe08a3d9ba09fc4b2f34c4a761c46d3a2b30f1d32a15eab0661e3861",
+      "EAAEF-184": "sha256:33aefca23d504c1b6f8fab1083ff675db23aa85eda7acb9458bcda1599eb15ad",
+      "EAAEF-185": "sha256:923605be43fe4036ecc269d88b1fbb5a7244cd1205e4047aefc47c8ea07548e0",
+      "EAAEF-186": "sha256:64a91cd66682f17d57a75606a88d939c1976ef49dedc618bfa96374cdc90e5b3",
+      "EAAEF-187": "sha256:3c8468a7cfc15da052261d988e12fcdee035c7b0819beed00423e1710ec14817",
+      "EAAEF-188": "sha256:9451011884fd1bdc7133c6a49e4a76fd6fd5857204172dfb6be5b74fb6262ebe",
+      "EAAEF-189": "sha256:2bf1ed237651f7876d29de018cf61c485105406fec3feab2342b00a09e1543c1",
+      "EAAEF-190": "sha256:8bac87586b37e9c004afc0250f4f91f81747bbf0f021ecbe726b86a49a2df5dc"
     },
-    "independent_operator_signature": "",
-    "independent_security_reviewer_signature": "",
+    "independent_operator_signature": "3x0zUYnle14CnV7f8TgO+px5tswGFkBihuGp6eIlNjgscOsXbNUicSpKsjP5SRdU6yEps6sGOQDLEeyqoi0oDw==",
+    "independent_security_reviewer_signature": "ora3zGVbh5VW0jLCHbJ7FTS2/KpSL0ivpGt+qlhPOX/Ya74yRgg4fGdO9jpulisEVF8p28h0R3APhl2+1/qiDg==",
+    "independent_signature_present": true,
     "inventory_open_host_gated": [
       "provider/container qualification is diagnostic-only and does not admit task dispatch",
       "the versioned Grok mount and execution-profile schemas are implemented fail-closed, but no externally signed @2 profile artifact or admitted container engine exists",
@@ -34,16 +35,18 @@
     ],
     "launch_plan_allowed": false,
     "materialization_receipt_cid": "",
-    "prospective_supervisor_signature_rejected": true
+    "operator_did": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "prospective_supervisor_signature_rejected": true,
+    "security_reviewer_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7"
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:4542ab27ea8a8e0a40f17c2ed763345839be05089752bce090e163bdf45b7a3f",
+  "receipt_cid": "sha256:276dfdfa12142541c24a4c593442aa013d5e6d79e7b1c1374c13d1cb18b6f66a",
   "receipt_name": "admission_bundle.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-bundle@1",
   "self_signed": false,
-  "source_head": "5361f18ff89da6d40a81a02a2f87f5d84d292455",
-  "source_tree": "085d176a38e4a040d38ef4a7ca23de09f387afbb",
+  "source_head": "0fd408b2ee2a1020ab923243b5e22f91e7c39719",
+  "source_tree": "1f22225b83e678498c05509cc250814c993e293c",
   "supervisor_process_started": false,
   "task_id": "EAAEF-191"
 }

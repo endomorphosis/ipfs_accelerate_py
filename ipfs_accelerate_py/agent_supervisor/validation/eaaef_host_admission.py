@@ -27,12 +27,28 @@ from cryptography.hazmat.primitives.serialization import (
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
 )
+from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+    LocalProfileTampered,
+    verify_did_key_signature,
+)
 
 RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1"
 )
 BUNDLE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-bundle@1"
+)
+BUNDLE_REVIEW_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-review@1"
+)
+BUNDLE_SIGNATURES_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-signatures@1"
+)
+TRUSTED_OPERATOR_DIDS: Final = (
+    "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+)
+TRUSTED_SECURITY_REVIEWER_DIDS: Final = (
+    "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
 )
 PRINCIPAL_STORE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-runtime-principal-secret@1"
@@ -48,6 +64,7 @@ PRINCIPAL_ROLES: Final = ("worker", "provider", "quack_owner")
 ROOT = Path(__file__).resolve().parents[3]
 CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
 RECEIPT_DIR = CAMPAIGN / "receipts" / "host_admission"
+BUNDLE_SIGNATURES_PATH = RECEIPT_DIR / "admission_bundle.signatures.json"
 BOARD_PATH = CAMPAIGN / "task_board.json"
 ROUTE_AUTHORITY_DIR = (
     ROOT
@@ -129,6 +146,89 @@ _CLOSING_TASK_MARKERS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     ("configured-board launch", ("EAAEF-191",)),
     ("bootstrap admission", ("EAAEF-191",)),
 )
+
+
+def admission_bundle_review_payload(
+    *,
+    child_decisions: Mapping[str, str],
+    decision: str,
+    launch_plan_allowed: bool,
+) -> dict[str, Any]:
+    return {
+        "schema": BUNDLE_REVIEW_SCHEMA,
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "decision": str(decision),
+        "launch_plan_allowed": bool(launch_plan_allowed),
+        "child_decisions": dict(child_decisions),
+        "prospective_supervisor_signature_rejected": True,
+        "configured_board_launch": False,
+    }
+
+
+def load_admission_bundle_signatures(
+    *,
+    child_decisions: Mapping[str, str],
+    decision: str,
+    launch_plan_allowed: bool,
+) -> dict[str, str]:
+    """Return verified operator/reviewer signatures, or empty strings."""
+
+    empty = {
+        "independent_operator_signature": "",
+        "independent_security_reviewer_signature": "",
+        "operator_did": "",
+        "security_reviewer_did": "",
+    }
+    if not BUNDLE_SIGNATURES_PATH.is_file():
+        return empty
+    try:
+        payload = json.loads(BUNDLE_SIGNATURES_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return empty
+    if not isinstance(payload, dict) or payload.get("schema") != BUNDLE_SIGNATURES_SCHEMA:
+        return empty
+    operator_did = str(payload.get("operator_did") or "")
+    reviewer_did = str(payload.get("security_reviewer_did") or "")
+    operator_sig = str(payload.get("operator_signature") or "")
+    reviewer_sig = str(payload.get("security_reviewer_signature") or "")
+    if (
+        operator_did not in TRUSTED_OPERATOR_DIDS
+        or reviewer_did not in TRUSTED_SECURITY_REVIEWER_DIDS
+        or not operator_sig
+        or not reviewer_sig
+    ):
+        return empty
+    review = admission_bundle_review_payload(
+        child_decisions=child_decisions,
+        decision=decision,
+        launch_plan_allowed=launch_plan_allowed,
+    )
+    if cid(review) != str(payload.get("payload_sha256") or ""):
+        return empty
+    try:
+        verify_did_key_signature(
+            identity_did=operator_did,
+            payload=review,
+            signature=operator_sig,
+        )
+        reviewer_payload = {
+            **review,
+            "operator_did": operator_did,
+            "operator_signature": operator_sig,
+        }
+        verify_did_key_signature(
+            identity_did=reviewer_did,
+            payload=reviewer_payload,
+            signature=reviewer_sig,
+        )
+    except (LocalProfileTampered, TypeError, ValueError):
+        return empty
+    return {
+        "independent_operator_signature": operator_sig,
+        "independent_security_reviewer_signature": reviewer_sig,
+        "operator_did": operator_did,
+        "security_reviewer_did": reviewer_did,
+    }
 
 
 def cid(value: Any) -> str:
@@ -678,6 +778,16 @@ def collect_host_admission_receipts(
         for task_id in RECEIPT_FILES
         if task_id != "EAAEF-191"
     }
+    child_decisions = {
+        task_id: str(receipts[task_id]["decision"])
+        for task_id in RECEIPT_FILES
+        if task_id != "EAAEF-191"
+    }
+    signatures = load_admission_bundle_signatures(
+        child_decisions=child_decisions,
+        decision="no_go",
+        launch_plan_allowed=False,
+    )
     receipts["EAAEF-191"] = _base_receipt(
         "EAAEF-191",
         decision="no_go",
@@ -688,8 +798,18 @@ def collect_host_admission_receipts(
                 (plan.get("bootstrap_admission_statement") or {}).get("statement_cid")
             ),
             "materialization_receipt_cid": plan.get("materialization_receipt_cid"),
-            "independent_operator_signature": "",
-            "independent_security_reviewer_signature": "",
+            "independent_operator_signature": signatures[
+                "independent_operator_signature"
+            ],
+            "independent_security_reviewer_signature": signatures[
+                "independent_security_reviewer_signature"
+            ],
+            "operator_did": signatures["operator_did"],
+            "security_reviewer_did": signatures["security_reviewer_did"],
+            "independent_signature_present": bool(
+                signatures["independent_operator_signature"]
+                and signatures["independent_security_reviewer_signature"]
+            ),
             "prospective_supervisor_signature_rejected": True,
             "inventory_open_host_gated": [
                 item["blocker"]
