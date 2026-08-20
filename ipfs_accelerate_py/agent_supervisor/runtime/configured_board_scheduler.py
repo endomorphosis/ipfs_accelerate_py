@@ -2748,7 +2748,7 @@ def configured_board_launch_plan(
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
-        environment.update(program.environment())
+        environment.update(program.environment(repository_root=board.repo_root))
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"

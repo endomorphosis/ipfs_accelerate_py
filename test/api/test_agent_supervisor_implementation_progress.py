@@ -171,6 +171,14 @@ def test_provider_process_uses_exact_sanitized_environment(
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
         "private-canonical-quack-token",
     )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        "/private/quack-mutations",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
+        "/private/runtime-registry",
+    )
     monkeypatch.setenv("APMC_PROVIDER_ALLOWED", "allowed")
     program = DatabaseProgramConfig(
         authority_mode="quack",
@@ -199,6 +207,10 @@ def test_provider_process_uses_exact_sanitized_environment(
         "'quack_token': bool(os.environ.get('QUACK_TOKEN')), "
         "'canonical_quack_token': bool(os.environ.get("
         "'IPFS_ACCELERATE_AGENT_QUACK_TOKEN')), "
+        "'mutation_inbox': bool(os.environ.get("
+        "'IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR')), "
+        "'runtime_registry': bool(os.environ.get("
+        "'IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH')), "
         "'database_program': bool(os.environ.get("
         "'IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON')), "
         "'allowed': os.environ.get('APMC_PROVIDER_ALLOWED'), "
@@ -221,7 +233,9 @@ def test_provider_process_uses_exact_sanitized_environment(
         "canonical_quack_token": False,
         "custom_secret": False,
         "database_program": False,
+        "mutation_inbox": False,
         "quack_token": False,
+        "runtime_registry": False,
         "task_id": "SRT-014",
     }
     assert environment[IMPLEMENTATION_TASK_ID_ENV] == "SRT-014"

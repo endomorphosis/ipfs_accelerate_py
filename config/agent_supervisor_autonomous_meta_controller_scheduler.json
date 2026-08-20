@@ -88,6 +88,7 @@
     "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",

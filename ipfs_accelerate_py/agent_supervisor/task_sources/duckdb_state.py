@@ -12,7 +12,6 @@ import fcntl
 import os
 import re
 import sqlite3
-import stat as stat_module
 import threading
 import time
 import uuid
@@ -24,9 +23,12 @@ from typing import Any, Callable
 from .quack_owner_mutation import (
     QuackOwnerMutationEnvelopeError,
     build_mutation_request,
+    mutation_envelope_exists_at,
+    open_mutation_inbox_directory,
     parse_mutation_result,
-    read_envelope,
-    write_envelope_atomic,
+    read_envelope_at,
+    unlink_mutation_envelope_at,
+    write_envelope_atomic_at,
 )
 
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
@@ -656,16 +658,96 @@ _QUACK_OWNER_DML_PREFIXES = (
     "INSERT OR REPLACE",
     "INSERT OR IGNORE",
 )
+_QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
+_RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
+_STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
+
+
+def quack_owner_mutation_inbox_path(
+    runtime_registry_path: str | os.PathLike[str],
+    *,
+    repository_root: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Bind one owner/worker mutation inbox to the runtime registry path."""
+
+    text = str(runtime_registry_path or "").strip()
+    if not text or "\x00" in text:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires a runtime registry path"
+        )
+    registry = Path(text).expanduser()
+    root: Path | None = None
+    if not registry.is_absolute() and repository_root is None:
+        raise DuckDBConnectionPolicyError(
+            "relative runtime registry requires an explicit repository root"
+        )
+    if repository_root is not None:
+        root_text = str(repository_root or "").strip()
+        if not root_text or "\x00" in root_text:
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox requires a valid repository root"
+            )
+        root_path = Path(root_text).expanduser()
+        if not root_path.is_absolute():
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox requires an absolute repository root"
+            )
+        root = root_path.resolve()
+        if not registry.is_absolute():
+            registry = root / registry
+    registry = registry.resolve()
+    if root is not None:
+        try:
+            registry.relative_to(root)
+        except ValueError as exc:
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox escapes the repository root"
+            ) from exc
+    # Do not resolve the final component.  The owner opens it with O_NOFOLLOW
+    # so a replaced ``mutations`` directory cannot redirect trusted writes.
+    return registry / "mutations"
 
 
 def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
     """Return the exclusive owner's local mutation inbox, if configured."""
 
     explicit = str(
-        os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "") or ""
+        os.environ.get(_QUACK_MUTATION_DIR_ENV, "") or ""
     ).strip()
+    registry = str(
+        os.environ.get(_RUNTIME_REGISTRY_PATH_ENV, "") or ""
+    ).strip()
+    authority_mode = str(
+        os.environ.get(_STATE_AUTHORITY_MODE_ENV, "") or ""
+    ).strip().lower().replace("-", "_")
+    if authority_mode == "quack" and not registry:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires a bound runtime registry"
+        )
+    if authority_mode == "quack" and not explicit:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires an explicit mutation binding"
+        )
+    registry_inbox = (
+        quack_owner_mutation_inbox_path(registry) if registry else None
+    )
     if explicit:
-        return Path(explicit)
+        explicit_path = Path(explicit).expanduser()
+        if not explicit_path.is_absolute():
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox must be an absolute path"
+            )
+        # Resolve only the parent.  The final inbox component must remain
+        # available to the O_NOFOLLOW admission check below.
+        explicit_inbox = explicit_path.parent.resolve() / explicit_path.name
+        if registry_inbox is not None and explicit_inbox != registry_inbox:
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox does not match the bound runtime "
+                "registry"
+            )
+        return explicit_inbox
+    if registry_inbox is not None:
+        return registry_inbox
     store = str(
         store_id
         or os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "")
@@ -681,42 +763,6 @@ def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
 
 def _quack_owner_mutation_required(normalized: str) -> bool:
     return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
-
-
-def _prepare_quack_owner_mutation_dir(target: Path) -> None:
-    """Verify the local owner inbox without chmod or writes through a symlink."""
-
-    target.mkdir(parents=True, exist_ok=True, mode=0o700)
-    nofollow = getattr(os, "O_NOFOLLOW", None)
-    if nofollow is None:
-        raise DuckDBConnectionPolicyError(
-            "quack owner mutation inbox requires no-follow directory support"
-        )
-    try:
-        descriptor = os.open(
-            target,
-            os.O_RDONLY | nofollow | getattr(os, "O_DIRECTORY", 0),
-        )
-    except OSError as exc:
-        raise DuckDBConnectionPolicyError(
-            "quack owner mutation inbox is not a safe owner directory"
-        ) from exc
-    try:
-        os.fchmod(descriptor, 0o700)
-        opened = os.fstat(descriptor)
-        named = os.lstat(target)
-        if (
-            not stat_module.S_ISDIR(opened.st_mode)
-            or not stat_module.S_ISDIR(named.st_mode)
-            or opened.st_uid != os.geteuid()
-            or stat_module.S_IMODE(opened.st_mode) != 0o700
-            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
-        ):
-            raise DuckDBConnectionPolicyError(
-                "quack owner mutation inbox identity or ownership is unsafe"
-            )
-    finally:
-        os.close(descriptor)
 
 
 def _execute_quack_owner_mutation(
@@ -740,10 +786,15 @@ def _execute_quack_owner_mutation(
             "IPFS_ACCELERATE_AGENT_STATE_STORE_ID so the state-owner can "
             "apply the mutation"
         )
-    _prepare_quack_owner_mutation_dir(target)
+    try:
+        inbox_fd = open_mutation_inbox_directory(target)
+    except QuackOwnerMutationEnvelopeError as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox is not a safe owner directory"
+        ) from exc
     request_id = uuid.uuid4().hex
-    request_path = target / f"{request_id}.request.json"
-    done_path = target / f"{request_id}.done.json"
+    request_name = f"{request_id}.request.json"
+    done_name = f"{request_id}.done.json"
     if parameters is None:
         bound: Any = None
     elif isinstance(parameters, Mapping):
@@ -758,56 +809,79 @@ def _execute_quack_owner_mutation(
         os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
     )
     try:
-        generation = int(generation_raw)
-        envelope = build_mutation_request(
-            request_id=request_id,
-            store_id=store_id,
-            generation=generation,
-            sql=statement,
-            parameters=bound,
-            token=token,
-        )
-        write_envelope_atomic(request_path, envelope, replace=False)
-    except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
-        raise DuckDBConnectionPolicyError(
-            f"could not create authenticated Quack owner mutation: {type(exc).__name__}"
-        ) from exc
-    deadline = time.monotonic() + 15.0
-    while time.monotonic() < deadline:
-        if done_path.is_file():
-            try:
-                payload = parse_mutation_result(
-                    read_envelope(done_path),
-                    token=token,
-                    expected_request_id=request_id,
-                    expected_store_id=store_id,
-                    expected_generation=generation,
-                )
-            except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
-                raise DuckDBConnectionPolicyError(
-                    f"Quack owner mutation result was not admissible: {type(exc).__name__}"
-                ) from exc
-            finally:
+        try:
+            generation = int(generation_raw)
+            envelope = build_mutation_request(
+                request_id=request_id,
+                store_id=store_id,
+                generation=generation,
+                sql=statement,
+                parameters=bound,
+                token=token,
+            )
+            write_envelope_atomic_at(
+                inbox_fd,
+                request_name,
+                envelope,
+                replace=False,
+            )
+        except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
+            raise DuckDBConnectionPolicyError(
+                "could not create authenticated Quack owner mutation: "
+                f"{type(exc).__name__}"
+            ) from exc
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            if mutation_envelope_exists_at(inbox_fd, done_name):
                 try:
-                    request_path.unlink(missing_ok=True)
-                    done_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-            if payload.get("ok") is not True:
-                raise DuckDBConnectionPolicyError(
-                    "quack owner mutation failed: "
-                    + str(payload.get("error_code") or "unknown")
+                    payload = parse_mutation_result(
+                        read_envelope_at(inbox_fd, done_name),
+                        token=token,
+                        expected_request_id=request_id,
+                        expected_store_id=store_id,
+                        expected_generation=generation,
+                    )
+                except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
+                    raise DuckDBConnectionPolicyError(
+                        "Quack owner mutation result was not admissible: "
+                        f"{type(exc).__name__}"
+                    ) from exc
+                finally:
+                    try:
+                        unlink_mutation_envelope_at(
+                            inbox_fd,
+                            request_name,
+                            missing_ok=True,
+                        )
+                        unlink_mutation_envelope_at(
+                            inbox_fd,
+                            done_name,
+                            missing_ok=True,
+                        )
+                    except OSError:
+                        pass
+                if payload.get("ok") is not True:
+                    raise DuckDBConnectionPolicyError(
+                        "quack owner mutation failed: "
+                        + str(payload.get("error_code") or "unknown")
+                    )
+                cursor = DuckDBCursor.__new__(DuckDBCursor)
+                cursor._columns = tuple(
+                    str(item) for item in payload.get("columns") or ()
                 )
-            cursor = DuckDBCursor.__new__(DuckDBCursor)
-            cursor._columns = tuple(str(item) for item in payload.get("columns") or ())
-            cursor._rows = [tuple(item) for item in payload.get("rows") or ()]
-            cursor._offset = 0
-            cursor.rowcount = int(payload.get("rowcount") or -1)
-            return cursor
-        time.sleep(0.05)
-    raise DuckDBConnectionPolicyError(
-        "timed out waiting for quack state-owner to apply mutation"
-    )
+                cursor._rows = [
+                    tuple(item) for item in payload.get("rows") or ()
+                ]
+                cursor._offset = 0
+                cursor.rowcount = int(payload.get("rowcount") or -1)
+                return cursor
+            time.sleep(0.05)
+        raise DuckDBConnectionPolicyError(
+            "timed out waiting for quack state-owner to apply mutation; "
+            "outcome is unknown and must not be replayed blindly"
+        )
+    finally:
+        os.close(inbox_fd)
 
 
 def _consume_duckdb_result(connection: Any) -> None:

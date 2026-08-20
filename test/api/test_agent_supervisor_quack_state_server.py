@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import threading
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import MappingProxyType
@@ -53,6 +54,11 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     provider_safe_environment,
     reclaim_stale_owner_marker,
     sanitize_for_export,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DatabaseProgramConfig,
+    RUNTIME_REGISTRY_PATH_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     content_identity,
@@ -268,15 +274,24 @@ def _server(
     )
 
 
-def _real_database_server(tmp_path: Path) -> QuackStateServer:
+def _real_database_server(
+    tmp_path: Path,
+    *,
+    production_relative_paths: bool = False,
+) -> QuackStateServer:
     """Use a real local DuckDB and fake only the network Quack transport."""
 
-    db = tmp_path / "real-control.duckdb"
-    state = tmp_path / "real-state"
-    state.mkdir(parents=True, exist_ok=True)
+    if production_relative_paths:
+        db = Path("state/real-control.duckdb")
+        state = Path("state/runtime-registry")
+    else:
+        db = tmp_path / "real-control.duckdb"
+        state = tmp_path / "real-state"
+        state.mkdir(parents=True, exist_ok=True)
     return build_server(
         database_path=db,
         state_dir=state,
+        repository_root=tmp_path if production_relative_paths else None,
         host="127.0.0.1",
         port=45124,
         repository_id="repository:sha256:mutation-test",
@@ -457,6 +472,34 @@ def test_interface_identities() -> None:
     assert StateServerIdentity.INTERFACE == STATE_SERVER_IDENTITY_INTERFACE
 
 
+def test_owner_relative_paths_require_absolute_scoped_repository_root(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="relative database_path"):
+        QuackStateServerConfig(
+            database_path=Path("state/control.duckdb"),
+            state_dir=tmp_path / "state",
+        )
+    with pytest.raises(ValueError, match="repository_root must be an absolute"):
+        QuackStateServerConfig(
+            database_path=tmp_path / "control.duckdb",
+            state_dir=tmp_path / "state",
+            repository_root=Path("relative-repository"),
+        )
+
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo.mkdir()
+    outside.mkdir()
+    (repo / "escaped-registry").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="state_dir escapes"):
+        QuackStateServerConfig(
+            database_path=Path("state/control.duckdb"),
+            state_dir=Path("escaped-registry"),
+            repository_root=repo,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Bind policy
 # ---------------------------------------------------------------------------
@@ -584,6 +627,7 @@ def test_provider_safe_environment_strips_credential_names() -> None:
             "PATH": "/usr/bin",
             "QUACK_TOKEN": "abc",
             "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR": "/private/mutations",
+            "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH": "/private/registry",
             "MY_SECRET": "x",
             "HOME": "/tmp",
         }
@@ -722,8 +766,18 @@ def test_authenticated_owner_mutation_pump_returns_cas_row(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    server = _real_database_server(tmp_path)
+    server = _real_database_server(
+        tmp_path,
+        production_relative_paths=True,
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
     identity = server.start()
+    assert server.config.repository_root == tmp_path.resolve()
+    assert server.runtime_registry_path == (
+        tmp_path / "state" / "runtime-registry"
+    ).resolve()
     owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
     owner_connection.execute(
         "CREATE TABLE mutation_probe (probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
@@ -733,13 +787,27 @@ def test_authenticated_owner_mutation_pump_returns_cas_row(
         ["probe:1", 1],
     )
     token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
-        str(server.mutation_inbox_path()),
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle=identity.secret_handle,
+        quack_endpoint=identity.listen_uri,
+        store_id=identity.store_id,
+        store_generation=str(identity.generation),
+        schema_revision=str(identity.schema_revision),
+        runtime_registry_path=server.runtime_registry_path.relative_to(
+            tmp_path
+        ).as_posix(),
+        failover_policy="fail_closed",
     )
+    program_environment = program.environment(repository_root=tmp_path)
+    assert Path(program_environment[RUNTIME_REGISTRY_PATH_ENV]).is_absolute()
+    assert Path(program_environment[STATE_QUACK_MUTATION_DIR_ENV]) == (
+        server.mutation_inbox_path()
+    )
+    for name, value in program_environment.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
 
     stop = threading.Event()
 
@@ -772,6 +840,139 @@ def test_authenticated_owner_mutation_pump_returns_cas_row(
     finally:
         stop.set()
         thread.join(timeout=2.0)
+        server.stop()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
+def test_concurrent_mutation_inbox_replacement_cannot_redirect_real_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Worker and owner keep using the inode admitted for their whole cycle."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
+
+    server = _real_database_server(tmp_path)
+    identity = server.start()
+    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
+    owner_connection.execute(
+        "CREATE TABLE mutation_swap_probe "
+        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
+    )
+    owner_connection.execute(
+        "INSERT INTO mutation_swap_probe(probe_id, revision) VALUES (?, ?)",
+        ["probe:swap", 1],
+    )
+    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle=identity.secret_handle,
+        quack_endpoint=identity.listen_uri,
+        store_id=identity.store_id,
+        store_generation=str(identity.generation),
+        schema_revision=str(identity.schema_revision),
+        runtime_registry_path=str(server.runtime_registry_path),
+        failover_policy="fail_closed",
+    )
+    for name, value in program.environment().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+
+    inbox = server.mutation_inbox_path()
+    inbox.mkdir(parents=True, mode=0o700)
+    displaced = inbox.with_name("mutations-pinned-original")
+    owner_pinned = threading.Event()
+    request_published = threading.Event()
+    owner_errors: list[BaseException] = []
+    owner_summaries: list[tuple[Mapping[str, Any], ...]] = []
+    original_prepare = server._prepare_mutation_inbox  # noqa: SLF001
+
+    def delayed_owner_prepare() -> int:
+        descriptor = original_prepare()
+        owner_pinned.set()
+        if not request_published.wait(timeout=5.0):
+            os.close(descriptor)
+            raise AssertionError("worker did not publish its pinned request")
+        return descriptor
+
+    monkeypatch.setattr(server, "_prepare_mutation_inbox", delayed_owner_prepare)
+
+    def owner_pump() -> None:
+        try:
+            owner_summaries.append(server.process_mutation_inbox())
+        except BaseException as exc:  # pragma: no cover - asserted below
+            owner_errors.append(exc)
+
+    owner_thread = threading.Thread(target=owner_pump, daemon=True)
+    owner_thread.start()
+    assert owner_pinned.wait(timeout=5.0)
+
+    real_worker_open = duckdb_state_module.open_mutation_inbox_directory
+
+    def swapping_worker_open(target: Path) -> int:
+        descriptor = real_worker_open(target)
+        inbox.rename(displaced)
+        inbox.mkdir(mode=0o700)
+        (inbox / "replacement-sentinel").write_text(
+            "must remain untouched\n",
+            encoding="utf-8",
+        )
+        return descriptor
+
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "open_mutation_inbox_directory",
+        swapping_worker_open,
+    )
+    real_worker_write = duckdb_state_module.write_envelope_atomic_at
+
+    def signaling_worker_write(
+        directory_fd: int,
+        name: str,
+        payload: Mapping[str, Any],
+        *,
+        replace: bool,
+    ) -> None:
+        real_worker_write(
+            directory_fd,
+            name,
+            payload,
+            replace=replace,
+        )
+        if name.endswith(".request.json"):
+            request_published.set()
+
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "write_envelope_atomic_at",
+        signaling_worker_write,
+    )
+    try:
+        client = DuckDBConnection.wrap(object())
+        client._default_catalog = "control_plane"  # noqa: SLF001
+        result = client.execute(
+            "UPDATE mutation_swap_probe SET revision = revision + 1 "
+            "WHERE probe_id = ? AND revision = ? RETURNING revision",
+            ["probe:swap", 1],
+        )
+        assert result.fetchone()[0] == 2
+        owner_thread.join(timeout=5.0)
+        assert not owner_thread.is_alive()
+        assert not owner_errors
+        assert owner_summaries[0][0]["ok"] is True
+        assert (inbox / "replacement-sentinel").read_text(
+            encoding="utf-8"
+        ) == "must remain untouched\n"
+        assert not list(inbox.glob("*.request.json"))
+        assert not list(inbox.glob("*.done.json"))
+        assert not list(displaced.glob("*.request.json"))
+        assert not list(displaced.glob("*.done.json"))
+    finally:
+        request_published.set()
+        owner_thread.join(timeout=2.0)
         server.stop()
 
 
@@ -843,6 +1044,156 @@ def test_owner_mutation_pump_does_not_reexecute_request_after_signed_result(
         assert parsed["ok"] is True
     finally:
         server.stop()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
+def test_owner_result_collision_is_never_overwritten_or_replayed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        quack_state_server as server_module,
+    )
+
+    server = _real_database_server(tmp_path)
+    identity = server.start()
+    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
+    owner_connection.execute(
+        "CREATE TABLE mutation_collision_probe "
+        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
+    )
+    owner_connection.execute(
+        "INSERT INTO mutation_collision_probe(probe_id, revision) VALUES (?, ?)",
+        ["probe:collision", 1],
+    )
+    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    request_id = "ce" * 16
+    request = build_mutation_request(
+        request_id=request_id,
+        store_id=identity.store_id,
+        generation=identity.generation,
+        sql=(
+            "UPDATE mutation_collision_probe SET revision = revision + 1 "
+            "WHERE probe_id = ? RETURNING revision"
+        ),
+        parameters=["probe:collision"],
+        token=token,
+    )
+    inbox = server.mutation_inbox_path()
+    request_path = inbox / f"{request_id}.request.json"
+    done_path = inbox / f"{request_id}.done.json"
+    write_envelope_atomic(request_path, request, replace=False)
+    collision = b"unauthenticated collision\n"
+    real_write = server_module.write_envelope_atomic_at
+
+    def collide_before_publication(
+        directory_fd: int,
+        name: str,
+        payload: Mapping[str, Any],
+        *,
+        replace: bool,
+    ) -> None:
+        assert replace is False
+        descriptor = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(collision)
+            stream.flush()
+            os.fsync(stream.fileno())
+        real_write(
+            directory_fd,
+            name,
+            payload,
+            replace=replace,
+        )
+
+    monkeypatch.setattr(
+        server_module,
+        "write_envelope_atomic_at",
+        collide_before_publication,
+    )
+    try:
+        summary = server.process_mutation_inbox()[0]
+        assert summary["error_code"] == "result_collision"
+        assert summary["outcome_unknown"] is True
+        assert done_path.read_bytes() == collision
+        assert not request_path.exists()
+        assert server.process_mutation_inbox() == ()
+        assert owner_connection.execute(
+            "SELECT revision FROM mutation_collision_probe WHERE probe_id = ?",
+            ["probe:collision"],
+        ).fetchone()[0] == 2
+    finally:
+        server.stop()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
+def test_owner_restart_rejects_prior_generation_mutation_request(
+    tmp_path: Path,
+) -> None:
+    first = _real_database_server(tmp_path)
+    first_identity = first.start()
+    first_connection = first._connection  # noqa: SLF001 - exact owner boundary
+    first_connection.execute(
+        "CREATE TABLE mutation_restart_probe "
+        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
+    )
+    first_connection.execute(
+        "INSERT INTO mutation_restart_probe(probe_id, revision) VALUES (?, ?)",
+        ["probe:restart", 1],
+    )
+    first_token = first._vault.resolve(  # noqa: SLF001
+        first_identity.secret_handle
+    )
+    request_id = "de" * 16
+    request = build_mutation_request(
+        request_id=request_id,
+        store_id=first_identity.store_id,
+        generation=first_identity.generation,
+        sql=(
+            "UPDATE mutation_restart_probe SET revision = revision + 1 "
+            "WHERE probe_id = ? RETURNING revision"
+        ),
+        parameters=["probe:restart"],
+        token=first_token,
+    )
+    request_path = first.mutation_inbox_path() / f"{request_id}.request.json"
+    write_envelope_atomic(request_path, request, replace=False)
+    first.stop()
+
+    second = _real_database_server(tmp_path)
+    second_identity = second.start()
+    second_connection = second._connection  # noqa: SLF001 - exact owner boundary
+    second_token = second._vault.resolve(  # noqa: SLF001
+        second_identity.secret_handle
+    )
+    done_path = second.mutation_inbox_path() / f"{request_id}.done.json"
+    try:
+        assert second_identity.generation > first_identity.generation
+        summaries = second.process_mutation_inbox()
+        assert summaries[0]["ok"] is False
+        response = parse_mutation_result(
+            read_envelope(done_path),
+            token=second_token,
+            expected_request_id=request_id,
+            expected_store_id=second_identity.store_id,
+            expected_generation=second_identity.generation,
+        )
+        assert response["ok"] is False
+        assert response["error_code"] in {
+            "authentication_failed",
+            "identity_mismatch",
+        }
+        assert second_connection.execute(
+            "SELECT revision FROM mutation_restart_probe WHERE probe_id = ?",
+            ["probe:restart"],
+        ).fetchone()[0] == 1
+    finally:
+        second.stop()
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")

@@ -217,6 +217,7 @@ def test_external_resolver_child_cannot_observe_state_authority_environment(
         "    'IPFS_ACCELERATE_AGENT_QUACK_TOKEN',\n"
         "    'QUACK_TOKEN',\n"
         "    'IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR',\n"
+        "    'IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH',\n"
         "    'IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON',\n"
         "    'TEST_PROVIDER_API_KEY',\n"
         ")\n"
@@ -227,6 +228,9 @@ def test_external_resolver_child_cannot_observe_state_authority_environment(
     monkeypatch.setenv("QUACK_TOKEN", "owner-secret")
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "/private/quack-mutations"
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", "/private/runtime-registry"
     )
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", '{"authority_mode":"quack"}'
@@ -245,4 +249,5 @@ def test_external_resolver_child_cannot_observe_state_authority_environment(
     assert observed["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] is None
     assert observed["QUACK_TOKEN"] is None
     assert observed["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] is None
+    assert observed["IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"] is None
     assert observed["IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"] is None

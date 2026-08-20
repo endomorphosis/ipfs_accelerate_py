@@ -1334,6 +1334,7 @@ def expand_supervisor_scheduler_config_args(
 def _managed_daemon_child_environment(
     *,
     database_program: DatabaseProgramConfig | None = None,
+    repo_root: Path | str | None = None,
 ) -> dict[str, str]:
     """Keep a source-checkout supervisor's daemon on the same package code.
 
@@ -1365,7 +1366,7 @@ def _managed_daemon_child_environment(
     if pythonpath:
         env["PYTHONPATH"] = pythonpath
     if database_program is not None:
-        env.update(database_program.environment())
+        env.update(database_program.environment(repository_root=repo_root))
     return env
 
 
@@ -8376,6 +8377,7 @@ class PortalImplementationSupervisor:
             worktree_root=self.config.worktree_root,
             launch_env=_managed_daemon_child_environment(
                 database_program=self.config.database_program,
+                repo_root=self.config.repo_root,
             ),
         )
         return SupervisorLoopConfig(
@@ -17468,6 +17470,7 @@ class PortalImplementationSupervisor:
         env.update(
             _managed_daemon_child_environment(
                 database_program=self.config.database_program,
+                repo_root=self.config.repo_root,
             )
         )
         process = subprocess.Popen(

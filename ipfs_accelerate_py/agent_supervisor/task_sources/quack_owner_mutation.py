@@ -125,6 +125,175 @@ def _publish_without_replace(source: Path, target: Path) -> None:
         raise OSError(error_number, os.strerror(error_number), str(target))
 
 
+def _publish_without_replace_at(
+    directory_fd: int,
+    source_name: str,
+    target_name: str,
+) -> None:
+    """Publish within one already-admitted directory without replacement."""
+
+    if _RENAMEAT2 is None:
+        raise QuackOwnerMutationEnvelopeError(
+            "atomic no-replace publication is unavailable",
+            code="atomic_publication_unavailable",
+        )
+    ctypes.set_errno(0)
+    result = _RENAMEAT2(
+        int(directory_fd),
+        os.fsencode(source_name),
+        int(directory_fd),
+        os.fsencode(target_name),
+        _RENAME_NOREPLACE,
+    )
+    if result != 0:
+        error_number = ctypes.get_errno() or errno.EIO
+        raise OSError(error_number, os.strerror(error_number), target_name)
+
+
+def _directory_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+    )
+
+
+def open_mutation_inbox_directory(path: Path) -> int:
+    """Create and pin one absolute inbox through no-follow directory handles.
+
+    The returned descriptor is the authority for subsequent envelope I/O.
+    Callers must close it after the complete worker request or owner pump
+    cycle, rather than reopening ``path`` after admission.
+    """
+
+    target = Path(path).expanduser()
+    if not target.is_absolute() or not target.name or "\x00" in os.fspath(target):
+        raise QuackOwnerMutationEnvelopeError(
+            "mutation inbox path must be an absolute directory",
+            code="unsafe_inbox",
+        )
+    if any(component == ".." for component in target.parts):
+        raise QuackOwnerMutationEnvelopeError(
+            "mutation inbox path contains parent traversal",
+            code="unsafe_inbox",
+        )
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise QuackOwnerMutationEnvelopeError(
+            "mutation inbox requires no-follow directory support",
+            code="unsafe_inbox",
+        )
+    flags = os.O_RDONLY | nofollow | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = -1
+    try:
+        descriptor = os.open(target.anchor, flags)
+        for component in target.parts[1:]:
+            child = -1
+            try:
+                try:
+                    child = os.open(component, flags, dir_fd=descriptor)
+                except FileNotFoundError:
+                    try:
+                        os.mkdir(component, mode=0o700, dir_fd=descriptor)
+                    except FileExistsError:
+                        # A concurrent creator is acceptable only when the
+                        # exact entry can now be opened no-follow.
+                        pass
+                    child = os.open(component, flags, dir_fd=descriptor)
+                opened = os.fstat(child)
+                named = os.stat(
+                    component,
+                    dir_fd=descriptor,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat_module.S_ISDIR(opened.st_mode)
+                    or not stat_module.S_ISDIR(named.st_mode)
+                    or _directory_identity(opened) != _directory_identity(named)
+                ):
+                    raise QuackOwnerMutationEnvelopeError(
+                        "mutation inbox path component is unsafe",
+                        code="unsafe_inbox",
+                    )
+            except BaseException:
+                if child >= 0:
+                    os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+        os.fchmod(descriptor, 0o700)
+        admitted = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISDIR(admitted.st_mode)
+            or admitted.st_uid != os.geteuid()
+            or stat_module.S_IMODE(admitted.st_mode) != 0o700
+        ):
+            raise QuackOwnerMutationEnvelopeError(
+                "mutation inbox identity or ownership is unsafe",
+                code="unsafe_inbox",
+            )
+        pinned = descriptor
+        descriptor = -1
+        return pinned
+    except QuackOwnerMutationEnvelopeError:
+        raise
+    except OSError as exc:
+        raise QuackOwnerMutationEnvelopeError(
+            "mutation inbox is not a safe owner directory",
+            code="unsafe_inbox",
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _entry_name(value: str | os.PathLike[str]) -> str:
+    name = os.fspath(value)
+    if (
+        not isinstance(name, str)
+        or not name
+        or name in {".", ".."}
+        or "\x00" in name
+        or os.path.basename(name) != name
+    ):
+        raise QuackOwnerMutationEnvelopeError(
+            "mutation envelope filename is unsafe",
+            code="malformed_filename",
+        )
+    return name
+
+
+def mutation_envelope_exists_at(
+    directory_fd: int,
+    name: str | os.PathLike[str],
+) -> bool:
+    """Return whether an entry exists in one pinned inbox, without following it."""
+
+    filename = _entry_name(name)
+    try:
+        os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def unlink_mutation_envelope_at(
+    directory_fd: int,
+    name: str | os.PathLike[str],
+    *,
+    missing_ok: bool = False,
+) -> None:
+    """Remove one entry relative to the pinned inbox descriptor."""
+
+    filename = _entry_name(name)
+    try:
+        os.unlink(filename, dir_fd=directory_fd)
+    except FileNotFoundError:
+        if not missing_ok:
+            raise
+
+
 def _canonical_bytes(payload: Mapping[str, Any]) -> bytes:
     try:
         encoded = json.dumps(
@@ -416,6 +585,136 @@ def parse_mutation_result(
     return MappingProxyType({**dict(normalized), "signature": signature})
 
 
+def write_envelope_atomic_at(
+    directory_fd: int,
+    name: str | os.PathLike[str],
+    payload: Mapping[str, Any],
+    *,
+    replace: bool,
+) -> None:
+    """Write one envelope relative to a pinned, admitted inbox descriptor."""
+
+    target_name = _entry_name(name)
+    data = _canonical_bytes(payload) + b"\n"
+    temporary_name = f".{target_name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    descriptor = os.open(
+        temporary_name,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+        dir_fd=directory_fd,
+    )
+    try:
+        stream = os.fdopen(descriptor, "wb")
+        descriptor = -1
+        with stream:
+            stream.write(data)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o600)
+            os.fsync(stream.fileno())
+        if replace:
+            os.replace(
+                temporary_name,
+                target_name,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+            )
+        else:
+            _publish_without_replace_at(
+                directory_fd,
+                temporary_name,
+                target_name,
+            )
+        os.fsync(directory_fd)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary_name, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
+
+
+def _regular_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def read_envelope_at(
+    directory_fd: int,
+    name: str | os.PathLike[str],
+    *,
+    max_bytes: int = MAX_MUTATION_RESULT_BYTES,
+) -> Mapping[str, Any]:
+    """Read one stable envelope relative to a pinned inbox descriptor."""
+
+    filename = _entry_name(name)
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            filename,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid != os.geteuid()
+            or stat_module.S_IMODE(before.st_mode) & 0o077
+            or before.st_size < 2
+            or before.st_size > max_bytes
+        ):
+            raise QuackOwnerMutationEnvelopeError("mutation envelope file is unbounded or unsafe")
+        remaining = max_bytes + 1
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        encoded = b"".join(chunks)
+        after = os.fstat(descriptor)
+        named = os.stat(
+            filename,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            len(encoded) != before.st_size
+            or _regular_identity(before) != _regular_identity(after)
+            or _regular_identity(after) != _regular_identity(named)
+        ):
+            raise QuackOwnerMutationEnvelopeError("mutation envelope changed while being read")
+        payload = json.loads(encoded.decode("utf-8"))
+    except QuackOwnerMutationEnvelopeError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise QuackOwnerMutationEnvelopeError("mutation envelope JSON is malformed") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if not isinstance(payload, Mapping):
+        raise QuackOwnerMutationEnvelopeError("mutation envelope must contain an object")
+    return MappingProxyType(dict(payload))
+
+
 def write_envelope_atomic(path: Path, payload: Mapping[str, Any], *, replace: bool) -> None:
     """Write one mode-0600 canonical envelope without exposing partial JSON."""
 
@@ -488,8 +787,13 @@ __all__ = (
     "admit_mutation_sql",
     "build_mutation_request",
     "build_mutation_result",
+    "mutation_envelope_exists_at",
+    "open_mutation_inbox_directory",
     "parse_mutation_request",
     "parse_mutation_result",
     "read_envelope",
+    "read_envelope_at",
+    "unlink_mutation_envelope_at",
     "write_envelope_atomic",
+    "write_envelope_atomic_at",
 )

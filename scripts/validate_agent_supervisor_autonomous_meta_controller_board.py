@@ -120,6 +120,7 @@ REQUIRED_CONTROL_FILES = (
     APMC_MATERIALIZER_TEST_PATH,
     DATABASE_COORDINATION_PATH,
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+    REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
@@ -145,8 +146,10 @@ REQUIRED_CONTROL_FILES = (
     REPO_ROOT / "test/api/test_agent_supervisor_implementation_auto_rescue.py",
     REPO_ROOT / "test/api/test_agent_supervisor_implementation_progress.py",
     REPO_ROOT / "test/api/test_agent_supervisor_implementation_protected_paths.py",
+    REPO_ROOT / "test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py",
     REPO_ROOT / "test/api/test_agent_supervisor_merge_resolver.py",
     REPO_ROOT / "test/api/test_agent_supervisor_quack_state_server.py",
+    REPO_ROOT / "test/api/test_agent_supervisor_quack_transport_defaults.py",
     REPO_ROOT / "test/api/test_agent_supervisor_task_revision_reconciliation.py",
     REPO_ROOT / "test/api/test_agent_supervisor_todo_llm.py",
     REPO_ROOT / "test/api/test_implementation_daemon_stale_quarantined_merge.py",
@@ -445,6 +448,10 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
     database_coordination_relative = DATABASE_COORDINATION_PATH.relative_to(
         REPO_ROOT
     ).as_posix()
+    configured_board_scheduler_relative = (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py"
+    ).relative_to(REPO_ROOT).as_posix()
     project_dependency_preflight_relative = (
         PROJECT_DEPENDENCY_PREFLIGHT_PATH.relative_to(REPO_ROOT).as_posix()
     )
@@ -460,11 +467,14 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         and database_program.get("quack_endpoint") == "quack:127.0.0.1:45231"
         and database_program.get("store_id")
         == "state/agent_supervisor_autonomous_meta_controller/control.duckdb"
+        and database_program.get("runtime_registry_path")
+        == "state/agent_supervisor_autonomous_meta_controller/registry"
         and database_program.get("failover_policy") == "fail_closed"
         and authority_policy.get("automatic_file_fallback_from_quack") is False
         and authority_policy.get("ducklake_projection_authoritative") is False
         and authority_policy.get("ducklake_projection_required_for_scheduling") is False
         and SCHEDULER_CONFIG_PATH.relative_to(REPO_ROOT).as_posix() in protected_paths
+        and configured_board_scheduler_relative in protected_paths
         and portal_bridge_relative in protected_paths
         and database_coordination_relative in protected_paths
         and project_dependency_preflight_relative in protected_paths
@@ -506,6 +516,18 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
             repo_root=REPO_ROOT,
         )
         configured_program = configured_board.resolved_database_program()
+        configured_environment = configured_program.environment(
+            repository_root=REPO_ROOT,
+        )
+        expected_registry_path = str(
+            (
+                REPO_ROOT
+                / "state/agent_supervisor_autonomous_meta_controller/registry"
+            ).resolve()
+        )
+        expected_mutation_inbox_path = str(
+            Path(expected_registry_path) / "mutations"
+        )
         _append(
             checks,
             errors,
@@ -515,10 +537,22 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
                 and configured_board.max_lanes == 4
                 and configured_program.authority_mode == "quack"
                 and configured_program.task_source_kind == "duckdb"
+                and configured_program.runtime_registry_path
+                == "state/agent_supervisor_autonomous_meta_controller/registry"
+                and configured_environment.get(
+                    "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
+                )
+                == expected_registry_path
+                and configured_environment.get(
+                    "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
+                )
+                == expected_mutation_inbox_path
             ),
             detail={
                 "configuration_root": configured_board.configuration_root,
                 "database_program": configured_program.redacted_dict(),
+                "expected_runtime_registry_path": expected_registry_path,
+                "expected_mutation_inbox_path": expected_mutation_inbox_path,
             },
         )
     except Exception as exc:
@@ -1130,6 +1164,23 @@ def _p0_and_benchmark_checks(checks: list[dict[str, Any]], errors: list[str]) ->
                 "-q",
                 "test/api/test_agent_supervisor_quack_state_server.py::test_mutation_request_is_published_only_after_complete_fsync",
                 "test/api/test_agent_supervisor_quack_state_server.py::test_mutation_request_publication_fails_closed_without_atomic_rename",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_database_runner_propagation.py::test_quack_environment_binds_absolute_repo_scoped_mutation_inbox",
+                "test/api/test_agent_supervisor_database_runner_propagation.py::test_supervisor_propagates_program_to_daemon_command_and_child_env",
+                "test/api/test_agent_supervisor_database_runner_propagation.py::test_supervisor_loop_binds_trusted_source_root_for_safe_path_child",
+                "test/api/test_agent_supervisor_database_runner_propagation.py::test_configured_board_propagates_database_program",
+                "test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py::test_supervisor_round_trips_full_quack_authority_without_raw_credentials",
+                "test/api/test_agent_supervisor_quack_state_server.py::test_owner_relative_paths_require_absolute_scoped_repository_root",
+                "test/api/test_agent_supervisor_quack_state_server.py::test_concurrent_mutation_inbox_replacement_cannot_redirect_real_cas",
+                "test/api/test_agent_supervisor_quack_state_server.py::test_owner_result_collision_is_never_overwritten_or_replayed",
+                "test/api/test_agent_supervisor_quack_state_server.py::test_owner_restart_rejects_prior_generation_mutation_request",
+                "test/api/test_agent_supervisor_quack_transport_defaults.py::test_quack_mutation_dir_rejects_missing_or_mismatched_registry_binding",
+                "test/api/test_agent_supervisor_quack_transport_defaults.py::test_quack_mutation_timeout_is_unknown_outcome_without_internal_replay",
             ),
         )
         exact_completion_validations = all(

@@ -354,6 +354,9 @@ def test_child_environment_strips_state_authority_but_retains_provider_credentia
         "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "/private/quack-mutations"
     )
     monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", "/private/runtime-registry"
+    )
+    monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", '{"authority_mode":"quack"}'
     )
     monkeypatch.setenv("TEST_PROVIDER_API_KEY", "provider-secret")
@@ -383,6 +386,7 @@ def test_child_environment_strips_state_authority_but_retains_provider_credentia
     assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in captured
     assert "QUACK_TOKEN" not in captured
     assert "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR" not in captured
+    assert "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH" not in captured
     assert "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON" not in captured
 
 
