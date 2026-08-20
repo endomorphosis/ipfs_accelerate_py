@@ -8759,13 +8759,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             return _plan_bound_gate_fail(
                 "worker-network launch authority present without live seal"
             )
-    except (
-        OSError,
-        UnicodeError,
-        ValueError,
-        RuntimeError,
-        subprocess.SubprocessError,
-    ) as exc:
+    except Exception as exc:
         return _plan_bound_gate_fail(f"{type(exc).__name__}: {exc}")
     try:
         environment = {
@@ -8788,7 +8782,10 @@ def main(argv: list[str] | None = None) -> int:
     if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
         return 78
     if args_list[:1] == [PLAN_BOUND_LAUNCH_GATE_MARKER]:
-        return _run_plan_bound_launch_gate(args_list[1:])
+        try:
+            return _run_plan_bound_launch_gate(args_list[1:])
+        except Exception as exc:
+            return _plan_bound_gate_fail(f"{type(exc).__name__}: {exc}")
     parser = build_arg_parser()
     args = parser.parse_args(args_list)
     if (
