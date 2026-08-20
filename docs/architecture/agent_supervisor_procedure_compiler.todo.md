@@ -1,0 +1,1196 @@
+# Proof-Carrying Procedure Compiler Task Board
+
+Program: `agent-supervisor-proof-carrying-procedure-compiler-v1`
+Task prefix: `PCPC-`
+Root objective: `PCPC-G000`
+
+This board is a sealed bootstrap and human export. After materialization, DuckDB is task-state authority through Quack. DuckLake is non-authoritative history. A status value never establishes completion; the materializer admits P0 completion only after exact-tree validation receipts.
+
+## PCPC-000 Seal current source and prerequisite baseline
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: baseline
+- Depends on:
+- Goal id: PCPC-G010
+- Goal: Seal current source and prerequisite baseline.
+- Outputs: docs/architecture/procedure_compiler_inventory/baseline.json, docs/architecture/procedure_compiler_inventory/README.md
+- Validation: python -m pytest -q test/api/procedure_compiler/test_inventory.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/baseline
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-medium
+- Resource stage: analysis
+- Estimated tokens: 18000
+- Token budget: 18000
+- Implementation timeout seconds: 10800
+- Predicted files: docs/architecture/procedure_compiler_inventory
+- Predicted symbols: BaselineQualification, PrerequisiteDisposition
+- Interfaces: BaselineQualification, PrerequisiteDisposition
+- Effect class: repository_read_and_document_write
+- Allow concurrent with:
+- Conflict policy: Own inventory artifacts only; do not alter prerequisite implementations.
+- Preconditions: Clean Git commit and readable current-tree authorities.
+- Effects: Read Git objects and tests; write bounded inventory only.
+- Evidence subset: commit, tree, package, gitlinks, schemas, focused test receipts
+- Symbolic first: true
+- LLM context budget bytes: 18000
+- Proof requirements: Canonical baseline receipt binds HEAD/tree/package/gitlinks/schema versions and test evidence; no proof claim from plans or status.
+- Acceptance criteria: Exact starting commit/tree, package and sibling releases are sealed; every prerequisite has one closed disposition and caveat; dirty overlays are excluded.
+- Acceptance: Exact starting commit/tree, package and sibling releases are sealed; every prerequisite has one closed disposition and caveat; dirty overlays are excluded.
+- Embedding query: prerequisite baseline source seal current tree
+
+## PCPC-001 Inventory reusable supervisor authorities
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: authority-inventory
+- Depends on: PCPC-000
+- Goal id: PCPC-G010
+- Goal: Inventory reusable supervisor authorities.
+- Outputs: docs/architecture/procedure_compiler_inventory/prerequisites.json, docs/architecture/procedure_compiler_inventory/authority_reuse.md
+- Validation: python -m pytest -q test/api/procedure_compiler/test_inventory.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/authority-inventory
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: analysis
+- Estimated tokens: 24000
+- Token budget: 24000
+- Implementation timeout seconds: 10800
+- Predicted files: docs/architecture/procedure_compiler_inventory, ipfs_accelerate_py/agent_supervisor
+- Predicted symbols: PrerequisiteInventory, CompatibilityBlocker
+- Interfaces: PrerequisiteInventory, CompatibilityBlocker
+- Effect class: repository_read_and_document_write
+- Allow concurrent with:
+- Conflict policy: Own inventory/reuse map; compatibility ports are separate tasks.
+- Preconditions: PCPC-000 baseline is sealed.
+- Effects: Inspect existing authorities; write bounded references and blockers.
+- Evidence subset: symbol existence, import probes, schema/interface versions, exact focused tests
+- Symbolic first: true
+- LLM context budget bytes: 19200
+- Proof requirements: Each available status requires a current-tree import/symbol/test producer; caveats and incompatibilities remain typed.
+- Acceptance criteria: Existing authorities are mapped to reuse adapters; missing/incompatible systems are not recreated or represented as available.
+- Acceptance: Existing authorities are mapped to reuse adapters; missing/incompatible systems are not recreated or represented as available.
+- Embedding query: supervisor authority inventory reuse compatibility blockers
+
+## PCPC-002 Define procedure and trajectory contracts
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: contracts
+- Depends on: PCPC-001
+- Goal id: PCPC-G010
+- Goal: Define procedure and trajectory contracts.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/contracts.py, test/api/procedure_compiler/test_contracts.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_contracts.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/contracts
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 32000
+- Token budget: 32000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/contracts.py, test/api/procedure_compiler/test_contracts.py
+- Predicted symbols: ProcedureCompilerContract, ArtifactBindings, ExecutionTrajectory, ProcedureCertificate
+- Interfaces: ProcedureCompilerContract, ArtifactBindings, ExecutionTrajectory, ProcedureCertificate
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own common PCPC wire contracts; reuse canonical serializer; no storage or control authority.
+- Preconditions: PCPC-001 identifies canonical identity and authority owners.
+- Effects: Add closed schemas and tests; no runtime effects.
+- Evidence subset: round trips, CID identity, bounds, executable rejection, exact bindings
+- Symbolic first: true
+- LLM context budget bytes: 25600
+- Proof requirements: Canonical CID parity and strict round trips; reject unknown fields, floats, callbacks, recursion, oversize values, unsafe paths, forged identities, and large inline or referenced artifacts above their declared bounds.
+- Acceptance criteria: Every required artifact name has an immutable versioned bounded model; execution artifacts preserve exact repository/tree/objective/task/contract/policy/environment identities; the large-artifact rejection test fails closed before persistence or execution.
+- Acceptance: Every required artifact name has an immutable versioned bounded model; execution artifacts preserve exact repository/tree/objective/task/contract/policy/environment identities; the large-artifact rejection test fails closed before persistence or execution.
+- Embedding query: immutable bounded procedure trajectory contracts canonical identity
+
+## PCPC-003 Define task-family and generalization contracts
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: family-contracts
+- Depends on: PCPC-002
+- Goal id: PCPC-G010
+- Goal: Define task-family and generalization contracts.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py, test/api/procedure_compiler/test_task_family_contracts.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_task_family_contracts.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/family-contracts
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 24000
+- Token budget: 24000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py, test/api/procedure_compiler/test_task_family_contracts.py
+- Predicted symbols: TaskFamily, TaskFamilyBoundary, GeneralizationBoundary, TaskFamilyCounterexample
+- Interfaces: TaskFamily, TaskFamilyBoundary, GeneralizationBoundary, TaskFamilyCounterexample
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own family/generalization wire contracts; discovery behavior begins PCPC-010.
+- Preconditions: PCPC-002 common contracts are stable.
+- Effects: Add family contracts and fixtures only.
+- Evidence subset: closed vocabulary, unknown fields, unsafe merged boundary examples
+- Symbolic first: true
+- LLM context budget bytes: 19200
+- Proof requirements: Boundary contracts prove explicit positives, negatives, boundary/unknown cases, risk, repository/language/effect/authority/validation/rollback/proof dimensions.
+- Acceptance criteria: Closed initial family vocabulary and boundary models reject materially different authority, effects, validation, rollback, ownership, legal/security, or proof obligations.
+- Acceptance: Closed initial family vocabulary and boundary models reject materially different authority, effects, validation, rollback, ownership, legal/security, or proof obligations.
+- Embedding query: task family boundary generalization counterexample contracts
+
+## PCPC-004 Implement ProcedureIR parser and validator
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: procedure-ir
+- Depends on: PCPC-002, PCPC-003
+- Goal id: PCPC-G010
+- Goal: Implement ProcedureIR parser and validator.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/procedure_ir.py, test/api/procedure_compiler/test_procedure_ir.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_procedure_ir.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/procedure-ir
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 36000
+- Token budget: 36000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/procedure_ir.py, test/api/procedure_compiler/test_procedure_ir.py
+- Predicted symbols: ProcedureSpec, StepOperation, ProcedureStep, ProcedureIRParser
+- Interfaces: ProcedureSpec, StepOperation, ProcedureStep, ProcedureIRParser
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own IR/parser/internal declarative operation catalog; never modify public control operation catalog.
+- Preconditions: PCPC-002/003 contracts are current.
+- Effects: Add declarative IR parser/validator; no execution or external effects.
+- Evidence subset: parser round trip, graph/dataflow, bounds, forbidden ops, validation retention
+- Symbolic first: true
+- LLM context budget bytes: 28800
+- Proof requirements: Structural proof covers closed schema, canonical identity, initialized dataflow, bounded flat CFG, scope/effect containment, required validation/postconditions, and forbidden operations.
+- Acceptance criteria: All allowed operations parse deterministically; every forbidden/arbitrary execution, unknown type, unbounded loop/retry, cycle, scope escape, or validation-skipping branch is rejected.
+- Acceptance: All allowed operations parse deterministically; every forbidden/arbitrary execution, unknown type, unbounded loop/retry, cycle, scope escape, or validation-skipping branch is rejected.
+- Embedding query: procedure IR parser bounded control flow allowlisted operations
+
+## PCPC-005 Implement deterministic procedure interpreter
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: interpreter
+- Depends on: PCPC-004, PCPC-006
+- Goal id: PCPC-G010
+- Goal: Implement deterministic procedure interpreter.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/interpreter.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/runtime.py, test/api/procedure_compiler/test_interpreter.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_interpreter.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/interpreter
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 42000
+- Token budget: 42000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/interpreter.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/runtime.py, test/api/procedure_compiler/test_interpreter.py
+- Predicted symbols: ProcedureInterpreter, ProofCarryingProcedureCompiler, TrustedOperationCatalog, CheckpointStore
+- Interfaces: ProcedureInterpreter, ProofCarryingProcedureCompiler, TrustedOperationCatalog, CheckpointStore
+- Effect class: repository_write_bounded
+- Allow concurrent with: PCPC-007, PCPC-008
+- Conflict policy: Own interpreter and P0 facade; adapters call existing authorities and contain no serialized callbacks.
+- Preconditions: IR passes; world bindings exist; trusted injected ports are available.
+- Effects: Execute injected adapters in hermetic tests; production mutation remains unavailable without admitted certificate and authority.
+- Evidence subset: determinism, authority/effect subsets, checkpoint/restart, rollback, unknown outcome
+- Symbolic first: true
+- LLM context budget bytes: 33600
+- Proof requirements: State-machine tests independently admit certificates, authority/effects/observations/pre/postconditions; cover determinism, confirmation binding and replay rejection, concurrent invocation exclusion, idempotent replay, restart, unknown outcomes, rollback, loops, scope, stale fence, and idle stability without mutation/model calls.
+- Acceptance criteria: Interpreter runs only allowlisted exact contracts within budgets/scope, fails closed on missing/stale/foreign confirmation or admissions, serializes duplicate concurrent invocation, checkpoints every step, never blindly replays unknown effects, remains stable while idle, and emits trace/outcome without self-completion.
+- Acceptance: Interpreter runs only allowlisted exact contracts within budgets/scope, fails closed on missing/stale/foreign confirmation or admissions, serializes duplicate concurrent invocation, checkpoints every step, never blindly replays unknown effects, remains stable while idle, and emits trace/outcome without self-completion.
+- Embedding query: deterministic procedure interpreter checkpoint idempotency rollback
+
+## PCPC-006 Implement repository world-state contracts
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: world-contracts
+- Depends on: PCPC-002
+- Goal id: PCPC-G010
+- Goal: Implement repository world-state contracts.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py, test/api/procedure_compiler/test_world_model.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_world_model.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/world-contracts
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 30000
+- Token budget: 30000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py, test/api/procedure_compiler/test_world_model.py
+- Predicted symbols: RepositoryWorldState, AbstractRepositoryState, RepositoryWorldModel
+- Interfaces: RepositoryWorldState, AbstractRepositoryState, RepositoryWorldModel
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own bounded planning projection only; reuse semantic-state and repository snapshot owners.
+- Preconditions: PCPC-002 bindings exist; existing world/repository snapshot interfaces are inventoried.
+- Effects: Add pure projection/contracts and tests; no filesystem probing inside artifacts.
+- Evidence subset: world projection, source identity, current/stale status, bounded references
+- Symbolic first: true
+- LLM context budget bytes: 24000
+- Proof requirements: Projection proves source SupervisorWorldSnapshot/repository identities, bounds all required references, rejects stale/foreign/embedded bodies, and does not become authority.
+- Acceptance criteria: World state represents every required dimension by bounded admitted reference and refuses missing exact repository/tree/policy/environment bindings.
+- Acceptance: World state represents every required dimension by bounded admitted reference and refuses missing exact repository/tree/policy/environment bindings.
+- Embedding query: repository world state planning projection existing authority
+
+## PCPC-007 Implement world-state delta extraction
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: world-delta
+- Depends on: PCPC-006
+- Goal id: PCPC-G010
+- Goal: Implement world-state delta extraction.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py, test/api/procedure_compiler/test_world_model.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_world_model.py -k delta
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/world-delta
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 22000
+- Token budget: 22000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py, test/api/procedure_compiler/test_world_model.py
+- Predicted symbols: WorldStateDelta, extract_world_state_delta, RepositoryWorldModel.delta
+- Interfaces: WorldStateDelta, extract_world_state_delta, RepositoryWorldModel.delta
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Coordinate with PCPC-006 in the same module; serialize overlapping edits.
+- Preconditions: PCPC-006 state contract passes.
+- Effects: Pure comparison only; no repository mutation.
+- Evidence subset: before/after IDs, additions/removals, unknown/stale components
+- Symbolic first: true
+- LLM context budget bytes: 18000
+- Proof requirements: Differential fixtures bind before/after state IDs and exactly report changed files/symbols/components/statuses without inventing omitted facts.
+- Acceptance criteria: Exact deterministic deltas are canonical, bounded, direction-sensitive, and preserve unknown observations rather than inferring no change.
+- Acceptance: Exact deterministic deltas are canonical, bounded, direction-sensitive, and preserve unknown observations rather than inferring no change.
+- Embedding query: world state delta extraction changed files symbols
+
+## PCPC-008 Implement transition model and calibration
+
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: transition-model
+- Depends on: PCPC-004, PCPC-007
+- Goal id: PCPC-G010
+- Goal: Implement transition model and calibration.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py, test/api/procedure_compiler/test_transition_model.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_transition_model.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/p0/transition-model
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 32000
+- Token budget: 32000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py, test/api/procedure_compiler/test_transition_model.py
+- Predicted symbols: TransitionModel, TransitionObservation, TransitionPrediction, PredictionCalibration
+- Interfaces: TransitionModel, TransitionObservation, TransitionPrediction, PredictionCalibration
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own transition projection/calibration; do not alter formal supervisor state model.
+- Preconditions: PCPC-004 operation semantics and PCPC-007 deltas exist.
+- Effects: Pure prediction/calibration records; no mutation outside model registry candidate state.
+- Evidence subset: confidence lattice, predicted/observed comparison, integer accuracy, drift demotion
+- Symbolic first: true
+- LLM context budget bytes: 25600
+- Proof requirements: Rules/predictions/calibration are canonical and bounded; only exact or separately admitted conservative predictions discharge; drift demotes/invalidates automatically.
+- Acceptance criteria: All required transition classes and comparison dimensions are represented; empirical/heuristic predictions cannot grant authority, proof, postconditions, completion, or suppress validation/review.
+- Acceptance: All required transition classes and comparison dimensions are represented; empirical/heuristic predictions cannot grant authority, proof, postconditions, completion, or suppress validation/review.
+- Embedding query: repository transition model calibration confidence drift
+
+## PCPC-009 Implement trajectory normalization
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: trajectory
+- Depends on: PCPC-002, PCPC-003, PCPC-008
+- Goal id: PCPC-G020
+- Goal: Implement trajectory normalization.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/trajectory.py, test/api/procedure_compiler/test_trajectory.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_trajectory.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/trajectory
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 34000
+- Token budget: 34000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/trajectory.py, test/api/procedure_compiler/test_trajectory.py
+- Predicted symbols: TrajectoryNormalizer, TrajectoryAdmissionPolicy, TrajectoryNormalizationReceipt
+- Interfaces: TrajectoryNormalizer, TrajectoryAdmissionPolicy, TrajectoryNormalizationReceipt
+- Effect class: repository_write_bounded
+- Allow concurrent with: PCPC-011, PCPC-013
+- Conflict policy: Own normalizer and admission policy; source receipt authorities remain unchanged.
+- Preconditions: P0 bindings, world deltas, and trajectory wire contracts pass.
+- Effects: Read admitted receipt references; persist normalized candidate artifacts.
+- Evidence subset: admission source, redaction, ordering, cost, validation, terminal outcome
+- Symbolic first: true
+- LLM context budget bytes: 27200
+- Proof requirements: Admission fixtures reject prose/status/model confidence/simulated/pre-merge/stale/unsigned episodes and redact prompts, secrets, bodies, logs, and chain-of-thought.
+- Acceptance criteria: Every admissible source category normalizes into bounded abstract states, ordered contracts, observations, holes, effects, validation, terminal state, and complete cost/intervention fields.
+- Acceptance: Every admissible source category normalizes into bounded abstract states, ordered contracts, observations, holes, effects, validation, terminal state, and complete cost/intervention fields.
+- Embedding query: validated trajectory normalization receipt admission redaction
+
+## PCPC-010 Implement task-family discovery baseline
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: family-discovery
+- Depends on: PCPC-003, PCPC-009
+- Goal id: PCPC-G020
+- Goal: Implement task-family discovery baseline.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py, test/api/procedure_compiler/test_task_family.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_task_family.py -k discovery
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/family-discovery
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 32000
+- Token budget: 32000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py, test/api/procedure_compiler/test_task_family.py
+- Predicted symbols: TaskFamilyDiscovery, TaskFamilyClassifier
+- Interfaces: TaskFamilyDiscovery, TaskFamilyClassifier
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Coordinate with PCPC-003 contract owner; discovery behavior follows normalized features.
+- Preconditions: PCPC-009 emits admitted normalized trajectories.
+- Effects: Pure deterministic classification; no promotion or mutation.
+- Evidence subset: positive classification, title near-match rejection, unknown cases
+- Symbolic first: true
+- LLM context budget bytes: 25600
+- Proof requirements: Deterministic feature fixtures show titles/embeddings alone cannot join families and every initial closed family is distinguishable.
+- Acceptance criteria: Baseline classifies by semantics, preconditions, artifact/effect/tool/validation/failure/postcondition/rollback shapes and returns unknown on insufficient evidence.
+- Acceptance: Baseline classifies by semantics, preconditions, artifact/effect/tool/validation/failure/postcondition/rollback shapes and returns unknown on insufficient evidence.
+- Embedding query: deterministic task family discovery structural features
+
+## PCPC-011 Implement family boundary and negative-example checks
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: family-boundary
+- Depends on: PCPC-003
+- Goal id: PCPC-G020
+- Goal: Implement family boundary and negative-example checks.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py, test/api/procedure_compiler/test_task_family.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_task_family.py -k 'boundary or negative or unsafe'
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/family-boundary
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 30000
+- Token budget: 30000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py, test/api/procedure_compiler/test_task_family.py
+- Predicted symbols: TaskFamilyBoundaryValidator, BoundaryDecision
+- Interfaces: TaskFamilyBoundaryValidator, BoundaryDecision
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Serialize overlap with PCPC-010; boundary validator owns rejection policy.
+- Preconditions: Family contracts and bounded declared negative, boundary, and unknown-case fixtures exist; live normalized episodes are integration evidence, not an implementation prerequisite.
+- Effects: Pure validation and counterexample emission.
+- Evidence subset: negative examples, boundary cases, risk/effect/authority mismatch
+- Symbolic first: true
+- LLM context budget bytes: 24000
+- Proof requirements: Known negative/boundary/unknown cases and material authority/effect/validation/rollback/legal/security/ownership/proof differences are correctly refused.
+- Acceptance criteria: Every family declares complete boundary dimensions, risk ceiling, allowed repositories/languages/effects; overgeneralization yields critical typed rejection.
+- Acceptance: Every family declares complete boundary dimensions, risk ceiling, allowed repositories/languages/effects; overgeneralization yields critical typed rejection.
+- Embedding query: task family boundary negative unsafe near match refusal
+
+## PCPC-012 Implement structural anti-unification
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: anti-unification
+- Depends on: PCPC-010, PCPC-011
+- Goal id: PCPC-G020
+- Goal: Implement structural anti-unification.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/anti_unification.py, test/api/procedure_compiler/test_anti_unification.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_anti_unification.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/anti-unification
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 36000
+- Token budget: 36000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/anti_unification.py, test/api/procedure_compiler/test_anti_unification.py
+- Predicted symbols: ProcedureAntiUnifier, AntiUnificationPattern
+- Interfaces: ProcedureAntiUnifier, AntiUnificationPattern
+- Effect class: repository_write_bounded
+- Allow concurrent with: PCPC-013
+- Conflict policy: Own structural generalizer; no specification or promotion decisions.
+- Preconditions: Validated family membership/boundaries and multiple admitted trajectories exist.
+- Effects: Generate candidate patterns/counterexamples only.
+- Evidence subset: order preservation, lost detail, unsafe merge, typed holes
+- Symbolic first: true
+- LLM context budget bytes: 28800
+- Proof requirements: Positive traces infer constants/parameters/optional branches/order/pre/post/validation/failures/holes; unsafe authority/effect/test/path merges produce counterexamples.
+- Acceptance criteria: Every lost detail is recorded; validation and postconditions cannot disappear; paths/credentials are never generalized; uncertainty becomes typed holes.
+- Acceptance: Every lost detail is recorded; validation and postconditions cannot disappear; paths/credentials are never generalized; uncertainty becomes typed holes.
+- Embedding query: structural anti unification procedures trajectories safe generalization
+
+## PCPC-013 Implement candidate specification mining
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: specification-mining
+- Depends on: PCPC-002, PCPC-008
+- Goal id: PCPC-G020
+- Goal: Implement candidate specification mining.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/specification_mining.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/invariant_mining.py, test/api/procedure_compiler/test_specification_mining.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_specification_mining.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/specification-mining
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 38000
+- Token budget: 38000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/specification_mining.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/invariant_mining.py, test/api/procedure_compiler/test_specification_mining.py
+- Predicted symbols: SpecificationMiner, InvariantMiner, SpecificationCandidate
+- Interfaces: SpecificationMiner, InvariantMiner, SpecificationCandidate
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own mining logic; type/test/proof/runtime/document authorities remain external.
+- Preconditions: Specification/evidence contracts, admitted-source schemas, and bounded hermetic source fixtures exist; live normalized traces and anti-unified patterns remain later integration evidence.
+- Effects: Read admitted artifacts and emit candidates only.
+- Evidence subset: source provenance, conflicting evidence, candidate tier, bounded properties
+- Symbolic first: true
+- LLM context budget bytes: 30400
+- Proof requirements: Every source kind retains provenance/tier; frequency/absence/passing tests do not upgrade candidate status; conflicting evidence yields a counterexample/refusal.
+- Acceptance criteria: Miner proposes bounded pre/post/invariant/frame/effect/resource/order/idempotency/rollback/freshness properties with exact evidence references and candidate status.
+- Acceptance: Miner proposes bounded pre/post/invariant/frame/effect/resource/order/idempotency/rollback/freshness properties with exact evidence references and candidate status.
+- Embedding query: specification invariant mining candidate evidence
+
+## PCPC-014 Implement non-vacuity and invariant validation
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: specification-assurance
+- Depends on: PCPC-011, PCPC-013
+- Goal id: PCPC-G020
+- Goal: Implement non-vacuity and invariant validation.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/invariant_mining.py, test/api/procedure_compiler/test_non_vacuity.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_non_vacuity.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/specification-assurance
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-large
+- Resource stage: verification
+- Estimated tokens: 36000
+- Token budget: 36000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/invariant_mining.py, test/api/procedure_compiler/test_non_vacuity.py
+- Predicted symbols: NonVacuityValidator, InvariantValidator, AssuranceApiAdapter
+- Interfaces: NonVacuityValidator, InvariantValidator, AssuranceApiAdapter
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Adapt existing AssuranceCampaignApi; do not add another assurance engine.
+- Preconditions: Candidate specifications and existing assurance API are available.
+- Effects: Run bounded hermetic assurance campaigns; persist counterexamples.
+- Evidence subset: vacuity mutants, reachability, real effect observation, invariant counterexamples
+- Symbolic first: true
+- LLM context budget bytes: 28800
+- Proof requirements: Adversarial fixtures cover impossible preconditions, unreachable branch, empty output, no invocation, mock effect, fixture shortcut, constant restatement, and invariant counterexamples.
+- Acceptance criteria: Vacuous candidates are rejected; surviving candidates retain adversarial receipts/current bindings and cannot claim completeness beyond tested obligations.
+- Acceptance: Vacuous candidates are rejected; surviving candidates retain adversarial receipts/current bindings and cannot claim completeness beyond tested obligations.
+- Embedding query: specification non vacuity adversarial invariant validation
+
+## PCPC-015 Implement bounded CEGIS procedure synthesis
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cegis
+- Depends on: PCPC-008, PCPC-012, PCPC-013, PCPC-014
+- Goal id: PCPC-G020
+- Goal: Implement bounded CEGIS procedure synthesis.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/cegis.py, test/api/procedure_compiler/test_cegis.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_cegis.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/cegis
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 44000
+- Token budget: 44000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/cegis.py, test/api/procedure_compiler/test_cegis.py
+- Predicted symbols: ProcedureCegis, ProcedureSynthesisPlan, SynthesisResult
+- Interfaces: ProcedureCegis, ProcedureSynthesisPlan, SynthesisResult
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own bounded synthesis state machine; candidates remain unpromoted.
+- Preconditions: IR, patterns, validated specs, transition costs, and counterexamples exist.
+- Effects: Generate declarative candidates and bounded validation work; no direct code/promotion.
+- Evidence subset: candidate order, replay, convergence, budget exhaustion, deduplication
+- Symbolic first: true
+- LLM context budget bytes: 35200
+- Proof requirements: Convergence and exhaustion tests enforce candidate/step/branch/hole/loop/model/token/validation/proof/wall bounds and counterexample-set deduplication.
+- Acceptance criteria: Generation follows required priority order; replay/adversarial counterexamples refine/narrow candidates; repeated candidate/set pairs are skipped; exhaustion is typed incomplete.
+- Acceptance: Generation follows required priority order; replay/adversarial counterexamples refine/narrow candidates; repeated candidate/set pairs are skipped; exhaustion is typed incomplete.
+- Embedding query: bounded cegis procedure synthesis counterexample refinement
+
+## PCPC-016 Integrate adversarial assurance counterexamples
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cegis-assurance
+- Depends on: PCPC-011, PCPC-014, PCPC-015
+- Goal id: PCPC-G020
+- Goal: Integrate adversarial assurance counterexamples.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/cegis.py, test/api/procedure_compiler/test_cegis_adversarial.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_cegis_adversarial.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/cegis-assurance
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: verification
+- Estimated tokens: 34000
+- Token budget: 34000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/cegis.py, test/api/procedure_compiler/test_cegis_adversarial.py
+- Predicted symbols: AssuranceCounterexampleAdapter, EscapedMutantGate
+- Interfaces: AssuranceCounterexampleAdapter, EscapedMutantGate
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Reuse AssuranceCampaignApi; serialize CEGIS integration edits with PCPC-015.
+- Preconditions: Existing assurance facade is qualified with caveats; CEGIS emits candidate IDs.
+- Effects: Run bounded adversarial campaigns; persist candidate counterexamples only.
+- Evidence subset: mutant coverage, prompt injection, authority/effect/validation attacks
+- Symbolic first: true
+- LLM context budget bytes: 27200
+- Proof requirements: Critical seeded mutants, prompt injection, validation weakening, scope escape, self-promotion, forged evidence, and unsafe family merge feed persistent typed counterexamples.
+- Acceptance criteria: Every assurance failure narrows/rejects the candidate; zero critical escaped mutants is an immutable later promotion requirement.
+- Acceptance: Every assurance failure narrows/rejects the candidate; zero critical escaped mutants is an immutable later promotion requirement.
+- Embedding query: adversarial assurance cegis counterexamples escaped mutant gate
+
+## PCPC-017 Implement procedure verification and certificates
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: verification-certificate
+- Depends on: PCPC-015, PCPC-016
+- Goal id: PCPC-G020
+- Goal: Implement procedure verification and certificates.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/verifier.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/certificate.py, test/api/procedure_compiler/test_verifier.py, test/api/procedure_compiler/test_certificate.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_verifier.py test/api/procedure_compiler/test_certificate.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/synthesis/verification-certificate
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: verification
+- Estimated tokens: 46000
+- Token budget: 46000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/verifier.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/certificate.py, test/api/procedure_compiler/test_verifier.py, test/api/procedure_compiler/test_certificate.py
+- Predicted symbols: ProcedureVerifier, ProcedureCertificateIssuer, ProcedureCertificateVerifier
+- Interfaces: ProcedureVerifier, ProcedureCertificateIssuer, ProcedureCertificateVerifier
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own verification/certificate logic; reuse proof/test/sealer/admission authorities and trusted-key policy without modifying keys.
+- Preconditions: CEGIS and adversarial counterexample set are complete within bounds.
+- Effects: Verify candidates and issue signed artifacts through existing authorized issuer; no promotion.
+- Evidence subset: all verification layers, signature, freshness, dependency staleness, self-certification
+- Symbolic first: true
+- LLM context budget bytes: 36800
+- Proof requirements: Structural/authority/effect/dataflow/temporal/semantic/validation obligations and signature/freshness/forgery/staleness tests bind the full certificate payload.
+- Acceptance criteria: Only independently verified candidates receive certificates binding every required identity/evidence/limitation/review horizon; forged, stale, self-issued, incomplete, or weaker-validation certificates fail.
+- Acceptance: Only independently verified candidates receive certificates binding every required identity/evidence/limitation/review horizon; forged, stale, self-issued, incomplete, or weaker-validation certificates fail.
+- Embedding query: procedure verification proof conformance certificate signature freshness
+
+## PCPC-018 Implement versioned procedure registry
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: registry
+- Depends on: PCPC-017
+- Goal id: PCPC-G030
+- Goal: Implement versioned procedure registry.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/registry.py, test/api/procedure_compiler/test_registry.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_registry.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/registry
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 40000
+- Token budget: 40000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/registry.py, test/api/procedure_compiler/test_registry.py
+- Predicted symbols: ProcedureRegistry, ProcedureRegistryRevision, RegistryCAS
+- Interfaces: ProcedureRegistry, ProcedureRegistryRevision, RegistryCAS
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own registry rows/state machine; use existing DuckDB repository/event/artifact owners.
+- Preconditions: Verified certificate service and DuckDB control repository available.
+- Effects: Write registry metadata/events under typed authorization; procedure bodies remain content-addressed.
+- Evidence subset: lifecycle states, CAS, corruption, rollback/revoke, concurrent access
+- Symbolic first: true
+- LLM context budget bytes: 32000
+- Proof requirements: Exact/family lookup, filters, versions, expected-old CAS, promotion separation, rollback, revocation, corruption recovery, stale cert, and concurrent writer tests.
+- Acceptance criteria: Closed lifecycle and lookup/filter operations are deterministic; procedure cannot promote itself; every promotion/rollback/revocation has authorized CAS and exact target.
+- Acceptance: Closed lifecycle and lookup/filter operations are deterministic; procedure cannot promote itself; every promotion/rollback/revocation has authorized CAS and exact target.
+- Embedding query: versioned procedure registry promotion rollback revocation
+
+## PCPC-019 Integrate procedure operators into adaptive planning
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: planner-integration
+- Depends on: PCPC-017, PCPC-018
+- Goal id: PCPC-G030
+- Goal: Integrate procedure operators into adaptive planning.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/planner_adapter.py, test/api/procedure_compiler/test_planner_adapter.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_planner_adapter.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/planner-integration
+- Parallel lane: pcpc-lane-3
+- Resource class: cpu-large
+- Resource stage: integration
+- Estimated tokens: 44000
+- Token budget: 44000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/planner_adapter.py, test/api/procedure_compiler/test_planner_adapter.py
+- Predicted symbols: ProcedurePlannerAdapter, ProcedureOperator, ProcedureCompositionValidator
+- Interfaces: ProcedurePlannerAdapter, ProcedureOperator, ProcedureCompositionValidator
+- Effect class: repository_write_bounded
+- Allow concurrent with: PCPC-020
+- Conflict policy: Adapter only; do not replace or reinterpret AdaptivePlanner. Any narrow missing-catalog compatibility port stays inside the adapter and requires separate review.
+- Preconditions: PCPC-018 registry is current and the committed AdaptivePlanner incompatibility is re-evaluated on the task tree; unresolved incompatibility is an explicit typed-unavailable path, not permission to recreate the planner.
+- Effects: Read registry/planner state; produce plan candidates only.
+- Evidence subset: adaptive planner compatibility, match, composition, cycle/effect escalation
+- Symbolic first: true
+- LLM context budget bytes: 35200
+- Proof requirements: Planner-order, exact match, partial criterion, composition entailment/effect/authority/budget/rollback/validation, cycle, and hidden escalation tests; a current AdaptivePlanner import either passes or produces the declared typed-incompatible result before procedure dispatch.
+- Acceptance criteria: Qualified planner uses required order and procedures only on exact compatible boundaries; incompatibility returns typed unavailable while other runtime remains usable.
+- Acceptance: Qualified planner uses required order and procedures only on exact compatible boundaries; incompatibility returns typed unavailable while other runtime remains usable.
+- Embedding query: hierarchical planner verified procedure operators composition
+
+## PCPC-020 Implement typed procedure holes
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: typed-holes
+- Depends on: PCPC-017
+- Goal id: PCPC-G030
+- Goal: Implement typed procedure holes.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/hole_resolution.py, test/api/procedure_compiler/test_hole_resolution.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_hole_resolution.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/typed-holes
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 36000
+- Token budget: 36000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/hole_resolution.py, test/api/procedure_compiler/test_hole_resolution.py
+- Predicted symbols: HoleResolver, HoleRequest, HoleResolutionValidator
+- Interfaces: HoleResolver, HoleRequest, HoleResolutionValidator
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own hole routing/validation; use ContextCompiler and provider route APIs; no authority decisions.
+- Preconditions: Certificate validation and ContextCompiler/current provider capacity exist.
+- Effects: Bounded model proposal calls only after deterministic/cache routes; no direct effect.
+- Evidence subset: hole schemas, prohibited decisions, context/token/attempt bounds, validation
+- Symbolic first: true
+- LLM context budget bytes: 28800
+- Proof requirements: Allowed/prohibited types, provider/context/attempt bounds, candidate tier, fallback, validation, injection, stale context, and effect/authority flow tests.
+- Acceptance criteria: Only allowed typed holes can call approved providers; outputs remain candidates until validation; identical failure/no-new-evidence suppresses another call.
+- Acceptance: Only allowed typed holes can call approved providers; outputs remain candidates until validation; identical failure/no-new-evidence suppresses another call.
+- Embedding query: typed procedure holes bounded model residual validation
+
+## PCPC-021 Implement residual-hole distillation corpus
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: distillation-corpus
+- Depends on: PCPC-020
+- Goal id: PCPC-G030
+- Goal: Implement residual-hole distillation corpus.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/distillation.py, test/api/procedure_compiler/test_distillation.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_distillation.py -k corpus
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/distillation-corpus
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 30000
+- Token budget: 30000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/distillation.py, test/api/procedure_compiler/test_distillation.py
+- Predicted symbols: DistillationCorpusBuilder, DistillationExample
+- Interfaces: DistillationCorpusBuilder, DistillationExample
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own compact corpus manifests; large bodies remain external content references.
+- Preconditions: PCPC-020 produces validated hole resolutions.
+- Effects: Read admitted resolutions; write compact candidate corpus/manifests.
+- Evidence subset: data admission, privacy, freshness, label correctness, partition disjointness
+- Symbolic first: true
+- LLM context budget bytes: 24000
+- Proof requirements: Corpus admissions bind validation/proof/outcome and reject prompts, stale/unverified/mislabeled/private examples; partition leakage is detected.
+- Acceptance criteria: Independently validated accepted/rejected hole examples produce bounded disjoint corpus rows with complete provenance and counterexamples.
+- Acceptance: Independently validated accepted/rejected hole examples produce bounded disjoint corpus rows with complete provenance and counterexamples.
+- Embedding query: residual hole distillation corpus validated examples
+
+## PCPC-022 Implement deterministic and local hole resolvers
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: distilled-resolvers
+- Depends on: PCPC-021
+- Goal id: PCPC-G030
+- Goal: Implement deterministic and local hole resolvers.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/distillation.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/hole_resolution.py, test/api/procedure_compiler/test_local_hole_resolvers.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_local_hole_resolvers.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/distilled-resolvers
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 38000
+- Token budget: 38000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/distillation.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/hole_resolution.py, test/api/procedure_compiler/test_local_hole_resolvers.py
+- Predicted symbols: ExactHoleCache, DeclarativeHoleRule, LocalHoleResolver
+- Interfaces: ExactHoleCache, DeclarativeHoleRule, LocalHoleResolver
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Coordinate edits with PCPC-020/021; models remain proposal producers.
+- Preconditions: Validated disjoint corpus exists and local capability is explicit.
+- Effects: Resolve bounded candidate outputs; no repository effect before validation.
+- Evidence subset: route order, key dependencies, held-out accuracy, validation retention
+- Symbolic first: true
+- LLM context budget bytes: 30400
+- Proof requirements: Route hierarchy, cache key completeness, rule determinism, held-out failure, confidence non-authority, and mandatory downstream validation tests.
+- Acceptance criteria: Exact cache -> rule -> deterministic classifier -> small local model -> remote model order is enforced; no route suppresses validation or claims correctness.
+- Acceptance: Exact cache -> rule -> deterministic classifier -> small local model -> remote model order is enforced; no route suppresses validation or claims correctness.
+- Embedding query: deterministic local hole resolver route remote calls avoided
+
+## PCPC-023 Implement bounded deterministic tool synthesis
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: tool-synthesis
+- Depends on: PCPC-017
+- Goal id: PCPC-G030
+- Goal: Implement bounded deterministic tool synthesis.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/tool_synthesis.py, test/api/procedure_compiler/test_tool_synthesis.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_tool_synthesis.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/tool-synthesis
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 42000
+- Token budget: 42000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/tool_synthesis.py, test/api/procedure_compiler/test_tool_synthesis.py
+- Predicted symbols: TransformationDsl, GeneratedToolCompiler, TranslationValidator
+- Interfaces: TransformationDsl, GeneratedToolCompiler, TranslationValidator
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own bounded transformation DSL; reuse approved repair templates; no arbitrary code generators.
+- Preconditions: Procedure verifier/certificate and approved template registry exist.
+- Effects: Generate declarative candidates and test fixtures within declared paths.
+- Evidence subset: grammar bound, path/effect scope, arbitrary code rejection, translation equivalence
+- Symbolic first: true
+- LLM context budget bytes: 33600
+- Proof requirements: Grammar/templates, schema/effect/path/resource tests, adversarial fixtures, arbitrary code/shell rejection, and DSL-to-optimized differential translation validation.
+- Acceptance criteria: Repeated pure/bounded transformations may yield candidate tools only; optimized Python is promoted only after exact differential validation and certificate.
+- Acceptance: Repeated pure/bounded transformations may yield candidate tools only; optimized Python is promoted only after exact differential validation and certificate.
+- Embedding query: bounded deterministic tool synthesis transformation DSL
+
+## PCPC-024 Implement shadow experiment planner
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: experiments
+- Depends on: PCPC-008, PCPC-011
+- Goal id: PCPC-G030
+- Goal: Implement shadow experiment planner.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/experiments.py, test/api/procedure_compiler/test_experiments.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_experiments.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/experiments
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 32000
+- Token budget: 32000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/experiments.py, test/api/procedure_compiler/test_experiments.py
+- Predicted symbols: ExperimentPlanner, ExperimentDecision, ShadowExperimentRunner
+- Interfaces: ExperimentPlanner, ExperimentDecision, ShadowExperimentRunner
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own shadow experiment plans; use existing isolated worktree authority; never alter production/policy.
+- Preconditions: World uncertainty and family boundaries expose explicit questions.
+- Effects: Create disposable worktree experiment effects under existing authority; persist observations.
+- Evidence subset: value of experiment, fixed bounds, isolation, privacy, no production mutation
+- Symbolic first: true
+- LLM context budget bytes: 25600
+- Proof requirements: Decision-value, question/hypothesis/counterfactual/data/risk/privacy/cost/rule/bounds and disposable-worktree/no-production-mutation tests.
+- Acceptance criteria: Only decision-relevant bounded experiments run on fixtures/authorized disposable worktrees; results remain observations and cannot authorize.
+- Acceptance: Only decision-relevant bounded experiments run on fixtures/authorized disposable worktrees; results remain observations and cannot authorize.
+- Embedding query: active shadow experiment planner uncertainty decision rule
+
+## PCPC-025 Implement cross-repository transfer checks
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: transfer
+- Depends on: PCPC-011, PCPC-017, PCPC-024
+- Goal id: PCPC-G030
+- Goal: Implement cross-repository transfer checks.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/transfer.py, test/api/procedure_compiler/test_transfer.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_transfer.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/transfer
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Resource stage: verification
+- Estimated tokens: 34000
+- Token budget: 34000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/transfer.py, test/api/procedure_compiler/test_transfer.py
+- Predicted symbols: ProcedureTransferGate, GeneralizationBoundaryEvaluator
+- Interfaces: ProcedureTransferGate, GeneralizationBoundaryEvaluator
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own transfer gate; no cross-repository writes; held-out fixtures are read-only/disposable.
+- Preconditions: Certificates, family boundaries, and bounded experiment results exist.
+- Effects: Read explicitly authorized repository fixtures; no automatic cross-repository mutation.
+- Evidence subset: compatibility dimensions, path assumptions, held-out result, typed refusal
+- Symbolic first: true
+- LLM context budget bytes: 27200
+- Proof requirements: Operation/effect/authority/language/framework/validation/family/path compatibility and held-out repository tests; similar names/embeddings/language/maintainer never suffice.
+- Acceptance criteria: Compatible transfer receives bounded candidate eligibility; every changed assumption returns typed refusal; unsafe transfer count remains zero.
+- Acceptance: Compatible transfer receives bounded candidate eligibility; every changed assumption returns typed refusal; unsafe transfer count remains zero.
+- Embedding query: cross repository procedure transfer boundary denial
+
+## PCPC-026 Implement drift, revocation, rollback, and supersession
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: registry-drift
+- Depends on: PCPC-018, PCPC-025
+- Goal id: PCPC-G030
+- Goal: Implement drift, revocation, rollback, and supersession.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/registry.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/recovery.py, test/api/procedure_compiler/test_drift.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_drift.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/registry-drift
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-large
+- Resource stage: implementation
+- Estimated tokens: 38000
+- Token budget: 38000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/registry.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/recovery.py, test/api/procedure_compiler/test_drift.py
+- Predicted symbols: ProcedureDriftMonitor, ProcedureRecoveryPlanner, ProcedureRollbackService
+- Interfaces: ProcedureDriftMonitor, ProcedureRecoveryPlanner, ProcedureRollbackService
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Serialize registry edits with PCPC-018; recovery owns no authority or completion.
+- Preconditions: Registry and transfer gates exist; current observation producers configured.
+- Effects: Authorized registry CAS mutations and compensation requests only.
+- Evidence subset: drift causes, revocation, rollback target, supersession, quarantine
+- Symbolic first: true
+- LLM context budget bytes: 30400
+- Proof requirements: Every listed drift cause demotes/revokes; exact rollback target/CAS, stale execution refusal, supersession history, and rollback failure quarantine tests.
+- Acceptance criteria: Contract/schema/policy/effect/dependency/evidence/environment/boundary/observed failure drift automatically removes usability; history remains immutable.
+- Acceptance: Contract/schema/policy/effect/dependency/evidence/environment/boundary/observed failure drift automatically removes usability; history remains immutable.
+- Embedding query: procedure drift revocation rollback supersession recovery
+
+## PCPC-027 Implement autonomous procedure-guided repair
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: procedure-repair
+- Depends on: PCPC-005, PCPC-011, PCPC-017, PCPC-019, PCPC-020, PCPC-022, PCPC-023, PCPC-025, PCPC-026
+- Goal id: PCPC-G030
+- Goal: Implement autonomous procedure-guided repair.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/recovery.py, ipfs_accelerate_py/agent_supervisor/autonomous_repair, test/api/procedure_compiler/test_procedure_repair.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_procedure_repair.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/integration/procedure-repair
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-io-large
+- Resource stage: integration
+- Estimated tokens: 48000
+- Token budget: 48000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/recovery.py, ipfs_accelerate_py/agent_supervisor/autonomous_repair, test/api/procedure_compiler/test_procedure_repair.py
+- Predicted symbols: ProcedureGuidedRepairAdapter, AutonomousMergeCeiling
+- Interfaces: ProcedureGuidedRepairAdapter, AutonomousMergeCeiling
+- Effect class: repository_write_high_guard
+- Allow concurrent with:
+- Conflict policy: Adapt existing isolated repair path; do not replace it or broaden authority; trusted/high-risk paths require review.
+- Preconditions: Interpreter, boundary, certificate, planner, holes/tools/transfer/drift gates all admitted.
+- Effects: Bounded isolated worktree edits/validation/merge only under existing leases and authority.
+- Evidence subset: scope, tests/proofs, post-merge, rollback, high-risk refusal, no-op
+- Symbolic first: true
+- LLM context budget bytes: 38400
+- Proof requirements: Scope/symlink/submodule escape, trusted-policy edit, test deletion/weakening, proof omission, no-op patch, failure suffix retry, post-merge tree, rollback, and merge ceiling tests.
+- Acceptance criteria: Promoted current low-risk procedures may produce admitted patches and only merge under every explicit ceiling; other outcomes produce PR/review/escalation without completion claim.
+- Acceptance: Promoted current low-risk procedures may produce admitted patches and only merge under every explicit ceiling; other outcomes produce PR/review/escalation without completion claim.
+- Embedding query: autonomous procedure guided repair isolated worktree safe merge
+
+## PCPC-028 Add control service, CLI, and MCP surfaces
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: public-surface
+- Depends on: PCPC-018, PCPC-019, PCPC-020, PCPC-026, PCPC-027
+- Goal id: PCPC-G040
+- Goal: Add control service, CLI, and MCP surfaces.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/cli.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/cli_entry.py, test/api/procedure_compiler/test_control_surfaces.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_control_surfaces.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/release/public-surface
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: integration
+- Estimated tokens: 46000
+- Token budget: 46000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/cli.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/cli_entry.py, test/api/procedure_compiler/test_control_surfaces.py
+- Predicted symbols: ProcedureControlServiceAdapter, ProcedureCLI, ProcedureMCPAdapter
+- Interfaces: ProcedureControlServiceAdapter, ProcedureCLI, ProcedureMCPAdapter
+- Effect class: repository_write_public_api
+- Allow concurrent with:
+- Conflict policy: Extend existing SupervisorControlService; serialize public catalog/CLI changes; MCP calls typed service directly.
+- Preconditions: Registry/planner/holes/drift/repair services exist and public-operation policy is reviewed.
+- Effects: Typed service mutations within exact authorization; CLI/MCP are adapters only.
+- Evidence subset: surface parity, auth/idempotency, dry run, exact targets, audit
+- Symbolic first: true
+- LLM context budget bytes: 36800
+- Required read operations: procedures.capabilities, procedures.list, procedures.get, procedures.explain, procedures.match, procedures.registry_status, procedures.task_families, procedures.counterexamples, procedures.drift, procedures.metrics, procedures.shadow_results, procedures.synthesis_status, procedures.world_model_status
+- Required mutation operations: procedures.synthesize, procedures.evaluate, procedures.promote, procedures.rollback, procedures.revoke, procedures.quarantine, procedures.run_shadow, procedures.cancel, procedures.request_review
+- Proof requirements: Every enumerated read/mutation operation has Python/CLI/MCP parity; MCP never shells out; mutation tests cover authorization, idempotency, exact targets, dry-run, lease/fence, cancellation, and audit receipts.
+- Acceptance criteria: Every exact `procedures.*` operation named above is discoverable and typed; every mutation is independently authorized/audited and dry-run cannot mutate; compatibility remains explicit.
+- Acceptance: Every exact `procedures.*` operation named above is discoverable and typed; every mutation is independently authorized/audited and dry-run cannot mutate; compatibility remains explicit.
+- Embedding query: procedure control service cli mcp typed operations
+
+## PCPC-029 Build frozen benchmark and adversarial corpus
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: benchmark
+- Depends on: PCPC-009, PCPC-011, PCPC-014, PCPC-016, PCPC-024, PCPC-025
+- Goal id: PCPC-G040
+- Goal: Build frozen benchmark and adversarial corpus.
+- Outputs: benchmarks/agent_supervisor/procedure_compiler, test/api/procedure_compiler/test_benchmark_manifest.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_benchmark_manifest.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/release/benchmark
+- Parallel lane: pcpc-lane-1
+- Resource class: cpu-large
+- Resource stage: benchmark
+- Estimated tokens: 42000
+- Token budget: 42000
+- Implementation timeout seconds: 14400
+- Predicted files: benchmarks/agent_supervisor/procedure_compiler, test/api/procedure_compiler/test_benchmark_manifest.py
+- Predicted symbols: ProcedureBenchmarkManifest, BenchmarkPartitionValidator
+- Interfaces: ProcedureBenchmarkManifest, BenchmarkPartitionValidator
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own compact benchmark manifests/fixtures; generated corpora/AST dumps stay outside Git.
+- Preconditions: Normalizer, boundaries, vacuity/assurance, experiments, and transfer formats stable.
+- Effects: Write compact fixtures/manifests only; no live provider or production mutation.
+- Evidence subset: family coverage, partition disjointness, content identity, privacy/size bounds
+- Symbolic first: true
+- LLM context budget bytes: 33600
+- Proof requirements: All requested families and training/development/held-out/negative/boundary/adversarial partitions exist, are frozen/content-addressed/disjoint/bounded, and contain no bulk/private data.
+- Acceptance criteria: Complete frozen benchmark covers recurring/recovery/unknown/unsafe/transfer cases with strict held-out separation and adversarial metadata.
+- Acceptance: Complete frozen benchmark covers recurring/recovery/unknown/unsafe/transfer cases with strict held-out separation and adversarial metadata.
+- Embedding query: frozen procedure compiler benchmark adversarial held out corpus
+
+## PCPC-030 Implement promotion and release gates
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: promotion-gates
+- Depends on: PCPC-017, PCPC-018, PCPC-026, PCPC-027, PCPC-028, PCPC-029
+- Goal id: PCPC-G040
+- Goal: Implement promotion and release gates.
+- Outputs: ipfs_accelerate_py/agent_supervisor/procedure_compiler/metrics.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/certificate.py, test/api/procedure_compiler/test_promotion_gates.py
+- Validation: python -m pytest -q test/api/procedure_compiler/test_promotion_gates.py
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/release/promotion-gates
+- Parallel lane: pcpc-lane-2
+- Resource class: cpu-large
+- Resource stage: verification
+- Estimated tokens: 48000
+- Token budget: 48000
+- Implementation timeout seconds: 14400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/procedure_compiler/metrics.py, ipfs_accelerate_py/agent_supervisor/procedure_compiler/certificate.py, test/api/procedure_compiler/test_promotion_gates.py
+- Predicted symbols: ProcedureMetrics, ProcedurePromotionGate, AmortizationReport
+- Interfaces: ProcedureMetrics, ProcedurePromotionGate, AmortizationReport
+- Effect class: repository_write_bounded
+- Allow concurrent with:
+- Conflict policy: Own metrics/gate evaluation; promotion mutation remains registry/control authorization.
+- Preconditions: Surfaces, frozen benchmark, current procedures/registry/drift evidence exist.
+- Effects: Evaluate evidence and request authorized promotion; cannot self-promote.
+- Evidence subset: all numeric gates, denominator preservation, break-even, missing baseline, transfer safety
+- Symbolic first: true
+- LLM context budget bytes: 38400
+- Numeric token gates: median planning tokens <= 50% of qualified baseline; total model input tokens <= 60%; remote-model calls <= 40%; retry tokens <= 30% on their declared covered populations.
+- Numeric autonomy gates: recurring tasks without remote model >= 60%; deterministic repair tasks without any model >= 80%; accepted benchmark work via verified procedures >= 30%; eligible human interventions reduced >= 25%.
+- Numeric correctness and transfer gates: required postcondition coverage = 100%; required validation retention = 100%; known boundary counterexample rejection = 100%; unsafe cross-repository transfers = 0; no proof/test coverage or post-merge-regression degradation.
+- Proof requirements: Every enumerated safety/correctness/token/autonomy/amortization/transfer gate, complete denominators, failed match/synthesis/shadow/hole/validation/rollback/review costs, and missing-baseline typed outcomes are tested.
+- Acceptance criteria: Safety/correctness are non-compensable; exact numeric thresholds above are enforced; incomplete denominators or absent qualified baseline cannot pass; expected-old CAS and exact rollback are required.
+- Acceptance: Safety/correctness are non-compensable; exact numeric thresholds above are enforced; incomplete denominators or absent qualified baseline cannot pass; expected-old CAS and exact rollback are required.
+- Embedding query: procedure promotion release safety correctness efficiency autonomy amortization gates
+
+## PCPC-031 Produce current-tree qualification and residual-gap report
+
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: qualification
+- Depends on: PCPC-028, PCPC-029, PCPC-030
+- Goal id: PCPC-G040
+- Goal: Produce current-tree qualification and residual-gap report.
+- Outputs: docs/architecture/procedure_compiler_inventory/final_report.json, docs/architecture/procedure_compiler_inventory/FINAL_REPORT.md
+- Validation: python scripts/validate_agent_supervisor_procedure_compiler_board.py --check-all && python -m pytest -q test/api/procedure_compiler
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Bundle: agent-supervisor/procedure-compiler/release/qualification
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Resource stage: release
+- Estimated tokens: 36000
+- Token budget: 36000
+- Implementation timeout seconds: 14400
+- Predicted files: docs/architecture/procedure_compiler_inventory, ipfs_accelerate_py/agent_supervisor/procedure_compiler, test/api/procedure_compiler
+- Predicted symbols: ProcedureCompilerReleaseReceipt, QualificationReport
+- Interfaces: ProcedureCompilerReleaseReceipt, QualificationReport
+- Effect class: repository_write_release_report
+- Allow concurrent with:
+- Conflict policy: Own joined reports only; no subsystem fix or self-promotion in release task.
+- Preconditions: All implementation/benchmark/gate dependencies are terminal with current evidence and no active mutation/merge claim.
+- Effects: Read admitted evidence and write bounded reports; release/promotion requires separate authorized decision.
+- Evidence subset: commits/trees, changed symbols, procedures, tests/proofs, costs/tokens, blockers, eligibility, rollback
+- Symbolic first: true
+- LLM context budget bytes: 28800
+- Proof requirements: Post-merge exact commit/tree qualification, declared proof/test execution and omission, idle stability with no task/model/mutation churn, safety gates, blockers, promotion eligibility, rollback target, cost/token/model/intervention and transfer evidence; independent review required.
+- Acceptance criteria: Machine/human reports contain every requested field, use exact current-tree evidence, avoid unsupported readiness language, and leave blocked features unavailable.
+- Acceptance: Machine/human reports contain every requested field, use exact current-tree evidence, avoid unsupported readiness language, and leave blocked features unavailable.
+- Embedding query: current tree procedure compiler qualification residual gap release report

@@ -4,109 +4,383 @@
   "dispositions": [
     {
       "authority": "SemanticCompressionHarness",
-      "interface": "SemanticCompressionHarness@1",
-      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
-      "status": "available"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py", "symbol": "HARNESS_LOOP_INTERFACE", "value": "SemanticCompressionHarness@1"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py", "symbol": "HARNESS_LOOP_SCHEMA", "value": "ipfs-accelerate.semantic-compression-harness@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "f103337a4095d02ffe7ac959a69a7b2232504d24", "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py"}
+      ],
+      "status": "available",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py", "symbol": "SemanticCompressionHarness"}
+      ],
+      "test_producer_bindings": ["TP-SEMANTIC-HARNESS"]
     },
     {
       "authority": "SemanticCompressionGovernor",
-      "interface": "SemanticCompressionGovernor@1",
-      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py",
-      "status": "available"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py", "symbol": "SEMANTIC_COMPRESSION_GOVERNOR_INTERFACE", "value": "SemanticCompressionGovernor@1"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py", "symbol": "SEMANTIC_COMPRESSION_GOVERNOR_SCHEMA", "value": "ipfs-accelerate.semantic-compression-governor-public-api@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "74ff019c0a0e233322c4d962457dbf277a12e38a", "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py"}
+      ],
+      "status": "available",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py", "symbol": "SemanticCompressionGovernor"}
+      ],
+      "test_producer_bindings": ["TP-SEMANTIC-GOVERNOR"]
     },
     {
       "authority": "AdversarialAssuranceEngine",
       "canonical_adapter_target": "AssuranceCampaignApi",
       "caveat": "No Python class has the requested exact name; the complete committed authority is the typed AssuranceCampaignApi facade.",
-      "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py",
-      "status": "available_with_caveats"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py", "symbol": "ASSURANCE_CAMPAIGN_API_INTERFACE", "value": "AssuranceCampaignApi@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py", "symbol": "ADVERSARIAL_ASSURANCE_PUBLIC_API_INTERFACE", "value": "AdversarialAssurancePublicApi@1"}
+      ],
+      "negative_probes": [
+        {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "AdversarialAssuranceEngine"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py", "symbol": "ADVERSARIAL_ASSURANCE_PUBLIC_API_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-public-api@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "4c7fa7cd5783bb01ef5a34699aade6f21f6dce0d", "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py"}
+      ],
+      "status": "available_with_caveats",
+      "submodule_bindings": ["gitlink:ipfs_datasets_py@480a1666f144ad606fcb3cacb66e59775f28d0d1"],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py", "symbol": "AssuranceCampaignApi"}
+      ],
+      "test_producer_bindings": ["TP-ADVERSARIAL-ASSURANCE"]
     },
     {
       "authority": "IncrementalVerificationPlanner",
-      "interface": "IncrementalVerificationPlanner@1",
-      "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
-      "status": "available"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py", "symbol": "VERIFICATION_PLANNER_INTERFACE", "value": "IncrementalVerificationPlanner@1"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py", "symbol": "VERIFICATION_PLANNER_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/incremental-verification-planner@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "d283fa8d84547d37b4f26444c8af91b6afcf93a9", "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py"}
+      ],
+      "status": "available",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py", "symbol": "IncrementalVerificationPlanner"}
+      ],
+      "test_producer_bindings": ["TP-INCREMENTAL-VERIFICATION"]
     },
     {
       "authority": "IncrementalProofSealer",
       "caveat": "Leaf class APIs are committed and qualified with pinned siblings, but the package facade does not export the class and primary result types.",
-      "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py",
-      "status": "available_with_caveats"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py", "symbol": "SEALER_INTERFACE", "value": "IncrementalProofSealer@1"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py", "symbol": "SEALER_SCHEMA", "value": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/atomic-sealer@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py", "symbol": "CONTRACT_VERSION", "value": 1}
+      ],
+      "source_bindings": [
+        {"blob_id": "40013d424655712d5471dda7747c8e685686cacc", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py"},
+        {"blob_id": "54d3b3a455ffd34a49b837cdde6c632bc98e25b4", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/full_checkpoint.py"},
+        {"blob_id": "325d60ee94bc975ccf8b48565205a0b5db3c6cfc", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/delta_seal.py"},
+        {"blob_id": "cb535361c5e99b9a029a0986149c79d8294dd736", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/__init__.py"}
+      ],
+      "status": "available_with_caveats",
+      "submodule_bindings": [
+        "gitlink:ipfs_datasets_py@480a1666f144ad606fcb3cacb66e59775f28d0d1",
+        "gitlink:ipfs_kit_py@2564aea1ae35061f2165872aff91e8a40801ab7e"
+      ],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py", "symbol": "IncrementalProofSealer"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/full_checkpoint.py", "symbol": "FullCheckpointSeal"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/delta_seal.py", "symbol": "DeltaSeal"}
+      ],
+      "test_producer_bindings": ["TP-INCREMENTAL-PROOF-SEALER"]
     },
     {
       "authority": "AdaptivePlanner",
       "blocker": "adaptive_planner_import_missing_committed_mcp_contract_catalog",
       "caveat": "The class exists, but a clean committed import traverses mcp_contract_analysis.py into a missing committed mcp_contract_catalog.py. An unrelated untracked overlay is excluded.",
-      "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
-      "status": "incompatible"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "ADAPTIVE_PLANNER_VERSION", "value": 2}
+      ],
+      "negative_probes": [
+        {"kind": "git_path_absent", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "ADAPTIVE_PLAN_SELECTION_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/adaptive-plan-selection@2"}
+      ],
+      "source_bindings": [
+        {"blob_id": "aebfc5bccd9b821f454c522e58f819c96259fc19", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py"},
+        {"blob_id": "f8c8f059d637259b0e68aae27e753be5d256a670", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_analysis.py"}
+      ],
+      "status": "incompatible",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "AdaptivePlanner"}
+      ],
+      "test_producer_bindings": ["TP-ADAPTIVE-PLANNER-IMPORT"]
     },
     {
       "authority": "SupervisorControlService",
-      "interface": "SupervisorControlService@1",
-      "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
-      "status": "available"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "symbol": "CONTROL_SERVICE_VERSION", "value": "1.0.0"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "symbol": "CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/control-operation-conformance-case@2"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "symbol": "CONTROL_AUDIT_RECEIPT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/control-audit-receipt@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "f06b091ff4e5a0a3ea09da81c866845bf064af9b", "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"}
+      ],
+      "status": "available",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "symbol": "SupervisorControlService"}
+      ],
+      "test_producer_bindings": ["TP-CONTROL-SERVICE"]
     },
     {
       "authority": "ContextCompiler",
-      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
-      "status": "available"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "CONTEXT_COMPILER_VERSION", "value": 1}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "CONTEXT_COMPILATION_RECEIPT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/context-compilation-receipt@2"}
+      ],
+      "source_bindings": [
+        {"blob_id": "fea50c565815772b7e80401d038a92b9ec6489e2", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"}
+      ],
+      "status": "available",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "ContextCompiler"}
+      ],
+      "test_producer_bindings": ["TP-CONTEXT-COMPILER"]
     },
     {
       "authority": "ValueOfInformation evidence selection",
       "canonical_owner": "ContextCompiler",
-      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
-      "status": "available"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "CONTEXT_COMPILER_VERSION", "value": 1}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "VALUE_OF_INFORMATION_EVIDENCE_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/value-of-information-evidence@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "fea50c565815772b7e80401d038a92b9ec6489e2", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"}
+      ],
+      "status": "available",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "EvidenceValuePolicy"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "ValueOfInformationEvidence"}
+      ],
+      "test_producer_bindings": ["TP-VALUE-OF-INFORMATION"]
     },
     {
       "authority": "Delta retry contexts",
-      "caveat": "Core compiler behavior passes; one current daemon integration loses validation.attempted.",
-      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
-      "status": "available_with_caveats"
+      "caveat": "Core compiler behavior passes; one committed-baseline daemon integration loses validation.attempted.",
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "CONTEXT_COMPILER_VERSION", "value": 1}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/delta-retry-context-evidence@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "CONTEXT_DELTA_RECEIPT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/context-delta-receipt@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "fea50c565815772b7e80401d038a92b9ec6489e2", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"}
+      ],
+      "status": "available_with_caveats",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "DeltaRetryContextEvidence"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "ContextDeltaResult"},
+        {"kind": "function", "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py", "symbol": "compile_retry_context"}
+      ],
+      "test_producer_bindings": ["TP-CONTEXT-COMPILER", "TP-DELTA-RETRY"]
     },
     {
       "authority": "Provider capacity and route policy",
       "caveat": "Typed capacity and ModelRoutePlanner are usable; 21 of 23 focused default Grok/Codex daemon-route tests fail on the committed baseline.",
-      "paths": [
-        "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py",
-        "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_monitor.py",
-        "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
-        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py"
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py", "symbol": "MODEL_ROUTE_PLANNER_INTERFACE", "value": "ModelRoutePlanner@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py", "symbol": "IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE", "value": "ImplementationProviderRouter@1"}
       ],
-      "status": "available_with_caveats"
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py", "symbol": "NON_AUTHORITATIVE_CAPACITY_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/non-authoritative-provider-capacity@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_snapshot.py", "symbol": "PROVIDER_CAPACITY_SNAPSHOT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/provider-capacity-snapshot@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py", "symbol": "MODEL_ROUTE_PLANNER_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/verification-model-route-planner@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py", "symbol": "PROVIDER_ROUTE_POLICY_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/entrypoints/provider-route-policy@2"}
+      ],
+      "source_bindings": [
+        {"blob_id": "34652698f287805dfcf35e8d536755e7ce908e79", "path": "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py"},
+        {"blob_id": "5c455af35eb9e5d9e0e590fa5fb7003181c0d115", "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_monitor.py"},
+        {"blob_id": "9daf91f002d0cdd877d8e9f1558800ca5ebd0dac", "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_snapshot.py"},
+        {"blob_id": "51d7a0850bb42db3de3798b47e1ffd56e0a47b86", "path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py"},
+        {"blob_id": "24686d8920129557e1c36ef3a1e2d74611b72999", "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py"},
+        {"blob_id": "fedd4a31911ad45276d99c8fd6ef5889a76a177c", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py"}
+      ],
+      "status": "available_with_caveats",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py", "symbol": "NonAuthoritativeProviderCapacityObservation"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_monitor.py", "symbol": "ProviderCapacityMonitor"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py", "symbol": "ModelRoutePlanner"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py", "symbol": "ProviderRoutePolicy"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py", "symbol": "ImplementationProviderRouter"}
+      ],
+      "test_producer_bindings": ["TP-MODEL-ROUTE", "TP-PROVIDER-CAPACITY", "TP-DUAL-PROVIDER-CAPACITY", "TP-DEFAULT-PROVIDER-ROUTE"]
     },
     {
       "authority": "Worktree lease fencing and merge controls",
-      "caveat": "Core controls pass focused tests. Board-scoped checkout locks, longer provider leases, and some sharded claim fixes exist only as excluded uncommitted overlays.",
-      "paths": [
-        "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
-        "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py",
-        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
-        "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py",
-        "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py"
+      "caveat": "Core lifecycle, registry, lease, queue, fence, and merge-train authorities are committed. The baseline has two worktree test-import failures, two process-fencing stub-contract failures, and five legacy merge-queue semantic failures; unrelated working-tree overlays remain excluded.",
+      "interface_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py", "symbol": "DATABASE_WORKTREE_REGISTRY_INTERFACE", "value": "DatabaseWorktreeRegistry@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py", "symbol": "DATABASE_MERGE_QUEUE_INTERFACE", "value": "DatabaseMergeQueue@1"}
       ],
-      "status": "available_with_caveats"
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "schema_bindings": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py", "symbol": "WORKTREE_LIFECYCLE_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py", "symbol": "DATABASE_WORKTREE_REGISTRY_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/database-worktree-registry@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py", "symbol": "COORDINATION_STORE_SCHEMA", "value": "ipfs_accelerate_py.agent_supervisor.lease-coordination-duckdb@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/process_tree_fencing.py", "symbol": "PROCESS_TREE_FENCE_RECEIPT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/process-tree-fence-receipt@1"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py", "symbol": "DATABASE_MERGE_QUEUE_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/database-merge-queue@1"}
+      ],
+      "source_bindings": [
+        {"blob_id": "6ab3e54848a60c78aa404492bdfab7aadac4844d", "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"},
+        {"blob_id": "db6669155d9f2b9cae4a5e89a33974c1f55c5a99", "path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py"},
+        {"blob_id": "61f056ddcccb19ef0152d7b796167fe648f3a1b7", "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py"},
+        {"blob_id": "6f15652b9a66c4a6ef646b7891005b9c5e00b76e", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/process_tree_fencing.py"},
+        {"blob_id": "bad051d85f13f52afca0b4bfb89f485318182113", "path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py"},
+        {"blob_id": "96ff3976471a2e6d6bbb01a2cd596f6ef399fdef", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py"},
+        {"blob_id": "3bf8a7e4ab2f5409fba42d92ed8a996b05c3e565", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py"},
+        {"blob_id": "e27746aaa6bda2dfbcf4ec27f70d9adf17c44892", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py"}
+      ],
+      "status": "available_with_caveats",
+      "submodule_bindings": [],
+      "symbol_bindings": [
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py", "symbol": "WorktreeLifecycleStore"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py", "symbol": "DatabaseWorktreeRegistry"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py", "symbol": "LeaseCoordinator"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/process_tree_fencing.py", "symbol": "ProcessTreeFenceReceipt"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py", "symbol": "DatabaseMergeQueue"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py", "symbol": "MergeTrain"}
+      ],
+      "test_producer_bindings": ["TP-WORKTREE-LIFECYCLE", "TP-LEASE-COORDINATION", "TP-MERGE-TRAIN", "TP-FENCE-REGISTRY-QUEUE"]
     },
     {
       "authority": "AutonomousMetaController",
-      "status": "missing"
+      "blocker": "exact_authority_absent_at_baseline_commit",
+      "interface_bindings": [],
+      "negative_probes": [
+        {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "AutonomousMetaController"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "related_non_equivalent_bindings": [
+        {"blob_id": "4a7877a47988492b2746dd6bee223919246c12db", "kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/engine.py", "symbol": "AutonomousRepairEngine"}
+      ],
+      "schema_bindings": [],
+      "source_bindings": [],
+      "status": "missing",
+      "submodule_bindings": [],
+      "symbol_bindings": [],
+      "test_producer_bindings": []
     },
     {
       "authority": "autonomy package",
-      "status": "missing"
+      "blocker": "exact_package_absent_at_baseline_commit",
+      "interface_bindings": [],
+      "negative_probes": [
+        {"kind": "git_path_absent", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "related_non_equivalent_bindings": [],
+      "schema_bindings": [],
+      "source_bindings": [],
+      "status": "missing",
+      "submodule_bindings": [],
+      "symbol_bindings": [],
+      "test_producer_bindings": []
     },
     {
       "authority": "cognitive scheduler",
-      "status": "missing"
+      "blocker": "exact_authority_absent_at_baseline_commit",
+      "interface_bindings": [],
+      "negative_probes": [
+        {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "CognitiveScheduler"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "related_non_equivalent_bindings": [
+        {"blob_id": "aebfc5bccd9b821f454c522e58f819c96259fc19", "kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "AdaptivePlanner"}
+      ],
+      "schema_bindings": [],
+      "source_bindings": [],
+      "status": "missing",
+      "submodule_bindings": [],
+      "symbol_bindings": [],
+      "test_producer_bindings": []
     },
     {
       "authority": "experience ledger",
-      "status": "missing"
+      "blocker": "exact_authority_absent_at_baseline_commit",
+      "interface_bindings": [],
+      "negative_probes": [
+        {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "ExperienceLedger"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "related_non_equivalent_bindings": [
+        {"blob_id": "be6d58f526d52d427c367d8a683d2d375734cda3", "kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_token_ledger.py", "symbol": "SupervisorTokenLedger"}
+      ],
+      "schema_bindings": [],
+      "source_bindings": [],
+      "status": "missing",
+      "submodule_bindings": [],
+      "symbol_bindings": [],
+      "test_producer_bindings": []
     },
     {
       "authority": "policy-distillation subsystem",
-      "status": "missing"
+      "blocker": "exact_authority_absent_at_baseline_commit",
+      "interface_bindings": [],
+      "negative_probes": [
+        {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "PolicyDistillation"}
+      ],
+      "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+      "related_non_equivalent_bindings": [
+        {"blob_id": "cda6d9bbf870ec2a8bce2d7f0e77f0b75ab75872", "kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py", "symbol": "V2SelfImprovementEvaluator"},
+        {"blob_id": "f551b9f10e34698794e83871f8aaada99c9bbe5a", "kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/formal_assurance_cegis.py", "symbol": "FormalAssuranceCegis"}
+      ],
+      "schema_bindings": [],
+      "source_bindings": [],
+      "status": "missing",
+      "submodule_bindings": [],
+      "symbol_bindings": [],
+      "test_producer_bindings": []
     }
   ],
   "package_version": "0.0.45",
-  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@1"
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@2"
 }
