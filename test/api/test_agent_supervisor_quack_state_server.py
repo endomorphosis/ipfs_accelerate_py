@@ -54,6 +54,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     reclaim_stale_owner_marker,
     sanitize_for_export,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     MigrationRunReport,
     duckdb_available,
@@ -62,8 +65,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_control_plane_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    DATABASE_TASK_SOURCE_SCHEMA,
     TaskPage,
     TaskRecord,
+    TaskSourceSnapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
@@ -348,6 +353,51 @@ class _OwnerMutationTaskSource:
         )[: int(limit)]
         revision = max((task.revision for task in tasks), default=1)
         return TaskPage(tasks=tasks, revision=revision)
+
+    def list_tasks(self, limit: int = 1000) -> TaskPage:
+        tasks = self._select()
+        bounded = tasks[: int(limit)]
+        revision = max((task.revision for task in tasks), default=1)
+        return TaskPage(
+            tasks=bounded,
+            revision=revision,
+            next_cursor="more" if len(tasks) > len(bounded) else "",
+        )
+
+    def snapshot(self) -> TaskSourceSnapshot:
+        tasks = self._select()
+        projection_cid = content_identity(
+            {"tasks": [task.to_dict() for task in tasks]}
+        )
+        terminal_statuses = {
+            "completed",
+            "skipped",
+            "cancelled",
+            "failed",
+            "quarantined",
+            "complete",
+            "done",
+        }
+        return TaskSourceSnapshot(
+            source_schema=DATABASE_TASK_SOURCE_SCHEMA,
+            schema_version=1,
+            plan_root_cid="plan:parallel",
+            repository_tree_id="tree:parallel",
+            projection_cid=projection_cid,
+            formal_plan_id="plan:parallel",
+            source_identity=content_identity(
+                {"source": "owner-mutation-task-source"}
+            ),
+            revision=max((task.revision for task in tasks), default=1),
+            event_cursor=max((task.revision for task in tasks), default=1),
+            goal_count=len({task.goal_cid for task in tasks}),
+            task_count=len(tasks),
+            dependency_count=sum(len(task.dependencies) for task in tasks),
+            terminal=bool(tasks)
+            and all(task.status in terminal_statuses for task in tasks),
+            objective_count=0,
+            plan_count=1,
+        )
 
     def get(self, task_cid: str) -> TaskRecord | None:
         rows = self._select(task_cid=str(task_cid))
