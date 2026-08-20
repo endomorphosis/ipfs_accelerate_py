@@ -20307,7 +20307,8 @@ class PortalImplementationSupervisor:
                 )
             except Exception as exc:
                 raise PlanBoundDispatchError(
-                    "cannot revalidate durable plan-bound process birth"
+                    "cannot revalidate durable plan-bound process birth: "
+                    f"{type(exc).__name__}: {exc}"
                 ) from exc
             stable_birth_fields = (
                 "pid", "start_time_ticks", "process_group_id", "session_id",

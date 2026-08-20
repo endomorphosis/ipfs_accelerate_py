@@ -8786,10 +8786,32 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     except Exception as exc:
         return _plan_bound_gate_fail(f"{type(exc).__name__}: {exc}")
     try:
+        # Keep the same positive identity the parent captured at gate birth:
+        # ambient locale/PATH, lifecycle markers, and the ordered route.  A
+        # stripped exec would make the supervisor fail durable birth
+        # revalidation after this exec keeps the pid.
+        allowed_names = {
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "TZ",
+            "PATH",
+            RUN_ID_ENV,
+            PROFILE_ID_ENV,
+            TARGET_ID_ENV,
+            REPOSITORY_ROOT_ENV,
+            STATE_ROOT_ENV,
+            RUN_ROOT_ENV,
+            FENCING_EPOCH_ENV,
+            CONFIGURATION_ROOT_ENV,
+            *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+            *_ROUTE_AUTHORIZATION_ENV_NAMES,
+            *_PROVIDER_EXECUTABLE_ENV_NAMES,
+        }
         environment = {
             name: value
             for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ", "PATH"}
+            if name in allowed_names
         }
         path = str(environment.get("PATH") or "/usr/bin:/bin")
         if "/usr/bin" not in path.split(os.pathsep):
