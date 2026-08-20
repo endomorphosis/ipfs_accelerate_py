@@ -1143,6 +1143,15 @@ class RecedingHorizonController:
         self._plan = new_plan
         if current_receipts is not None:
             self._current_receipts = _receipt_map(current_receipts)
+        elif plan is not None:
+            self._current_receipts = _drop_invalidated_receipts(
+                self._current_receipts,
+                {
+                    step_id
+                    for step_id in self._current_receipts
+                    if step_id not in {item.step_id for item in self._plan.steps}
+                },
+            )
         segment = select_nearest_safe_segment(self._plan)
         preserved = tuple(sorted(item.step_id for item in self._plan.steps if item.accepted))
         return PlanSuffixInvalidationReceipt(
@@ -1156,7 +1165,7 @@ class RecedingHorizonController:
             ),
             nearest_safe_segment_ids=segment.step_ids,
             stop_reason="objective_revised",
-            objective_semantics_changed=True,
+            objective_semantics_changed=semantics_changed,
             admitted_revision=admitted,
             reason_codes=(
                 RecedingHorizonDisposition.OBJECTIVE_REVISED.value,
@@ -1218,6 +1227,12 @@ class RecedingHorizonController:
                 raise RecedingHorizonError("receding-horizon snapshot contains duplicate fields")
         elif isinstance(snapshot, Mapping):
             raw = dict(snapshot)
+            try:
+                encoded = canonical_json(raw).encode("utf-8")
+            except (TypeError, ValueError) as exc:
+                raise RecedingHorizonError("receding-horizon snapshot is malformed") from exc
+            if len(encoded) > MAX_RECEDING_HORIZON_SNAPSHOT_BYTES:
+                raise RecedingHorizonError("receding-horizon snapshot exceeds its bounded size")
         else:
             raise RecedingHorizonError("unsupported receding-horizon snapshot")
         if not isinstance(raw, Mapping):
