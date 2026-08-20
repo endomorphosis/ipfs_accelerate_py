@@ -67,6 +67,11 @@ The APMC launch uses a dedicated program-bound DuckDB file and Quack store. It
 does not reuse the live legal-board database or any archived DQK database,
 whose repository/program/plan identities belong to different authorities.
 The DuckLake projection remains disabled and non-authoritative at launch.
+The current-main virgin-transfer wrapper is not activated: its daemon/parser
+projection is incomplete and would put every lane into an argument-error
+restart loop. APMC retains four strict deterministic shards, so ready work can
+run in parallel as the dependency frontier expands, but idle lanes do not
+borrow work until that existing feature is independently qualified.
 
 ## Collision rules
 
