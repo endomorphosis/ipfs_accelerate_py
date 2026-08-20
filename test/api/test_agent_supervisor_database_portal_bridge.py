@@ -7,14 +7,25 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
+    ContextCompilationReceipt,
+)
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
+    ContextBudgetResolution,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
+    DatabasePortalBridgeConsumedNoProgressError,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
+    database_portal_consumed_no_progress_fingerprint,
+    database_portal_task_contract_digest,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
@@ -23,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
+    ImplementationDiagnosticReceipt,
     PortalImplementationDaemon,
     parse_args,
     parse_task_file,
@@ -136,6 +148,9 @@ class _TaskSource:
     def get_task(self, task_cid: str) -> object | None:
         return self.record if task_cid == "task:cid:004" else None
 
+    def snapshot(self) -> object:
+        return SimpleNamespace(repository_tree_id="tree:control-plane-current")
+
 
 class _CompletingPortal:
     def __init__(self, paths: object, task_alias: str) -> None:
@@ -194,6 +209,101 @@ class _CompletingPortal:
 
     def close_event_runtime(self) -> None:
         self.closed = True
+
+
+def _consumed_no_progress_result(
+    paths: object,
+    task_alias: str,
+    *,
+    forged_identity: str = "",
+    returncode: int = 1,
+    log_text: str = "provider output is untrusted\n",
+    committed: bool = False,
+) -> dict[str, object]:
+    paths.implementation_logs.mkdir(parents=True, exist_ok=True)
+    log_path = paths.implementation_logs / "lgswf-004-attempt-1.log"
+    log_path.write_text(log_text, encoding="utf-8")
+    budget = ContextBudgetResolution(
+        supervisor_max_input_tokens=4096,
+        provider_context_window=8192,
+        provider_max_input_tokens=None,
+        reserved_output_tokens=1024,
+        reserved_tool_tokens=512,
+    )
+    context = ContextCompilationReceipt(
+        repository_id="repository:bridge-test",
+        tree_id="a" * 40,
+        objective_id=task_alias,
+        policy_id="policy:bridge-test",
+        policy_revision="sha256:" + "b" * 64,
+        stage="implementation",
+        capsule_id="capsule:bridge-test",
+        budget_resolution=budget,
+        effective_input_limit=int(budget.effective_input_limit or 0),
+        input_tokens=128,
+        estimator_name="bridge-test",
+        estimator_error_bps=0,
+    )
+    context_path = paths.implementation_logs / "lgswf-004-attempt-1-context-receipt.json"
+    context_path.write_text(
+        json.dumps(context.to_dict(), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    diagnostic = ImplementationDiagnosticReceipt(
+        prior_decision_id=context.receipt_id,
+        repository_id="repository:bridge-test",
+        tree_id="a" * 40,
+        failure={
+            "kind": "implementation_failure",
+            "returncode": returncode,
+            "validation": {
+                "passed": True,
+                "reason": "not_run",
+                "returncode": 0,
+            },
+        },
+        # Task metadata may name symbols even though no file candidate exists.
+        changed_symbols=("requested_symbol_from_task_metadata",),
+    )
+    diagnostic_record = diagnostic.to_record()
+    if forged_identity:
+        diagnostic_record[forged_identity] = f"forged:{forged_identity}"
+    (paths.implementation_logs / "lgswf-004-diagnostic-receipt.json").write_text(
+        json.dumps(diagnostic_record, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    binding = json.loads(paths.binding.read_text(encoding="utf-8"))
+    canonical_task_cid = str(binding["task_cid"])
+    return {
+        "implementation_result": {
+            "task_id": task_alias,
+            "task_cid": canonical_task_cid,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": 1,
+            "returncode": returncode,
+            "log_path": str(log_path),
+            "context_receipt_path": str(context_path),
+            "baseline_ref": "a" * 40,
+            "implementation_commit": "c" * 40 if committed else "",
+            "commit_result": {"committed": committed},
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+            "board_completion": {
+                "complete": False,
+                "pending_merge": False,
+                "reason": "implementation_or_validation_failed",
+            },
+            "validation_result": {
+                "attempted": False,
+                "passed": True,
+                "reason": "not_run",
+                "returncode": 0,
+                "results": [],
+            },
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "diagnostic_receipt_id": diagnostic.receipt_id,
+        }
+    }
 
 
 def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
@@ -256,6 +366,39 @@ def test_bridge_projection_preserves_authoritative_database_task_identity(
     assert projected[0].canonical_task_cid == record.task_cid
     assert binding["canonical_task_key"] == record.body["task_key"]
     assert binding["task_cid"] == record.task_cid
+
+
+@pytest.mark.parametrize(
+    ("field", "label"),
+    (("revision", "Revision"), ("receipt", "Receipt")),
+)
+def test_task_contract_digest_includes_projected_body_field(
+    field: str,
+    label: str,
+) -> None:
+    original = _record()
+    original.body[field] = "contract-v1"
+    changed = _record()
+    changed.body[field] = "contract-v2"
+    lifecycle_only = _record()
+    lifecycle_only.body[field] = "contract-v1"
+    lifecycle_only.revision = original.revision + 1
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(original),
+        attempt_root=Path("unused"),
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    assert f"- {label}: contract-v1" in bridge._render_projection(
+        _attempt(),
+        original,
+    )
+    assert database_portal_task_contract_digest(original) != (
+        database_portal_task_contract_digest(changed)
+    )
+    assert database_portal_task_contract_digest(original) == (
+        database_portal_task_contract_digest(lifecycle_only)
+    )
 
 
 @pytest.mark.parametrize(
@@ -332,6 +475,9 @@ def test_bridge_preserves_explicit_non_consuming_portal_deferral(
                         "validation_project_dependency_preflight_failed"
                     ),
                     "deferred": True,
+                    "retryable": True,
+                    "deferral_schema": DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
+                    "failure_kind": "lifecycle_setup",
                     "attempt_consumed": False,
                     "provider_dispatched": False,
                 }
@@ -356,6 +502,176 @@ def test_bridge_preserves_explicit_non_consuming_portal_deferral(
     ):
         bridge.run_provider(_attempt())
     assert portals and portals[0].closed is True
+
+
+def test_bridge_seals_consumed_no_progress_without_cause_inference(
+    tmp_path: Path,
+) -> None:
+    class ImportFailurePortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return _consumed_no_progress_result(
+                self.paths,
+                self.task_alias,
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: ImportFailurePortal(paths, alias),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeConsumedNoProgressError,
+        match="portal_consumed_no_progress",
+    ) as raised:
+        bridge.run_provider(_attempt())
+
+    evidence = raised.value.failure_evidence
+    assert evidence["schema"] == (
+        DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA
+    )
+    assert evidence["failure_kind"] == "consumed_no_progress"
+    assert evidence["provider_effect_state"] == "unknown_may_have_started"
+    assert evidence["portal_provider_dispatched"] is True
+    assert evidence["portal_attempt_number"] == 1
+    assert evidence["tree_id"] == "a" * 40
+    assert evidence["control_repository_tree_id"] == (
+        "tree:control-plane-current"
+    )
+    assert evidence["task_cid"] == "task:cid:004"
+    assert evidence["task_contract_digest"].startswith("sha256:")
+    assert evidence["log_digest"].startswith("sha256:")
+    assert evidence["context_receipt_id"].startswith("baguq")
+    assert str(evidence["diagnostic_failure_id"]).startswith("baguq")
+    assert str(evidence["diagnostic_receipt_id"]).startswith("baguq")
+    assert evidence["failure_fingerprint"].startswith("sha256:")
+    assert evidence["failure_fingerprint"] == (
+        database_portal_consumed_no_progress_fingerprint(evidence)
+    )
+    assert "ImportError" not in json.dumps(evidence)
+    assert "provider output" not in json.dumps(evidence)
+
+
+@pytest.mark.parametrize("forged_identity", ["receipt_id", "failure_id"])
+def test_bridge_rejects_forged_diagnostic_identity(
+    tmp_path: Path,
+    forged_identity: str,
+) -> None:
+    class ForgedDiagnosticPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return _consumed_no_progress_result(
+                self.paths,
+                self.task_alias,
+                forged_identity=forged_identity,
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: ForgedDiagnosticPortal(
+            paths,
+            alias,
+        ),
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as raised:
+        bridge.run_provider(_attempt())
+    assert not isinstance(
+        raised.value,
+        DatabasePortalBridgeConsumedNoProgressError,
+    )
+
+
+@pytest.mark.parametrize(
+    "log_text",
+    [
+        "arbitrary provider/model output\n",
+        (
+            "Traceback (most recent call last):\n"
+            "ImportError: cannot import name 'spoofed' from 'provider.text'\n"
+        ),
+    ],
+)
+def test_bridge_neutralizes_spoofed_failure_text_without_classifying_cause(
+    tmp_path: Path,
+    log_text: str,
+) -> None:
+    class SpoofedFailurePortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return _consumed_no_progress_result(
+                self.paths,
+                self.task_alias,
+                returncode=2,
+                log_text=log_text,
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: SpoofedFailurePortal(paths, alias),
+    )
+
+    with pytest.raises(DatabasePortalBridgeConsumedNoProgressError) as raised:
+        bridge.run_provider(_attempt())
+    assert raised.value.failure_evidence["failure_kind"] == (
+        "consumed_no_progress"
+    )
+    assert raised.value.failure_evidence["returncode"] == 2
+    assert raised.value.failure_evidence["provider_effect_state"] == (
+        "unknown_may_have_started"
+    )
+    assert "spoofed" not in json.dumps(raised.value.failure_evidence)
+
+
+def test_bridge_does_not_neutralize_an_implementation_candidate(
+    tmp_path: Path,
+) -> None:
+    class CandidatePortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return _consumed_no_progress_result(
+                self.paths,
+                self.task_alias,
+                committed=True,
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: CandidatePortal(paths, alias),
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as raised:
+        bridge.run_provider(_attempt())
+    assert not isinstance(
+        raised.value,
+        DatabasePortalBridgeConsumedNoProgressError,
+    )
+
+
+def test_bridge_rejects_free_text_capacity_as_retry_authority(
+    tmp_path: Path,
+) -> None:
+    class TextOnlyCapacityPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "arbitrary_capacity_backoff_provider_text",
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: TextOnlyCapacityPortal(paths, alias),
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as raised:
+        bridge.run_provider(_attempt())
+    assert not isinstance(raised.value, DatabasePortalBridgeDeferred)
 
 
 def test_bridge_rejects_completion_event_for_another_canonical_task(

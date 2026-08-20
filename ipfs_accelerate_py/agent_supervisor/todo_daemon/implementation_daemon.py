@@ -3683,6 +3683,11 @@ class ImplementationRetryDeferred(RuntimeError):
         self.backoff_seconds = backoff_seconds
 
 
+PORTAL_RETRY_DEFERRAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/portal-retry-deferral@1"
+)
+
+
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
     """Fail closed when a configured implementation dependency is unavailable."""
 
@@ -19298,18 +19303,22 @@ class PortalImplementationDaemon:
         state.selection_idle_reason = "provider_capacity_backoff"
         state.save(self.state_path)
         result = {
+            "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
             "task_id": task.task_id,
             "canonical_task_cid": self._canonical_ref(task),
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
             "deferred": True,
+            "retryable": True,
             "reason": "provider_capacity_exhausted",
+            "failure_kind": "provider_capacity",
             "providers": list(failure.get("providers") or []),
             "evidence": list(failure.get("evidence") or []),
             "retry_at": retry_at,
             "retry_at_source": retry_at_source,
             "attempt_consumed": False,
+            "provider_dispatched": True,
         }
         failure_class = str(failure.get("failure_class") or "")
         if failure_class:
@@ -19634,9 +19643,15 @@ class PortalImplementationDaemon:
         if provider_backoff:
             result = {
                 "skipped": True,
+                "deferred": True,
+                "retryable": True,
+                "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                 "reason": "provider_capacity_backoff",
+                "failure_kind": "provider_capacity_backoff",
                 "task_id": task.task_id,
                 "attempt": self._task_attempt(state, task),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
                 **provider_backoff,
             }
             self._record_event("implementation_skipped", result)
@@ -19746,7 +19761,10 @@ class PortalImplementationDaemon:
                 result = {
                     "skipped": True,
                     "deferred": True,
+                    "retryable": True,
+                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                     "reason": "implementation_protected_path_maintenance_active",
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
                     "task_id": task.task_id,
                     "attempt": attempt,
                     "attempt_consumed": False,
@@ -19805,7 +19823,10 @@ class PortalImplementationDaemon:
             result = {
                 "skipped": True,
                 "deferred": True,
+                "retryable": True,
+                "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                 "reason": f"resource_claim_{resource_claim_reason}",
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
                 "task_id": task.task_id,
                 "attempt": attempt,
                 "attempt_consumed": False,
@@ -19894,7 +19915,11 @@ class PortalImplementationDaemon:
                 self.task_queue.save()
             result = {
                 "skipped": True,
+                "deferred": True,
+                "retryable": True,
+                "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                 "reason": reason_key,
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_SETUP.value,
                 "task_id": task.task_id,
                 "attempt": attempt,
                 "backoff_seconds": exc.backoff_seconds,
@@ -20092,7 +20117,10 @@ class PortalImplementationDaemon:
                         backoff_result = {
                             "skipped": True,
                             "deferred": True,
+                            "retryable": True,
+                            "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                             "reason": "provider_capacity_backoff",
+                            "failure_kind": "provider_capacity_backoff",
                             "task_id": task.task_id,
                             "attempt": attempt,
                             "attempt_consumed": False,
@@ -20132,7 +20160,10 @@ class PortalImplementationDaemon:
                         deferred_result = {
                             "skipped": True,
                             "deferred": True,
+                            "retryable": True,
+                            "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                             "reason": exc.reason.replace(" ", "_"),
+                            "failure_kind": LifecycleFailureKind.LIFECYCLE_SETUP.value,
                             "task_id": task.task_id,
                             "attempt": attempt,
                             "attempt_consumed": False,
@@ -20203,6 +20234,8 @@ class PortalImplementationDaemon:
                     ephemeral_result.update(
                         {
                             "deferred": True,
+                            "retryable": True,
+                            "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                             "backoff_seconds": backoff_seconds,
                         }
                     )
@@ -20275,10 +20308,12 @@ class PortalImplementationDaemon:
                     )
                 state.save(self.state_path)
                 result = {
+                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
                     "task_id": task.task_id,
                     "attempt": attempt,
                     "returncode": 1,
                     "deferred": True,
+                    "retryable": True,
                     "reason": (
                         "validation_project_dependency_preflight_failed"
                     ),
@@ -67362,6 +67397,9 @@ _DATABASE_CLOSED_TASK_STATUSES = frozenset(
     }
 )
 _DATABASE_PROJECTION_READ_ATTEMPTS = 4
+DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-provider-callback-unknown@1"
+)
 
 _DAEMON_EXECUTION_SQL = """
 CREATE TABLE IF NOT EXISTS daemon_execution_metadata (
@@ -67451,8 +67489,151 @@ class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
     """Raised when a claim or phase transition conflicts with durable state."""
 
 
+class DatabaseProviderCallbackOutcomeUnknownError(
+    DatabaseImplementationAuthorityError
+):
+    """A durable provider callback intent has no committed return outcome."""
+
+    def __init__(self, *, failure_evidence: Mapping[str, Any]) -> None:
+        super().__init__("database_provider_callback_outcome_unknown")
+        self.failure_evidence = dict(failure_evidence)
+
+
 def _database_daemon_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
+
+
+def _database_daemon_evidence_digest(value: Mapping[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(
+        _database_daemon_json(dict(value)).encode("utf-8")
+    ).hexdigest()
+
+
+def _database_provider_callback_unknown_fingerprint(
+    evidence: Mapping[str, Any],
+) -> str:
+    material = {
+        str(key): value
+        for key, value in evidence.items()
+        if str(key) != "failure_fingerprint"
+    }
+    return _database_daemon_evidence_digest(material)
+
+
+def _sealed_database_provider_callback_unknown_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    evidence = dict(value)
+    allowed = {
+        "schema",
+        "failure_kind",
+        "failure_fingerprint",
+        "provider_effect_state",
+        "callback_state",
+        "idempotency_key",
+        "task_cid",
+        "task_contract_digest",
+        "repository_tree_id",
+        "database_binding_id",
+        "portal_failure_fingerprint",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "callback_started_at_ms",
+    }
+    required_text_fields = (
+        "failure_fingerprint",
+        "idempotency_key",
+        "task_cid",
+        "task_contract_digest",
+        "repository_tree_id",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+    )
+    database_binding_id = evidence.get("database_binding_id")
+    portal_failure_fingerprint = evidence.get("portal_failure_fingerprint")
+    if (
+        set(evidence) != allowed
+        or evidence.get("schema")
+        != DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        or evidence.get("failure_kind")
+        != "provider_callback_outcome_unknown"
+        or evidence.get("provider_effect_state")
+        != "unknown_may_have_started"
+        or evidence.get("callback_state") != "started_outcome_unknown"
+        or any(
+            not isinstance(evidence.get(name), str)
+            or not str(evidence.get(name) or "")
+            or len(str(evidence.get(name)).encode("utf-8")) > 1024
+            or any(marker in str(evidence.get(name)) for marker in ("\x00", "\n", "\r"))
+            for name in required_text_fields
+        )
+        or not isinstance(database_binding_id, str)
+        or not isinstance(portal_failure_fingerprint, str)
+        or bool(database_binding_id) != bool(portal_failure_fingerprint)
+        or (
+            bool(database_binding_id)
+            and (
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    database_binding_id,
+                )
+                is None
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    portal_failure_fingerprint,
+                )
+                is None
+            )
+        )
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(evidence.get("failure_fingerprint") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(evidence.get("task_contract_digest") or ""),
+        )
+        is None
+        or type(evidence.get("fencing_token")) is not int
+        or evidence.get("fencing_token") < 1
+        or type(evidence.get("fence_epoch")) is not int
+        or evidence.get("fence_epoch") < 1
+        or type(evidence.get("callback_started_at_ms")) is not int
+        or evidence.get("callback_started_at_ms") < 0
+        or evidence.get("failure_fingerprint")
+        != _database_provider_callback_unknown_fingerprint(evidence)
+        or len(_database_daemon_json(evidence).encode("utf-8")) > 16 * 1024
+    ):
+        raise ValueError("database provider callback intent evidence is invalid")
+    return evidence
+
+
+def _sealed_database_neutral_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    evidence = dict(value)
+    if evidence.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+        return _sealed_database_provider_callback_unknown_evidence(evidence)
+    from .database_portal_bridge import (
+        DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+        DatabasePortalBridgeConsumedNoProgressError,
+    )
+
+    if evidence.get("schema") != DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA:
+        raise ValueError("neutral Portal failure evidence schema is unsupported")
+    return dict(
+        DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=evidence,
+        ).failure_evidence
+    )
 
 
 def _database_daemon_load_json(raw: Any) -> dict[str, Any]:
@@ -68978,12 +69159,156 @@ class DatabaseImplementationDaemon:
                 return False
         return True
 
-    @staticmethod
-    def _strict_resume_rejection_receipt_matches(
+    def _neutral_portal_rejection_receipt_matches(
+        self,
         task: Any,
         attempt: DatabaseTaskAttempt,
+        *,
+        expected_failure_evidence: Mapping[str, Any] | None = None,
     ) -> bool:
-        """Return whether control truth records this exact strict rejection."""
+        """Bind one quarantine receipt to its exact neutral failure evidence."""
+
+        task_status = str(getattr(task, "status", "") or "").strip().lower()
+        body = getattr(task, "body", None)
+        if task_status != "quarantined" or not isinstance(body, Mapping):
+            return False
+        receipt = body.get("completion_receipt")
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-neutral-quarantine@1"
+            )
+            or receipt.get("operation")
+            != "database_portal_neutral_failure_quarantine"
+        ):
+            return False
+        expected_identity = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if not all(
+            receipt.get(name) == value
+            for name, value in expected_identity.items()
+        ):
+            return False
+        receipt_evidence = receipt.get("failure_evidence")
+        if not isinstance(receipt_evidence, Mapping):
+            return False
+        try:
+            sealed = _sealed_database_neutral_failure_evidence(
+                receipt_evidence
+            )
+            if expected_failure_evidence is not None:
+                expected = _sealed_database_neutral_failure_evidence(
+                    expected_failure_evidence
+                )
+                if sealed != expected:
+                    return False
+        except (TypeError, ValueError):
+            return False
+        evidence_digest = _database_daemon_evidence_digest(sealed)
+        fingerprint = str(sealed.get("failure_fingerprint") or "")
+        provider_intent = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        try:
+            sealed_provider_intent = (
+                _sealed_database_provider_callback_unknown_evidence(
+                    provider_intent or {}
+                )
+            )
+        except (TypeError, ValueError):
+            return False
+        try:
+            from .database_portal_bridge import (
+                database_portal_authoritative_repository_tree_id,
+                database_portal_task_contract_digest,
+            )
+
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            if task_cid != attempt.task_cid:
+                return False
+            task_contract_digest = database_portal_task_contract_digest(task)
+            repository_tree_id = (
+                database_portal_authoritative_repository_tree_id(
+                    self.task_source,
+                    task_cid,
+                )
+            )
+        except Exception:
+            return False
+        expected_provider_identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+            "idempotency_key": f"provider:{attempt.attempt_id}",
+            "task_contract_digest": task_contract_digest,
+            "repository_tree_id": repository_tree_id,
+        }
+        if not all(
+            sealed_provider_intent.get(name) == value
+            for name, value in expected_provider_identity.items()
+        ):
+            return False
+        if sealed.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+            if sealed != sealed_provider_intent:
+                return False
+        else:
+            expected_consumed_identity = {
+                "database_attempt_id": attempt.attempt_id,
+                "database_claim_id": attempt.claim_id,
+                "database_lease_id": attempt.lease_id,
+                "database_fencing_token": int(attempt.fencing_token),
+                "database_fence_epoch": int(attempt.fence_epoch),
+                "task_cid": attempt.task_cid,
+                "task_contract_digest": task_contract_digest,
+                "control_repository_tree_id": repository_tree_id,
+            }
+            if not all(
+                sealed.get(name) == value
+                for name, value in expected_consumed_identity.items()
+            ):
+                return False
+            if (
+                sealed_provider_intent.get("database_binding_id")
+                != sealed.get("database_binding_id")
+                or sealed_provider_intent.get("portal_failure_fingerprint")
+                != sealed.get("failure_fingerprint")
+            ):
+                return False
+        return bool(
+            receipt.get("failure_evidence_digest") == evidence_digest
+            and receipt.get("circuit_breaker_key") == fingerprint
+            and receipt.get("failure_fingerprint") == fingerprint
+            and receipt.get("failure_kind") == sealed.get("failure_kind")
+            and receipt.get("provider_effect_state")
+            == "unknown_may_have_started"
+            and receipt.get("retry_suppressed") is True
+            and receipt.get("root_cause_required") is True
+            and receipt.get("provider_invocation_receipt_present") is True
+            and receipt.get("provider_callback_intent_fingerprint")
+            == sealed_provider_intent.get("failure_fingerprint")
+        )
+
+    def _strict_resume_rejection_receipt_matches(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+        *,
+        expected_failure_evidence: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """Return whether control truth records this exact rejection."""
 
         task_status = str(getattr(task, "status", "") or "").strip().lower()
         body = getattr(task, "body", None)
@@ -68993,13 +69318,23 @@ class DatabaseImplementationDaemon:
         if not isinstance(receipt, Mapping):
             return False
         operation = str(receipt.get("operation") or "")
+        if operation == "database_portal_neutral_failure_quarantine":
+            return self._neutral_portal_rejection_receipt_matches(
+                task,
+                attempt,
+                expected_failure_evidence=expected_failure_evidence,
+            )
         expected_status = {
             "database_strict_resume_requeue": "ready",
             "database_strict_resume_quarantine": "quarantined",
         }.get(operation)
-        if expected_status is None or task_status != expected_status:
+        if (
+            expected_failure_evidence is not None
+            or expected_status is None
+            or task_status != expected_status
+        ):
             return False
-        expected = {
+        expected_identity = {
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
             "lease_id": attempt.lease_id,
@@ -69007,7 +69342,10 @@ class DatabaseImplementationDaemon:
             "fencing_token": int(attempt.fencing_token),
             "fence_epoch": int(attempt.fence_epoch),
         }
-        return all(receipt.get(name) == value for name, value in expected.items())
+        return all(
+            receipt.get(name) == value
+            for name, value in expected_identity.items()
+        )
 
     def claim_next(
         self,
@@ -69281,6 +69619,26 @@ class DatabaseImplementationDaemon:
         ).fetchall()
         return [self._attempt_from_row(row) for row in rows]
 
+    def _list_blocked_attempts(
+        self,
+        *,
+        owner_session_id: str | None = None,
+    ) -> list[DatabaseTaskAttempt]:
+        """Return blocked cursors that may still own an accepted exact claim."""
+
+        connection = self._require_connection()
+        owner = str(owner_session_id or self.owner_session_id)
+        rows = connection.execute(
+            f"""
+            SELECT {self._ATTEMPT_SELECT} FROM database_task_attempts
+            WHERE owner_session_id = ? AND status = 'blocked'
+              AND committed_phase = ?
+            ORDER BY started_at_ms, attempt_id
+            """,
+            [owner, ATTEMPT_PHASE_BLOCKED],
+        ).fetchall()
+        return [self._attempt_from_row(row) for row in rows]
+
     def _attempt_from_row(self, row: Any) -> DatabaseTaskAttempt:
         finished = row[12]
         return DatabaseTaskAttempt(
@@ -69325,11 +69683,32 @@ class DatabaseImplementationDaemon:
         current = self.get_attempt(attempt_id)
         if current is None:
             raise KeyError(f"unknown attempt: {attempt!r}")
-        if current.status != "running" and phase_text not in {
-            ATTEMPT_PHASE_FAILED,
-            ATTEMPT_PHASE_BLOCKED,
-            ATTEMPT_PHASE_COMPLETE,
-        }:
+        phase_body = dict(body or {})
+        connection = self._require_connection()
+        existing_phase = connection.execute(
+            """
+            SELECT fencing_token, fence_epoch, body_json
+            FROM attempt_phases
+            WHERE attempt_id = ? AND phase = ?
+            """,
+            [current.attempt_id, phase_text],
+        ).fetchone()
+        if existing_phase is not None:
+            existing_fencing_token = int(existing_phase[0] or 0)
+            existing_fence_epoch = int(existing_phase[1] or 0)
+            existing_body = _database_daemon_load_json(existing_phase[2])
+            if (
+                existing_fencing_token != int(current.fencing_token)
+                or existing_fence_epoch != int(current.fence_epoch)
+                or _database_daemon_json(existing_body)
+                != _database_daemon_json(phase_body)
+            ):
+                raise DatabaseImplementationConflictError(
+                    f"attempt {current.attempt_id} phase {phase_text!r} "
+                    "already has different immutable evidence"
+                )
+            return current
+        if current.status != "running":
             raise DatabaseImplementationConflictError(
                 f"attempt {current.attempt_id} is not running"
             )
@@ -69360,7 +69739,6 @@ class DatabaseImplementationDaemon:
                     f"{current.committed_phase!r}; expected {expected!r}"
                 )
         now = self._now_ms()
-        connection = self._require_connection()
         revision = int(current.revision) + 1
         status = current.status
         finished_at: int | None = current.finished_at_ms
@@ -69403,7 +69781,7 @@ class DatabaseImplementationDaemon:
                     )
                 connection.execute(
                     """
-                    INSERT OR REPLACE INTO attempt_phases(
+                    INSERT INTO attempt_phases(
                         attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
                         revision, body_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -69415,7 +69793,7 @@ class DatabaseImplementationDaemon:
                         int(current.fencing_token),
                         int(current.fence_epoch),
                         revision,
-                        _database_daemon_json(dict(body or {})),
+                        _database_daemon_json(phase_body),
                     ],
                 )
                 connection.execute("COMMIT")
@@ -69429,7 +69807,7 @@ class DatabaseImplementationDaemon:
             "attempt_phase_committed",
             attempt_id=updated.attempt_id,
             task_cid=updated.task_cid,
-            body={"phase": phase_text, "revision": revision, **dict(body or {})},
+            body={"phase": phase_text, "revision": revision, **phase_body},
         )
         return updated
 
@@ -69504,6 +69882,158 @@ class DatabaseImplementationDaemon:
         ).fetchone()
         return row is not None
 
+    def _provider_callback_unknown_evidence(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Create the exact durable intent written before callback dispatch."""
+
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "provider callback intent has no authoritative task"
+            )
+        from .database_portal_bridge import (
+            database_portal_authoritative_repository_tree_id,
+            database_portal_task_contract_digest,
+        )
+
+        repository_tree_id = database_portal_authoritative_repository_tree_id(
+            self.task_source,
+            attempt.task_cid,
+        )
+
+        evidence = {
+            "schema": DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
+            "failure_kind": "provider_callback_outcome_unknown",
+            "provider_effect_state": "unknown_may_have_started",
+            "callback_state": "started_outcome_unknown",
+            "idempotency_key": idempotency_key,
+            "task_cid": attempt.task_cid,
+            "task_contract_digest": database_portal_task_contract_digest(
+                task,
+            ),
+            "repository_tree_id": repository_tree_id,
+            "database_binding_id": "",
+            "portal_failure_fingerprint": "",
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "callback_started_at_ms": self._now_ms(),
+        }
+        evidence["failure_fingerprint"] = (
+            _database_provider_callback_unknown_fingerprint(evidence)
+        )
+        return _sealed_database_provider_callback_unknown_evidence(evidence)
+
+    def _bind_provider_callback_intent_to_consumed_failure(
+        self,
+        attempt: DatabaseTaskAttempt,
+        provider_intent: Mapping[str, Any],
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Durably bind callback-start intent to one exact Portal outcome."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+        )
+
+        sealed_intent = _sealed_database_provider_callback_unknown_evidence(
+            provider_intent
+        )
+        if evidence.get("schema") != DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA:
+            return sealed_intent
+        database_binding_id = str(evidence.get("database_binding_id") or "")
+        portal_failure_fingerprint = str(
+            evidence.get("failure_fingerprint") or ""
+        )
+        if (
+            re.fullmatch(r"sha256:[0-9a-f]{64}", database_binding_id) is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                portal_failure_fingerprint,
+            )
+            is None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "consumed Portal failure has no exact database binding"
+            )
+        prior_binding = str(sealed_intent.get("database_binding_id") or "")
+        prior_fingerprint = str(
+            sealed_intent.get("portal_failure_fingerprint") or ""
+        )
+        if prior_binding or prior_fingerprint:
+            if (
+                prior_binding != database_binding_id
+                or prior_fingerprint != portal_failure_fingerprint
+            ):
+                raise DatabaseImplementationConflictError(
+                    "provider callback intent is bound to a different Portal outcome"
+                )
+            return sealed_intent
+
+        bound = dict(sealed_intent)
+        bound["database_binding_id"] = database_binding_id
+        bound["portal_failure_fingerprint"] = portal_failure_fingerprint
+        bound["failure_fingerprint"] = (
+            _database_provider_callback_unknown_fingerprint(bound)
+        )
+        bound = _sealed_database_provider_callback_unknown_evidence(bound)
+        key = str(bound["idempotency_key"])
+        connection = self._require_connection()
+        updated = connection.execute(
+            """
+            UPDATE provider_invocations
+            SET result_json = ?
+            WHERE attempt_id = ? AND task_cid = ? AND idempotency_key = ?
+              AND result_json = ?
+            RETURNING invocation_id
+            """,
+            [
+                _database_daemon_json(bound),
+                attempt.attempt_id,
+                attempt.task_cid,
+                key,
+                _database_daemon_json(sealed_intent),
+            ],
+        ).fetchone()
+        if updated is None:
+            replay = self.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=key,
+            )
+            try:
+                replay_sealed = (
+                    _sealed_database_provider_callback_unknown_evidence(
+                        replay or {}
+                    )
+                )
+            except (TypeError, ValueError) as replay_exc:
+                raise DatabaseImplementationConflictError(
+                    "provider callback intent changed before Portal binding"
+                ) from replay_exc
+            if replay_sealed != bound:
+                raise DatabaseImplementationConflictError(
+                    "provider callback intent changed before Portal binding"
+                )
+        self._record_event(
+            "provider_callback_outcome_bound",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body={
+                "idempotency_key": key,
+                "database_binding_id": database_binding_id,
+                "portal_failure_fingerprint": portal_failure_fingerprint,
+                "callback_intent_fingerprint": bound["failure_fingerprint"],
+            },
+        )
+        return bound
+
     def effect_claim_recorded(
         self,
         attempt_id: str,
@@ -69542,6 +70072,35 @@ class DatabaseImplementationDaemon:
             attempt.attempt_id, idempotency_key=key
         )
         if prior is not None:
+            if prior.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+                try:
+                    unknown = _sealed_database_provider_callback_unknown_evidence(
+                        prior
+                    )
+                except ValueError as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "provider callback intent evidence is malformed"
+                    ) from exc
+                expected_identity = {
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "lease_id": attempt.lease_id,
+                    "owner_session_id": attempt.owner_session_id,
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                    "task_cid": attempt.task_cid,
+                    "idempotency_key": key,
+                }
+                if not all(
+                    unknown.get(name) == value
+                    for name, value in expected_identity.items()
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "provider callback intent does not match the exact attempt"
+                    )
+                raise DatabaseProviderCallbackOutcomeUnknownError(
+                    failure_evidence=unknown
+                )
             if self.require_real_execution and (
                 str(prior.get("status") or "").strip().lower()
                 in {"", "noop"}
@@ -69566,6 +70125,8 @@ class DatabaseImplementationDaemon:
                 )
             return attempt, {"status": "already_committed"}, True
         callback = provider_fn or self._provider_fn
+        callback_intent: dict[str, Any] | None = None
+        invocation_id = _database_daemon_new_id("provider")
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -69579,6 +70140,41 @@ class DatabaseImplementationDaemon:
                 "task_cid": attempt.task_cid,
             }
         else:
+            callback_intent = self._provider_callback_unknown_evidence(
+                attempt,
+                idempotency_key=key,
+            )
+            self._protect_attempt_write(attempt)
+            connection = self._require_connection()
+            connection.execute(
+                """
+                INSERT INTO provider_invocations(
+                    invocation_id, attempt_id, task_cid, idempotency_key,
+                    owner_session_id, recorded_at_ms, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    invocation_id,
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    key,
+                    self.owner_session_id,
+                    int(callback_intent["callback_started_at_ms"]),
+                    _database_daemon_json(callback_intent),
+                ],
+            )
+            self._record_event(
+                "provider_callback_started",
+                attempt_id=attempt.attempt_id,
+                task_cid=attempt.task_cid,
+                body={
+                    "idempotency_key": key,
+                    "failure_fingerprint": callback_intent[
+                        "failure_fingerprint"
+                    ],
+                    "provider_effect_state": "unknown_may_have_started",
+                },
+            )
             result = dict(
                 self._run_with_attempt_heartbeat(
                     attempt,
@@ -69594,23 +70190,46 @@ class DatabaseImplementationDaemon:
             )
         self._protect_attempt_write(attempt)
         connection = self._require_connection()
-        connection.execute(
-            """
-            INSERT INTO provider_invocations(
-                invocation_id, attempt_id, task_cid, idempotency_key,
-                owner_session_id, recorded_at_ms, result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                _database_daemon_new_id("provider"),
-                attempt.attempt_id,
-                attempt.task_cid,
-                key,
-                self.owner_session_id,
-                self._now_ms(),
-                _database_daemon_json(result),
-            ],
-        )
+        if callback_intent is None:
+            connection.execute(
+                """
+                INSERT INTO provider_invocations(
+                    invocation_id, attempt_id, task_cid, idempotency_key,
+                    owner_session_id, recorded_at_ms, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    invocation_id,
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    key,
+                    self.owner_session_id,
+                    self._now_ms(),
+                    _database_daemon_json(result),
+                ],
+            )
+        else:
+            updated_intent = connection.execute(
+                """
+                UPDATE provider_invocations
+                SET result_json = ?, recorded_at_ms = ?
+                WHERE invocation_id = ? AND attempt_id = ?
+                  AND idempotency_key = ? AND result_json = ?
+                RETURNING invocation_id
+                """,
+                [
+                    _database_daemon_json(result),
+                    self._now_ms(),
+                    invocation_id,
+                    attempt.attempt_id,
+                    key,
+                    _database_daemon_json(callback_intent),
+                ],
+            ).fetchone()
+            if updated_intent is None:
+                raise DatabaseImplementationConflictError(
+                    "provider callback intent changed before outcome commit"
+                )
         updated = self.commit_phase(
             attempt,
             ATTEMPT_PHASE_PROVIDER,
@@ -69960,14 +70579,6 @@ class DatabaseImplementationDaemon:
         expected_phase = (
             ATTEMPT_PHASE_COMPLETE if succeeded else ATTEMPT_PHASE_FAILED
         )
-        if current.status == expected_status:
-            return current
-        if current.status != "running":
-            raise DatabaseImplementationConflictError(
-                f"cannot reconcile attempt {attempt_id} from {current.status!r}"
-            )
-        now = self._now_ms()
-        revision = int(current.revision) + 1
         body = {
             "cross_store_reconciled": True,
             "preparation_digest": str(
@@ -69975,6 +70586,47 @@ class DatabaseImplementationDaemon:
             ),
             "reconciliation": dict(reconciliation),
         }
+        if current.status == expected_status:
+            admissible_bodies = [body]
+            if succeeded:
+                evidence_digest = str(
+                    prepared.get("evidence_digest") or ""
+                ).strip()
+                if evidence_digest:
+                    # Ordinary completion commits this smaller immutable body
+                    # before claim settlement.  A cold reconciliation may
+                    # observe that terminal phase after losing only the
+                    # settlement response; bind it to the exact preparation
+                    # digest instead of replacing it with reconciliation data.
+                    admissible_bodies.append(
+                        {"evidence_digest": evidence_digest}
+                    )
+            if any(
+                self._terminal_phase_body_matches(
+                    current,
+                    phase=expected_phase,
+                    body=candidate,
+                )
+                for candidate in admissible_bodies
+            ):
+                return current
+            raise DatabaseImplementationConflictError(
+                f"reconciled attempt {attempt_id} has different immutable "
+                "terminal evidence"
+            )
+        if current.status != "running":
+            raise DatabaseImplementationConflictError(
+                f"cannot reconcile attempt {attempt_id} from {current.status!r}"
+            )
+        if any(
+            item.get("phase") == expected_phase
+            for item in self.phase_history(attempt_id)
+        ):
+            raise DatabaseImplementationConflictError(
+                f"running attempt {attempt_id} already has terminal evidence"
+            )
+        now = self._now_ms()
+        revision = int(current.revision) + 1
         connection = self._require_connection()
         with self._lock:
             connection.execute("BEGIN TRANSACTION")
@@ -70001,7 +70653,7 @@ class DatabaseImplementationDaemon:
                     )
                 connection.execute(
                     """
-                    INSERT OR REPLACE INTO attempt_phases(
+                    INSERT INTO attempt_phases(
                         attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
                         revision, body_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -70158,6 +70810,8 @@ class DatabaseImplementationDaemon:
     def _settle_strict_resume_rejection(
         self,
         attempt: DatabaseTaskAttempt,
+        *,
+        expected_failure_evidence: Mapping[str, Any] | None = None,
     ) -> DatabaseTaskAttempt:
         """Retire local authority after an exact shared strict rejection."""
 
@@ -70165,6 +70819,7 @@ class DatabaseImplementationDaemon:
         if task is None or not self._strict_resume_rejection_receipt_matches(
             task,
             attempt,
+            expected_failure_evidence=expected_failure_evidence,
         ):
             raise DatabaseImplementationAuthorityError(
                 "strict resume rejection has no exact shared-board receipt"
@@ -70181,7 +70836,23 @@ class DatabaseImplementationDaemon:
             if isinstance(rejection_receipt, Mapping)
             else False
         )
-        quarantined = operation == "database_strict_resume_quarantine"
+        neutral_portal_failure = (
+            operation == "database_portal_neutral_failure_quarantine"
+        )
+        provider_invocation_present = self.provider_invocation_exists(
+            attempt.attempt_id
+        )
+        if neutral_portal_failure and (
+            provider_invocation_receipt_present
+            is not provider_invocation_present
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "neutral Portal rejection provider ledger binding changed"
+            )
+        quarantined = operation in {
+            "database_strict_resume_quarantine",
+            "database_portal_neutral_failure_quarantine",
+        }
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         if claim is None:
             raise DatabaseImplementationAuthorityError(
@@ -70216,7 +70887,11 @@ class DatabaseImplementationDaemon:
             try:
                 self.coordinator.release(
                     lease,
-                    reason="strict_resume_not_admitted",
+                    reason=(
+                        "portal_neutral_failure"
+                        if neutral_portal_failure
+                        else "strict_resume_not_admitted"
+                    ),
                     expected_fencing_token=int(attempt.fencing_token),
                     expected_fence_epoch=int(attempt.fence_epoch),
                     now_ms=now,
@@ -70257,14 +70932,32 @@ class DatabaseImplementationDaemon:
             "provider_invocation_receipt_present": (
                 provider_invocation_receipt_present
             ),
-            "reason": "strict_resume_not_admitted",
+            "reason": (
+                "portal_neutral_failure"
+                if neutral_portal_failure
+                else "strict_resume_not_admitted"
+            ),
             "disposition": "quarantined" if quarantined else "requeued",
         }
-        failed = self._commit_reconciled_attempt_terminal(
-            identity,
-            succeeded=False,
-            reconciliation=outcome,
-        )
+        if attempt.status == "blocked":
+            if (
+                not neutral_portal_failure
+                or attempt.committed_phase != ATTEMPT_PHASE_BLOCKED
+                or expected_failure_evidence is None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "blocked attempt is not an exact neutral Portal replay"
+                )
+            # BLOCKED is already the durable execution terminal.  This branch
+            # exists only for the crash window after BLOCKED committed but
+            # before the exact accepted claim was released.
+            failed = self.get_attempt(attempt.attempt_id)
+        else:
+            failed = self._commit_reconciled_attempt_terminal(
+                identity,
+                succeeded=False,
+                reconciliation=outcome,
+            )
         if failed is None:
             raise DatabaseImplementationAuthorityError(
                 "strict resume rejection lost its durable execution attempt"
@@ -70467,6 +71160,158 @@ class DatabaseImplementationDaemon:
             "task_quarantined": disposition == "quarantined",
         }
 
+    def _quarantine_expired_provider_callback_intent(
+        self,
+        attempt: DatabaseTaskAttempt,
+        claim: Any,
+        evidence: Mapping[str, Any],
+    ) -> DatabaseTaskAttempt:
+        """Settle an expired callback-start intent without redispatch.
+
+        Lease expiry removes authority for new provider work; it does not erase
+        the durable fact that the prior callback may already have dispatched.
+        This recovery path consumes only that pre-expiry, exact-fence intent
+        and publishes a neutral quarantine before ordinary retry reconciliation.
+        """
+
+        try:
+            sealed = _sealed_database_provider_callback_unknown_evidence(
+                evidence
+            )
+        except (TypeError, ValueError) as evidence_exc:
+            raise DatabaseImplementationAuthorityError(
+                "expired provider callback intent evidence is malformed"
+            ) from evidence_exc
+        provider_key = f"provider:{attempt.attempt_id}"
+        durable = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=provider_key,
+        )
+        try:
+            sealed_durable = (
+                _sealed_database_provider_callback_unknown_evidence(
+                    durable or {}
+                )
+            )
+        except (TypeError, ValueError) as durable_exc:
+            raise DatabaseImplementationAuthorityError(
+                "expired callback has no exact durable intent"
+            ) from durable_exc
+        if sealed != sealed_durable:
+            raise DatabaseImplementationConflictError(
+                "expired callback evidence differs from durable intent"
+            )
+
+        identity = claim.to_dict()
+        expected_claim_identity = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if not all(
+            identity.get(name) == value
+            for name, value in expected_claim_identity.items()
+        ):
+            raise DatabaseImplementationConflictError(
+                "expired callback intent does not match its coordination claim"
+            )
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+        )
+        if claim_state == "accepted" and int(claim.expires_at_ms) > self._now_ms():
+            raise DatabaseImplementationConflictError(
+                "provider callback intent lease is not expired"
+            )
+        if claim_state not in {"accepted", "expired"}:
+            raise DatabaseImplementationAuthorityError(
+                "expired callback intent has inadmissible claim state"
+            )
+
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "expired callback intent has no authoritative task"
+            )
+        from .database_portal_bridge import (
+            database_portal_authoritative_repository_tree_id,
+            database_portal_task_contract_digest,
+        )
+
+        task_contract_digest = database_portal_task_contract_digest(task)
+        repository_tree_id = database_portal_authoritative_repository_tree_id(
+            self.task_source,
+            attempt.task_cid,
+        )
+        expected_intent_identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+            "idempotency_key": provider_key,
+            "task_contract_digest": task_contract_digest,
+            "repository_tree_id": repository_tree_id,
+        }
+        intent_mismatches = [
+            name
+            for name, value in expected_intent_identity.items()
+            if sealed.get(name) != value
+        ]
+        if intent_mismatches:
+            raise DatabaseImplementationConflictError(
+                "expired callback intent is stale or rebound: "
+                + ", ".join(intent_mismatches)
+            )
+        if (
+            str(task.status or "").strip().lower() != "in_progress"
+            or not self._shared_claim_binding_matches_attempt(task, attempt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "expired callback quarantine lacks exact shared claim binding"
+            )
+
+        receipt, digests = self._neutral_portal_quarantine_material(
+            attempt,
+            sealed,
+            sealed,
+        )
+        try:
+            self._cas_task_status_database(
+                attempt.task_cid,
+                expected_revision=int(task.revision),
+                new_status="quarantined",
+                receipt=receipt,
+                evidence_digests=digests,
+            )
+        except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+            refreshed_task = self.task_source.get(attempt.task_cid)
+            if (
+                refreshed_task is None
+                or not self._strict_resume_rejection_receipt_matches(
+                    refreshed_task,
+                    attempt,
+                    expected_failure_evidence=sealed,
+                )
+            ):
+                raise
+        settled = self._settle_strict_resume_rejection(
+            attempt,
+            expected_failure_evidence=sealed,
+        )
+        self._record_event(
+            "expired_provider_callback_unknown_quarantined",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body=self._neutral_portal_failure_phase_body(sealed),
+        )
+        return settled
+
     def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
         """Retire exact local attempts whose coordination authority expired.
 
@@ -70483,6 +71328,71 @@ class DatabaseImplementationDaemon:
             )
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
+        for attempt in self._list_blocked_attempts():
+            blocked_phases = [
+                item
+                for item in self.phase_history(attempt.attempt_id)
+                if item.get("phase") == ATTEMPT_PHASE_BLOCKED
+            ]
+            if len(blocked_phases) != 1:
+                continue
+            blocked_body = blocked_phases[0].get("body")
+            if not isinstance(blocked_body, Mapping) or blocked_body.get(
+                "reason"
+            ) != "portal_neutral_failure":
+                continue
+            evidence = blocked_body.get("failure_evidence")
+            if (
+                blocked_body.get("portal_retryable_failure") is not False
+                or blocked_body.get("portal_replay_suppressed") is not True
+                or blocked_body.get("task_quarantined") is not True
+                or not isinstance(evidence, Mapping)
+                or not self._blocked_neutral_portal_phase_matches(
+                    attempt,
+                    evidence,
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "blocked neutral Portal attempt has malformed evidence"
+                )
+            task = self.task_source.get(attempt.task_cid)
+            if task is None or not self._strict_resume_rejection_receipt_matches(
+                task,
+                attempt,
+                expected_failure_evidence=evidence,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "blocked neutral Portal attempt has no exact quarantine receipt"
+                )
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+            if claim is None:
+                raise DatabaseImplementationAuthorityError(
+                    "blocked neutral Portal attempt has no exact claim"
+                )
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            )
+            if claim_state in {"released", "expired"}:
+                continue
+            settled = self._settle_strict_resume_rejection(
+                attempt,
+                expected_failure_evidence=evidence,
+            )
+            outcomes.append(
+                {
+                    "task_cid": attempt.task_cid,
+                    "claim_id": attempt.claim_id,
+                    "attempt_id": attempt.attempt_id,
+                    "status": settled.status,
+                    "retry_required": False,
+                    "provider_evidence_reused": False,
+                    "effect_evidence_reused": False,
+                    "reason": "portal_neutral_failure",
+                    "disposition": "quarantined",
+                    "replayed": True,
+                }
+            )
         for attempt in self.list_running_attempts():
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             if claim is None:
@@ -70518,6 +71428,13 @@ class DatabaseImplementationDaemon:
                 task,
                 attempt,
             ):
+                task_body = task.body if isinstance(task.body, Mapping) else {}
+                terminal_receipt = task_body.get("completion_receipt")
+                neutral_portal_failure = bool(
+                    isinstance(terminal_receipt, Mapping)
+                    and terminal_receipt.get("operation")
+                    == "database_portal_neutral_failure_quarantine"
+                )
                 failed = self._settle_strict_resume_rejection(attempt)
                 task_status = str(task.status or "").strip().lower()
                 quarantined = task_status == "quarantined"
@@ -70530,10 +71447,47 @@ class DatabaseImplementationDaemon:
                         "retry_required": not quarantined,
                         "provider_evidence_reused": False,
                         "effect_evidence_reused": False,
-                        "reason": "strict_resume_not_admitted",
+                        "reason": (
+                            "portal_neutral_failure"
+                            if neutral_portal_failure
+                            else "strict_resume_not_admitted"
+                        ),
                         "disposition": (
                             "quarantined" if quarantined else "requeued"
                         ),
+                        "replayed": True,
+                    }
+                )
+                continue
+            provider_intent = self.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+            if (
+                isinstance(provider_intent, Mapping)
+                and provider_intent.get("schema")
+                == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+                and not (
+                    claim_state == "accepted"
+                    and int(claim.expires_at_ms) > now
+                )
+            ):
+                settled = self._quarantine_expired_provider_callback_intent(
+                    attempt,
+                    claim,
+                    provider_intent,
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "claim_id": attempt.claim_id,
+                        "attempt_id": attempt.attempt_id,
+                        "status": settled.status,
+                        "retry_required": False,
+                        "provider_evidence_reused": False,
+                        "effect_evidence_reused": False,
+                        "reason": "portal_neutral_failure",
+                        "disposition": "quarantined",
                         "replayed": True,
                     }
                 )
@@ -70754,6 +71708,359 @@ class DatabaseImplementationDaemon:
             "status": current.status,
         }
 
+    @staticmethod
+    def _neutral_portal_failure_phase_body(
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "reason": "portal_neutral_failure",
+            "failure_kind": str(evidence.get("failure_kind") or ""),
+            "failure_fingerprint": str(
+                evidence.get("failure_fingerprint") or ""
+            ),
+            "failure_evidence_digest": _database_daemon_evidence_digest(
+                evidence
+            ),
+            "portal_retryable_failure": False,
+            "portal_replay_suppressed": True,
+            "task_quarantined": True,
+            "provider_effect_state": "unknown_may_have_started",
+            "failure_evidence": dict(evidence),
+        }
+
+    @staticmethod
+    def _neutral_portal_quarantine_material(
+        attempt: DatabaseTaskAttempt,
+        evidence: Mapping[str, Any],
+        provider_intent: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], tuple[str, ...]]:
+        """Build the one canonical control receipt for neutral quarantine."""
+
+        fingerprint = str(evidence.get("failure_fingerprint") or "")
+        receipt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-neutral-quarantine@1"
+            ),
+            "operation": "database_portal_neutral_failure_quarantine",
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "failure_fingerprint": fingerprint,
+            "failure_kind": str(evidence.get("failure_kind") or ""),
+            "provider_effect_state": "unknown_may_have_started",
+            "provider_invocation_receipt_present": True,
+            "provider_callback_intent_fingerprint": str(
+                provider_intent.get("failure_fingerprint") or ""
+            ),
+            "retry_suppressed": True,
+            "root_cause_required": True,
+            "circuit_breaker_key": fingerprint,
+            "failure_evidence": dict(evidence),
+            "failure_evidence_digest": _database_daemon_evidence_digest(
+                evidence
+            ),
+        }
+        digests = tuple(
+            dict.fromkeys(
+                value
+                for value in (
+                    fingerprint,
+                    str(evidence.get("diagnostic_receipt_digest") or ""),
+                    str(receipt.get("failure_evidence_digest") or ""),
+                )
+                if re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+            )
+        )
+        return receipt, digests
+
+    def _blocked_neutral_portal_phase_matches(
+        self,
+        attempt: DatabaseTaskAttempt,
+        evidence: Mapping[str, Any],
+    ) -> bool:
+        return self._terminal_phase_body_matches(
+            attempt,
+            phase=ATTEMPT_PHASE_BLOCKED,
+            body=self._neutral_portal_failure_phase_body(evidence),
+        )
+
+    def _terminal_phase_body_matches(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        phase: str,
+        body: Mapping[str, Any],
+    ) -> bool:
+        """Accept a lost terminal response only for one exact durable body."""
+
+        phases = [
+            item
+            for item in self.phase_history(attempt.attempt_id)
+            if item.get("phase") == phase
+        ]
+        return bool(
+            len(phases) == 1
+            and _database_daemon_json(phases[0].get("body") or {})
+            == _database_daemon_json(body)
+        )
+
+    def _quarantine_neutral_portal_failure(
+        self,
+        attempt: DatabaseTaskAttempt,
+        exc: Exception,
+    ) -> dict[str, Any]:
+        """Block one exact unknown/consumed callback without cause inference."""
+
+        try:
+            evidence = _sealed_database_neutral_failure_evidence(
+                getattr(exc, "failure_evidence", {}) or {}
+            )
+        except (TypeError, ValueError) as validation_exc:
+            raise DatabaseImplementationAuthorityError(
+                "neutral Portal failure evidence is invalid"
+            ) from validation_exc
+        fingerprint = str(evidence.get("failure_fingerprint") or "")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint):
+            raise DatabaseImplementationAuthorityError(
+                "neutral Portal failure has no sealed fingerprint"
+            )
+        attempt_id = str(getattr(attempt, "attempt_id", "") or attempt)
+        current = self.get_attempt(attempt_id)
+        if current is None or current.status != "running":
+            raise DatabaseImplementationConflictError(
+                "neutral Portal failure attempt is not running"
+            )
+        provider_key = f"provider:{current.attempt_id}"
+        provider_intent = self.provider_invocation_recorded(
+            current.attempt_id,
+            idempotency_key=provider_key,
+        )
+        try:
+            sealed_provider_intent = (
+                _sealed_database_provider_callback_unknown_evidence(
+                    provider_intent or {}
+                )
+            )
+        except (TypeError, ValueError) as intent_exc:
+            raise DatabaseImplementationAuthorityError(
+                "neutral Portal failure has no exact started callback intent"
+            ) from intent_exc
+
+        claim = self._attempt_claim(current)
+        lease = self._protect_attempt_claim(current, claim)
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "neutral Portal failure has no authoritative task"
+            )
+        from .database_portal_bridge import (
+            database_portal_authoritative_repository_tree_id,
+            database_portal_task_contract_digest,
+        )
+
+        task_contract_digest = database_portal_task_contract_digest(task)
+        repository_tree_id = database_portal_authoritative_repository_tree_id(
+            self.task_source,
+            current.task_cid,
+        )
+        expected_attempt_identity = {
+            "attempt_id": current.attempt_id,
+            "claim_id": current.claim_id,
+            "lease_id": current.lease_id,
+            "owner_session_id": current.owner_session_id,
+            "fencing_token": int(current.fencing_token),
+            "fence_epoch": int(current.fence_epoch),
+            "task_cid": current.task_cid,
+        }
+        provider_intent_mismatches = [
+            name
+            for name, value in {
+                **expected_attempt_identity,
+                "idempotency_key": provider_key,
+                "task_contract_digest": task_contract_digest,
+                "repository_tree_id": repository_tree_id,
+            }.items()
+            if sealed_provider_intent.get(name) != value
+        ]
+        if provider_intent_mismatches:
+            raise DatabaseImplementationConflictError(
+                "provider callback intent is stale or rebound: "
+                + ", ".join(provider_intent_mismatches)
+            )
+        if evidence.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+            evidence_identity = expected_attempt_identity
+            evidence_tree = evidence.get("repository_tree_id")
+        else:
+            evidence_identity = {
+                "database_attempt_id": current.attempt_id,
+                "database_claim_id": current.claim_id,
+                "database_lease_id": current.lease_id,
+                "database_fencing_token": int(current.fencing_token),
+                "database_fence_epoch": int(current.fence_epoch),
+                "task_cid": current.task_cid,
+            }
+            evidence_tree = evidence.get("control_repository_tree_id")
+        if (
+            not all(
+                evidence.get(name) == value
+                for name, value in evidence_identity.items()
+            )
+            or evidence.get("task_contract_digest") != task_contract_digest
+            or evidence_tree != repository_tree_id
+        ):
+            raise DatabaseImplementationConflictError(
+                "neutral Portal evidence is stale; fresh task-bound evaluation "
+                "is required"
+            )
+        if evidence.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+            if evidence != sealed_provider_intent:
+                raise DatabaseImplementationConflictError(
+                    "callback outcome evidence does not match durable intent"
+                )
+        else:
+            sealed_provider_intent = (
+                self._bind_provider_callback_intent_to_consumed_failure(
+                    current,
+                    sealed_provider_intent,
+                    evidence,
+                )
+            )
+            if (
+                sealed_provider_intent.get("database_binding_id")
+                != evidence.get("database_binding_id")
+                or sealed_provider_intent.get("portal_failure_fingerprint")
+                != fingerprint
+            ):
+                raise DatabaseImplementationConflictError(
+                    "consumed Portal failure is not bound to callback intent"
+                )
+        task_status = str(task.status or "").strip().lower()
+        local_projection = self.coordinator.coordination_registry_projection()
+        local_rows = [
+            row
+            for row in local_projection.get("tasks", ())
+            if str(row.get("task_cid") or "") == current.task_cid
+        ]
+        local_body = (
+            local_rows[0].get("body")
+            if len(local_rows) == 1
+            and isinstance(local_rows[0].get("body"), Mapping)
+            else {}
+        )
+        shared_authorized = bool(
+            self._shared_claim_binding_matches_attempt(task, current)
+            or self._shared_retry_binding_matches_attempt(
+                task,
+                current,
+                local_task_body=local_body,
+                local_projection=local_projection,
+            )
+        )
+        if task_status != "in_progress" or not shared_authorized:
+            raise DatabaseImplementationAuthorityError(
+                "neutral Portal quarantine lacks exact shared authority"
+            )
+
+        receipt, digests = self._neutral_portal_quarantine_material(
+            current,
+            evidence,
+            sealed_provider_intent,
+        )
+        try:
+            self._cas_task_status_database(
+                current.task_cid,
+                expected_revision=int(task.revision),
+                new_status="quarantined",
+                receipt=receipt,
+                evidence_digests=digests,
+            )
+        except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+            refreshed_task = self.task_source.get(current.task_cid)
+            if (
+                refreshed_task is None
+                or not self._strict_resume_rejection_receipt_matches(
+                    refreshed_task,
+                    current,
+                    expected_failure_evidence=evidence,
+                )
+            ):
+                raise
+
+        failure_body = {
+            **self._neutral_portal_failure_phase_body(evidence),
+        }
+        try:
+            blocked = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_BLOCKED,
+                body=failure_body,
+            )
+        except Exception as commit_exc:
+            refreshed = self.get_attempt(current.attempt_id)
+            if not (
+                refreshed is not None
+                and refreshed.status == "blocked"
+                and refreshed.committed_phase == ATTEMPT_PHASE_BLOCKED
+                and self._blocked_neutral_portal_phase_matches(
+                    refreshed,
+                    evidence,
+                )
+            ):
+                if (
+                    refreshed is not None
+                    and refreshed.status == "blocked"
+                    and refreshed.committed_phase == ATTEMPT_PHASE_BLOCKED
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "blocked phase response replay has different immutable "
+                        "failure evidence"
+                    ) from commit_exc
+                raise
+            blocked = refreshed
+        try:
+            self.coordinator.release(
+                lease,
+                reason="portal_neutral_failure",
+                expected_fencing_token=int(current.fencing_token),
+                expected_fence_epoch=int(current.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+        except Exception:
+            refreshed_claim = self.coordinator.get_task_claim(current.claim_id)
+            refreshed_state = str(
+                getattr(
+                    getattr(refreshed_claim, "state", ""),
+                    "value",
+                    getattr(refreshed_claim, "state", ""),
+                )
+                or ""
+            )
+            if refreshed_state != "released":
+                raise
+        self._record_event(
+            "portal_neutral_failure_quarantined",
+            attempt_id=blocked.attempt_id,
+            task_cid=blocked.task_cid,
+            body=failure_body,
+        )
+        return {
+            "resumed": True,
+            "portal_retryable_failure": False,
+            "portal_replay_suppressed": True,
+            "task_quarantined": True,
+            "root_cause_required": True,
+            "failure_fingerprint": fingerprint,
+            "reason": "portal_neutral_failure",
+            "failure_kind": str(evidence.get("failure_kind") or ""),
+            "attempt_id": blocked.attempt_id,
+            "task_alias": blocked.task_alias,
+            "status": "blocked",
+        }
+
     def _resume_attempt_without_process_crash(
         self,
         attempt: "DatabaseTaskAttempt",
@@ -70768,9 +72075,26 @@ class DatabaseImplementationDaemon:
         try:
             return self.resume_attempt(attempt)
         except Exception as exc:
-            from .database_portal_bridge import DatabasePortalBridgeError
+            from .database_portal_bridge import (
+                DatabasePortalBridgeConsumedNoProgressError,
+                DatabasePortalBridgeDeferred,
+            )
 
-            if not isinstance(exc, DatabasePortalBridgeError):
+            if isinstance(
+                exc,
+                (
+                    DatabasePortalBridgeConsumedNoProgressError,
+                    DatabaseProviderCallbackOutcomeUnknownError,
+                ),
+            ):
+                return self._quarantine_neutral_portal_failure(
+                    attempt,
+                    exc,
+                )
+            if not isinstance(exc, DatabasePortalBridgeDeferred):
+                # Generic Portal/provider failures carry no retry authority.
+                # The durable callback-start intent prevents a cold restart
+                # from invoking the same unknown outcome again.
                 raise
             failed = None
             try:
@@ -70795,17 +72119,27 @@ class DatabaseImplementationDaemon:
                             ATTEMPT_PHASE_FAILED,
                             body=failure_body,
                         )
-                    except Exception:
+                    except Exception as commit_exc:
                         # A response loss after the execution-store commit must
-                        # not strand the exact accepted coordination lease.
+                        # release only when the exact expected terminal body is
+                        # durable.  A status/phase-only match is not replay
+                        # authority because it may carry unrelated evidence.
                         refreshed = self.get_attempt(attempt_id)
                         if not (
                             refreshed is not None
                             and refreshed.status == "failed"
                             and refreshed.committed_phase
                             == ATTEMPT_PHASE_FAILED
+                            and self._terminal_phase_body_matches(
+                                refreshed,
+                                phase=ATTEMPT_PHASE_FAILED,
+                                body=failure_body,
+                            )
                         ):
-                            raise
+                            raise DatabaseImplementationConflictError(
+                                "failed phase response replay has different "
+                                "immutable failure evidence"
+                            ) from commit_exc
                         failed = refreshed
                     self.coordinator.release(
                         lease,
@@ -70814,6 +72148,8 @@ class DatabaseImplementationDaemon:
                         expected_fence_epoch=int(current.fence_epoch),
                         now_ms=self._now_ms(),
                     )
+            except DatabaseImplementationConflictError:
+                raise
             except Exception as fail_exc:
                 return {
                     "resumed": True,

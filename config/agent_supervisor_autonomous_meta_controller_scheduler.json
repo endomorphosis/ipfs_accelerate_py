@@ -83,12 +83,14 @@
     "scripts/materialize_agent_supervisor_autonomous_meta_controller_board.py",
     "scripts/ops/agent_supervisor/quack_state_server.py",
     "scripts/lgswf_start_quack_control.py",
+    "ipfs_accelerate_py/agent_implementation_route.py",
     "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
     "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py",
     "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
@@ -101,7 +103,8 @@
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
-    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py"
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+    "ipfs_accelerate_py/llm_router.py"
   ],
   "runtime_paths": {
     "root": "state/agent_supervisor_autonomous_meta_controller",

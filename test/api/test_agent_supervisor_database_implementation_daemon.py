@@ -13,10 +13,11 @@ not duplicate provider/effect work.
 from __future__ import annotations
 
 import hashlib
+import json
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
@@ -29,20 +30,32 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_control_plane_schema,
     install_datasets_authoritative_operational_schema,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+    DatabasePortalBridgeConsumedNoProgressError,
     DatabasePortalBridgeDeferred,
+    database_portal_consumed_no_progress_fingerprint,
+    database_portal_task_contract_digest,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ATTEMPT_PHASE_BLOCKED,
     ATTEMPT_PHASE_COMPLETE,
     ATTEMPT_PHASE_CONTEXT,
     ATTEMPT_PHASE_EFFECT,
+    ATTEMPT_PHASE_FAILED,
     ATTEMPT_PHASE_PROVIDER,
+    ATTEMPT_PHASE_VALIDATION,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     is_database_authority_mode,
@@ -208,6 +221,56 @@ def _open_daemon(
 def _alias_home(task_alias: str, shard_count: int) -> int:
     digest = hashlib.sha256(task_alias.encode("utf-8")).hexdigest()
     return int(digest[:8], 16) % shard_count
+
+
+def _consumed_no_progress_evidence(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+    *,
+    tag: str,
+) -> dict[str, object]:
+    task = daemon.task_source.get(attempt.task_cid)
+    assert task is not None
+    snapshot = daemon.task_source.snapshot()
+    evidence: dict[str, object] = {
+        "schema": DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+        "failure_kind": "consumed_no_progress",
+        "diagnostic_failure_id": f"baguq-failure-{tag}",
+        "diagnostic_receipt_id": f"baguq-diagnostic-{tag}",
+        "diagnostic_receipt_digest": "sha256:" + "c" * 64,
+        "diagnostic_receipt_size": 512,
+        "context_receipt_id": f"baguq-context-{tag}",
+        "context_receipt_digest": "sha256:" + "d" * 64,
+        "context_receipt_size": 1024,
+        "log_digest": "sha256:" + hashlib.sha256(tag.encode()).hexdigest(),
+        "log_size": len(tag.encode()),
+        "repository_id": "repository:database-daemon-test",
+        "tree_id": "tree:portal-baseline",
+        "control_repository_tree_id": snapshot.repository_tree_id,
+        "task_cid": attempt.task_cid,
+        "task_contract_digest": database_portal_task_contract_digest(
+            task,
+        ),
+        "database_binding_id": "sha256:" + "b" * 64,
+        "database_attempt_id": attempt.attempt_id,
+        "database_claim_id": attempt.claim_id,
+        "database_lease_id": attempt.lease_id,
+        "database_fencing_token": int(attempt.fencing_token),
+        "database_fence_epoch": int(attempt.fence_epoch),
+        "portal_task_id": attempt.task_alias,
+        "portal_attempt_number": 1,
+        "returncode": 1,
+        "attempt_consumed": True,
+        "portal_provider_dispatched": True,
+        "provider_effect_state": "unknown_may_have_started",
+        "implementation_commit_present": False,
+        "implementation_candidate_present": False,
+        "validation_state": "not_run",
+    }
+    evidence["failure_fingerprint"] = (
+        database_portal_consumed_no_progress_fingerprint(evidence)
+    )
+    return evidence
 
 
 def test_interface_identities() -> None:
@@ -799,6 +862,1174 @@ def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
         assert resumed["resumed"] is True
         assert resumed["status"] == "succeeded"
         assert provider_calls == [attempt.attempt_id, retry.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_consumed_no_progress_quarantines_and_abstains_after_restart(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:deterministic-preflight",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempted = first.claim_next()
+        assert attempted is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                first,
+                attempted,
+                tag="preflight-symbol-drift",
+            )
+        )
+        fingerprint = str(failure_evidence["failure_fingerprint"])
+        first_result = first._resume_attempt_without_process_crash(attempted)
+
+        assert first_result["status"] == "blocked"
+        assert first_result["portal_retryable_failure"] is False
+        assert first_result["portal_replay_suppressed"] is True
+        assert first_result["task_quarantined"] is True
+        assert first_result["root_cause_required"] is True
+        assert first_result["failure_fingerprint"] == fingerprint
+        assert len(provider_calls) == 1
+
+        blocked = first.get_attempt(attempted.attempt_id)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert blocked.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert first.provider_invocation_exists(blocked.attempt_id) is True
+        phases = first.phase_history(blocked.attempt_id)
+        blocked_phase = next(
+            item for item in phases if item["phase"] == ATTEMPT_PHASE_BLOCKED
+        )
+        assert blocked_phase["body"]["portal_replay_suppressed"] is True
+        assert (
+            blocked_phase["body"]["failure_evidence"]["failure_fingerprint"]
+            == fingerprint
+        )
+
+        task = first.task_source.get(blocked.task_cid)
+        assert task is not None
+        assert task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == (
+            "database_portal_neutral_failure_quarantine"
+        )
+        assert receipt["failure_fingerprint"] == fingerprint
+        assert receipt["retry_suppressed"] is True
+        assert receipt["circuit_breaker_key"] == fingerprint
+        assert receipt["provider_effect_state"] == "unknown_may_have_started"
+        intent = first.provider_invocation_recorded(
+            blocked.attempt_id,
+            idempotency_key=f"provider:{blocked.attempt_id}",
+        )
+        assert intent is not None
+        assert intent["database_binding_id"] == failure_evidence[
+            "database_binding_id"
+        ]
+        assert intent["portal_failure_fingerprint"] == fingerprint
+        assert receipt["provider_callback_intent_fingerprint"] == intent[
+            "failure_fingerprint"
+        ]
+        projection = first.coordinator.coordination_registry_projection()
+        claims = [
+            row
+            for row in projection["task_claims"]
+            if row["task_cid"] == blocked.task_cid
+        ]
+        assert len(claims) == 1
+        assert claims[0]["state"] == "released"
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:deterministic-preflight",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+        assert replay["selection_idle_reason"] == "no_ready_tasks"
+        assert provider_calls == [blocked.attempt_id]
+        assert restarted.claim_next() is None
+        assert restarted.list_running_attempts() == []
+        assert restarted.get_attempt(blocked.attempt_id) == blocked
+        projection = restarted.coordinator.coordination_registry_projection()
+        assert len(
+            [
+                row
+                for row in projection["task_claims"]
+                if row["task_cid"] == blocked.task_cid
+            ]
+        ) == 1
+    finally:
+        restarted.close()
+
+
+def test_consumed_no_progress_quarantine_replays_after_commit_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:preflight-commit-crash",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                first,
+                attempt,
+                tag="commit-crash",
+            )
+        )
+        fingerprint = str(failure_evidence["failure_fingerprint"])
+        original_commit_phase = first.commit_phase
+
+        def crash_before_blocked_phase(
+            current: DatabaseTaskAttempt,
+            phase: str,
+            *,
+            body: dict[str, object] | None = None,
+        ) -> DatabaseTaskAttempt:
+            if phase == ATTEMPT_PHASE_BLOCKED:
+                raise RuntimeError("injected crash before blocked phase")
+            return original_commit_phase(current, phase, body=body)
+
+        monkeypatch.setattr(first, "commit_phase", crash_before_blocked_phase)
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash before blocked phase",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+
+        running = first.get_attempt(attempt.attempt_id)
+        assert running is not None and running.status == "running"
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        assert task.body["completion_receipt"]["failure_fingerprint"] == (
+            fingerprint
+        )
+        assert first.provider_invocation_exists(attempt.attempt_id) is True
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:preflight-commit-crash",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+        reconciled = replay["expired_attempt_reconciliations"]
+        assert len(reconciled) == 1
+        assert reconciled[0]["reason"] == (
+            "portal_neutral_failure"
+        )
+        assert reconciled[0]["disposition"] == "quarantined"
+        assert provider_calls == [attempt.attempt_id]
+        terminal = restarted.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        assert restarted.claim_next() is None
+        claims = [
+            row
+            for row in restarted.coordinator.coordination_registry_projection()[
+                "task_claims"
+            ]
+            if row["task_cid"] == attempt.task_cid
+        ]
+        assert len(claims) == 1 and claims[0]["state"] == "released"
+    finally:
+        restarted.close()
+
+
+def test_cold_restart_rejects_rebound_neutral_receipt_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:rebound-neutral-receipt",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                first,
+                attempt,
+                tag="rebound-neutral-receipt",
+            )
+        )
+        original_commit_phase = first.commit_phase
+
+        def crash_before_blocked_phase(
+            current: DatabaseTaskAttempt,
+            phase: str,
+            *,
+            body: dict[str, object] | None = None,
+        ) -> DatabaseTaskAttempt:
+            if phase == ATTEMPT_PHASE_BLOCKED:
+                raise RuntimeError("injected crash before rebound replay")
+            return original_commit_phase(current, phase, body=body)
+
+        monkeypatch.setattr(first, "commit_phase", crash_before_blocked_phase)
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash before rebound replay",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        forged_body = dict(task.body)
+        forged_receipt = dict(forged_body["completion_receipt"])
+        forged_evidence = dict(forged_receipt["failure_evidence"])
+        forged_evidence["task_contract_digest"] = "sha256:" + "9" * 64
+        forged_evidence["failure_fingerprint"] = (
+            database_portal_consumed_no_progress_fingerprint(
+                forged_evidence
+            )
+        )
+        forged_receipt["failure_evidence"] = forged_evidence
+        forged_receipt["failure_fingerprint"] = forged_evidence[
+            "failure_fingerprint"
+        ]
+        forged_receipt["circuit_breaker_key"] = forged_evidence[
+            "failure_fingerprint"
+        ]
+        evidence_bytes = json.dumps(
+            forged_evidence,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        forged_receipt["failure_evidence_digest"] = (
+            "sha256:" + hashlib.sha256(evidence_bytes).hexdigest()
+        )
+        forged_body["completion_receipt"] = forged_receipt
+        with first.task_source.intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [
+                    json.dumps(
+                        forged_body,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                        default=str,
+                    ),
+                    attempt.task_cid,
+                ],
+            )
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:rebound-neutral-receipt",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        running = restarted.get_attempt(attempt.attempt_id)
+        task = restarted.task_source.get(attempt.task_cid)
+        assert running is not None and running.status == "running"
+        assert task is not None and task.status == "quarantined"
+        assert (
+            restarted._strict_resume_rejection_receipt_matches(
+                task,
+                running,
+            )
+            is False
+        )
+        assert restarted.reconcile_expired_running_attempts() == []
+        claim = restarted.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None and claim.state.value == "accepted"
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        restarted.close()
+
+
+def test_neutral_blocked_claim_release_replays_after_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:preflight-blocked-crash",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                first,
+                attempt,
+                tag="blocked-release-crash",
+            )
+        )
+
+        def crash_before_exact_release(*args: object, **kwargs: object) -> object:
+            raise RuntimeError("injected crash after blocked phase")
+
+        monkeypatch.setattr(
+            first.coordinator,
+            "release",
+            crash_before_exact_release,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash after blocked phase",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+
+        blocked = first.get_attempt(attempt.attempt_id)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert blocked.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert first.provider_invocation_exists(attempt.attempt_id) is True
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        claims = [
+            row
+            for row in first.coordinator.coordination_registry_projection()[
+                "task_claims"
+            ]
+            if row["claim_id"] == attempt.claim_id
+        ]
+        assert len(claims) == 1 and claims[0]["state"] == "accepted"
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:preflight-blocked-crash",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+        reconciled = replay["expired_attempt_reconciliations"]
+        assert len(reconciled) == 1
+        assert reconciled[0]["status"] == "blocked"
+        assert reconciled[0]["reason"] == (
+            "portal_neutral_failure"
+        )
+        assert reconciled[0]["disposition"] == "quarantined"
+        assert provider_calls == [attempt.attempt_id]
+        terminal = restarted.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "blocked"
+        claims = [
+            row
+            for row in restarted.coordinator.coordination_registry_projection()[
+                "task_claims"
+            ]
+            if row["claim_id"] == attempt.claim_id
+        ]
+        assert len(claims) == 1 and claims[0]["state"] == "released"
+        second_replay = restarted.run_once()
+        assert second_replay["expired_attempt_reconciliations"] == []
+        assert second_replay["selection_idle_reason"] == "no_ready_tasks"
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        restarted.close()
+
+
+def test_provider_callback_hard_crash_abstains_after_cold_restart(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected hard callback crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-hard-crash",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="injected hard callback crash",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+
+        current = first.get_attempt(attempt.attempt_id)
+        assert current is not None
+        assert current.status == "running"
+        assert current.committed_phase == ATTEMPT_PHASE_CONTEXT
+        intent = first.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert intent is not None
+        assert intent["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert intent["callback_state"] == "started_outcome_unknown"
+        assert intent["provider_effect_state"] == "unknown_may_have_started"
+        assert intent["database_binding_id"] == ""
+        assert intent["portal_failure_fingerprint"] == ""
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-hard-crash",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+
+        assert replay["expired_attempt_reconciliations"] == []
+        result = replay["implementation_result"]
+        assert result["status"] == "blocked"
+        assert result["reason"] == "portal_neutral_failure"
+        assert result["failure_kind"] == "provider_callback_outcome_unknown"
+        assert result["portal_replay_suppressed"] is True
+        assert provider_calls == [attempt.attempt_id]
+        blocked = restarted.get_attempt(attempt.attempt_id)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert blocked.committed_phase == ATTEMPT_PHASE_BLOCKED
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["provider_effect_state"] == "unknown_may_have_started"
+        assert receipt["failure_kind"] == "provider_callback_outcome_unknown"
+        claims = [
+            row
+            for row in restarted.coordinator.coordination_registry_projection()[
+                "task_claims"
+            ]
+            if row["claim_id"] == attempt.claim_id
+        ]
+        assert len(claims) == 1 and claims[0]["state"] == "released"
+    finally:
+        restarted.close()
+
+
+def test_provider_callback_hard_crash_after_expiry_never_redispatches(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected expired callback crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:expired-callback-hard-crash",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="injected expired callback crash",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+        intent = first.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert intent is not None
+        assert intent["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:expired-callback-hard-crash",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        replay = restarted.run_once()
+        reconciled = replay["expired_attempt_reconciliations"]
+        assert len(reconciled) == 1
+        assert reconciled[0]["reason"] == "portal_neutral_failure"
+        assert reconciled[0]["disposition"] == "quarantined"
+        assert reconciled[0]["retry_required"] is False
+        assert replay["implementation_result"] is None
+        assert replay["selection_idle_reason"] == "no_ready_tasks"
+        assert provider_calls == [attempt.attempt_id]
+
+        terminal = restarted.get_attempt(attempt.attempt_id)
+        assert terminal is not None
+        assert terminal.status == "failed"
+        assert terminal.committed_phase == ATTEMPT_PHASE_FAILED
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["failure_kind"] == "provider_callback_outcome_unknown"
+        claim = restarted.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None and claim.state.value == "expired"
+
+        second = restarted.run_once()
+        assert second["expired_attempt_reconciliations"] == []
+        assert second["selection_idle_reason"] == "no_ready_tasks"
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        restarted.close()
+
+
+def test_blocked_response_replay_rejects_different_failure_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:blocked-response-mismatch",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                daemon,
+                attempt,
+                tag="blocked-response-mismatch",
+            )
+        )
+        original_commit_phase = daemon.commit_phase
+
+        def lose_mismatched_blocked_response(
+            current: DatabaseTaskAttempt,
+            phase: str,
+            *,
+            body: dict[str, object] | None = None,
+        ) -> DatabaseTaskAttempt:
+            if phase != ATTEMPT_PHASE_BLOCKED:
+                return original_commit_phase(current, phase, body=body)
+            forged_body = dict(body or {})
+            forged_body["failure_fingerprint"] = "sha256:" + "0" * 64
+            original_commit_phase(current, phase, body=forged_body)
+            raise RuntimeError("injected lost mismatched blocked response")
+
+        monkeypatch.setattr(
+            daemon,
+            "commit_phase",
+            lose_mismatched_blocked_response,
+        )
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="different immutable failure evidence",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        blocked = daemon.get_attempt(attempt.attempt_id)
+        assert blocked is not None and blocked.status == "blocked"
+        phase = next(
+            item
+            for item in daemon.phase_history(attempt.attempt_id)
+            if item["phase"] == ATTEMPT_PHASE_BLOCKED
+        )
+        assert phase["body"]["failure_fingerprint"] == "sha256:" + "0" * 64
+        claims = [
+            row
+            for row in daemon.coordinator.coordination_registry_projection()[
+                "task_claims"
+            ]
+            if row["claim_id"] == attempt.claim_id
+        ]
+        assert len(claims) == 1 and claims[0]["state"] == "accepted"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "terminal_phase",
+    [ATTEMPT_PHASE_FAILED, ATTEMPT_PHASE_BLOCKED, ATTEMPT_PHASE_COMPLETE],
+)
+def test_terminal_phase_evidence_is_immutable(
+    tmp_path: Path,
+    terminal_phase: str,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:terminal-immutable:{terminal_phase}",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_CONTEXT,
+            body={"step": ATTEMPT_PHASE_CONTEXT},
+        )
+        if terminal_phase == ATTEMPT_PHASE_COMPLETE:
+            for phase in (
+                ATTEMPT_PHASE_PROVIDER,
+                ATTEMPT_PHASE_EFFECT,
+                ATTEMPT_PHASE_VALIDATION,
+            ):
+                attempt = daemon.commit_phase(
+                    attempt,
+                    phase,
+                    body={"step": phase},
+                )
+
+        original_body = {
+            "failure_fingerprint": "sha256:" + "1" * 64,
+            "failure_evidence_digest": "sha256:" + "2" * 64,
+        }
+        terminal = daemon.commit_phase(
+            attempt,
+            terminal_phase,
+            body=original_body,
+        )
+        replay = daemon.commit_phase(
+            terminal,
+            terminal_phase,
+            body=dict(original_body),
+        )
+        assert replay == terminal
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="different immutable evidence",
+        ):
+            daemon.commit_phase(
+                terminal,
+                terminal_phase,
+                body={
+                    **original_body,
+                    "failure_evidence_digest": "sha256:" + "3" * 64,
+                },
+            )
+
+        terminal_rows = [
+            item
+            for item in daemon.phase_history(attempt.attempt_id)
+            if item["phase"] == terminal_phase
+        ]
+        assert len(terminal_rows) == 1
+        assert terminal_rows[0]["body"] == original_body
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("succeeded", [False, True], ids=["failed", "complete"])
+def test_reconciled_terminal_evidence_is_immutable(
+    tmp_path: Path,
+    succeeded: bool,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:reconciled-terminal:{succeeded}",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        prepared = claim.to_dict()
+        prepared["preparation_digest"] = "sha256:" + "4" * 64
+        reconciliation = {
+            "reason": "first-authoritative-reconciliation",
+            "evidence_digest": "sha256:" + "5" * 64,
+        }
+
+        terminal = daemon._commit_reconciled_attempt_terminal(
+            prepared,
+            succeeded=succeeded,
+            reconciliation=reconciliation,
+        )
+        assert terminal is not None
+        replay = daemon._commit_reconciled_attempt_terminal(
+            prepared,
+            succeeded=succeeded,
+            reconciliation=dict(reconciliation),
+        )
+        assert replay == terminal
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="different immutable terminal evidence",
+        ):
+            daemon._commit_reconciled_attempt_terminal(
+                prepared,
+                succeeded=succeeded,
+                reconciliation={
+                    **reconciliation,
+                    "evidence_digest": "sha256:" + "6" * 64,
+                },
+            )
+
+        expected_phase = (
+            ATTEMPT_PHASE_COMPLETE if succeeded else ATTEMPT_PHASE_FAILED
+        )
+        rows = [
+            item
+            for item in daemon.phase_history(attempt.attempt_id)
+            if item["phase"] == expected_phase
+        ]
+        assert len(rows) == 1
+        assert rows[0]["body"]["reconciliation"] == reconciliation
+    finally:
+        daemon.close()
+
+
+def test_consumed_failure_stale_task_contract_does_not_quarantine(
+    tmp_path: Path,
+) -> None:
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:preflight-stale-task-binding",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                daemon,
+                attempt,
+                tag="stale-task-binding",
+            )
+        )
+        failure_evidence["task_contract_digest"] = "sha256:" + "9" * 64
+        failure_evidence["failure_fingerprint"] = (
+            database_portal_consumed_no_progress_fingerprint(
+                failure_evidence
+            )
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="fresh task-bound evaluation is required",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "in_progress"
+        current = daemon.get_attempt(attempt.attempt_id)
+        assert current is not None and current.status == "running"
+        assert current.committed_phase != ATTEMPT_PHASE_BLOCKED
+        assert daemon.provider_invocation_exists(attempt.attempt_id) is True
+    finally:
+        daemon.close()
+
+
+def test_consumed_failure_structured_validation_race_does_not_quarantine(
+    tmp_path: Path,
+) -> None:
+    failure_evidence: dict[str, object] = {}
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    provider_calls: list[str] = []
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        daemon = holder["daemon"]
+        with daemon.task_source.intent._connection(write=True) as connection:
+            connection.execute(
+                """
+                UPDATE task_validations
+                SET argv_json = ?
+                WHERE task_cid = ? AND ordinal = 0
+                """,
+                [json.dumps(["pytest", "changed-contract"]), attempt.task_cid],
+            )
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:structured-task-contract-race",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        with daemon.task_source.intent._connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO task_validations(
+                    task_cid, ordinal, argv_json, policy_json
+                ) VALUES (?, 0, ?, ?)
+                """,
+                [
+                    "task:cid:001",
+                    json.dumps(["pytest", "original-contract"]),
+                    "{}",
+                ],
+            )
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task_before = daemon.task_source.get(attempt.task_cid)
+        assert task_before is not None
+        old_revision = task_before.revision
+        old_body = dict(task_before.body)
+        assert task_before.validations[0]["argv"] == [
+            "pytest",
+            "original-contract",
+        ]
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                daemon,
+                attempt,
+                tag="structured-task-contract-race",
+            )
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="provider callback intent is stale or rebound",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task_after = daemon.task_source.get(attempt.task_cid)
+        assert task_after is not None
+        assert task_after.status == "in_progress"
+        assert task_after.revision == old_revision
+        assert dict(task_after.body) == old_body
+        assert task_after.validations[0]["argv"] == [
+            "pytest",
+            "changed-contract",
+        ]
+        current = daemon.get_attempt(attempt.attempt_id)
+        assert current is not None and current.status == "running"
+        assert current.committed_phase == ATTEMPT_PHASE_CONTEXT
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_consumed_failure_stale_repository_tree_does_not_quarantine(
+    tmp_path: Path,
+) -> None:
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:preflight-stale-tree-binding",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                daemon,
+                attempt,
+                tag="stale-tree-binding",
+            )
+        )
+        failure_evidence["control_repository_tree_id"] = "tree:stale"
+        failure_evidence["failure_fingerprint"] = (
+            database_portal_consumed_no_progress_fingerprint(
+                failure_evidence
+            )
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="fresh task-bound evaluation is required",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        current = daemon.get_attempt(attempt.attempt_id)
+        assert current is not None and current.status == "running"
+        assert current.committed_phase != ATTEMPT_PHASE_BLOCKED
+        assert daemon.provider_invocation_exists(attempt.attempt_id) is True
+    finally:
+        daemon.close()
+
+
+def test_consumed_failure_mutated_exception_evidence_fails_closed(
+    tmp_path: Path,
+) -> None:
+    failure_holder: dict[str, Exception] = {}
+
+    def mutated_failure(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise failure_holder["failure"]
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:preflight-mutated-evidence",
+        provider_fn=mutated_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        evidence = _consumed_no_progress_evidence(
+            daemon,
+            attempt,
+            tag="mutated-after-construction",
+        )
+        failure = DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=evidence,
+        )
+        failure.failure_evidence["tree_id"] = "tree:mutated-after-construction"
+        failure_holder["failure"] = failure
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="failure evidence is invalid",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        current = daemon.get_attempt(attempt.attempt_id)
+        assert current is not None and current.status == "running"
+        assert daemon.provider_invocation_exists(attempt.attempt_id) is True
+    finally:
+        daemon.close()
+
+
+def test_neutral_failure_cas_replay_rejects_different_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:preflight-cas-evidence-conflict",
+        provider_fn=consumed_failure,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                daemon,
+                attempt,
+                tag="expected-cas-evidence",
+            )
+        )
+        real_cas = daemon._cas_task_status_database
+
+        def conflicting_cas(
+            task_cid: str,
+            *,
+            expected_revision: int,
+            new_status: str,
+            receipt: object = None,
+            evidence_digests: object = None,
+        ) -> object:
+            assert isinstance(receipt, dict)
+            forged_evidence = dict(receipt["failure_evidence"])
+            forged_evidence["diagnostic_failure_id"] = "failure:different"
+            forged_evidence["diagnostic_receipt_id"] = "diagnostic:different"
+            forged_evidence["failure_fingerprint"] = (
+                database_portal_consumed_no_progress_fingerprint(
+                    forged_evidence
+                )
+            )
+            forged_receipt = dict(receipt)
+            forged_receipt["failure_evidence"] = forged_evidence
+            forged_receipt["failure_fingerprint"] = forged_evidence[
+                "failure_fingerprint"
+            ]
+            forged_receipt["circuit_breaker_key"] = forged_evidence[
+                "failure_fingerprint"
+            ]
+            evidence_bytes = json.dumps(
+                forged_evidence,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+            forged_receipt["failure_evidence_digest"] = (
+                "sha256:" + hashlib.sha256(evidence_bytes).hexdigest()
+            )
+            real_cas(
+                task_cid,
+                expected_revision=expected_revision,
+                new_status=new_status,
+                receipt=forged_receipt,
+                evidence_digests=(
+                    str(forged_evidence["failure_fingerprint"]),
+                    str(forged_evidence["diagnostic_receipt_digest"]),
+                    str(forged_receipt["failure_evidence_digest"]),
+                ),
+            )
+            raise DatabaseTaskSourceConflictError(
+                "injected CAS response conflict with different evidence"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            conflicting_cas,
+        )
+        with pytest.raises(
+            DatabaseTaskSourceConflictError,
+            match="different evidence",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        assert task.body["completion_receipt"]["failure_fingerprint"] != (
+            failure_evidence["failure_fingerprint"]
+        )
+        current = daemon.get_attempt(attempt.attempt_id)
+        assert current is not None and current.status == "running"
+        assert current.committed_phase == ATTEMPT_PHASE_CONTEXT
+        assert daemon.provider_invocation_exists(attempt.attempt_id) is True
     finally:
         daemon.close()
 
@@ -1448,13 +2679,14 @@ def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> No
         with pytest.raises(DatabaseCoordinationError):
             daemon.run_provider(attempt)
         assert replacement_claim_ids
-        assert (
-            daemon.provider_invocation_recorded(
-                attempt.attempt_id,
-                idempotency_key=f"provider:{attempt.attempt_id}",
-            )
-            is None
+        intent = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
         )
+        assert intent is not None
+        assert intent["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert intent["callback_state"] == "started_outcome_unknown"
+        assert intent["provider_effect_state"] == "unknown_may_have_started"
         stored = daemon.get_attempt(attempt.attempt_id)
         assert stored is not None
         assert stored.committed_phase == "context"

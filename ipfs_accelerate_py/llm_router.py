@@ -5126,6 +5126,8 @@ def build_grok_cli_command(
     always_approve: Optional[bool] = None,
     permission_mode: Optional[str] = None,
     tools: Optional[str] = None,
+    sandbox_profile: Optional[str] = None,
+    deny_rules: Optional[Sequence[str]] = None,
 ) -> list[str]:
     """Return argv for a Grok CLI invocation.
 
@@ -5198,6 +5200,14 @@ def build_grok_cli_command(
     if normalized_permission_mode:
         cmd.extend(["--permission-mode", normalized_permission_mode])
 
+    normalized_sandbox_profile = str(sandbox_profile or "").strip()
+    if normalized_sandbox_profile:
+        cmd.extend(["--sandbox", normalized_sandbox_profile])
+    for rule in deny_rules or ():
+        normalized_rule = str(rule or "").strip()
+        if normalized_rule:
+            cmd.extend(["--deny", normalized_rule])
+
     if normalized == "chat":
         # Match the generate() provider defaults for headless JSON text.
         cmd.extend(
@@ -5222,19 +5232,75 @@ def build_grok_cli_command(
         # no tool activity preceded an eligible provider failure. Arbitrary
         # task text is never itself fallback authority.
         cmd.extend(["--output-format", "streaming-json"])
+        if tools is not None:
+            cmd.extend(["--tools", str(tools)])
 
     if prompt_file is not None:
         cmd.extend(["--prompt-file", str(Path(prompt_file).expanduser())])
     return cmd
 
 
+_GROK_CODEX_COMPATIBILITY_KILL_SWITCHES = {
+    "GROK_CODEX_AGENTS_ENABLED": "0",
+    "GROK_CODEX_HOOKS_ENABLED": "0",
+    "GROK_CODEX_MCPS_ENABLED": "0",
+    "GROK_CODEX_RULES_ENABLED": "0",
+    "GROK_CODEX_SESSIONS_ENABLED": "0",
+    "GROK_CODEX_SKILLS_ENABLED": "0",
+}
+_GROK_XAI_KEY_ALIASES = (
+    "XAI_API_KEY",
+    "GROK_CODE_XAI_API_KEY",
+    "ipfs_accelerate_py_XAI_API_KEY",
+    "IPFS_ACCELERATE_PY_XAI_API_KEY",
+    "IPFS_DATASETS_PY_XAI_API_KEY",
+)
+
+
 def build_grok_cli_env(
     *,
     base_env: Optional[Mapping[str, str]] = None,
+    isolate_alternate_providers: bool = False,
 ) -> dict[str, str]:
-    """Environment for Grok CLI runs (propagates alternate XAI key names)."""
+    """Build a Grok environment, optionally withholding peer authority.
 
-    env = dict(base_env or os.environ)
+    Isolation retains only locale/account presentation variables, one Grok
+    credential, and explicit compatibility kill switches.  It never mutates
+    the caller's mapping, so a separately admitted fallback remains owned by
+    the parent supervisor rather than becoming visible to Grok.
+    """
+
+    source_env = dict(base_env or os.environ)
+    if isolate_alternate_providers:
+        xai_api_key = next(
+            (
+                str(source_env.get(name) or "").strip()
+                for name in _GROK_XAI_KEY_ALIASES
+                if str(source_env.get(name) or "").strip()
+            ),
+            "",
+        )
+        basic_names = {
+            "COLORTERM",
+            "LANG",
+            "LOGNAME",
+            "NO_COLOR",
+            "TERM",
+            "TZ",
+            "USER",
+        }
+        env = {
+            name: value
+            for name, value in source_env.items()
+            if name in basic_names or name.startswith("LC_")
+        }
+        env["PATH"] = "/usr/bin:/bin"
+        if xai_api_key:
+            env["XAI_API_KEY"] = xai_api_key
+        env.update(_GROK_CODEX_COMPATIBILITY_KILL_SWITCHES)
+        return env
+
+    env = source_env
     if not str(env.get("XAI_API_KEY") or "").strip():
         alternate = _coalesce_env(
             "ipfs_accelerate_py_XAI_API_KEY",

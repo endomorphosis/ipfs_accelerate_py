@@ -74,10 +74,22 @@ MCP_CONTRACT_CATALOG_PATH = (
 MCP_INVOCATION_TRACE_PATH = (
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py"
 )
+AGENT_IMPLEMENTATION_ROUTE_PATH = REPO_ROOT / "ipfs_accelerate_py/agent_implementation_route.py"
+GROK_CLI_RUNNER_PATH = (
+    REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+)
+LLM_ROUTER_PATH = REPO_ROOT / "ipfs_accelerate_py/llm_router.py"
 OBJECTIVE_DAEMON_IMPORT_TEST_PATH = (
     REPO_ROOT / "test/api/test_agent_supervisor_objective_daemon_import.py"
 )
 APMC_MATERIALIZER_TEST_PATH = REPO_ROOT / "test/api/test_agent_supervisor_apmc_materializer.py"
+GROK_QUOTA_TERRA_GATE_TEST_PATH = (
+    REPO_ROOT / "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
+)
+GROK_ROUTER_COMPATIBILITY_TEST_PATH = (
+    REPO_ROOT / "test/api/test_agent_supervisor_grok_router_compatibility.py"
+)
+LLM_ROUTER_GROK_CLI_TEST_PATH = REPO_ROOT / "test/test_llm_router_grok_cli.py"
 DATABASE_PORTAL_BRIDGE_PATH = (
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
 )
@@ -116,8 +128,14 @@ REQUIRED_CONTROL_FILES = (
     SCHEDULER_CONFIG_PATH,
     MCP_CONTRACT_CATALOG_PATH,
     MCP_INVOCATION_TRACE_PATH,
+    AGENT_IMPLEMENTATION_ROUTE_PATH,
+    GROK_CLI_RUNNER_PATH,
+    LLM_ROUTER_PATH,
     OBJECTIVE_DAEMON_IMPORT_TEST_PATH,
     APMC_MATERIALIZER_TEST_PATH,
+    GROK_QUOTA_TERRA_GATE_TEST_PATH,
+    GROK_ROUTER_COMPATIBILITY_TEST_PATH,
+    LLM_ROUTER_GROK_CLI_TEST_PATH,
     DATABASE_COORDINATION_PATH,
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
@@ -419,6 +437,11 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         if isinstance(scheduler.get("authority_policy"), dict)
         else {}
     )
+    provider = (
+        scheduler.get("provider")
+        if isinstance(scheduler.get("provider"), dict)
+        else {}
+    )
     protected_paths = {str(item) for item in scheduler.get("protected_paths") or ()}
     expected_initial_projection = {
         "task_count": len(TASK_IDS),
@@ -455,6 +478,11 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
     project_dependency_preflight_relative = (
         PROJECT_DEPENDENCY_PREFLIGHT_PATH.relative_to(REPO_ROOT).as_posix()
     )
+    agent_implementation_route_relative = (
+        AGENT_IMPLEMENTATION_ROUTE_PATH.relative_to(REPO_ROOT).as_posix()
+    )
+    grok_cli_runner_relative = GROK_CLI_RUNNER_PATH.relative_to(REPO_ROOT).as_posix()
+    llm_router_relative = LLM_ROUTER_PATH.relative_to(REPO_ROOT).as_posix()
     scheduler_ok = bool(
         scheduler.get("board_namespace") == PROGRAM_ID
         and scheduler.get("task_prefix") == TASK_PREFIX
@@ -478,6 +506,27 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         and portal_bridge_relative in protected_paths
         and database_coordination_relative in protected_paths
         and project_dependency_preflight_relative in protected_paths
+        and agent_implementation_route_relative in protected_paths
+        and grok_cli_runner_relative in protected_paths
+        and llm_router_relative in protected_paths
+    )
+    expected_provider = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "medium",
+        "max_concurrency": 4,
+        "secrets_from_environment_only": True,
+        "secrets_in_argv_prompts_logs_or_receipts": False,
+    }
+    _append(
+        checks,
+        errors,
+        name="scheduler_provider_route",
+        passed=provider == expected_provider,
+        detail={"expected": expected_provider, "observed": provider},
     )
     _append(
         checks,
@@ -1121,6 +1170,54 @@ def _p0_and_benchmark_checks(checks: list[dict[str, Any]], errors: list[str]) ->
                 "pytest",
                 "-q",
                 "test/api/test_agent_supervisor_database_portal_bridge.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_grok_router_compatibility.py",
+                "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+                "-k",
+                "not real_disposable_codex_container_and_board_toolchain_probe",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/test_llm_router_grok_cli.py::test_grok_cli_router_accepts_runtime_runner_sealed_call_shape",
+                "test/test_llm_router_grok_cli.py::test_grok_cli_runtime_runner_isolated_env_is_a_closed_allowlist",
+            ),
+            (
+                "python3",
+                "-m",
+                "py_compile",
+                "ipfs_accelerate_py/agent_implementation_route.py",
+                "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+                "ipfs_accelerate_py/llm_router.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "ruff",
+                "check",
+                "--select",
+                "F821",
+                "ipfs_accelerate_py/agent_implementation_route.py",
+                "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+                "ipfs_accelerate_py/llm_router.py",
             ),
             (
                 "python3",

@@ -34,9 +34,24 @@ DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
 )
+DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-consumed-no-progress@1"
+)
+DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/portal-retry-deferral@1"
+)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset({"completed", "complete", "done"})
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
+_SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}")
+_MAX_DIAGNOSTIC_RECEIPT_BYTES: Final[int] = 256 * 1024
+_MAX_CONTEXT_RECEIPT_BYTES: Final[int] = 256 * 1024
+_MAX_FAILURE_LOG_BYTES: Final[int] = 128 * 1024
+_MAX_CONSUMED_FAILURE_EVIDENCE_BYTES: Final[int] = 24 * 1024
+_TASK_CONTRACT_MUTABLE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"completion_receipt", "status"}
+)
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -45,6 +60,143 @@ class DatabasePortalBridgeError(RuntimeError):
 
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
     """Portal execution made bounded progress but is not yet acceptable."""
+
+
+class DatabasePortalBridgeConsumedNoProgressError(DatabasePortalBridgeError):
+    """One Portal attempt was consumed without an implementation candidate.
+
+    The provider-effect state is deliberately unknown.  This exception seals
+    only the durable no-progress outcome; it does not classify provider text
+    or claim that a model call did or did not occur.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failure_evidence: Mapping[str, Any],
+    ) -> None:
+        evidence = dict(failure_evidence)
+        allowed = {
+            "schema",
+            "failure_kind",
+            "failure_fingerprint",
+            "diagnostic_failure_id",
+            "diagnostic_receipt_id",
+            "diagnostic_receipt_digest",
+            "diagnostic_receipt_size",
+            "context_receipt_id",
+            "context_receipt_digest",
+            "context_receipt_size",
+            "log_digest",
+            "log_size",
+            "repository_id",
+            "tree_id",
+            "control_repository_tree_id",
+            "task_cid",
+            "task_contract_digest",
+            "database_binding_id",
+            "database_attempt_id",
+            "database_claim_id",
+            "database_lease_id",
+            "database_fencing_token",
+            "database_fence_epoch",
+            "portal_task_id",
+            "portal_attempt_number",
+            "returncode",
+            "attempt_consumed",
+            "portal_provider_dispatched",
+            "provider_effect_state",
+            "implementation_commit_present",
+            "implementation_candidate_present",
+            "validation_state",
+        }
+        text_fields = (
+            "failure_fingerprint",
+            "diagnostic_failure_id",
+            "diagnostic_receipt_id",
+            "diagnostic_receipt_digest",
+            "context_receipt_id",
+            "context_receipt_digest",
+            "log_digest",
+            "repository_id",
+            "tree_id",
+            "control_repository_tree_id",
+            "task_cid",
+            "task_contract_digest",
+            "database_binding_id",
+            "database_attempt_id",
+            "database_claim_id",
+            "database_lease_id",
+            "portal_task_id",
+            "provider_effect_state",
+            "validation_state",
+        )
+        if (
+            set(evidence) != allowed
+            or evidence.get("schema")
+            != DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA
+            or evidence.get("failure_kind") != "consumed_no_progress"
+            or evidence.get("provider_effect_state")
+            != "unknown_may_have_started"
+            or evidence.get("attempt_consumed") is not True
+            or type(evidence.get("portal_provider_dispatched")) is not bool
+            or evidence.get("implementation_commit_present") is not False
+            or evidence.get("implementation_candidate_present") is not False
+            or evidence.get("validation_state") != "not_run"
+            or isinstance(evidence.get("portal_attempt_number"), bool)
+            or not isinstance(evidence.get("portal_attempt_number"), int)
+            or int(evidence.get("portal_attempt_number") or 0) < 1
+            or type(evidence.get("returncode")) is not int
+            or evidence.get("returncode") == 0
+            or not -(2**31) <= evidence.get("returncode") < 2**31
+            or type(evidence.get("database_fencing_token")) is not int
+            or evidence.get("database_fencing_token") < 1
+            or type(evidence.get("database_fence_epoch")) is not int
+            or evidence.get("database_fence_epoch") < 1
+            or type(evidence.get("diagnostic_receipt_size")) is not int
+            or not 1
+            <= evidence.get("diagnostic_receipt_size")
+            <= _MAX_DIAGNOSTIC_RECEIPT_BYTES
+            or type(evidence.get("context_receipt_size")) is not int
+            or not 1
+            <= evidence.get("context_receipt_size")
+            <= _MAX_CONTEXT_RECEIPT_BYTES
+            or type(evidence.get("log_size")) is not int
+            or not 0 <= evidence.get("log_size") <= _MAX_FAILURE_LOG_BYTES
+            or any(
+                not isinstance(evidence.get(key), str)
+                or not str(evidence.get(key) or "")
+                or len(str(evidence.get(key)).encode("utf-8")) > 1024
+                or "\x00" in str(evidence.get(key))
+                or "\n" in str(evidence.get(key))
+                or "\r" in str(evidence.get(key))
+                for key in text_fields
+            )
+            or not _SHA256_ID.fullmatch(
+                str(evidence.get("failure_fingerprint") or "")
+            )
+            or not _SHA256_ID.fullmatch(
+                str(evidence.get("diagnostic_receipt_digest") or "")
+            )
+            or not _SHA256_ID.fullmatch(
+                str(evidence.get("context_receipt_digest") or "")
+            )
+            or not _SHA256_ID.fullmatch(str(evidence.get("log_digest") or ""))
+            or not _SHA256_ID.fullmatch(
+                str(evidence.get("task_contract_digest") or "")
+            )
+            or not _SHA256_ID.fullmatch(
+                str(evidence.get("database_binding_id") or "")
+            )
+            or evidence.get("failure_fingerprint")
+            != database_portal_consumed_no_progress_fingerprint(evidence)
+            or len(_canonical_json(evidence))
+            > _MAX_CONSUMED_FAILURE_EVIDENCE_BYTES
+        ):
+            raise ValueError("Portal consumed-no-progress evidence is invalid")
+        super().__init__(message)
+        self.failure_evidence = evidence
 
 
 @dataclass(frozen=True)
@@ -77,9 +229,156 @@ def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
 
 
+def database_portal_task_contract_digest(record: Any) -> str:
+    """Commit to the complete status-independent Portal task contract.
+
+    ``TaskRecord.body`` is only one part of the execution contract.  The
+    Portal projection also consumes the task's graph identity, ordering,
+    declared outputs, acceptance policy, and validation commands.  Keep the
+    mutable lifecycle fields (status, revision, and completion receipts) out
+    of this digest so the same contract remains verifiable after quarantine.
+    """
+
+    def value(name: str, default: Any = None) -> Any:
+        if isinstance(record, Mapping):
+            return record.get(name, default)
+        return getattr(record, name, default)
+
+    raw_body = value("body", {})
+    body = dict(raw_body) if isinstance(raw_body, Mapping) else {}
+    contract_body = {
+        str(key): item
+        for key, item in body.items()
+        if str(key) not in _TASK_CONTRACT_MUTABLE_FIELDS
+    }
+
+    raw_dependencies = value("dependencies", ()) or ()
+    dependencies = [str(item) for item in raw_dependencies]
+
+    def mappings(name: str) -> list[dict[str, Any]]:
+        raw_items = value(name, ()) or ()
+        return [dict(item) for item in raw_items if isinstance(item, Mapping)]
+
+    contract = {
+        "task_cid": str(value("task_cid", "") or ""),
+        "task_alias": str(value("task_alias", "") or ""),
+        "goal_cid": str(value("goal_cid", "") or ""),
+        "plan_cid": str(value("plan_cid", "") or ""),
+        "objective_id": str(value("objective_id", "") or ""),
+        "priority": str(value("priority", "") or ""),
+        "ordinal": int(value("ordinal", 0) or 0),
+        "dependencies": dependencies,
+        "outputs": mappings("outputs"),
+        "acceptance": mappings("acceptance"),
+        "validations": mappings("validations"),
+        "body": contract_body,
+    }
+    if not contract["task_cid"]:
+        raise DatabasePortalBridgeError("task contract has no canonical CID")
+    return _sha256_bytes(_canonical_json(contract))
+
+
+def database_portal_authoritative_repository_tree_id(
+    task_source: Any,
+    task_cid: str,
+) -> str:
+    """Resolve the persisted task tree, rejecting a divergent live view.
+
+    ``DatabaseTaskSource.repository_tree_id`` is populated while materializing
+    but is not itself persisted by that adapter.  The exact tree is persisted
+    in the task identity, so cold-restart validation must prefer that identity
+    while still rejecting a conflicting non-empty snapshot value.
+    """
+
+    snapshot = task_source.snapshot()
+    snapshot_tree = str(
+        getattr(snapshot, "repository_tree_id", "")
+        or (
+            snapshot.get("repository_tree_id", "")
+            if isinstance(snapshot, Mapping)
+            else ""
+        )
+    ).strip()
+    identity_tree = ""
+    intent = getattr(task_source, "intent", None)
+    get_task = getattr(intent, "get_task", None)
+    if callable(get_task):
+        persisted = get_task(str(task_cid))
+        identity = (
+            persisted.get("identity")
+            if isinstance(persisted, Mapping)
+            and isinstance(persisted.get("identity"), Mapping)
+            else {}
+        )
+        identity_tree = str(identity.get("repository_tree_id") or "").strip()
+    if identity_tree and snapshot_tree and identity_tree != snapshot_tree:
+        raise DatabasePortalBridgeError(
+            "database task repository tree conflicts with persisted identity"
+        )
+    repository_tree_id = identity_tree or snapshot_tree
+    if not repository_tree_id:
+        raise DatabasePortalBridgeError(
+            "database task source has no authoritative repository tree"
+        )
+    return repository_tree_id
+
+
+def database_portal_consumed_no_progress_fingerprint(
+    evidence: Mapping[str, Any],
+) -> str:
+    """Return the neutral circuit-breaker key for one sealed outcome."""
+
+    material = {
+        "schema": DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+        "failure_kind": str(evidence.get("failure_kind") or ""),
+        "repository_id": str(evidence.get("repository_id") or ""),
+        "tree_id": str(evidence.get("tree_id") or ""),
+        "control_repository_tree_id": str(
+            evidence.get("control_repository_tree_id") or ""
+        ),
+        "task_cid": str(evidence.get("task_cid") or ""),
+        "task_contract_digest": str(
+            evidence.get("task_contract_digest") or ""
+        ),
+        "diagnostic_failure_id": str(
+            evidence.get("diagnostic_failure_id") or ""
+        ),
+        "diagnostic_receipt_id": str(
+            evidence.get("diagnostic_receipt_id") or ""
+        ),
+        "context_receipt_id": str(evidence.get("context_receipt_id") or ""),
+        "log_digest": str(evidence.get("log_digest") or ""),
+        "returncode": evidence.get("returncode"),
+        "provider_effect_state": str(
+            evidence.get("provider_effect_state") or ""
+        ),
+    }
+    return _sha256_bytes(_canonical_json(material))
+
+
 def _sha256_file(path: Path) -> str:
     try:
         return _sha256_bytes(path.read_bytes())
+    except OSError as exc:
+        raise DatabasePortalBridgeError(
+            f"could not read Portal attempt artifact {path.name!r}"
+        ) from exc
+
+
+def _bounded_file(path: Path, *, limit: int) -> bytes:
+    """Read one bounded regular artifact without accepting truncation."""
+
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise OSError("artifact is not a regular non-symlink file")
+        size = path.stat().st_size
+        if size > limit:
+            raise OSError("artifact exceeds its byte limit")
+        with path.open("rb") as handle:
+            payload = handle.read(limit + 1)
+        if len(payload) != size:
+            raise OSError("artifact changed while read")
+        return payload
     except OSError as exc:
         raise DatabasePortalBridgeError(
             f"could not read Portal attempt artifact {path.name!r}"
@@ -365,6 +664,10 @@ class DatabasePortalExecutionBridge:
             record,
             body,
         )
+        repository_tree_id = database_portal_authoritative_repository_tree_id(
+            self.task_source,
+            canonical_task_cid,
+        )
         payload = {
             "schema": DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
             "interface": self.INTERFACE,
@@ -384,6 +687,8 @@ class DatabasePortalExecutionBridge:
             "fence_epoch": int(attempt.fence_epoch),
             "lease_id": str(getattr(attempt, "lease_id", "") or ""),
             "task_body_digest": _sha256_bytes(_canonical_json(body)),
+            "task_contract_digest": database_portal_task_contract_digest(record),
+            "repository_tree_id": repository_tree_id,
             "projection_seed_digest": _sha256_bytes(seed.encode("utf-8")),
             "projection_immutable_digest": _projection_immutable_digest(seed),
             "authoritative_task_store": "duckdb",
@@ -560,6 +865,289 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_execution_skipped")
         return ""
 
+    @staticmethod
+    def _explicit_retryable_deferral(
+        implementation: Mapping[str, Any],
+    ) -> bool:
+        """Admit only a closed, structured non-consuming deferral."""
+
+        if (
+            implementation.get("deferral_schema")
+            != DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA
+            or implementation.get("deferred") is not True
+            or implementation.get("retryable") is not True
+            or implementation.get("attempt_consumed") is not False
+        ):
+            return False
+        kind = str(implementation.get("failure_kind") or "")
+        provider_dispatched = implementation.get("provider_dispatched")
+        if kind in {"lifecycle_setup", "lifecycle_race"}:
+            return (
+                provider_dispatched is False
+                and implementation.get("provider_call_allowed")
+                in (None, False)
+            )
+        if kind == "provider_capacity_backoff":
+            retry_at = str(implementation.get("retry_at") or "")
+            retry_after = implementation.get("retry_after_seconds")
+            return bool(
+                provider_dispatched is False
+                and retry_at
+                and type(retry_after) in {int, float}
+                and not isinstance(retry_after, bool)
+                and retry_after >= 0
+            )
+        if kind != "provider_capacity":
+            return False
+        returncode = implementation.get("returncode")
+        retry_at = str(implementation.get("retry_at") or "")
+        failure_class = str(implementation.get("failure_class") or "")
+        providers = implementation.get("providers")
+        return bool(
+            type(provider_dispatched) is bool
+            and type(returncode) is int
+            and returncode != 0
+            and retry_at
+            and failure_class in {"transient_capacity", "hard_quota_exhausted"}
+            and isinstance(providers, Sequence)
+            and not isinstance(providers, (str, bytes, bytearray, memoryview))
+            and any(str(item or "").strip() for item in providers)
+        )
+
+    @staticmethod
+    def _consumed_no_progress_failure(
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        implementation: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Seal one consumed, validation-not-run, no-candidate outcome.
+
+        Raw runner/provider text is never interpreted as a root cause.  The
+        canonical context and diagnostic receipts establish the repository,
+        tree, task and no-progress boundary; provider-effect state remains
+        explicitly unknown.
+        """
+
+        returncode = implementation.get("returncode")
+        validation = implementation.get("validation_result")
+        commit_result = implementation.get("commit_result")
+        merge_result = implementation.get("merge_result")
+        board_completion = implementation.get("board_completion")
+        if (
+            type(returncode) is not int
+            or returncode == 0
+            or not -(2**31) <= returncode < 2**31
+            or type(implementation.get("provider_dispatched")) is not bool
+            or implementation.get("attempt_consumed") is not True
+            or str(implementation.get("implementation_commit") or "")
+            or str(implementation.get("completion_tree_id") or "")
+            or not isinstance(commit_result, Mapping)
+            or commit_result.get("committed") is not False
+            or not isinstance(merge_result, Mapping)
+            or merge_result.get("merged") is not False
+            or not isinstance(board_completion, Mapping)
+            or board_completion.get("complete") is not False
+            or board_completion.get("pending_merge") is not False
+            or not isinstance(validation, Mapping)
+            or validation.get("attempted") is not False
+            or validation.get("passed") is not True
+            or str(validation.get("reason") or "") != "not_run"
+            or type(validation.get("returncode")) is not int
+            or validation.get("returncode") != 0
+            or not isinstance(validation.get("results"), Sequence)
+            or isinstance(
+                validation.get("results"),
+                (str, bytes, bytearray, memoryview),
+            )
+            or len(validation.get("results")) != 0
+        ):
+            return None
+
+        task_id = str(implementation.get("task_id") or "").strip()
+        canonical_task_cid = str(
+            implementation.get("canonical_task_cid")
+            or implementation.get("task_cid")
+            or ""
+        ).strip()
+        portal_attempt = implementation.get("attempt")
+        log_value = str(implementation.get("log_path") or "").strip()
+        context_value = str(
+            implementation.get("context_receipt_path") or ""
+        ).strip()
+        diagnostic_id = str(
+            implementation.get("diagnostic_receipt_id") or ""
+        ).strip()
+        baseline = str(implementation.get("baseline_ref") or "").strip()
+        if (
+            task_id != str(binding.get("task_alias") or "")
+            or canonical_task_cid != str(binding.get("task_cid") or "")
+            or type(portal_attempt) is not int
+            or portal_attempt < 1
+            or not log_value
+            or not context_value
+            or not diagnostic_id
+            or not baseline
+        ):
+            return None
+        try:
+            log_path = Path(log_value).expanduser().resolve(strict=True)
+            context_path = Path(context_value).expanduser().resolve(strict=True)
+            log_root = paths.implementation_logs.resolve(strict=True)
+        except OSError:
+            return None
+        if log_root not in log_path.parents or log_root not in context_path.parents:
+            return None
+        try:
+            raw_log = _bounded_file(
+                log_path,
+                limit=_MAX_FAILURE_LOG_BYTES,
+            )
+            raw_context = _bounded_file(
+                context_path,
+                limit=_MAX_CONTEXT_RECEIPT_BYTES,
+            )
+        except DatabasePortalBridgeError:
+            return None
+
+        try:
+            diagnostic_paths = tuple(
+                paths.implementation_logs.glob("*-diagnostic-receipt.json")
+            )
+        except OSError:
+            return None
+        if len(diagnostic_paths) != 1:
+            return None
+        diagnostic_path = diagnostic_paths[0]
+        try:
+            raw_diagnostic = _bounded_file(
+                diagnostic_path,
+                limit=_MAX_DIAGNOSTIC_RECEIPT_BYTES,
+            )
+            def reject_duplicate_keys(
+                pairs: Sequence[tuple[str, Any]],
+            ) -> dict[str, Any]:
+                parsed: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in parsed:
+                        raise ValueError(
+                            "implementation diagnostic receipt has duplicate keys"
+                        )
+                    parsed[key] = value
+                return parsed
+
+            diagnostic_payload = json.loads(
+                raw_diagnostic.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+            if not isinstance(diagnostic_payload, Mapping):
+                return None
+            from .implementation_daemon import ImplementationDiagnosticReceipt
+
+            diagnostic = ImplementationDiagnosticReceipt.from_dict(
+                diagnostic_payload
+            )
+            context_payload = json.loads(
+                raw_context.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+            if not isinstance(context_payload, Mapping):
+                return None
+            from ..context.context_compiler import ContextCompilationReceipt
+
+            context = ContextCompilationReceipt.from_dict(context_payload)
+        except (DatabasePortalBridgeError, OSError, UnicodeDecodeError, ValueError):
+            return None
+        payload_receipt_id = diagnostic_payload.get("receipt_id")
+        payload_failure_id = diagnostic_payload.get("failure_id")
+        if (
+            not isinstance(payload_receipt_id, str)
+            or payload_receipt_id != diagnostic.receipt_id
+            or payload_receipt_id != diagnostic_id
+            or not isinstance(payload_failure_id, str)
+            or payload_failure_id != diagnostic.failure_id
+            or diagnostic.prior_decision_id != context.receipt_id
+            or diagnostic.repository_id != context.repository_id
+            or diagnostic.tree_id != context.tree_id
+            or diagnostic.tree_id != baseline
+            or context.objective_id != task_id
+            or context.stage != "implementation"
+            or isinstance(diagnostic.failure.get("returncode"), bool)
+            or not isinstance(diagnostic.failure.get("returncode"), int)
+            or diagnostic.failure.get("returncode") != returncode
+            or diagnostic.changed_files
+        ):
+            return None
+        projected_validation = {
+            key: validation[key]
+            for key in (
+                "passed",
+                "returncode",
+                "reason",
+                "reason_codes",
+                "failed_commands",
+                "failure_review",
+            )
+            if validation.get(key) not in (None, "", (), [], {})
+        }
+        if (
+            diagnostic.failure.get("kind") != "implementation_failure"
+            or diagnostic.failure.get("validation") != projected_validation
+        ):
+            return None
+
+        signature_material = {
+            "schema": DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+            "failure_kind": "consumed_no_progress",
+            "repository_id": diagnostic.repository_id,
+            "tree_id": baseline,
+            "control_repository_tree_id": str(
+                binding.get("repository_tree_id") or ""
+            ),
+            "task_cid": canonical_task_cid,
+            "task_contract_digest": str(
+                binding.get("task_contract_digest") or ""
+            ),
+            "diagnostic_failure_id": diagnostic.failure_id,
+            "provider_effect_state": "unknown_may_have_started",
+        }
+        evidence = {
+            **signature_material,
+            "diagnostic_receipt_id": diagnostic_id,
+            "diagnostic_receipt_digest": _sha256_bytes(raw_diagnostic),
+            "diagnostic_receipt_size": len(raw_diagnostic),
+            "context_receipt_id": context.receipt_id,
+            "context_receipt_digest": _sha256_bytes(raw_context),
+            "context_receipt_size": len(raw_context),
+            "log_digest": _sha256_bytes(raw_log),
+            "log_size": len(raw_log),
+            "database_binding_id": str(binding.get("binding_id") or ""),
+            "database_attempt_id": str(binding.get("attempt_id") or ""),
+            "database_claim_id": str(binding.get("claim_id") or ""),
+            "database_lease_id": str(binding.get("lease_id") or ""),
+            "database_fencing_token": int(binding.get("fencing_token") or 0),
+            "database_fence_epoch": int(binding.get("fence_epoch") or 0),
+            "portal_task_id": task_id,
+            "portal_attempt_number": portal_attempt,
+            "returncode": returncode,
+            "attempt_consumed": True,
+            "portal_provider_dispatched": implementation.get(
+                "provider_dispatched"
+            ),
+            "implementation_commit_present": False,
+            "implementation_candidate_present": False,
+            "validation_state": "not_run",
+        }
+        evidence["failure_fingerprint"] = (
+            database_portal_consumed_no_progress_fingerprint(evidence)
+        )
+        try:
+            return DatabasePortalBridgeConsumedNoProgressError(
+                "portal_consumed_no_progress",
+                failure_evidence=evidence,
+            ).failure_evidence
+        except ValueError:
+            return None
+
     def _acceptance_receipt(
         self,
         *,
@@ -651,18 +1239,23 @@ class DatabasePortalExecutionBridge:
                 failure = self._terminal_failure(raw_result)
                 if failure:
                     implementation = raw_result.get("implementation_result")
-                    explicitly_deferred = bool(
-                        isinstance(implementation, Mapping)
-                        and implementation.get("deferred") is True
-                    )
-                    if (
-                        explicitly_deferred
-                        or "deferred" in failure
-                        or "backoff" in failure
-                        or "capacity" in failure
-                        or "resource_claim" in failure
-                    ):
+                    if isinstance(
+                        implementation, Mapping
+                    ) and self._explicit_retryable_deferral(implementation):
                         raise DatabasePortalBridgeDeferred(failure)
+                    if isinstance(implementation, Mapping):
+                        consumed_no_progress = (
+                            self._consumed_no_progress_failure(
+                                paths,
+                                binding,
+                                implementation,
+                            )
+                        )
+                        if consumed_no_progress is not None:
+                            raise DatabasePortalBridgeConsumedNoProgressError(
+                                "portal_consumed_no_progress",
+                                failure_evidence=consumed_no_progress,
+                            )
                     raise DatabasePortalBridgeError(failure)
             return self._acceptance_receipt(
                 attempt=attempt,
@@ -737,11 +1330,17 @@ class DatabasePortalExecutionBridge:
 
 __all__ = (
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
+    "DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
+    "DatabasePortalBridgeConsumedNoProgressError",
     "DatabasePortalBridgeError",
     "DatabasePortalExecutionBridge",
     "PortalDaemonFactory",
+    "database_portal_authoritative_repository_tree_id",
+    "database_portal_consumed_no_progress_fingerprint",
+    "database_portal_task_contract_digest",
 )
