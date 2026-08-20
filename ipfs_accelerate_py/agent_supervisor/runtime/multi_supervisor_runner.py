@@ -2336,6 +2336,7 @@ def _eaaef_host_bundle_child_birth_verification(
         "source_head": source_head,
         "source_tree": source_tree,
         "configured_board_capsule_cid": str(pin.get("capsule_id") or ""),
+        "bootstrap_admission_receipt_cid": str(bundle.get("receipt_cid") or ""),
         "provider_worker_principal_did": str(
             worker_evidence.get("worker_did") or ""
         ),
