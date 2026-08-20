@@ -178,7 +178,7 @@ class SupervisorLoop:
             log_path=log_path,
             child_pid_path=self.config.spec.child_pid_path,
             latest_log_path=self.config.latest_log_path or self.config.spec.latest_log_path,
-            env=self.config.child_env,
+            env=self.config.child_env or self.config.spec.launch_env,
             pass_fds=self.config.pass_fds,
         )
 

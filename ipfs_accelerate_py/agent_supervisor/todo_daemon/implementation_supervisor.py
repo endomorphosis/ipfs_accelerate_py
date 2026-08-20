@@ -10756,6 +10756,9 @@ class PortalImplementationSupervisor:
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             pass_fds=sealed_fds,
+            child_env=_managed_daemon_child_environment(
+                database_program=self.config.database_program,
+            ),
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
