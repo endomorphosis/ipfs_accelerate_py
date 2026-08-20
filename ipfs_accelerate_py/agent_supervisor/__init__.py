@@ -373,6 +373,7 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "task_proposal_router": "planning",
     "task_quality": "planning",
     "task_source": "task_sources",
+    "taskboard_ingest": "task_sources",
     "taskboard_store": "task_sources",
     "todo_vector_index": "task_sources",
     "validation_commands": "validation",
@@ -548,6 +549,7 @@ AGENT_SUPERVISOR_TASK_SOURCES_STEMS = (
     "persistent_task_queue",
     "task_identity",
     "task_source",
+    "taskboard_ingest",
     "taskboard_store",
     "todo_vector_index",
 )
