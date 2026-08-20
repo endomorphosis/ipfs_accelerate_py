@@ -20167,7 +20167,11 @@ class PortalImplementationSupervisor:
                 plan_revision_store_path=store_path,
                 scheduler_config_path=self.config.scheduler_config_path,
                 todo_path=self.config.todo_path,
-                require_live_module_root=True,
+                # Sealed-fd children execute from /proc/self/fd/<n>, which is
+                # not a real directory walk from the mutable repository.
+                require_live_module_root=(
+                    self.config.accepted_control_plane_pin is None
+                ),
             )
             store = PlanRevisionStore(validated_store_path)
             plan_adapter = ProductionParallelPlanAdapter(store)
@@ -22348,22 +22352,34 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    supervisor = PortalImplementationSupervisor(supervisor_config_from_args(args, repo_root=REPO_ROOT))
-    if args.once:
-        result = supervisor.run_once()
-        logger.info("Portal implementation supervisor check complete: %s", result)
-        if args.fail_on_reconciliation_error:
-            failure_reason = _reconciliation_preflight_failure_reason(
-                result
-            )
-            if failure_reason:
-                logger.error(
-                    "Strict reconciliation preflight did not settle: %s",
-                    failure_reason,
+    try:
+        supervisor = PortalImplementationSupervisor(
+            supervisor_config_from_args(args, repo_root=REPO_ROOT)
+        )
+        if args.once:
+            result = supervisor.run_once()
+            logger.info("Portal implementation supervisor check complete: %s", result)
+            if args.fail_on_reconciliation_error:
+                failure_reason = _reconciliation_preflight_failure_reason(
+                    result
                 )
-                return 1
-        return 0
-    return supervisor.run_forever()
+                if failure_reason:
+                    logger.error(
+                        "Strict reconciliation preflight did not settle: %s",
+                        failure_reason,
+                    )
+                    return 1
+            return 0
+        return supervisor.run_forever()
+    except PlanBoundDispatchError as exc:
+        try:
+            sys.stderr.write(
+                f"plan-bound supervisor rejected: {type(exc).__name__}: {exc}\n"
+            )
+            sys.stderr.flush()
+        except OSError:
+            pass
+        return 78
 
 
 if __name__ == "__main__":
