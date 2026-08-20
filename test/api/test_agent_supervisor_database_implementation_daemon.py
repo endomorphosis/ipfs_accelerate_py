@@ -12,6 +12,7 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from pathlib import Path
 from typing import Callable
@@ -27,8 +28,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_control_plane_schema,
     install_datasets_authoritative_operational_schema,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    DatabaseTaskSource,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
@@ -1255,3 +1265,289 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
         assert first.task_cid != second.task_cid
     finally:
         daemon.close()
+
+
+def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None:
+    control = tmp_path / "control.duckdb"
+
+    def lane_args(index: int):
+        return parse_args(
+            [
+                "--task-source-kind",
+                "duckdb",
+                "--authority-mode",
+                "quack",
+                "--database-path",
+                str(control),
+                "--endpoint-secret-handle",
+                "handle:test-quack",
+                "--quack-endpoint",
+                "quack:127.0.0.1:45671",
+                "--state-store-id",
+                "state/control.duckdb",
+                "--state-store-generation",
+                "test-generation",
+                "--state-schema-revision",
+                "datasets-authoritative-operational-v1",
+                "--todo-path",
+                str(tmp_path / "unused.md"),
+                "--state-dir",
+                str(tmp_path / f"lane-{index}"),
+                "--state-prefix",
+                f"pcpc_lane_{index}",
+                "--task-shard-count",
+                "4",
+                "--task-shard-index",
+                str(index),
+                "--strict-task-sharding",
+                "--once",
+            ]
+        )
+
+    first, _first_context = build_portal_implementation_daemon_from_args(
+        lane_args(0),
+        repo_root=tmp_path,
+    )
+    second, _second_context = build_portal_implementation_daemon_from_args(
+        lane_args(1),
+        repo_root=tmp_path,
+    )
+    third = build_database_implementation_daemon_from_args(
+        lane_args(2),
+        database_path=control,
+    )
+    try:
+        assert isinstance(first, DatabaseImplementationDaemon)
+        assert isinstance(second, DatabaseImplementationDaemon)
+        assert isinstance(third, DatabaseImplementationDaemon)
+        assert first.database_path == second.database_path == third.database_path == control
+        assert first.execution_path != second.execution_path
+        assert first.coordination_path != second.coordination_path
+        assert third.execution_path not in {first.execution_path, second.execution_path}
+        assert third.coordination_path not in {
+            first.coordination_path,
+            second.coordination_path,
+        }
+        assert first.execution_path.parent == tmp_path / "lane-0"
+        assert second.execution_path.parent == tmp_path / "lane-1"
+        assert third.execution_path.parent == tmp_path / "lane-2"
+        assert first.coordination_path.parent == tmp_path / "lane-0"
+        assert second.coordination_path.parent == tmp_path / "lane-1"
+        assert third.coordination_path.parent == tmp_path / "lane-2"
+        assert first.strict_task_sharding is True
+        assert second.strict_task_sharding is True
+        assert third.strict_task_sharding is True
+        assert first.task_shard_index == 0
+        assert second.task_shard_index == 1
+        assert third.task_shard_index == 2
+    finally:
+        first.close()
+        second.close()
+        third.close()
+
+
+def test_database_lanes_register_disjoint_hash_shards(tmp_path: Path) -> None:
+    source = DatabaseTaskSource(tmp_path / "control.duckdb")
+    source.materialize(_population(8), repository_tree_id="tree:dqp-018")
+    daemons = [
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=tmp_path / f"lane-{index}" / "coordination.duckdb",
+            execution_path=tmp_path / f"lane-{index}" / "execution.duckdb",
+            owner_session_id=f"session:lane:{index}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_source=source,
+            task_shard_count=2,
+            task_shard_index=index,
+            strict_task_sharding=True,
+        )
+        for index in range(2)
+    ]
+    try:
+        observed = [set(daemon.sync_ready_tasks_into_coordination()) for daemon in daemons]
+        expected = [set(), set()]
+        for index in range(1, 9):
+            alias = f"DQP-T{index:03d}"
+            task_cid = f"task:cid:{index:03d}"
+            digest = hashlib.sha256(alias.encode("utf-8")).hexdigest()
+            expected[int(digest[:8], 16) % 2].add(task_cid)
+        assert observed == expected
+        assert observed[0].isdisjoint(observed[1])
+        assert observed[0] | observed[1] == {
+            f"task:cid:{index:03d}" for index in range(1, 9)
+        }
+    finally:
+        for daemon in daemons:
+            daemon.close()
+        source.close()
+
+
+def test_already_in_progress_control_task_creates_no_execution_attempt(
+    tmp_path: Path,
+) -> None:
+    source = DatabaseTaskSource(tmp_path / "control.duckdb")
+    source.materialize(_population(1), repository_tree_id="tree:dqp-018")
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "lane" / "coordination.duckdb",
+        execution_path=tmp_path / "lane" / "execution.duckdb",
+        owner_session_id="session:stale-local-ready",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=source,
+    )
+    try:
+        daemon.open()
+        task = source.get_task("task:cid:001")
+        assert task is not None
+        daemon.coordinator.register_task(
+            task_cid=task.task_cid,
+            task_id=task.task_alias,
+        )
+        source.compare_and_set_status(
+            task.task_cid,
+            task.revision,
+            "in_progress",
+            {"operation": "competing_lane_claim"},
+        )
+        assert daemon.claim_next() is None
+        assert daemon.list_running_attempts() == []
+        current = source.get_task(task.task_cid)
+        assert current is not None
+        assert current.status == "in_progress"
+    finally:
+        daemon.close()
+        source.close()
+
+
+def test_authoritative_cas_race_creates_no_execution_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = DatabaseTaskSource(tmp_path / "control.duckdb")
+    source.materialize(_population(1), repository_tree_id="tree:dqp-018")
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "lane" / "coordination.duckdb",
+        execution_path=tmp_path / "lane" / "execution.duckdb",
+        owner_session_id="session:cas-race",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=source,
+    )
+    try:
+        daemon.open()
+
+        def reject_cas(*_args, **_kwargs):
+            raise DatabaseTaskSourceConflictError("competing control CAS won")
+
+        monkeypatch.setattr(source, "compare_and_set_status", reject_cas)
+        assert daemon.claim_next() is None
+        assert daemon.list_running_attempts() == []
+        task = source.get_task("task:cid:001")
+        assert task is not None
+        assert task.status == "ready"
+    finally:
+        daemon.close()
+        source.close()
+
+
+def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
+    tmp_path: Path,
+) -> None:
+    provider_attempts: list[DatabaseTaskAttempt] = []
+
+    def fail_first_portal_pass(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_attempts.append(attempt)
+        if len(provider_attempts) == 1:
+            raise DatabasePortalBridgeError(
+                "launch redteam forced retryable Portal bridge failure"
+            )
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-requeue",
+        provider_fn=fail_first_portal_pass,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+
+        first_pass = daemon.run_once()
+        first_result = first_pass["implementation_result"]
+        assert first_result["portal_retryable_failure"] is True
+        assert first_result["status"] == "failed"
+        assert first_result["control_requeue"]["changed"] is True
+        assert first_result["control_requeue"]["previous_status"] == "in_progress"
+        assert first_result["control_requeue"]["status"] == "ready"
+
+        first_attempt_id = str(first_result["attempt_id"])
+        first_attempt = daemon.get_attempt(first_attempt_id)
+        assert first_attempt is not None
+        assert first_attempt.status == "failed"
+        assert first_attempt.committed_phase == "failed"
+        failure_phases = [
+            phase
+            for phase in daemon.phase_history(first_attempt_id)
+            if phase["phase"] == "failed"
+        ]
+        assert len(failure_phases) == 1
+        failure_receipt = failure_phases[0]["body"]
+        assert failure_receipt["schema"] == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-retryable-failure@1"
+        )
+        assert failure_receipt["failure_code"] == "portal_bridge_error"
+        assert failure_receipt["expected_attempt_revision"] == 2
+        assert failure_receipt["failed_attempt_revision"] == 3
+        assert failure_receipt["attempt_id"] == first_attempt_id
+        assert failure_receipt["claim_id"] == first_attempt.claim_id
+        assert failure_receipt["fencing_token"] == first_attempt.fencing_token
+        assert failure_receipt["fence_epoch"] == first_attempt.fence_epoch
+        assert failure_receipt["receipt_id"]
+
+        released_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        released_attempt = daemon.coordinator.get_task_attempt(first_attempt_id)
+        assert released_claim is not None
+        assert released_attempt is not None
+        assert released_claim.state.value == "released"
+        assert released_attempt.status.value == "released"
+        control_after_failure = daemon.task_source.get(first_attempt.task_cid)
+        assert control_after_failure is not None
+        assert control_after_failure.status == "ready"
+        assert daemon.list_running_attempts() == []
+
+        second_pass = daemon.run_once()
+        second_result = second_pass["implementation_result"]
+        assert second_result["status"] == "succeeded"
+        second_attempt = second_result["attempt"]
+        assert second_attempt["attempt_id"] != first_attempt_id
+        assert second_attempt["attempt_number"] == 2
+        assert second_attempt["fencing_token"] > first_attempt.fencing_token
+        assert len(provider_attempts) == 2
+        final_control = daemon.task_source.get(first_attempt.task_cid)
+        assert final_control is not None
+        assert final_control.status == "completed"
+    finally:
+        daemon.close()
+
+
+def test_database_daemon_rejects_idle_lane_work_stealing(tmp_path: Path) -> None:
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="does not support idle-lane work stealing",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=tmp_path / "coordination.duckdb",
+            execution_path=tmp_path / "execution.duckdb",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_shard_count=2,
+            task_shard_index=0,
+            strict_task_sharding=True,
+            idle_lane_work_stealing="virgin-transfer",
+        )

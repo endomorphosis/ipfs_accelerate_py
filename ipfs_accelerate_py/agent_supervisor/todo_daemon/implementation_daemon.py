@@ -206,6 +206,7 @@ from .implementation_daemon_runner import (
     bounded_daemon_wait_timeout,
     daemon_pass_is_idle,
     log_daemon_pass_result,
+    resolve_database_implementation_paths,
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
@@ -66962,6 +66963,12 @@ DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
+DATABASE_PORTAL_RETRYABLE_FAILURE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-retryable-failure@1"
+)
+DATABASE_PORTAL_FAILURE_REQUEUE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-failure-requeue@1"
+)
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
 ATTEMPT_PHASE_CLAIMED = "claimed"
@@ -67223,6 +67230,12 @@ class DatabaseImplementationDaemon:
         events_path: Path | str | None = None,
         pid_path: Path | str | None = None,
         queue_path: Path | str | None = None,
+        execution_slice_task_ids: Iterable[str] = (),
+        execution_slice_task_cids: Iterable[str] = (),
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        strict_task_sharding: bool = False,
+        idle_lane_work_stealing: str = "",
         lease_ms: int = 60_000,
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
@@ -67261,9 +67274,10 @@ class DatabaseImplementationDaemon:
                 )
             self._quack_uri = resolved_quack_uri
             self._store_target = resolved_quack_uri
-            # Control and coordination go through the Quack state-owner.
-            # Execution metadata stays process-local; Quack ATTACH cannot
-            # create owner-only indexes on the remote base table.
+            # Task state goes through the Quack state-owner. Execution and
+            # coordination metadata stay in lane-private sidecars because the
+            # landed coordinator schema is not the control schema's task-claim
+            # shape and DuckDB sidecars permit only one external writer.
             control_path = Path(str(database_path))
             self.database_path = control_path
             self.coordination_path = Path(
@@ -67299,6 +67313,51 @@ class DatabaseImplementationDaemon:
             self._store_target = self.execution_path
         self.authority_mode = normalized_authority_mode
         self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
+        self.execution_slice_task_ids = frozenset(
+            str(item).strip()
+            for item in execution_slice_task_ids
+            if str(item).strip()
+        )
+        self.execution_slice_task_cids = frozenset(
+            str(item).strip()
+            for item in execution_slice_task_cids
+            if str(item).strip()
+        )
+        if (
+            isinstance(task_shard_count, bool)
+            or not isinstance(task_shard_count, int)
+            or task_shard_count < 1
+        ):
+            raise ValueError("task_shard_count must be a positive integer")
+        if (
+            isinstance(task_shard_index, bool)
+            or not isinstance(task_shard_index, int)
+            or not 0 <= task_shard_index < task_shard_count
+        ):
+            raise ValueError(
+                "task_shard_index must be in range [0, task_shard_count)"
+            )
+        self.task_shard_count = int(task_shard_count)
+        self.task_shard_index = int(task_shard_index)
+        self.strict_task_sharding = bool(strict_task_sharding)
+        self.idle_lane_work_stealing = str(
+            idle_lane_work_stealing or ""
+        ).strip().lower()
+        if self.idle_lane_work_stealing:
+            raise DatabaseImplementationAuthorityError(
+                "database authority does not support idle-lane work stealing; "
+                "use exact slices or deterministic strict sharding"
+            )
+        if (
+            self.task_shard_count > 1
+            and not self.strict_task_sharding
+            and not self.execution_slice_task_ids
+            and not self.execution_slice_task_cids
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "multi-lane database authority requires exact execution slices "
+                "or strict deterministic sharding"
+            )
         self.process_instance_id = _database_daemon_new_id("process")
         self.owner_session_id = str(
             owner_session_id
@@ -67336,6 +67395,7 @@ class DatabaseImplementationDaemon:
             f".{self.execution_path.name}.writer.lock"
         )
         self._embedded_writer_lock_handle: Any = None
+        self._control_claim_rejections: dict[str, tuple[int, str]] = {}
         self._markdown_status_writes = 0
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
@@ -67490,22 +67550,8 @@ class DatabaseImplementationDaemon:
                         ),
                     )
                 if self._coordinator is None:
-                    if self.authority_mode == "quack":
-                        # Lease/completion bookkeeping stays on the local
-                        # sidecar. The Quack-owned control file is the task
-                        # board, not the coordinator DDL surface.
-                        coord_target = (
-                            self.database_path.with_name(
-                                f"{self.database_path.stem}.coordination.duckdb"
-                            )
-                            if self.database_path.suffix.lower()
-                            in {".duckdb", ".ddb"}
-                            else Path("control.coordination.duckdb")
-                        )
-                    else:
-                        coord_target = self.coordination_path
                     self._coordinator = open_database_coordinator(
-                        coord_target,
+                        self.coordination_path,
                         clock_ms=self._clock_ms,
                         default_lease_ms=self.lease_ms,
                     )
@@ -67623,6 +67669,8 @@ class DatabaseImplementationDaemon:
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
+
+        return False
 
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
@@ -68211,6 +68259,8 @@ class DatabaseImplementationDaemon:
         )
         registered: list[str] = []
         for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
+            if not self._database_task_is_eligible(task):
+                continue
             deps = tuple(str(dep) for dep in task.dependencies)
             self.coordinator.register_task(
                 task_cid=task.task_cid,
@@ -68230,6 +68280,28 @@ class DatabaseImplementationDaemon:
             }
         )
 
+    def _task_home_shard_index(self, task_alias: str) -> int:
+        if self.task_shard_count <= 1:
+            return 0
+        digest = hashlib.sha256(str(task_alias).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % self.task_shard_count
+
+    def _database_task_is_eligible(self, task: Any) -> bool:
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or task_cid)
+        if (
+            self.execution_slice_task_ids or self.execution_slice_task_cids
+        ) and (
+            task_alias not in self.execution_slice_task_ids
+            and task_cid not in self.execution_slice_task_cids
+        ):
+            return False
+        if self.strict_task_sharding and (
+            self._task_home_shard_index(task_alias) != self.task_shard_index
+        ):
+            return False
+        return True
+
     def sync_ready_tasks_into_coordination(self) -> list[str]:
         """Ensure ready tasks from the intent repository are claimable."""
 
@@ -68238,6 +68310,8 @@ class DatabaseImplementationDaemon:
         for task in ready.tasks:
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
+                continue
+            if not self._database_task_is_eligible(task):
                 continue
             self.coordinator.register_task(
                 task_cid=task.task_cid,
@@ -68273,7 +68347,48 @@ class DatabaseImplementationDaemon:
             str(task.task_cid)
             for task in ready.tasks
             if self._automatic_claim_forbidden(task)
+            or not self._database_task_is_eligible(task)
         }
+
+    def _remember_control_claim_rejection(self, task: Any) -> None:
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        if not task_cid:
+            return
+        self._control_claim_rejections[task_cid] = (
+            int(getattr(task, "revision", 0) or 0),
+            str(getattr(task, "status", "") or "").strip().lower(),
+        )
+
+    def _current_control_claim_rejections(self) -> set[str]:
+        excluded: set[str] = set()
+        for task_cid, expected in tuple(self._control_claim_rejections.items()):
+            current = self.task_source.get(task_cid)
+            if current is None:
+                excluded.add(task_cid)
+                continue
+            observed = (
+                int(getattr(current, "revision", 0) or 0),
+                str(getattr(current, "status", "") or "").strip().lower(),
+            )
+            if observed == expected:
+                excluded.add(task_cid)
+            else:
+                self._control_claim_rejections.pop(task_cid, None)
+        return excluded
+
+    def _release_unadmitted_local_claim(self, claim: Any, *, reason: str) -> None:
+        lease = self.coordinator.get_lease(str(claim.lease_id))
+        if lease is None:
+            raise DatabaseImplementationAuthorityError(
+                "local coordination claim lost its lease before admission"
+            )
+        self.coordinator.release(
+            lease,
+            reason=str(reason or "control_admission_rejected")[:256],
+            expected_fencing_token=int(claim.fencing_token),
+            expected_fence_epoch=int(claim.fence_epoch),
+            now_ms=self._now_ms(),
+        )
 
     # -- claim / attempt ----------------------------------------------------
 
@@ -68292,46 +68407,89 @@ class DatabaseImplementationDaemon:
             if str(task_cid)
         }
         excluded.update(self._automatic_claim_exclusions())
-        claim = self.coordinator.claim_ready_task(
-            owner_session_id=self.owner_session_id,
-            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
-            exclude_task_cids=excluded,
-            now_ms=self._now_ms(),
+        excluded.update(self._current_control_claim_rejections())
+        from ..task_sources.database_task_source import (
+            TaskSourceConflictError as DatabaseTaskSourceConflictError,
         )
-        if claim is None:
-            return None
-        task = self.task_source.get(claim.task_cid)
-        task_alias = (
-            str(task.task_alias)
-            if task is not None and getattr(task, "task_alias", None)
-            else claim.task_cid
-        )
-        # Move durable task status through the database only (never Markdown).
-        if task is not None and str(task.status).lower() in {
-            "todo",
-            "ready",
-            "open",
-        }:
-            self._protect_new_claim(claim)
-            self._cas_task_status_database(
-                task.task_cid,
-                expected_revision=int(task.revision),
-                new_status="in_progress",
-                receipt={
-                    "operation": "database_claim",
-                    "claim_id": claim.claim_id,
-                    "attempt_id": claim.attempt_id,
-                    "owner_session_id": self.owner_session_id,
-                },
+
+        for _candidate_index in range(TASK_SOURCE_QUERY_LIMIT):
+            claim = self.coordinator.claim_ready_task(
+                owner_session_id=self.owner_session_id,
+                lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+                exclude_task_cids=excluded,
+                now_ms=self._now_ms(),
             )
-        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
-        self._record_event(
-            "task_claimed",
-            attempt_id=attempt.attempt_id,
-            task_cid=attempt.task_cid,
-            body=attempt.to_dict(),
+            if claim is None:
+                return None
+            task = self.task_source.get(claim.task_cid)
+            status = (
+                str(getattr(task, "status", "") or "").strip().lower()
+                if task is not None
+                else "missing"
+            )
+            if (
+                task is None
+                or not self._database_task_is_eligible(task)
+                or status not in {"todo", "ready", "open"}
+            ):
+                self._release_unadmitted_local_claim(
+                    claim,
+                    reason=f"control_task_not_admissible:{status}",
+                )
+                if task is not None:
+                    self._remember_control_claim_rejection(task)
+                excluded.add(str(claim.task_cid))
+                continue
+
+            self._protect_new_claim(claim)
+            try:
+                cas_result = self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="in_progress",
+                    receipt={
+                        "operation": "database_claim",
+                        "claim_id": claim.claim_id,
+                        "attempt_id": claim.attempt_id,
+                        "owner_session_id": self.owner_session_id,
+                    },
+                )
+            except (DatabaseTaskSourceConflictError, TaskSourceConflictError):
+                self._release_unadmitted_local_claim(
+                    claim,
+                    reason="control_task_cas_conflict",
+                )
+                current = self.task_source.get(claim.task_cid)
+                if current is not None:
+                    self._remember_control_claim_rejection(current)
+                excluded.add(str(claim.task_cid))
+                continue
+            if getattr(cas_result, "changed", None) is not True:
+                self._release_unadmitted_local_claim(
+                    claim,
+                    reason="control_task_cas_not_changed",
+                )
+                current = self.task_source.get(claim.task_cid)
+                if current is not None:
+                    self._remember_control_claim_rejection(current)
+                excluded.add(str(claim.task_cid))
+                continue
+
+            task_alias = str(task.task_alias or claim.task_cid)
+            attempt = self._insert_attempt_from_claim(
+                claim,
+                task_alias=task_alias,
+            )
+            self._record_event(
+                "task_claimed",
+                attempt_id=attempt.attempt_id,
+                task_cid=attempt.task_cid,
+                body=attempt.to_dict(),
+            )
+            return attempt
+        raise DatabaseImplementationAuthorityError(
+            "database claim candidate bound exhausted without admission"
         )
-        return attempt
 
     def _insert_attempt_from_claim(
         self,
@@ -69182,6 +69340,61 @@ class DatabaseImplementationDaemon:
         )
         return updated
 
+    def _requeue_control_task_after_reconciliation(
+        self,
+        task_cid: str,
+        *,
+        reason: str,
+        reconciliation: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Move an exactly reconciled abandoned control task back to ready."""
+
+        task = self.task_source.get(task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                f"reconciled task {task_cid!r} is absent from control state"
+            )
+        status = str(task.status or "").strip().lower()
+        if status in {"todo", "ready", "open"}:
+            return MappingProxyType(
+                {
+                    "changed": False,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": int(task.revision),
+                }
+            )
+        if status != "in_progress":
+            raise DatabaseImplementationAuthorityError(
+                f"reconciled task {task_cid!r} has non-requeueable control "
+                f"status {status!r}"
+            )
+        cas_result = self._cas_task_status_database(
+            task_cid,
+            expected_revision=int(task.revision),
+            new_status="ready",
+            receipt={
+                "operation": "database_requeue_after_reconciliation",
+                "reason": str(reason or "reconciled_retry")[:256],
+                "owner_session_id": self.owner_session_id,
+                "reconciliation": dict(reconciliation),
+            },
+        )
+        if getattr(cas_result, "changed", None) is not True:
+            raise DatabaseImplementationConflictError(
+                f"control requeue for {task_cid!r} did not change state"
+            )
+        to_dict = getattr(cas_result, "to_dict", None)
+        return MappingProxyType(
+            dict(to_dict())
+            if callable(to_dict)
+            else {
+                "changed": True,
+                "task_cid": task_cid,
+                "status": "ready",
+            }
+        )
+
     def reconcile_prepared_task_completions(self) -> list[dict[str, Any]]:
         """Resolve PREPARED or promoted barriers from authoritative truth.
 
@@ -69301,6 +69514,13 @@ class DatabaseImplementationDaemon:
                     succeeded=False,
                     reconciliation=outcome,
                 )
+                outcome["control_requeue"] = dict(
+                    self._requeue_control_task_after_reconciliation(
+                        str(prepared["task_cid"]),
+                        reason="expired_prepared_completion_aborted",
+                        reconciliation=outcome,
+                    )
+                )
             outcomes.append(outcome)
         return outcomes
 
@@ -69401,6 +69621,13 @@ class DatabaseImplementationDaemon:
                 identity,
                 succeeded=False,
                 reconciliation=outcome,
+            )
+            outcome["control_requeue"] = dict(
+                self._requeue_control_task_after_reconciliation(
+                    attempt.task_cid,
+                    reason="coordination_lease_expired_before_completion",
+                    reconciliation=outcome,
+                )
             )
             outcomes.append(outcome)
         return outcomes
@@ -69572,42 +69799,224 @@ class DatabaseImplementationDaemon:
         try:
             return self.resume_attempt(attempt)
         except Exception as exc:
-            from .database_portal_bridge import DatabasePortalBridgeError
+            from .database_portal_bridge import (
+                DatabasePortalBridgeDeferred,
+                DatabasePortalBridgeError,
+            )
 
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
-            failed = None
-            try:
-                current = (
-                    attempt
-                    if isinstance(attempt, DatabaseTaskAttempt)
-                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
+            attempt_id = str(getattr(attempt, "attempt_id", "") or "")
+            # ``resume_attempt`` may have committed CONTEXT or another phase
+            # before the Portal bridge rejected its evidence.  The caller's
+            # attempt object is therefore only an identity handle: reload the
+            # exact latest revision before persisting the typed failure.
+            current = self.get_attempt(attempt_id)
+            if current is None:
+                raise DatabaseImplementationConflictError(
+                    f"Portal failure attempt {attempt_id!r} disappeared"
+                ) from exc
+            if current.status != "running":
+                raise DatabaseImplementationConflictError(
+                    f"Portal failure attempt {attempt_id!r} is "
+                    f"{current.status!r}, not running"
+                ) from exc
+
+            claim = self._attempt_claim(current)
+            lease = self._protect_attempt_claim(current, claim)
+            control_task = self.task_source.get(current.task_cid)
+            if control_task is None:
+                raise DatabaseImplementationAuthorityError(
+                    "Portal failure attempt has no authoritative control task"
+                ) from exc
+            control_status = str(control_task.status or "").strip().lower()
+            if control_status != "in_progress":
+                raise DatabaseImplementationConflictError(
+                    "Portal failure control task is not exactly in_progress "
+                    f"(observed={control_status!r})"
+                ) from exc
+
+            failure_receipt: dict[str, Any] = {
+                "schema": DATABASE_PORTAL_RETRYABLE_FAILURE_SCHEMA,
+                "failure_code": (
+                    "portal_bridge_deferred"
+                    if isinstance(exc, DatabasePortalBridgeDeferred)
+                    else "portal_bridge_error"
+                ),
+                "retryable": True,
+                "completion_authority": False,
+                "reason": str(exc)[:512],
+                "task_cid": current.task_cid,
+                "task_alias": current.task_alias,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "expected_attempt_revision": int(current.revision),
+                "failed_attempt_revision": int(current.revision) + 1,
+                "claim_id": current.claim_id,
+                "lease_id": current.lease_id,
+                "owner_session_id": current.owner_session_id,
+                "fencing_token": int(current.fencing_token),
+                "fence_epoch": int(current.fence_epoch),
+                "control_expected_status": "in_progress",
+                "control_expected_revision": int(control_task.revision),
+            }
+            failure_receipt["receipt_id"] = content_identity(failure_receipt)
+            failed = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_FAILED,
+                body=failure_receipt,
+            )
+            if failed.revision != failure_receipt["failed_attempt_revision"]:
+                raise DatabaseImplementationConflictError(
+                    "Portal failure committed an unexpected attempt revision"
                 )
-                if current is not None and current.status == "running":
-                    failed = self.commit_phase(
-                        current,
-                        ATTEMPT_PHASE_FAILED,
-                        body={
-                            "reason": str(exc),
-                            "portal_retryable_failure": True,
-                        },
-                    )
-            except Exception as fail_exc:
-                return {
-                    "resumed": True,
-                    "portal_retryable_failure": True,
-                    "reason": str(exc),
-                    "fail_error": str(fail_exc),
-                    "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
-                    "task_alias": str(getattr(attempt, "task_alias", "") or ""),
-                    "status": "retryable_portal_failure",
-                }
+
+            released_lease = self.coordinator.release(
+                lease,
+                reason="portal_retryable_failure",
+                expected_fencing_token=int(current.fencing_token),
+                expected_fence_epoch=int(current.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+            released_claim = self.coordinator.get_task_claim(current.claim_id)
+            get_coordination_attempt = getattr(
+                self.coordinator,
+                "get_task_attempt",
+                None,
+            )
+            if released_claim is None or not callable(get_coordination_attempt):
+                raise DatabaseImplementationAuthorityError(
+                    "Portal failure claim release cannot be reconciled"
+                )
+            released_attempt = get_coordination_attempt(current.attempt_id)
+            lease_state = str(
+                getattr(
+                    getattr(released_lease, "state", ""),
+                    "value",
+                    getattr(released_lease, "state", ""),
+                )
+                or ""
+            )
+            claim_state = str(
+                getattr(
+                    getattr(released_claim, "state", ""),
+                    "value",
+                    getattr(released_claim, "state", ""),
+                )
+                or ""
+            )
+            coordination_attempt_status = str(
+                getattr(
+                    getattr(released_attempt, "status", ""),
+                    "value",
+                    getattr(released_attempt, "status", ""),
+                )
+                or ""
+            )
+            release_identity_matches = (
+                released_attempt is not None
+                and str(released_lease.lease_id) == current.lease_id
+                and str(getattr(released_lease, "claim_id", "") or "")
+                == current.claim_id
+                and str(getattr(released_lease, "attempt_id", "") or "")
+                == current.attempt_id
+                and str(released_claim.claim_id) == current.claim_id
+                and str(released_claim.task_cid) == current.task_cid
+                and str(released_claim.attempt_id) == current.attempt_id
+                and int(released_claim.fencing_token)
+                == int(current.fencing_token)
+                and int(released_claim.fence_epoch) == int(current.fence_epoch)
+                and str(released_attempt.attempt_id) == current.attempt_id
+                and str(released_attempt.task_cid) == current.task_cid
+                and int(released_attempt.fencing_token)
+                == int(current.fencing_token)
+                and int(released_attempt.fence_epoch) == int(current.fence_epoch)
+            )
+            if (
+                not release_identity_matches
+                or lease_state != "released"
+                or claim_state != "released"
+                or coordination_attempt_status != "released"
+            ):
+                raise DatabaseImplementationConflictError(
+                    "Portal failure local claim did not reconcile under its exact fence"
+                )
+
+            claim_reconciliation: dict[str, Any] = {
+                "schema": DATABASE_PORTAL_FAILURE_REQUEUE_SCHEMA,
+                "operation": "release_retryable_portal_failure_claim",
+                "failure_receipt_id": failure_receipt["receipt_id"],
+                "task_cid": current.task_cid,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "claim_id": current.claim_id,
+                "lease_id": current.lease_id,
+                "owner_session_id": current.owner_session_id,
+                "fencing_token": int(current.fencing_token),
+                "fence_epoch": int(current.fence_epoch),
+                "lease_state": lease_state,
+                "claim_state": claim_state,
+                "coordination_attempt_status": coordination_attempt_status,
+            }
+            claim_reconciliation["receipt_id"] = content_identity(
+                claim_reconciliation
+            )
+            control_receipt: dict[str, Any] = {
+                "schema": DATABASE_PORTAL_FAILURE_REQUEUE_SCHEMA,
+                "operation": "requeue_retryable_portal_failure",
+                "failure_receipt": failure_receipt,
+                "claim_reconciliation": claim_reconciliation,
+                "control_expected_status": "in_progress",
+                "control_expected_revision": int(control_task.revision),
+                "control_new_status": "ready",
+                "completion_authority": False,
+            }
+            control_receipt["receipt_id"] = content_identity(control_receipt)
+            control_result = self._cas_task_status_database(
+                current.task_cid,
+                expected_revision=int(control_task.revision),
+                new_status="ready",
+                receipt=control_receipt,
+            )
+            if getattr(control_result, "changed", None) is not True:
+                raise DatabaseImplementationConflictError(
+                    "Portal failure control requeue did not change state"
+                )
+            control_requeue = {
+                "changed": True,
+                "task_cid": current.task_cid,
+                "previous_status": str(
+                    getattr(control_result, "previous_status", "") or ""
+                ),
+                "status": str(
+                    getattr(getattr(control_result, "task", None), "status", "")
+                    or ""
+                ),
+                "revision": int(getattr(control_result, "revision", 0) or 0),
+                "receipt_cid": str(
+                    getattr(control_result, "receipt_cid", "") or ""
+                ),
+                "receipt_id": control_receipt["receipt_id"],
+            }
+            self._record_event(
+                "portal_retryable_failure_requeued",
+                attempt_id=failed.attempt_id,
+                task_cid=failed.task_cid,
+                body={
+                    "failure_receipt": failure_receipt,
+                    "claim_reconciliation": claim_reconciliation,
+                    "control_requeue": control_requeue,
+                },
+            )
             return {
                 "resumed": True,
                 "portal_retryable_failure": True,
                 "reason": str(exc),
-                "attempt_id": str(getattr(failed or attempt, "attempt_id", "") or ""),
-                "task_alias": str(getattr(failed or attempt, "task_alias", "") or ""),
+                "failure_receipt": failure_receipt,
+                "claim_reconciliation": claim_reconciliation,
+                "control_requeue": control_requeue,
+                "attempt_id": failed.attempt_id,
+                "task_alias": failed.task_alias,
                 "status": "failed",
             }
 
@@ -70356,6 +70765,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if use_database_daemon:
+        database_paths = resolve_database_implementation_paths(args)
         authority_mode = (
             program.authority_mode
             if program is not None
@@ -70368,7 +70778,8 @@ def main(argv: list[str] | None = None) -> None:
         )
         daemon: Any = DatabaseImplementationDaemon(
             database_path=Path(database_path),
-            coordination_path=getattr(args, "coordination_path", None),
+            coordination_path=database_paths["coordination_path"],
+            execution_path=database_paths["execution_path"],
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -70382,6 +70793,12 @@ def main(argv: list[str] | None = None) -> None:
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(args.implement),
+            execution_slice_task_ids=args.execution_slice_task_id,
+            execution_slice_task_cids=args.execution_slice_task_cid,
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
+            idle_lane_work_stealing=args.idle_lane_work_stealing,
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -70996,4 +71413,3 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
-
