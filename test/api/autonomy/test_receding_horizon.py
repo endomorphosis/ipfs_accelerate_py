@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import FrozenInstanceError
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.autonomy.receding_horizon import (
+    MAX_RECEDING_HORIZON_SNAPSHOT_BYTES,
     PLAN_SUFFIX_INVALIDATION_RECEIPT_INTERFACE,
     PLAN_SUFFIX_INVALIDATION_RECEIPT_SCHEMA,
     RECEDING_HORIZON_CONTROLLER_INTERFACE,
@@ -471,6 +473,86 @@ def test_evidence_rejects_prompts_and_missing_locality() -> None:
             kind=RecedingHorizonEvidenceKind.PROVIDER_REROUTE,
             evidence_id="evidence:missing-provider",
         )
+
+
+def test_cancelled_and_deadline_observations_preserve_the_prefix() -> None:
+    controller = _controller()
+    before = controller.plan
+    cancelled = controller.observe(
+        RecedingHorizonEvidence(
+            kind=RecedingHorizonEvidenceKind.COUNTEREXAMPLE,
+            evidence_id="evidence:cancelled",
+            step_ids=("step:target",),
+        ),
+        observed_at_milliseconds=100,
+        cancelled=True,
+    )
+    assert cancelled.disposition is RecedingHorizonDisposition.CANCELLED
+    assert cancelled.invalidated_step_ids == ()
+    assert cancelled.delta_decision is not None
+    assert cancelled.delta_decision.stop_reason is DeltaReplanStopReason.CANCELLED
+    assert controller.plan is before
+    assert "proof:target-extra" in cancelled.preserved_receipt_ids
+
+    deadline = _controller().observe(
+        RecedingHorizonEvidence(
+            kind=RecedingHorizonEvidenceKind.FAILED_TEST,
+            evidence_id="evidence:deadline",
+            test_ids=("test:target",),
+        ),
+        observed_at_milliseconds=100,
+        now_milliseconds=100 + 30_000,
+    )
+    assert deadline.disposition is RecedingHorizonDisposition.DEADLINE_EXCEEDED
+    assert deadline.invalidated_step_ids == ()
+    assert deadline.delta_decision is not None
+    assert deadline.delta_decision.stop_reason is DeltaReplanStopReason.DEADLINE_EXCEEDED
+
+
+def test_controller_rejects_conflicting_replanner_injection() -> None:
+    with pytest.raises(RecedingHorizonError, match="not both"):
+        RecedingHorizonController(
+            objective_id="APMC-G000",
+            objective_revision="revision:one",
+            plan=_plan(),
+            replanner=FormalDeltaReplanner(),
+            failure_memory=PlanFailureMemory(),
+        )
+
+
+def test_receipt_rejects_effect_and_full_replan_authority() -> None:
+    receipt = _controller().observe(
+        RecedingHorizonEvidence(
+            kind=RecedingHorizonEvidenceKind.CHANGED_FILE,
+            evidence_id="evidence:authority",
+            path_ids=("src/target.py",),
+        ),
+        observed_at_milliseconds=100,
+    )
+    with pytest.raises(FrozenInstanceError):
+        receipt.disposition = RecedingHorizonDisposition.CANCELLED  # type: ignore[misc]
+
+    forged_effect = receipt.to_dict()
+    forged_effect["authorizes_effect"] = True
+    with pytest.raises(RecedingHorizonError, match="cannot authorize effects"):
+        PlanSuffixInvalidationReceipt.from_dict(forged_effect)
+
+    forged_replan = receipt.to_dict()
+    forged_replan["authorizes_full_replan"] = True
+    with pytest.raises(RecedingHorizonError, match="cannot authorize a full replan"):
+        PlanSuffixInvalidationReceipt.from_dict(forged_replan)
+
+
+def test_snapshot_rejects_duplicate_malformed_and_unbounded_json() -> None:
+    snapshot = _controller().snapshot_json()
+    duplicate = snapshot[:-1] + ',"schema":"duplicate"}'
+    for payload, reason in (
+        (duplicate, "duplicate"),
+        ("{", "malformed"),
+        (snapshot + " " * MAX_RECEDING_HORIZON_SNAPSHOT_BYTES, "bounded size"),
+    ):
+        with pytest.raises(RecedingHorizonError, match=reason):
+            RecedingHorizonController.from_snapshot(payload)
 
 
 def test_independent_completed_work_stays_accepted_across_kinds() -> None:
