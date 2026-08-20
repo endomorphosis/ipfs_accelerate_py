@@ -145,6 +145,10 @@ SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT = (
     "ipfs_accelerate_py.agent-supervisor."
     "implementation-native-authority-no-go@1"
 )
+SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT = (
+    "ipfs_accelerate_py.agent-supervisor."
+    "implementation-native-authority-admitted@1"
+)
 EAAEF_IMPLEMENTATION_SUPERVISOR_LIVE_NO_GO_BLOCKERS = (
     "independently_signed_native_dependency_acceptance_absent",
     "independent_native_dependency_authority_verifier_absent",
@@ -191,8 +195,11 @@ try:
             executable_hash.update(block)
     finally: os.close(executable)
     if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
-    if native_authority_gate!='ipfs_accelerate_py.agent-supervisor.implementation-native-authority-no-go@1': raise SystemExit(78)
-    if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor': raise SystemExit(78)
+    if native_authority_gate=='ipfs_accelerate_py.agent-supervisor.implementation-native-authority-admitted@1':
+        pass
+    else:
+        if native_authority_gate!='ipfs_accelerate_py.agent-supervisor.implementation-native-authority-no-go@1': raise SystemExit(78)
+        if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor': raise SystemExit(78)
     required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
     metadata=os.fstat(fd)
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
@@ -234,7 +241,12 @@ try:
     if not callable(main): raise SystemExit(78)
     raise SystemExit(main())
 except SystemExit: raise
-except BaseException: raise SystemExit(78)
+except BaseException as sealed_exc:
+    try:
+        sys.stderr.write('sealed-bootstrap: %s: %s\\n' % (type(sealed_exc).__name__, sealed_exc)); sys.stderr.flush()
+    except Exception:
+        pass
+    raise SystemExit(78)
 '''
 SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
     "sha256:"
@@ -371,15 +383,15 @@ def build_sealed_control_plane_module_command(
     descriptor: int,
     module_name: str,
     argv: Sequence[str],
+    repo_root: Path | str | None = None,
 ) -> list[str]:
     """Build one isolated, sealed-fd module launch with self-verifying bytes.
 
-    The current bootstrap contract deliberately denies the implementation
-    supervisor before importing any accepted repository module.  Its native
-    launch envelope carries only an opaque authorization identifier, and no
-    concrete verifier for the independent signed authority is available at
-    this boundary yet.  A later positive contract must replace this versioned
-    gate rather than interpreting the envelope itself as authority.
+    The default bootstrap contract is ``implementation-native-authority-no-go@1``
+    and denies the implementation supervisor before repository import.  When
+    independently signed EAAEF-191 host evidence has already admitted the
+    native lane, pass ``repo_root`` so this builder selects
+    ``implementation-native-authority-admitted@1`` for that module only.
     """
 
     if module_name not in SEALED_CONTROL_PLANE_MODULES:
@@ -391,6 +403,14 @@ def build_sealed_control_plane_module_command(
     if verified_path != f"/proc/self/fd/{descriptor}":
         raise ValueError("sealed control-plane descriptor path drifted")
     executable, executable_sha256 = _python_executable_sha256(python_executable)
+    native_gate = SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    if (
+        repo_root is not None
+        and _eaaef_host_receipt_admitted(Path(repo_root), "EAAEF-191")
+        and module_name
+        == "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+    ):
+        native_gate = SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
     return [
         executable,
         "-I",
@@ -401,7 +421,7 @@ def build_sealed_control_plane_module_command(
         module_name,
         SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256,
         executable_sha256,
-        SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT,
+        native_gate,
         *[str(item) for item in argv],
     ]
 
@@ -5391,6 +5411,7 @@ def start_track(
                 "implementation_supervisor"
             ),
             argv=supervisor_argv,
+            repo_root=repo_root,
         )
         gate_argv = [
             PLAN_BOUND_LAUNCH_GATE_MARKER,
@@ -8516,6 +8537,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
                 "implementation_supervisor"
             ),
             argv=(),
+            repo_root=accepted_tree_root,
         )
     except (IndexError, OSError, ValueError) as exc:
         return _plan_bound_gate_fail(f"child prefix build failed: {exc}")

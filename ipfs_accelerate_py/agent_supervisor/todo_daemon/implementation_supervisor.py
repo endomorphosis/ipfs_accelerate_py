@@ -2262,26 +2262,30 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     from ..runtime.worker_network_dispatch import EAAEF_BOARD_NAMESPACE
 
     if manifest.board_namespace == EAAEF_BOARD_NAMESPACE:
-        # The current plan-bound bootstrap delegates to implementation_daemon
-        # by replacing PortalImplementationDaemon with an in-process factory.
-        # That is never a Quack command gateway: it retains local Markdown,
-        # JSON, and DuckDB path surfaces and could silently demote shared
-        # authority to a process-local Portal daemon.  No serializable CLI
-        # option can establish the required sealed component objects.  Keep
-        # the EAAEF child pre-construction fail-closed until the accepted
-        # control-plane archive injects a fully qualified
-        # QuackDaemonCommandGateway factory.
-        _reject_unsealed_eaaef_daemon_gateway(
-            daemon_class=daemon_module.PortalImplementationDaemon,
-            local_authority_paths=(
-                getattr(daemon_args, "todo_path", None),
-                getattr(daemon_args, "database_path", None),
-                getattr(daemon_args, "coordination_path", None),
-                getattr(daemon_args, "execution_path", None),
-                getattr(daemon_args, "state_dir", None),
-            ),
+        # Independently signed EAAEF-191/189/185/186 host receipts admit this
+        # daemon child while create-once lane artifacts remain unpublished.
+        # Without those receipts the Portal factory is still a silent demotion
+        # to local Markdown/JSON/DuckDB authority and must stay fail-closed.
+        host_admitted = (
+            _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-191")
+            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-189")
+            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-185")
+            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-186")
         )
-        raise AssertionError("unsealed EAAEF daemon gateway unexpectedly admitted")
+        if not host_admitted:
+            _reject_unsealed_eaaef_daemon_gateway(
+                daemon_class=daemon_module.PortalImplementationDaemon,
+                local_authority_paths=(
+                    getattr(daemon_args, "todo_path", None),
+                    getattr(daemon_args, "database_path", None),
+                    getattr(daemon_args, "coordination_path", None),
+                    getattr(daemon_args, "execution_path", None),
+                    getattr(daemon_args, "state_dir", None),
+                ),
+            )
+            raise AssertionError(
+                "unsealed EAAEF daemon gateway unexpectedly admitted"
+            )
     recovery_phases = {
         "proposal_ready",
         "merge_enqueue_prepared",
@@ -20832,6 +20836,10 @@ class PortalImplementationSupervisor:
                         "implementation_supervisor"
                     ),
                     argv=command,
+                    repo_root=(
+                        self.config.plan_bound_accepted_tree_root
+                        or self.config.repo_root
+                    ),
                 )
             return command
 
@@ -22323,7 +22331,18 @@ def _reconciliation_preflight_failure_reason(
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     if raw_argv and raw_argv[0] == PLAN_BOUND_DAEMON_CHILD_MARKER:
-        return _run_plan_bound_daemon_child(raw_argv[1:])
+        try:
+            return _run_plan_bound_daemon_child(raw_argv[1:])
+        except Exception as exc:
+            try:
+                sys.stderr.write(
+                    "plan-bound daemon child rejected: "
+                    f"{type(exc).__name__}: {exc}\n"
+                )
+                sys.stderr.flush()
+            except OSError:
+                pass
+            return 78
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

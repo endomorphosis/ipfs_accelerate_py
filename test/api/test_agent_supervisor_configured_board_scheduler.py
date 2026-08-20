@@ -1321,6 +1321,57 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     assert result.returncode == 78
 
 
+def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_admitted(
+    tmp_path: Path,
+) -> None:
+    """Independently signed EAAEF-191 selects the admitted native-authority gate."""
+
+    receipt_dir = (
+        tmp_path
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission"
+    )
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "admission_bundle.json").write_text(
+        json.dumps({"decision": "admitted", "task_id": "EAAEF-191"}),
+        encoding="utf-8",
+    )
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    command = multi_runner_module.build_sealed_control_plane_module_command(
+        python_executable=sys.executable,
+        pin=control_plane_pin,
+        descriptor=control_plane_launch.descriptor,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        argv=("--help",),
+        repo_root=tmp_path,
+    )
+    assert command[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
+    )
+    denied = multi_runner_module.build_sealed_control_plane_module_command(
+        python_executable=sys.executable,
+        pin=control_plane_pin,
+        descriptor=control_plane_launch.descriptor,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        argv=("--help",),
+    )
+    assert denied[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    )
+
+
 def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
