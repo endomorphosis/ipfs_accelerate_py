@@ -73275,13 +73275,41 @@ def main(argv: list[str] | None = None) -> None:
             if program is not None
             else str(getattr(args, "task_source_kind", "") or "duckdb")
         )
+        quack_command_gateway = None
+        dispatcher_factory = None
+        if program is not None and str(authority_mode or "").strip().lower() == "quack":
+            from .eaaef_host_admitted_daemon_gateway import (
+                build_eaaef_host_admitted_command_gateway,
+                build_eaaef_host_admitted_container_dispatcher_factory,
+            )
+
+            owner_session = str(
+                getattr(args, "owner_session_id", "") or "eaaef-host-admitted-daemon"
+            )
+            quack_command_gateway = build_eaaef_host_admitted_command_gateway(
+                repo_root=REPO_ROOT,
+                program=program,
+                owner_session_id=owner_session,
+            )
+            dispatcher_factory = (
+                build_eaaef_host_admitted_container_dispatcher_factory(
+                    repo_root=REPO_ROOT
+                )
+            )
         daemon: Any = DatabaseImplementationDaemon(
-            database_path=Path(database_path),
+            database_path=Path(database_path) if isinstance(database_path, Path) else database_path,
             coordination_path=getattr(args, "coordination_path", None),
-            owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
+            owner_session_id=str(getattr(args, "owner_session_id", "") or "eaaef-host-admitted-daemon"),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
-            quack_uri=str(getattr(args, "quack_endpoint", "") or ""),
+            quack_uri=str(
+                getattr(args, "quack_endpoint", "")
+                or (program.quack_endpoint if program is not None else "")
+                or ""
+            ),
+            state_schema_revision=(
+                program.schema_revision if program is not None else None
+            ),
             # Database authority never receives the canonical Markdown board.
             markdown_path=None,
             # JSON projections optional under database authority.
@@ -73291,12 +73319,14 @@ def main(argv: list[str] | None = None) -> None:
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(args.implement),
+            quack_command_gateway=quack_command_gateway,
         )
         bind_database_portal_execution_from_args(
             daemon,
             args,
             repo_root=REPO_ROOT,
             portal_daemon_class=PortalImplementationDaemon,
+            external_agent_container_dispatcher_factory=dispatcher_factory,
         )
     else:
         daemon = PortalImplementationDaemon(
