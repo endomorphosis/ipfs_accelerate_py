@@ -88,6 +88,17 @@ PLAN_BOUND_ACCEPTED_ENTRY_PATH = (
 PLAN_BOUND_GATE_ENTRY_PATH = (
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
 )
+
+
+def _plan_bound_gate_fail(reason: str) -> int:
+    """Return the sealed-gate failure code with a visible reason."""
+
+    try:
+        sys.stderr.write(f"plan-bound launch gate rejected: {reason}\n")
+        sys.stderr.flush()
+    except OSError:
+        pass
+    return 78
 CONFIGURED_BOARD_LIVE_SEAL_PROFILE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/configured-board-live-seal-profile@2"
 )
@@ -8741,28 +8752,35 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             if worker_network_launch_authorities != (
                 expected_worker_authority,
             ):
-                return 78
+                return _plan_bound_gate_fail(
+                    "worker-network launch authority mismatch"
+                )
         elif worker_network_launch_authorities:
-            return 78
+            return _plan_bound_gate_fail(
+                "worker-network launch authority present without live seal"
+            )
     except (
         OSError,
         UnicodeError,
         ValueError,
         RuntimeError,
         subprocess.SubprocessError,
-    ):
-        return 78
+    ) as exc:
+        return _plan_bound_gate_fail(f"{type(exc).__name__}: {exc}")
     try:
         environment = {
             name: value
             for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ", "PATH"}
         }
-        environment["PATH"] = "/usr/bin:/bin"
+        path = str(environment.get("PATH") or "/usr/bin:/bin")
+        if "/usr/bin" not in path.split(os.pathsep):
+            path = f"{path}{os.pathsep}/usr/bin:/bin" if path else "/usr/bin:/bin"
+        environment["PATH"] = path
         os.execvpe(child_command[0], child_command, environment)
-    except OSError:
-        return 78
-    return 78
+    except OSError as exc:
+        return _plan_bound_gate_fail(f"exec failed: {exc}")
+    return _plan_bound_gate_fail("exec returned")
 
 
 def main(argv: list[str] | None = None) -> int:
