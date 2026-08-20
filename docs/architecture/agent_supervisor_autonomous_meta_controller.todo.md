@@ -298,7 +298,7 @@ control/lease/fence/merge authorities.
 ## APMC-007 Implement causal attribution and controlled ablations
 
 - Stable task ID: APMC-007
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
