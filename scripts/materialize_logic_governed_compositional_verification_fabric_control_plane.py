@@ -20,23 +20,930 @@ import ast
 import ctypes
 import errno
 import fcntl
+import functools
+import grp
 import hashlib
+import importlib.machinery
 import importlib.metadata
 import json
 import os
+import pwd
+import select
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+
+def _install_isolated_recovery_pycache() -> tuple[
+    tempfile.TemporaryDirectory[str] | None,
+    Path | None,
+    tuple[int, int] | None,
+]:
+    """Redirect exact isolated execution away from repository bytecode caches."""
+
+    flags = sys.flags
+    if (
+        flags.isolated != 1
+        or flags.ignore_environment != 1
+        or flags.no_site != 1
+        or flags.safe_path is not True
+        or flags.dont_write_bytecode != 1
+        or sys.dont_write_bytecode is not True
+    ):
+        return None, None, None
+    directory = tempfile.TemporaryDirectory(prefix="lgcvf-isolated-pycache-")
+    root = Path(directory.name).resolve(strict=True)
+    os.chmod(root, 0o700)
+    status = root.lstat()
+    sys.pycache_prefix = str(root)
+    return directory, root, (status.st_dev, status.st_ino)
+
+
+(
+    _ISOLATED_RECOVERY_PYCACHE_DIRECTORY,
+    _ISOLATED_RECOVERY_PYCACHE_ROOT,
+    _ISOLATED_RECOVERY_PYCACHE_IDENTITY,
+) = _install_isolated_recovery_pycache()
+
 ROOT = Path(__file__).resolve().parents[1]
+
+_MAX_RECOVERY_IMPORT_ROOT_ENTRIES = 32_768
+_MAX_RECOVERY_TRACKED_PATH_BYTES = 16 * 1024 * 1024
+_MAX_RECOVERY_IMPORT_DEPTH = 64
+_MAX_RECOVERY_IMPORT_FILE_BYTES = 32 * 1024 * 1024
+_MAX_RECOVERY_IMPORT_TOTAL_BYTES = 512 * 1024 * 1024
+_MAX_RECOVERY_CONFIG_BYTES = 1024 * 1024
+_RECOVERY_GIT_CONFIG_OVERRIDES = (
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.untrackedCache=false",
+    "-c",
+    "core.trustctime=true",
+    "-c",
+    "core.checkStat=default",
+    "-c",
+    "core.attributesFile=/dev/null",
+)
+_RECOVERY_CONFIG_RELATIVE_PATH = (
+    "config/agent_supervisor_logic_governed_compositional_verification_fabric_"
+    "scheduler.json"
+)
+_RECOVERY_OMITTED_SOURCE_SYMLINKS = {
+    "test/run_dashboard_tests.py": (
+        "/home/barberb/ipfs_accelerate_py/test/duckdb_api/visualization/"
+        "advanced_visualization/test_customizable_dashboard.py"
+    ),
+}
+
+
+def _tracked_recovery_import_entries(
+    root: Path,
+    *,
+    pathspecs: tuple[str, ...],
+) -> dict[str, tuple[str, str]]:
+    """Bind ordinary stage-zero entries exactly to the current HEAD tree."""
+
+    tracked_payload = _bounded_recovery_git(
+        root,
+        "ls-files",
+        "-v",
+        "-z",
+        "--cached",
+        "--",
+        *pathspecs,
+    )
+    stage_payload = _bounded_recovery_git(
+        root, "ls-files", "-s", "-z", "--cached", "--", *pathspecs
+    )
+    head_payload = _bounded_recovery_git(
+        root, "ls-tree", "-r", "-z", "--full-tree", "HEAD"
+    )
+    if any(
+        payload and not payload.endswith(b"\0")
+        for payload in (tracked_payload, stage_payload, head_payload)
+    ):
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    tracked: set[str] = set()
+    for raw in tracked_payload.split(b"\0")[:-1]:
+        if not raw.startswith(b"H "):
+            raise RuntimeError("protected recovery tracked path has index flags")
+        try:
+            value = raw[2:].decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(
+                "protected recovery tracked path is not UTF-8"
+            ) from exc
+        logical = Path(value)
+        if (
+            not value
+            or logical.is_absolute()
+            or ".." in logical.parts
+            or logical.as_posix() != value
+            or value in tracked
+        ):
+            raise RuntimeError("protected recovery tracked-path set is ambiguous")
+        tracked.add(value)
+
+    def parse_entries(payload: bytes, *, head: bool) -> dict[str, tuple[str, str]]:
+        result: dict[str, tuple[str, str]] = {}
+        for raw in payload.split(b"\0")[:-1]:
+            try:
+                metadata, path_bytes = raw.split(b"\t", 1)
+                fields = metadata.decode("ascii", errors="strict").split(" ")
+                value = path_bytes.decode("utf-8", errors="strict")
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise RuntimeError(
+                    "protected recovery Git entry is malformed"
+                ) from exc
+            logical = Path(value)
+            if (
+                not value
+                or logical.is_absolute()
+                or ".." in logical.parts
+                or logical.as_posix() != value
+                or value in result
+            ):
+                raise RuntimeError("protected recovery Git entry is ambiguous")
+            if head:
+                if (
+                    len(fields) != 3
+                    or fields[1] not in {"blob", "commit"}
+                    or (fields[1] == "commit" and fields[0] != "160000")
+                ):
+                    raise RuntimeError("protected recovery HEAD entry differs")
+                mode, object_id = fields[0], fields[2]
+            else:
+                if len(fields) != 3 or fields[2] != "0":
+                    raise RuntimeError("protected recovery index entry differs")
+                mode, object_id = fields[0], fields[1]
+            if (
+                mode not in {"100644", "100755", "120000", "160000"}
+                or (not head and mode == "160000")
+                or len(object_id) not in {40, 64}
+                or any(character not in "0123456789abcdef" for character in object_id)
+            ):
+                raise RuntimeError("protected recovery Git blob identity differs")
+            result[value] = (mode, object_id)
+        return result
+
+    stage = parse_entries(stage_payload, head=False)
+    head_all = parse_entries(head_payload, head=True)
+    head = {value: head_all[value] for value in tracked if value in head_all}
+    if set(stage) != tracked or head != stage:
+        raise RuntimeError(
+            "protected recovery ordinary index differs from current HEAD"
+        )
+    return stage
+
+
+def _git_blob_matches(payload: bytes, object_id: str) -> bool:
+    """Return whether raw bytes have the exact repository blob identity."""
+
+    constructor = hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
+    digest = constructor(f"blob {len(payload)}\0".encode("ascii"))
+    digest.update(payload)
+    return digest.hexdigest() == object_id
+
+
+def _bounded_recovery_git(root: Path, *arguments: str) -> bytes:
+    """Run one fixed local Git observation with bounded stdout and time."""
+
+    git = Path("/usr/bin/git")
+    try:
+        git_status = git.lstat()
+    except OSError as exc:
+        raise RuntimeError("protected recovery import inventory is unavailable") from exc
+    if (
+        not stat.S_ISREG(git_status.st_mode)
+        or git_status.st_uid != 0
+        or git_status.st_mode & 0o022
+    ):
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    process = subprocess.Popen(
+        (
+            str(git),
+            *_RECOVERY_GIT_CONFIG_OVERRIDES,
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            str(root),
+            *arguments,
+        ),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env={
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "HOME": "/nonexistent",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin",
+        },
+        close_fds=True,
+    )
+    if process.stdout is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    payload = bytearray()
+    deadline = time.monotonic() + 15.0
+    try:
+        descriptor = process.stdout.fileno()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("protected recovery import inventory timed out")
+            readable, _, _ = select.select((descriptor,), (), (), remaining)
+            if not readable:
+                raise RuntimeError("protected recovery import inventory timed out")
+            block = os.read(
+                descriptor,
+                min(
+                    64 * 1024,
+                    _MAX_RECOVERY_TRACKED_PATH_BYTES + 1 - len(payload),
+                ),
+            )
+            if not block:
+                break
+            payload.extend(block)
+            if len(payload) > _MAX_RECOVERY_TRACKED_PATH_BYTES:
+                raise RuntimeError("protected recovery tracked-path set is too large")
+        returncode = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        raise
+    finally:
+        process.stdout.close()
+    if returncode != 0:
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    return bytes(payload)
+
+
+def _git_object_substitution_state(root: Path) -> tuple[str, int, int]:
+    """Reject legacy grafts and replacement refs in the exact Git common dir."""
+
+    raw_common = _bounded_recovery_git(
+        root, "rev-parse", "--path-format=absolute", "--git-common-dir"
+    )
+    if (
+        not raw_common.endswith(b"\n")
+        or raw_common.count(b"\n") != 1
+        or b"\0" in raw_common
+        or len(raw_common) > 4_096
+    ):
+        raise RuntimeError("protected recovery Git common directory is ambiguous")
+    try:
+        common = Path(raw_common[:-1].decode("utf-8", errors="strict"))
+        resolved = common.resolve(strict=True)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RuntimeError(
+            "protected recovery Git common directory is unavailable"
+        ) from exc
+    if not common.is_absolute() or resolved != common:
+        raise RuntimeError("protected recovery Git common directory is unsafe")
+
+    uid, private_gid = _private_recovery_import_principal()
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        common_fd = os.open(common, flags)
+    except OSError as exc:
+        raise RuntimeError(
+            "protected recovery Git common directory is unavailable"
+        ) from exc
+    try:
+        common_status = os.fstat(common_fd)
+        common_mode = stat.S_IMODE(common_status.st_mode)
+        if (
+            not stat.S_ISDIR(common_status.st_mode)
+            or common_status.st_uid != uid
+            or common_mode & 0o002
+            or (common_mode & 0o020 and common_status.st_gid != private_gid)
+        ):
+            raise RuntimeError(
+                "protected recovery Git common directory permissions differ"
+            )
+        for directory, leaf in (
+            ("info", "grafts"),
+            ("info", "attributes"),
+            ("refs", "replace"),
+        ):
+            try:
+                directory_fd = os.open(directory, flags, dir_fd=common_fd)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise RuntimeError(
+                    "protected recovery Git substitution path is unsafe"
+                ) from exc
+            try:
+                try:
+                    os.stat(leaf, dir_fd=directory_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise RuntimeError(
+                        "protected recovery Git object substitution is present"
+                    )
+            finally:
+                os.close(directory_fd)
+    finally:
+        os.close(common_fd)
+    replacements = _bounded_recovery_git(
+        root, "for-each-ref", "--format=%(refname)", "refs/replace"
+    )
+    if replacements:
+        raise RuntimeError("protected recovery Git replacement refs are present")
+    config_names = _bounded_recovery_git(root, "config", "--name-only", "--list")
+    if any(line.lower().startswith(b"filter.") for line in config_names.splitlines()):
+        raise RuntimeError("protected recovery Git filter drivers are present")
+    return str(common), common_status.st_dev, common_status.st_ino
+
+
+def _clean_recovery_import_source(root: Path) -> tuple[str, str] | None:
+    """Bind one clean repository HEAD/tree before checkout code can execute."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    substitution_before = _git_object_substitution_state(root)
+    head = _bounded_recovery_git(root, "rev-parse", "--verify", "HEAD").strip()
+    tree = _bounded_recovery_git(
+        root, "rev-parse", "--verify", "HEAD^{tree}"
+    ).strip()
+    status = _bounded_recovery_git(
+        root,
+        "status",
+        "--porcelain=v2",
+        "-z",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    )
+    if (
+        status
+        or _git_object_substitution_state(root) != substitution_before
+        or len(head) not in {40, 64}
+        or len(tree) != len(head)
+        or any(character not in b"0123456789abcdef" for character in head + tree)
+    ):
+        raise RuntimeError("protected recovery import source is not clean")
+    return head.decode("ascii"), tree.decode("ascii")
+
+
+def _datasets_recovery_import_source(root: Path) -> tuple[str, str, str] | None:
+    """Bind the clean nested datasets checkout to the outer Git gitlink."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    nested = root / "ipfs_datasets_py"
+    nested_identity = _clean_recovery_import_source(nested)
+    if nested_identity is None:
+        raise RuntimeError("protected recovery datasets source is unavailable")
+    head, tree = nested_identity
+    stage = _bounded_recovery_git(
+        root, "ls-files", "-s", "-z", "--", "ipfs_datasets_py"
+    )
+    tracked = _bounded_recovery_git(
+        root, "ls-files", "-v", "-z", "--", "ipfs_datasets_py"
+    )
+    committed = _bounded_recovery_git(
+        root, "ls-tree", "-z", "HEAD", "--", "ipfs_datasets_py"
+    )
+    expected_stage = f"160000 {head} 0\tipfs_datasets_py\0".encode("ascii")
+    expected_commit = f"160000 commit {head}\tipfs_datasets_py\0".encode("ascii")
+    if (
+        stage != expected_stage
+        or tracked != b"H ipfs_datasets_py\0"
+        or committed != expected_commit
+    ):
+        raise RuntimeError("protected recovery datasets gitlink differs")
+    return head, tree, head
+
+
+def _private_recovery_import_principal() -> tuple[int, int]:
+    """Require the current primary group to be a single-principal private group."""
+
+    uid = os.geteuid()
+    try:
+        account = pwd.getpwuid(uid)
+        group = grp.getgrgid(account.pw_gid)
+    except KeyError as exc:
+        raise RuntimeError("protected recovery import principal is ambiguous") from exc
+    if (
+        account.pw_uid != uid
+        or account.pw_gid != os.getegid()
+        or group.gr_gid != account.pw_gid
+        or group.gr_mem
+    ):
+        raise RuntimeError("protected recovery import principal is ambiguous")
+    primary_accounts = []
+    for index, candidate in enumerate(pwd.getpwall()):
+        if index >= 4_096:
+            raise RuntimeError("protected recovery account database is too large")
+        if candidate.pw_gid == account.pw_gid:
+            primary_accounts.append((candidate.pw_uid, candidate.pw_name))
+    if primary_accounts != [(uid, account.pw_name)]:
+        raise RuntimeError("protected recovery import group is not private")
+    return uid, account.pw_gid
+
+
+def _snapshot_head_bound_recovery_config(root: Path) -> dict[str, Any] | None:
+    """Bind the canonical config to an ordinary index entry and exact HEAD bytes."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    relative = _RECOVERY_CONFIG_RELATIVE_PATH
+    tracked = _bounded_recovery_git(
+        root, "ls-files", "-v", "-z", "--cached", "--", relative
+    )
+    if tracked != f"H {relative}\0".encode():
+        raise RuntimeError("protected recovery configuration has index flags")
+    stage = _bounded_recovery_git(
+        root, "ls-files", "-s", "-z", "--cached", "--", relative
+    )
+    committed = _bounded_recovery_git(
+        root, "ls-tree", "-z", "HEAD", "--", relative
+    )
+    prefix = b"100644 blob "
+    suffix = b"\t" + relative.encode("utf-8") + b"\0"
+    if (
+        not committed.startswith(prefix)
+        or not committed.endswith(suffix)
+        or len(committed) not in {len(prefix) + 40 + len(suffix), len(prefix) + 64 + len(suffix)}
+    ):
+        raise RuntimeError("protected recovery configuration HEAD entry differs")
+    blob_oid = committed[len(prefix) : -len(suffix)]
+    expected_stage = b"100644 " + blob_oid + b" 0" + suffix
+    if stage != expected_stage:
+        raise RuntimeError("protected recovery configuration index differs from HEAD")
+    head_bytes = _bounded_recovery_git(
+        root, "cat-file", "blob", f"HEAD:{relative}"
+    )
+    if not head_bytes or len(head_bytes) > _MAX_RECOVERY_CONFIG_BYTES:
+        raise RuntimeError("protected recovery configuration bytes are unavailable")
+
+    uid, private_gid = _private_recovery_import_principal()
+    directory_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    root_fd = os.open(root, directory_flags)
+    config_fd = -1
+    file_fd = -1
+    try:
+        config_fd = os.open("config", directory_flags, dir_fd=root_fd)
+        file_fd = os.open(Path(relative).name, file_flags, dir_fd=config_fd)
+        before = os.fstat(file_fd)
+        mode = stat.S_IMODE(before.st_mode)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != uid
+            or before.st_nlink != 1
+            or mode & 0o002
+            or (mode & 0o020 and before.st_gid != private_gid)
+            or mode & 0o400 != 0o400
+            or before.st_size < 1
+            or before.st_size > _MAX_RECOVERY_CONFIG_BYTES
+        ):
+            raise RuntimeError("protected recovery configuration identity differs")
+        chunks: list[bytes] = []
+        observed = 0
+        while True:
+            block = os.read(
+                file_fd,
+                min(64 * 1024, _MAX_RECOVERY_CONFIG_BYTES + 1 - observed),
+            )
+            if not block:
+                break
+            chunks.append(block)
+            observed += len(block)
+            if observed > _MAX_RECOVERY_CONFIG_BYTES:
+                raise RuntimeError("protected recovery configuration is too large")
+        after = os.fstat(file_fd)
+        worktree_bytes = b"".join(chunks)
+        if (
+            (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+            != (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            or worktree_bytes != head_bytes
+        ):
+            raise RuntimeError("protected recovery configuration differs from HEAD")
+        return {
+            "relative_path": relative,
+            "blob_oid": blob_oid.decode("ascii"),
+            "sha256": "sha256:" + hashlib.sha256(head_bytes).hexdigest(),
+            "bytes": head_bytes,
+            "identity": (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_uid,
+                before.st_gid,
+                mode,
+                before.st_nlink,
+            ),
+        }
+    finally:
+        if file_fd >= 0:
+            os.close(file_fd)
+        if config_fd >= 0:
+            os.close(config_fd)
+        os.close(root_fd)
+
+
+def _scan_isolated_recovery_import_roots(
+    root: Path,
+    *,
+    roots: tuple[str, ...] = ("scripts", "ipfs_accelerate_py", "test"),
+    tracked_pathspecs: tuple[str, ...] = (
+        "scripts",
+        "ipfs_accelerate_py",
+        "test",
+        ":(top,glob)*.py",
+        ":(top,glob)*.pyc",
+        ":(top,glob)*.pyo",
+        ":(top,glob)*.so",
+    ),
+    whole_repository: bool = False,
+    root_import_candidates: bool = True,
+) -> tuple[
+    tuple[str, str, int, int, int, int, int, int, int, int, str], ...
+] | None:
+    """Close importable checkout files before the checkout enters ``sys.path``."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    git_entries = _tracked_recovery_import_entries(root, pathspecs=tracked_pathspecs)
+    tracked = frozenset(git_entries)
+    uid, private_gid = _private_recovery_import_principal()
+    records: list[
+        tuple[str, str, int, int, int, int, int, int, int, int, str]
+    ] = []
+    entry_count = 0
+    total_file_bytes = 0
+    observed_blob_paths: set[str] = set()
+    observed_link_paths: set[str] = set()
+    directory_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+
+    def is_import_candidate(value: str) -> bool:
+        return value.endswith(".py") or value.endswith(
+            (".so", ".pyd", ".dylib", *importlib.machinery.EXTENSION_SUFFIXES)
+        )
+
+    def verify_blob_file(
+        directory_fd: int,
+        name: str,
+        status: os.stat_result,
+        value: str,
+    ) -> str:
+        """Stream one stable file and join it to its index/HEAD blob."""
+
+        nonlocal total_file_bytes
+        git_entry = git_entries.get(value)
+        if git_entry is None or git_entry[0] == "120000":
+            raise RuntimeError(
+                f"protected recovery import candidate is untracked: {value}"
+            )
+        descriptor = os.open(name, file_flags, dir_fd=directory_fd)
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                )
+                != (
+                    status.st_dev,
+                    status.st_ino,
+                    status.st_size,
+                    status.st_mtime_ns,
+                    status.st_ctime_ns,
+                )
+                or before.st_size < 0
+                or before.st_size > _MAX_RECOVERY_IMPORT_FILE_BYTES
+            ):
+                raise RuntimeError(
+                    f"protected recovery import candidate identity differs: {value}"
+                )
+            expected_mode = "100755" if stat.S_IMODE(before.st_mode) & 0o111 else "100644"
+            mode, object_id = git_entry
+            if mode != expected_mode:
+                raise RuntimeError(
+                    f"protected recovery import candidate mode differs: {value}"
+                )
+            total_file_bytes += before.st_size
+            if total_file_bytes > _MAX_RECOVERY_IMPORT_TOTAL_BYTES:
+                raise RuntimeError("protected recovery import bytes exceed their bound")
+            constructor = hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
+            digest = constructor(f"blob {before.st_size}\0".encode("ascii"))
+            observed = 0
+            while True:
+                block = os.read(descriptor, 1024 * 1024)
+                if not block:
+                    break
+                observed += len(block)
+                if observed > before.st_size:
+                    raise RuntimeError(
+                        f"protected recovery import candidate grew: {value}"
+                    )
+                digest.update(block)
+            after = os.fstat(descriptor)
+            if (
+                observed != before.st_size
+                or (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                )
+                != (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                )
+                or digest.hexdigest() != object_id
+            ):
+                raise RuntimeError(
+                    f"protected recovery import candidate differs from HEAD: {value}"
+                )
+        finally:
+            os.close(descriptor)
+        observed_blob_paths.add(value)
+        return f"{mode}:{object_id}"
+
+    def record(
+        status: os.stat_result,
+        value: str,
+        kind: str,
+        detail: str = "",
+    ) -> None:
+        mode = stat.S_IMODE(status.st_mode)
+        if (
+            status.st_uid != uid
+            or status.st_nlink < 1
+            or mode & 0o002
+            or (mode & 0o020 and status.st_gid != private_gid)
+            or (kind == "directory" and mode & 0o500 != 0o500)
+            or (kind != "directory" and status.st_nlink != 1)
+            or (kind != "directory" and mode & 0o400 != 0o400)
+        ):
+            raise RuntimeError(
+                f"protected recovery import candidate permissions differ: {value}"
+            )
+        records.append(
+            (
+                value,
+                kind,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_uid,
+                status.st_gid,
+                mode,
+                status.st_nlink,
+                detail,
+            )
+        )
+
+    def visit(directory_fd: int, relative: Path, depth: int) -> None:
+        nonlocal entry_count
+        if depth > _MAX_RECOVERY_IMPORT_DEPTH:
+            raise RuntimeError("protected recovery import tree is too deep")
+        with os.scandir(directory_fd) as entries:
+            for entry in entries:
+                if entry.name == ".git":
+                    continue
+                entry_count += 1
+                if entry_count > _MAX_RECOVERY_IMPORT_ROOT_ENTRIES:
+                    raise RuntimeError("protected recovery import tree is too large")
+                child = relative / entry.name
+                value = child.as_posix()
+                status = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(status.st_mode):
+                    target = os.readlink(entry.name, dir_fd=directory_fd)
+                    importable_link = entry.name.endswith(
+                        (
+                            ".py",
+                            ".pyc",
+                            ".pyo",
+                            ".so",
+                            *importlib.machinery.EXTENSION_SUFFIXES,
+                        )
+                    )
+                    admitted_omission = (
+                        not whole_repository
+                        and _RECOVERY_OMITTED_SOURCE_SYMLINKS.get(value) == target
+                    )
+                    git_entry = git_entries.get(value)
+                    target_bytes = target.encode("utf-8", errors="surrogateescape")
+                    if (
+                        value not in tracked
+                        or git_entry is None
+                        or git_entry[0] != "120000"
+                        or not _git_blob_matches(target_bytes, git_entry[1])
+                        or (importable_link and not admitted_omission)
+                    ):
+                        raise RuntimeError(
+                            f"protected recovery import tree contains an unsafe link: {value}"
+                        )
+                    normalized_target = os.path.normpath(
+                        (child.parent / target).as_posix()
+                    )
+                    if (
+                        not target
+                        or (
+                            importable_link
+                            and not admitted_omission
+                            and (
+                                os.path.isabs(target)
+                                or normalized_target == ".."
+                                or normalized_target.startswith("../")
+                            )
+                        )
+                    ):
+                        raise RuntimeError(
+                            f"protected recovery import link escapes its repository: {value}"
+                        )
+                    after = os.stat(
+                        entry.name, dir_fd=directory_fd, follow_symlinks=False
+                    )
+                    if (
+                        not stat.S_ISLNK(after.st_mode)
+                        or (after.st_dev, after.st_ino, after.st_mtime_ns)
+                        != (status.st_dev, status.st_ino, status.st_mtime_ns)
+                    ):
+                        raise RuntimeError("protected recovery import link changed")
+                    if status.st_uid != uid or status.st_nlink != 1:
+                        raise RuntimeError(
+                            f"protected recovery import link ownership differs: {value}"
+                        )
+                    records.append(
+                        (
+                            value,
+                            "symlink",
+                            status.st_dev,
+                            status.st_ino,
+                            status.st_size,
+                            status.st_mtime_ns,
+                            status.st_uid,
+                            status.st_gid,
+                            stat.S_IMODE(status.st_mode),
+                            status.st_nlink,
+                            target,
+                        )
+                    )
+                    observed_link_paths.add(value)
+                    continue
+                if stat.S_ISDIR(status.st_mode):
+                    if entry.name == "__pycache__":
+                        continue
+                    record(status, value, "directory")
+                    child_fd = os.open(entry.name, directory_flags, dir_fd=directory_fd)
+                    try:
+                        opened = os.fstat(child_fd)
+                        if (
+                            not stat.S_ISDIR(opened.st_mode)
+                            or (opened.st_dev, opened.st_ino)
+                            != (status.st_dev, status.st_ino)
+                        ):
+                            raise RuntimeError(
+                                "protected recovery import directory changed"
+                            )
+                        visit(child_fd, child, depth + 1)
+                    finally:
+                        os.close(child_fd)
+                    continue
+                python_source = entry.name.endswith(".py")
+                bytecode = entry.name.endswith((".pyc", ".pyo"))
+                native = entry.name.endswith(".so") or entry.name.endswith(
+                    tuple(importlib.machinery.EXTENSION_SUFFIXES)
+                )
+                if bytecode and "__pycache__" not in child.parts:
+                    raise RuntimeError(
+                        f"protected recovery import tree contains bytecode: {value}"
+                    )
+                if not python_source and not native:
+                    continue
+                if not stat.S_ISREG(status.st_mode) or value not in tracked:
+                    raise RuntimeError(
+                        f"protected recovery import candidate is untracked: {value}"
+                    )
+                detail = verify_blob_file(directory_fd, entry.name, status, value)
+                record(
+                    status,
+                    value,
+                    "python" if python_source else "native",
+                    detail,
+                )
+
+    root_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    root_flags |= getattr(os, "O_NOFOLLOW", 0)
+    root_fd = os.open(root, root_flags)
+    try:
+        record(os.fstat(root_fd), ".", "directory")
+        if whole_repository:
+            visit(root_fd, Path("."), 0)
+        for name in (() if whole_repository else roots):
+            directory_fd = os.open(name, directory_flags, dir_fd=root_fd)
+            try:
+                record(os.fstat(directory_fd), name, "directory")
+                visit(directory_fd, Path(name), 0)
+            finally:
+                os.close(directory_fd)
+        if root_import_candidates and not whole_repository:
+            with os.scandir(root_fd) as entries:
+                for entry in entries:
+                    entry_count += 1
+                    if entry_count > _MAX_RECOVERY_IMPORT_ROOT_ENTRIES:
+                        raise RuntimeError(
+                            "protected recovery import tree is too large"
+                        )
+                    name = entry.name
+                    python_source = name.endswith(".py")
+                    bytecode = name.endswith((".pyc", ".pyo"))
+                    native = name.endswith(".so") or name.endswith(
+                        tuple(importlib.machinery.EXTENSION_SUFFIXES)
+                    )
+                    if not python_source and not bytecode and not native:
+                        continue
+                    status = entry.stat(follow_symlinks=False)
+                    if bytecode:
+                        raise RuntimeError(
+                            f"protected recovery import tree contains bytecode: {name}"
+                        )
+                    if (
+                        stat.S_ISLNK(status.st_mode)
+                        or not stat.S_ISREG(status.st_mode)
+                        or name not in tracked
+                    ):
+                        raise RuntimeError(
+                            f"protected recovery import candidate is untracked: {name}"
+                        )
+                    detail = verify_blob_file(root_fd, name, status, name)
+                    record(
+                        status,
+                        name,
+                        "python" if python_source else "native",
+                        detail,
+                    )
+    finally:
+        os.close(root_fd)
+    expected_blob_paths = {
+        value
+        for value, (mode, _object_id) in git_entries.items()
+        if mode != "120000" and is_import_candidate(value)
+    }
+    expected_link_paths = {
+        value for value, (mode, _object_id) in git_entries.items() if mode == "120000"
+    }
+    if (
+        observed_blob_paths != expected_blob_paths
+        or observed_link_paths != expected_link_paths
+    ):
+        raise RuntimeError(
+            "protected recovery import filesystem differs from index and HEAD"
+        )
+    return tuple(sorted(records))
+
+
+_ISOLATED_RECOVERY_SOURCE_IDENTITY = _clean_recovery_import_source(ROOT)
+_ISOLATED_RECOVERY_CONFIG_AUTHORITY = _snapshot_head_bound_recovery_config(ROOT)
+_ISOLATED_RECOVERY_IMPORT_INVENTORY = _scan_isolated_recovery_import_roots(ROOT)
+_ISOLATED_RECOVERY_DATASETS_SOURCE_IDENTITY = _datasets_recovery_import_source(ROOT)
+_ISOLATED_RECOVERY_DATASETS_IMPORT_INVENTORY = (
+    _scan_isolated_recovery_import_roots(
+        ROOT / "ipfs_datasets_py",
+        roots=(),
+        tracked_pathspecs=(".",),
+        whole_repository=True,
+        root_import_candidates=False,
+    )
+)
+
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -81,9 +988,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     split_csv,
 )
 
-CONFIG_PATH = (
-    ROOT / "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json"
-)
+CONFIG_PATH = ROOT / _RECOVERY_CONFIG_RELATIVE_PATH
 FRESH_RECOVERY_TARGET_RELATIVE_ROOT = Path(
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
 )
@@ -106,19 +1011,19 @@ SUCCESSOR_RECOVERY_MANIFEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-successor-recovery-manifest@1"
 )
 FRESH_RECOVERY_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-policy@1"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-policy@2"
 )
 FRESH_RECOVERY_PREVIEW_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-preview@1"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-preview@2"
 )
 FRESH_RECOVERY_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-manifest@1"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-manifest@3"
 )
 FRESH_RECOVERY_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-receipt@3"
 )
 FRESH_RECOVERY_VERIFICATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-verification@1"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-verification@3"
 )
 FRESH_RECOVERED_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-recovered-evidence@1"
@@ -183,6 +1088,7 @@ FRESH_RECOVERY_MANIFEST_FIELDS = frozenset(
     {
         "schema",
         "source_evidence_cid",
+        "duckdb_runtime_cid",
         "source_generation",
         "target_generation",
         "source_runtime_root",
@@ -196,6 +1102,10 @@ FRESH_RECOVERY_MANIFEST_FIELDS = frozenset(
         "merge_completion_evidence",
         "validation_qualification",
         "validation_qualification_cid",
+        "validation_projection_omission_commitment",
+        "validation_projection_omission_root",
+        "validation_projection_evidence_commitment",
+        "validation_projection_evidence_root",
         "completion_partition",
         "synthetic_source_disposition",
         "source_database_statuses_read",
@@ -239,6 +1149,7 @@ FRESH_RECOVERY_RECEIPT_FIELDS = frozenset(
         "population_root",
         "manifest_cid",
         "source_evidence_cid",
+        "duckdb_runtime_cid",
         "bootstrap_receipt_cid",
         "bootstrap_receipt_sha256",
         "imported_completions",
@@ -249,6 +1160,10 @@ FRESH_RECOVERY_RECEIPT_FIELDS = frozenset(
         "todo_count",
         "blocked_count",
         "validation_qualification_cid",
+        "validation_projection_omission_commitment",
+        "validation_projection_omission_root",
+        "validation_projection_evidence_commitment",
+        "validation_projection_evidence_root",
         "model_provider_route",
         "network_isolation_enforced",
         "candidate_authored_validation",
@@ -903,6 +1818,39 @@ def _read_regular_evidence_bytes(
     return lexical, data, digest
 
 
+def _require_head_bound_recovery_bytes(
+    root: Path,
+    relative_value: Any,
+    payload: bytes,
+    *,
+    field: str,
+) -> tuple[str, str]:
+    """Require raw authority bytes to equal one ordinary index/HEAD blob."""
+
+    relative = Path(str(relative_value or ""))
+    value = relative.as_posix()
+    if (
+        not value
+        or relative.is_absolute()
+        or ".." in relative.parts
+        or value != str(relative_value)
+    ):
+        raise MaterializationError(f"{field} is not a canonical tracked path")
+    try:
+        entries = _tracked_recovery_import_entries(root, pathspecs=(value,))
+    except RuntimeError as exc:
+        raise MaterializationError(f"{field} Git authority differs") from exc
+    entry = entries.get(value)
+    if (
+        len(entries) != 1
+        or entry is None
+        or entry[0] not in {"100644", "100755"}
+        or not _git_blob_matches(payload, entry[1])
+    ):
+        raise MaterializationError(f"{field} raw bytes differ from index and HEAD")
+    return entry
+
+
 def _decode_evidence_json(data: bytes, *, noun: str) -> dict[str, Any]:
     value = _strict_json_loads(data, noun=noun)
     if not isinstance(value, dict):
@@ -1094,6 +2042,9 @@ def _fresh_recovery_policy(config: Mapping[str, Any]) -> Mapping[str, Any]:
         "source_runtime_root",
         "target_generation",
         "target_runtime_root",
+        "duckdb_runtime_cid",
+        "verification_python_executable",
+        "verification_python_executable_sha256",
         "retained_revision_receipt_path",
         "retained_revision_receipt_sha256",
         "retained_revision_receipt_cid",
@@ -1119,6 +2070,15 @@ def _fresh_recovery_policy(config: Mapping[str, Any]) -> Mapping[str, Any]:
         raise MaterializationError("fresh generation recovery policy fields differ")
     if policy.get("schema") != FRESH_RECOVERY_POLICY_SCHEMA:
         raise MaterializationError("fresh generation recovery policy schema differs")
+    runtime_cid = str(policy.get("duckdb_runtime_cid") or "")
+    if not runtime_cid.startswith("baguqeera"):
+        raise MaterializationError("fresh recovery DuckDB runtime identity is absent")
+    executable = str(policy.get("verification_python_executable") or "")
+    executable_digest = str(
+        policy.get("verification_python_executable_sha256") or ""
+    )
+    if not Path(executable).is_absolute() or not _is_sha256(executable_digest):
+        raise MaterializationError("fresh recovery verification interpreter is absent")
     program = config.get("database_program")
     runtime = config.get("runtime_paths")
     if not isinstance(program, Mapping) or not isinstance(runtime, Mapping):
@@ -1244,6 +2204,180 @@ def _fresh_recovery_policy(config: Mapping[str, Any]) -> Mapping[str, Any]:
     return policy
 
 
+def _require_isolated_recovery_interpreter() -> None:
+    """Reject protected recovery work outside ``python -I -S -B``."""
+
+    flags = sys.flags
+    try:
+        cpython_flags = tuple(
+            ctypes.c_int.in_dll(ctypes.pythonapi, name).value
+            for name in (
+                "Py_IsolatedFlag",
+                "Py_IgnoreEnvironmentFlag",
+                "Py_NoSiteFlag",
+                "Py_DontWriteBytecodeFlag",
+            )
+        )
+    except (AttributeError, OSError, ValueError):
+        cpython_flags = ()
+    if (
+        flags.isolated != 1
+        or flags.ignore_environment != 1
+        or flags.no_site != 1
+        or flags.safe_path is not True
+        or flags.dont_write_bytecode != 1
+        or sys.dont_write_bytecode is not True
+        or cpython_flags != (1, 1, 1, 1)
+    ):
+        raise MaterializationError(
+            "protected recovery requires python -I -S -B"
+        )
+    _require_isolated_recovery_pycache()
+    try:
+        current_config_authority = _snapshot_head_bound_recovery_config(ROOT)
+    except RuntimeError as exc:
+        raise MaterializationError(
+            "protected recovery configuration differs from HEAD"
+        ) from exc
+    if (
+        _ISOLATED_RECOVERY_SOURCE_IDENTITY is None
+        or _clean_recovery_import_source(ROOT)
+        != _ISOLATED_RECOVERY_SOURCE_IDENTITY
+        or _ISOLATED_RECOVERY_CONFIG_AUTHORITY is None
+        or current_config_authority != _ISOLATED_RECOVERY_CONFIG_AUTHORITY
+        or
+        _ISOLATED_RECOVERY_IMPORT_INVENTORY is None
+        or _scan_isolated_recovery_import_roots(ROOT)
+        != _ISOLATED_RECOVERY_IMPORT_INVENTORY
+        or _ISOLATED_RECOVERY_DATASETS_SOURCE_IDENTITY is None
+        or _datasets_recovery_import_source(ROOT)
+        != _ISOLATED_RECOVERY_DATASETS_SOURCE_IDENTITY
+        or _ISOLATED_RECOVERY_DATASETS_IMPORT_INVENTORY is None
+        or _scan_isolated_recovery_import_roots(
+            ROOT / "ipfs_datasets_py",
+            roots=(),
+            tracked_pathspecs=(".",),
+            whole_repository=True,
+            root_import_candidates=False,
+        )
+        != _ISOLATED_RECOVERY_DATASETS_IMPORT_INVENTORY
+    ):
+        raise MaterializationError("protected recovery import inventory differs")
+
+
+def _require_isolated_recovery_pycache() -> None:
+    """Require the early, owner-private, empty bytecode lookup root."""
+
+    root = _ISOLATED_RECOVERY_PYCACHE_ROOT
+    identity = _ISOLATED_RECOVERY_PYCACHE_IDENTITY
+    if (
+        _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None
+        or root is None
+        or identity is None
+        or sys.pycache_prefix != str(root)
+    ):
+        raise MaterializationError("protected recovery pycache isolation differs")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as exc:
+        raise MaterializationError(
+            "protected recovery pycache isolation differs"
+        ) from exc
+    try:
+        status = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or (status.st_dev, status.st_ino) != identity
+            or status.st_uid != os.geteuid()
+            or stat.S_IMODE(status.st_mode) != 0o700
+        ):
+            raise MaterializationError(
+                "protected recovery pycache isolation differs"
+            )
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise MaterializationError(
+                    "protected recovery pycache isolation is not empty"
+                )
+    finally:
+        os.close(descriptor)
+
+
+def _require_bound_duckdb_runtime_policy(config: Mapping[str, Any]) -> str:
+    """Recompute the tracked DuckDB byte identity before recovery authority use."""
+
+    _require_isolated_recovery_interpreter()
+    policy = _fresh_recovery_policy(config)
+    expected = str(policy["duckdb_runtime_cid"])
+    try:
+        executable = Path(sys.executable).resolve(strict=True)
+    except OSError as exc:
+        raise MaterializationError(
+            "fresh recovery verification interpreter is unavailable"
+        ) from exc
+    if (
+        str(executable) != policy["verification_python_executable"]
+        or _sha256_file(executable)
+        != policy["verification_python_executable_sha256"]
+    ):
+        raise MaterializationError(
+            "fresh recovery verification interpreter differs from configuration"
+        )
+    try:
+        from scripts.qualify_logic_governed_compositional_verification_fabric import (
+            QualificationError,
+            bound_duckdb_runtime_evidence,
+        )
+
+        evidence = bound_duckdb_runtime_evidence()
+    except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+        raise MaterializationError("bound DuckDB runtime is unavailable") from exc
+    if evidence.get("runtime_cid") != expected:
+        raise MaterializationError("bound DuckDB runtime differs from configuration")
+    return expected
+
+
+def _with_bound_duckdb_runtime(
+    function: Callable[..., dict[str, Any]],
+) -> Callable[..., dict[str, Any]]:
+    """Execute one recovery operation solely through the pinned runtime capsule."""
+
+    @functools.wraps(function)
+    def wrapped(config: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        expected = _require_bound_duckdb_runtime_policy(config)
+        try:
+            from scripts.qualify_logic_governed_compositional_verification_fabric import (
+                QualificationError,
+                isolated_bound_duckdb_runtime,
+            )
+        except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+            raise MaterializationError("bound DuckDB runtime admission failed") from exc
+        runtime = isolated_bound_duckdb_runtime(expected_runtime_cid=expected)
+        try:
+            runtime.__enter__()
+        except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+            raise MaterializationError("bound DuckDB runtime admission failed") from exc
+        try:
+            result = function(config, *args, **kwargs)
+        except BaseException:
+            try:
+                runtime.__exit__(*sys.exc_info())
+            except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+                raise MaterializationError(
+                    "bound DuckDB runtime validation failed"
+                ) from exc
+            raise
+        try:
+            runtime.__exit__(None, None, None)
+        except (ImportError, OSError, QualificationError, TypeError, ValueError) as exc:
+            raise MaterializationError("bound DuckDB runtime validation failed") from exc
+        return result
+
+    return wrapped
+
+
 def _targets_fresh_recovery_generation(
     config: Mapping[str, Any],
     *,
@@ -1331,8 +2465,15 @@ def load_config(
     """Load the closed embedded profile without importing any provider."""
 
     try:
+        if (
+            config_path == CONFIG_PATH
+            and _ISOLATED_RECOVERY_CONFIG_AUTHORITY is not None
+        ):
+            raw = _ISOLATED_RECOVERY_CONFIG_AUTHORITY["bytes"]
+        else:
+            raw = config_path.read_bytes()
         payload = _strict_json_loads(
-            config_path.read_bytes(), noun="scheduler config"
+            raw, noun="scheduler config"
         )
     except (OSError, MaterializationError) as exc:
         raise MaterializationError(f"scheduler config is unreadable: {exc}") from exc
@@ -1382,12 +2523,26 @@ def load_config(
 
 
 def _git(root: Path, *argv: str) -> str:
+    try:
+        substitution_before = _git_object_substitution_state(root)
+    except RuntimeError as exc:
+        raise MaterializationError(
+            "protected recovery Git object substitution differs"
+        ) from exc
     completed = subprocess.run(
-        ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *argv],
+        [
+            "/usr/bin/git",
+            *_RECOVERY_GIT_CONFIG_OVERRIDES,
+            "-c",
+            "core.hooksPath=/dev/null",
+            *argv,
+        ],
         cwd=root,
         env={
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
             "LANG": "C.UTF-8",
@@ -1401,6 +2556,15 @@ def _git(root: Path, *argv: str) -> str:
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         raise MaterializationError(f"git {' '.join(argv)} failed: {detail}")
+    try:
+        if _git_object_substitution_state(root) != substitution_before:
+            raise MaterializationError(
+                "protected recovery Git object substitution changed"
+            )
+    except RuntimeError as exc:
+        raise MaterializationError(
+            "protected recovery Git object substitution differs"
+        ) from exc
     return completed.stdout.strip()
 
 
@@ -1728,14 +2892,36 @@ def build_population(
     """Load and bind the exact local formal and Markdown projections."""
 
     source = verify_source_binding(config, root=root)
-    formal_path = _safe_path(root, config.get("formal_plan_path"), field="formal_plan_path")
-    todo_path = _safe_path(root, config.get("taskboard_path"), field="taskboard_path")
+    formal_value = config.get("formal_plan_path")
+    todo_value = config.get("taskboard_path")
     try:
+        _formal_path, formal_bytes, _formal_digest = _read_regular_evidence_bytes(
+            root,
+            formal_value,
+            field="formal_plan_path",
+        )
+        _todo_path, todo_bytes, _todo_digest = _read_regular_evidence_bytes(
+            root,
+            todo_value,
+            field="taskboard_path",
+        )
+        _require_head_bound_recovery_bytes(
+            root,
+            formal_value,
+            formal_bytes,
+            field="formal_plan_path",
+        )
+        _require_head_bound_recovery_bytes(
+            root,
+            todo_value,
+            todo_bytes,
+            field="taskboard_path",
+        )
         formal_payload = _strict_json_loads(
-            formal_path.read_bytes(), noun="LGCVF formal plan"
+            formal_bytes, noun="LGCVF formal plan"
         )
         formal_plan = FormalWorkPlan.from_dict(formal_payload)
-        todo_text = todo_path.read_text(encoding="utf-8")
+        todo_text = todo_bytes.decode("utf-8")
     except (OSError, UnicodeDecodeError, MaterializationError, TypeError, ValueError) as exc:
         raise MaterializationError(f"LGCVF plan projection is unreadable: {exc}") from exc
     return project_population(
@@ -6492,7 +7678,9 @@ def preview_fresh_generation_recovery(
 ) -> dict[str, Any]:
     """Validate immutable run-v16 evidence and render a no-write run-v17 import."""
 
+    _require_isolated_recovery_interpreter()
     policy = _fresh_recovery_policy(config)
+    duckdb_runtime_cid = _require_bound_duckdb_runtime_policy(config)
     authority_root = (source_root or root).resolve(strict=True)
     paths = _fresh_recovery_paths(config, root=root)
     lexical_target, lexical_target_state = _fresh_recovery_target_state(
@@ -6570,6 +7758,13 @@ def preview_fresh_generation_recovery(
         "write_performed": False,
         "source_generation": policy["source_generation"],
         "target_generation": policy["target_generation"],
+        "duckdb_runtime_cid": duckdb_runtime_cid,
+        "verification_python_executable": policy[
+            "verification_python_executable"
+        ],
+        "verification_python_executable_sha256": policy[
+            "verification_python_executable_sha256"
+        ],
         "source_runtime_root": policy["source_runtime_root"],
         "target_runtime_root": policy["target_runtime_root"],
         "target_state": target_state,
@@ -6639,7 +7834,7 @@ def _verify_recovery_qualification(
         if (
             not isinstance(spec, Mapping)
             or observation.get("schema")
-            != "lgcvf-independent-recovery-pytest-observation@1"
+            != "lgcvf-independent-recovery-pytest-observation@3"
             or observation.get("task_id") != spec.get("task_id")
             or observation.get("task_cid") != spec.get("task_cid")
             or observation.get("validation_spec") != dict(spec)
@@ -6673,7 +7868,7 @@ def _verify_recovery_qualification(
             raise MaterializationError(f"recovery qualification raises {field}")
     if (
         qualification.get("schema")
-        != "lgcvf-independent-recovery-qualification@1"
+        != "lgcvf-independent-recovery-qualification@3"
         or qualification.get("passed") is not True
         or qualification.get("source_unchanged") is not True
         or qualification.get("exact_suite_membership") is not True
@@ -6686,8 +7881,20 @@ def _verify_recovery_qualification(
     ):
         raise MaterializationError("recovery qualification test authorship differs")
     source_binding = qualification.get("source_binding_before")
+    toolchain = source_binding.get("toolchain") if isinstance(source_binding, Mapping) else None
+    duckdb_runtime = (
+        toolchain.get("duckdb_runtime") if isinstance(toolchain, Mapping) else None
+    )
     if (
         not isinstance(source_binding, Mapping)
+        or source_binding.get("schema") != "lgcvf-recovery-source-binding@2"
+        or not isinstance(duckdb_runtime, Mapping)
+        or duckdb_runtime.get("schema") != "lgcvf-bound-duckdb-runtime@1"
+        or duckdb_runtime.get("runtime_cid") != preview.get("duckdb_runtime_cid")
+        or toolchain.get("python_executable")
+        != preview.get("verification_python_executable")
+        or toolchain.get("python_executable_sha256")
+        != preview.get("verification_python_executable_sha256")
         or source_binding.get("accelerator_head") != preview.get("source_head")
         or source_binding.get("accelerator_tree") != preview.get("source_tree")
         or source_binding.get("datasets_gitlink")
@@ -6695,6 +7902,126 @@ def _verify_recovery_qualification(
         or qualification.get("plan_cid") != preview.get("plan_root_cid")
     ):
         raise MaterializationError("recovery qualification source binding differs")
+    omission = qualification.get("validation_projection_omission_commitment")
+    omission_root = qualification.get("validation_projection_omission_root")
+    projection_evidence = qualification.get(
+        "validation_projection_evidence_commitment"
+    )
+    projection_evidence_root = qualification.get(
+        "validation_projection_evidence_root"
+    )
+    if (
+        not isinstance(omission, Mapping)
+        or set(omission)
+        != {
+            "schema",
+            "accelerator_head",
+            "accelerator_tree",
+            "datasets_gitlink",
+            "datasets_tree",
+            "omitted_source_symlinks",
+            "commitment_cid",
+        }
+        or omission.get("schema")
+        != "lgcvf-recovery-validation-projection-omission@1"
+        or omission.get("accelerator_head") != preview.get("source_head")
+        or omission.get("accelerator_tree") != preview.get("source_tree")
+        or omission.get("datasets_gitlink")
+        != source_binding.get("datasets_gitlink")
+        or omission.get("datasets_tree") != source_binding.get("datasets_tree")
+        or omission.get("commitment_cid")
+        != content_identity(
+            {key: item for key, item in omission.items() if key != "commitment_cid"}
+        )
+        or omission_root != omission.get("commitment_cid")
+    ):
+        raise MaterializationError("recovery projection omission binding differs")
+    omissions = omission.get("omitted_source_symlinks")
+    if not isinstance(omissions, list):
+        raise MaterializationError("recovery projection omission set is absent")
+    observed_omissions: list[dict[str, Any]] = []
+    for item in omissions:
+        if not isinstance(item, Mapping) or set(item) != {
+            "scope",
+            "path",
+            "git_target",
+            "disposition",
+        }:
+            raise MaterializationError("recovery projection omission fields differ")
+        path = str(item.get("path") or "")
+        logical = Path(path)
+        expected_scope = (
+            "datasets_gitlink"
+            if path.startswith("ipfs_datasets_py/")
+            else "accelerator"
+        )
+        if (
+            not path
+            or logical.is_absolute()
+            or ".." in logical.parts
+            or logical.as_posix() != path
+            or item.get("scope") != expected_scope
+            or not isinstance(item.get("git_target"), str)
+            or not item.get("git_target")
+            or item.get("disposition") != "omitted_source_symlink"
+        ):
+            raise MaterializationError("recovery projection omission entry differs")
+        observed_omissions.append(dict(item))
+    if observed_omissions != sorted(
+        observed_omissions, key=lambda item: (item["scope"], item["path"])
+    ) or len({item["path"] for item in observed_omissions}) != len(
+        observed_omissions
+    ):
+        raise MaterializationError("recovery projection omission ordering differs")
+    expected_suites: list[dict[str, Any]] = []
+    for observation in observations:
+        projection = observation.get("readonly_projection")
+        if (
+            not isinstance(projection, Mapping)
+            or projection.get("schema")
+            != "lgcvf-closed-recovery-test-projection@1"
+            or projection.get("contains_live_source_links") is not False
+            or projection.get("original_checkout_writable") is not False
+        ):
+            raise MaterializationError("recovery closed-copy projection differs")
+        expected_suites.append(
+            {
+                "suite_id": observation.get("suite_id"),
+                "task_id": observation.get("task_id"),
+                "task_cid": observation.get("task_cid"),
+                "projection_cid": projection.get("projection_cid"),
+                "copied_source_manifest_root": projection.get(
+                    "copied_source_manifest_root"
+                ),
+            }
+        )
+    if (
+        not isinstance(projection_evidence, Mapping)
+        or set(projection_evidence)
+        != {
+            "schema",
+            "source_binding_cid",
+            "omission_root",
+            "ordered_suites",
+            "commitment_cid",
+        }
+        or projection_evidence.get("schema")
+        != "lgcvf-recovery-validation-projection-evidence@1"
+        or projection_evidence.get("source_binding_cid")
+        != source_binding.get("source_binding_cid")
+        or projection_evidence.get("omission_root") != omission_root
+        or projection_evidence.get("ordered_suites") != expected_suites
+        or projection_evidence.get("commitment_cid")
+        != content_identity(
+            {
+                key: item
+                for key, item in projection_evidence.items()
+                if key != "commitment_cid"
+            }
+        )
+        or projection_evidence_root != projection_evidence.get("commitment_cid")
+    ):
+        raise MaterializationError("recovery projection evidence binding differs")
     return qualification
 
 
@@ -6760,6 +8087,18 @@ def _require_canonical_fresh_recovery_population(
         config.get("taskboard_path"),
         field="taskboard_path",
     )
+    _require_head_bound_recovery_bytes(
+        source_root,
+        config.get("formal_plan_path"),
+        formal_bytes,
+        field="formal_plan_path",
+    )
+    _require_head_bound_recovery_bytes(
+        source_root,
+        config.get("taskboard_path"),
+        todo_bytes,
+        field="taskboard_path",
+    )
     try:
         formal_plan = FormalWorkPlan.from_dict(
             _decode_evidence_json(formal_bytes, noun="LGCVF formal plan")
@@ -6821,6 +8160,7 @@ def _source_evidence_cid(preview: Mapping[str, Any]) -> str:
         {
             "source_generation": preview["source_generation"],
             "target_generation": preview["target_generation"],
+            "duckdb_runtime_cid": preview["duckdb_runtime_cid"],
             "source_head": preview["source_head"],
             "source_tree": preview["source_tree"],
             "plan_root_cid": preview["plan_root_cid"],
@@ -6847,6 +8187,7 @@ def _build_fresh_recovery_manifest(
     manifest = {
         "schema": FRESH_RECOVERY_MANIFEST_SCHEMA,
         "source_evidence_cid": _source_evidence_cid(preview),
+        "duckdb_runtime_cid": preview["duckdb_runtime_cid"],
         "source_generation": preview["source_generation"],
         "target_generation": preview["target_generation"],
         "source_runtime_root": preview["source_runtime_root"],
@@ -6860,6 +8201,18 @@ def _build_fresh_recovery_manifest(
         "merge_completion_evidence": preview["merge_completion_evidence"],
         "validation_qualification": qualification,
         "validation_qualification_cid": qualification["receipt_cid"],
+        "validation_projection_omission_commitment": qualification[
+            "validation_projection_omission_commitment"
+        ],
+        "validation_projection_omission_root": qualification[
+            "validation_projection_omission_root"
+        ],
+        "validation_projection_evidence_commitment": qualification[
+            "validation_projection_evidence_commitment"
+        ],
+        "validation_projection_evidence_root": qualification[
+            "validation_projection_evidence_root"
+        ],
         "completion_partition": preview["completion_partition"],
         "synthetic_source_disposition": "quarantined_not_imported",
         "source_database_statuses_read": False,
@@ -7314,6 +8667,7 @@ def _normalized_fresh_bootstrap(value: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+@_with_bound_duckdb_runtime
 def verify_fresh_generation_recovery(
     config: Mapping[str, Any],
     population: Mapping[str, Any],
@@ -7324,6 +8678,7 @@ def verify_fresh_generation_recovery(
 ) -> dict[str, Any]:
     """Read-only verify the exact published run-v17 recovery population."""
 
+    _require_isolated_recovery_interpreter()
     authority_root = (source_root or root).resolve(strict=True)
     logical_root = (runtime_authority_root or root).resolve(strict=True)
     _require_clean_recovery_source(
@@ -7368,6 +8723,7 @@ def verify_fresh_generation_recovery(
     manifest_projection = {
         "source_generation": preview["source_generation"],
         "target_generation": preview["target_generation"],
+        "duckdb_runtime_cid": preview["duckdb_runtime_cid"],
         "source_runtime_root": preview["source_runtime_root"],
         "target_runtime_root": preview["target_runtime_root"],
         "source_head": preview["source_head"],
@@ -7403,9 +8759,22 @@ def verify_fresh_generation_recovery(
         raw_qualification, preview=preview, source_root=authority_root
     )
     qualification_cid = str(qualification.get("receipt_cid") or "")
+    projection_bindings = {
+        field: qualification[field]
+        for field in (
+            "validation_projection_omission_commitment",
+            "validation_projection_omission_root",
+            "validation_projection_evidence_commitment",
+            "validation_projection_evidence_root",
+        )
+    }
     if (
         manifest.get("validation_qualification_cid") != qualification_cid
         or receipt.get("validation_qualification_cid") != qualification_cid
+        or any(
+            manifest.get(field) != value or receipt.get(field) != value
+            for field, value in projection_bindings.items()
+        )
     ):
         raise MaterializationError("fresh recovery qualification binding differs")
     receipt_projection = {
@@ -7417,6 +8786,7 @@ def verify_fresh_generation_recovery(
         "population_root": manifest["population_root"],
         "manifest_cid": manifest_cid,
         "source_evidence_cid": manifest["source_evidence_cid"],
+        "duckdb_runtime_cid": manifest["duckdb_runtime_cid"],
         "completed_task_ids": list(
             FRESH_RECOVERY_CONSTRUCTION_COMPLETIONS
             + FRESH_RECOVERY_MERGE_COMPLETIONS
@@ -7427,6 +8797,7 @@ def verify_fresh_generation_recovery(
         "todo_count": 13,
         "blocked_count": 2,
         "validation_qualification_cid": qualification_cid,
+        **projection_bindings,
         "model_provider_route": "none",
         "network_isolation_enforced": True,
         "candidate_authored_validation": True,
@@ -7809,6 +9180,7 @@ def verify_fresh_generation_recovery(
         "manifest_cid": manifest_cid,
         "receipt_cid": receipt["receipt_cid"],
         "source_evidence_cid": manifest["source_evidence_cid"],
+        "duckdb_runtime_cid": manifest["duckdb_runtime_cid"],
         "completed_task_ids": list(
             FRESH_RECOVERY_CONSTRUCTION_COMPLETIONS
             + FRESH_RECOVERY_MERGE_COMPLETIONS
@@ -7820,6 +9192,7 @@ def verify_fresh_generation_recovery(
         "blocked_count": 2,
         "ready_task_ids": ["LGCVF-081"],
         "validation_qualification_cid": qualification_cid,
+        **projection_bindings,
         "model_provider_route": "none",
         "network_isolation_enforced": True,
         "candidate_authored_validation": True,
@@ -8003,6 +9376,7 @@ def _materialize_fresh_recovery_stage(
     return receipt
 
 
+@_with_bound_duckdb_runtime
 def materialize_fresh_generation_recovery(
     config: Mapping[str, Any],
     population: Mapping[str, Any],
@@ -8013,6 +9387,7 @@ def materialize_fresh_generation_recovery(
 ) -> dict[str, Any]:
     """Atomically publish a new run-v17 containing only 13 proved completions."""
 
+    _require_isolated_recovery_interpreter()
     authority_root = (source_root or root).resolve(strict=True)
     source_binding = _require_clean_recovery_source(
         config, population, source_root=authority_root
@@ -8174,6 +9549,7 @@ def materialize_fresh_generation_recovery(
             "population_root": manifest["population_root"],
             "manifest_cid": manifest["manifest_cid"],
             "source_evidence_cid": manifest["source_evidence_cid"],
+            "duckdb_runtime_cid": manifest["duckdb_runtime_cid"],
             "bootstrap_receipt_cid": bootstrap["receipt_cid"],
             "bootstrap_receipt_sha256": _sha256_file(staged_paths["receipt"]),
             "imported_completions": imported,
@@ -8188,6 +9564,18 @@ def materialize_fresh_generation_recovery(
             "blocked_count": 2,
             "validation_qualification_cid": manifest[
                 "validation_qualification_cid"
+            ],
+            "validation_projection_omission_commitment": manifest[
+                "validation_projection_omission_commitment"
+            ],
+            "validation_projection_omission_root": manifest[
+                "validation_projection_omission_root"
+            ],
+            "validation_projection_evidence_commitment": manifest[
+                "validation_projection_evidence_commitment"
+            ],
+            "validation_projection_evidence_root": manifest[
+                "validation_projection_evidence_root"
             ],
             "model_provider_route": "none",
             "network_isolation_enforced": True,
@@ -8502,6 +9890,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
+        if args.command in {
+            "materialize",
+            "verify",
+            "recovery-preview",
+            "recovery-materialize",
+            "recovery-verify",
+        }:
+            _require_isolated_recovery_interpreter()
         config = load_config()
         population = build_population(config)
         if args.command == "population":

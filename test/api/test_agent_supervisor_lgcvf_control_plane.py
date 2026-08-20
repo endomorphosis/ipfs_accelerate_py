@@ -31,8 +31,162 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
 from scripts import (
     materialize_logic_governed_compositional_verification_fabric_control_plane as materializer,
 )
+from scripts import (
+    qualify_logic_governed_compositional_verification_fabric as qualifier,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _create_sealed_datasets_repository(repository: Path) -> None:
+    """Create the minimal clean nested Git repository required by recovery."""
+
+    nested = repository / "ipfs_datasets_py"
+    package = nested / "ipfs_datasets_py"
+    tests = nested / "tests"
+    package.mkdir(parents=True)
+    tests.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (tests / ".gitkeep").write_text("", encoding="utf-8")
+    (nested / ".gitignore").write_text(
+        "__pycache__/\n*.py[co]\n", encoding="utf-8"
+    )
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("add", "."),
+        ("commit", "-qm", "sealed datasets source"),
+    ):
+        subprocess.run(
+            ("git", *arguments),
+            cwd=nested,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+
+def _sealed_materializer_script(tmp_path: Path) -> Path:
+    """Build a minimal clean tracked checkout for exact isolated guard tests."""
+
+    repository = tmp_path / "sealed-materializer-source"
+    script = (
+        repository
+        / "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py"
+    )
+    script.parent.mkdir(parents=True)
+    shutil.copy2(
+        ROOT
+        / "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py",
+        script,
+    )
+    config = (
+        repository
+        / "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json"
+    )
+    config.parent.mkdir(parents=True)
+    shutil.copy2(
+        ROOT
+        / "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json",
+        config,
+    )
+    package = repository / "ipfs_accelerate_py/agent_supervisor"
+    for relative in (
+        "../__init__.py",
+        "__init__.py",
+        "merge/__init__.py",
+        "planning/__init__.py",
+        "proof/__init__.py",
+        "task_sources/__init__.py",
+    ):
+        path = package / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    (package / "merge/database_coordination.py").write_text(
+        "def read_coordination_history_projection(*args, **kwargs): return {}\n"
+        "def read_coordination_registry_projection(*args, **kwargs): return {}\n",
+        encoding="utf-8",
+    )
+    (package / "planning/formal_planning_contracts.py").write_text(
+        "FormalWorkPlan = object\n", encoding="utf-8"
+    )
+    revision_names = (
+        "CompletionAuthority",
+        "DeltaEffectClass",
+        "LifecycleState",
+        "MergeStrategyKind",
+        "PlanAuthorityRoots",
+        "PlanCompletionRule",
+        "PlanConflictContract",
+        "PlanDelta",
+        "PlanDeltaItem",
+        "PlanDeltaOperation",
+        "PlanLeaseContract",
+        "PlanMergeStrategy",
+        "PlanOrigin",
+        "PlanPopulationDigest",
+        "PlanProviderContract",
+        "PlanResourceContract",
+        "PlanRetryContract",
+        "PlanRevision",
+        "PlanWorktreeContract",
+        "PopulationKind",
+    )
+    (package / "planning/plan_revision_contracts.py").write_text(
+        "\n".join(f"{name} = object" for name in revision_names) + "\n",
+        encoding="utf-8",
+    )
+    (package / "proof/formal_verification_contracts.py").write_text(
+        "def content_identity(value): return 'fixture'\n", encoding="utf-8"
+    )
+    (package / "task_sources/intent_repository.py").write_text(
+        "def task_authority_spec_cid(*args, **kwargs): return 'fixture'\n"
+        "def task_projection_spec_cid(*args, **kwargs): return 'fixture'\n",
+        encoding="utf-8",
+    )
+    (package / "task_sources/todo_vector_index.py").write_text(
+        "def parse_todo_blocks(*args, **kwargs): return []\n"
+        "def split_csv(*args, **kwargs): return []\n",
+        encoding="utf-8",
+    )
+    (repository / ".gitignore").write_text(
+        "__pycache__/\n*.py[co]\n", encoding="utf-8"
+    )
+    (repository / "test").mkdir()
+    (repository / "test/.gitkeep").write_text("", encoding="utf-8")
+    _create_sealed_datasets_repository(repository)
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("add", "."),
+        ("commit", "-qm", "sealed materializer source"),
+    ):
+        subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    return script
+
+
+@pytest.fixture(autouse=True)
+def _unit_test_recovery_runtime_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Core unit tests run in pytest; subprocess tests retain the real guard."""
+
+    monkeypatch.setattr(
+        materializer,
+        "_require_isolated_recovery_interpreter",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        qualifier,
+        "_require_isolated_recovery_runtime",
+        lambda: None,
+    )
 
 
 def _population() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -91,7 +245,34 @@ def _fake_recovery_qualification(preview: dict[str, Any]) -> dict[str, Any]:
         }
         observation["observation_cid"] = materializer.content_identity(observation)
         suites.append(observation)
-    receipt = {"schema": "test-only-recovery-qualification", "suites": suites}
+    omission = {
+        "schema": "lgcvf-recovery-validation-projection-omission@1",
+        "accelerator_head": preview["source_head"],
+        "accelerator_tree": preview["source_tree"],
+        "datasets_gitlink": "fixture-datasets-gitlink",
+        "datasets_tree": "fixture-datasets-tree",
+        "omitted_source_symlinks": [],
+    }
+    omission["commitment_cid"] = materializer.content_identity(omission)
+    projection_evidence = {
+        "schema": "lgcvf-recovery-validation-projection-evidence@1",
+        "source_binding_cid": "fixture-source-binding-cid",
+        "omission_root": omission["commitment_cid"],
+        "ordered_suites": [],
+    }
+    projection_evidence["commitment_cid"] = materializer.content_identity(
+        projection_evidence
+    )
+    receipt = {
+        "schema": "test-only-recovery-qualification",
+        "suites": suites,
+        "validation_projection_omission_commitment": omission,
+        "validation_projection_omission_root": omission["commitment_cid"],
+        "validation_projection_evidence_commitment": projection_evidence,
+        "validation_projection_evidence_root": projection_evidence[
+            "commitment_cid"
+        ],
+    }
     receipt["receipt_cid"] = materializer.content_identity(receipt)
     return receipt
 
@@ -1067,6 +1248,35 @@ def test_fresh_recovery_preview_is_no_write_and_rejects_quarantine_drift(
     preview = materializer.preview_fresh_generation_recovery(
         config, population, root=tmp_path, source_root=ROOT
     )
+    policy = config["fresh_generation_recovery"]
+    assert preview["schema"] == materializer.FRESH_RECOVERY_PREVIEW_SCHEMA
+    assert preview["duckdb_runtime_cid"] == policy["duckdb_runtime_cid"]
+    assert preview["verification_python_executable"] == str(
+        Path(sys.executable).resolve(strict=True)
+    )
+    assert preview["verification_python_executable_sha256"] == (
+        policy["verification_python_executable_sha256"]
+    )
+    wrong_runtime = copy.deepcopy(config)
+    wrong_runtime["fresh_generation_recovery"]["duckdb_runtime_cid"] = (
+        "baguqeera-wrong-runtime"
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="DuckDB runtime differs from configuration",
+    ):
+        materializer._require_bound_duckdb_runtime_policy(wrong_runtime)  # noqa: SLF001
+    wrong_interpreter = copy.deepcopy(config)
+    wrong_interpreter["fresh_generation_recovery"][
+        "verification_python_executable_sha256"
+    ] = "sha256:" + "0" * 64
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="verification interpreter differs from configuration",
+    ):
+        materializer._require_bound_duckdb_runtime_policy(  # noqa: SLF001
+            wrong_interpreter
+        )
     forest_poison = copy.deepcopy(population)
     forest_poison.pop("population_root")
     forest_poison["source_forest_root"] = "baguqeera-forged-source-forest"
@@ -1206,6 +1416,522 @@ def test_generic_verify_cli_routes_to_strict_fresh_recovery(
     assert json.loads(capsys.readouterr().out)["schema"] == "strict-recovery-test"
 
 
+def test_recovery_direct_api_and_cli_require_isolated_python(tmp_path: Path) -> None:
+    script = _sealed_materializer_script(tmp_path)
+    probe = r'''
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+script = Path(sys.argv[1])
+specification = importlib.util.spec_from_file_location("lgcvf_materializer_guard", script)
+module = importlib.util.module_from_spec(specification)
+sys.modules[specification.name] = module
+specification.loader.exec_module(module)
+if len(sys.argv) > 2 and sys.argv[2] == "spoof-write-bytecode":
+    sys.dont_write_bytecode = True
+elif len(sys.argv) > 2 and sys.argv[2] == "spoof-all-python-flags":
+    sys.dont_write_bytecode = True
+    sys.flags = SimpleNamespace(
+        isolated=1,
+        ignore_environment=1,
+        no_site=1,
+        safe_path=True,
+        dont_write_bytecode=1,
+    )
+operations = (
+    module.preview_fresh_generation_recovery,
+    module.verify_fresh_generation_recovery.__wrapped__,
+    module.materialize_fresh_generation_recovery.__wrapped__,
+)
+errors = []
+for operation in operations:
+    try:
+        operation({}, {})
+    except module.MaterializationError as exc:
+        errors.append(str(exc))
+    else:
+        raise SystemExit("empty recovery config was admitted")
+print(json.dumps(errors))
+'''
+    base_environment = {"HOME": str(ROOT), "LANG": "C", "PATH": "/usr/bin:/bin"}
+    ordinary_api = subprocess.run(
+        (sys.executable, "-c", probe, str(script)),
+        cwd=ROOT,
+        env=base_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert ordinary_api.returncode == 0, ordinary_api.stderr
+    assert json.loads(ordinary_api.stdout) == [
+        "protected recovery requires python -I -S -B"
+    ] * 3
+
+    missing_b_spoof = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            probe,
+            str(script),
+            "spoof-write-bytecode",
+        ),
+        cwd=ROOT,
+        env=base_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert missing_b_spoof.returncode == 0, missing_b_spoof.stderr
+    assert json.loads(missing_b_spoof.stdout) == [
+        "protected recovery requires python -I -S -B"
+    ] * 3
+
+    replaced_flags = subprocess.run(
+        (
+            sys.executable,
+            "-c",
+            probe,
+            str(script),
+            "spoof-all-python-flags",
+        ),
+        cwd=ROOT,
+        env=base_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert replaced_flags.returncode == 0, replaced_flags.stderr
+    assert json.loads(replaced_flags.stdout) == [
+        "protected recovery requires python -I -S -B"
+    ] * 3
+
+    isolated_api = subprocess.run(
+        (sys.executable, "-I", "-S", "-B", "-c", probe, str(script)),
+        cwd=ROOT,
+        env=base_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert isolated_api.returncode == 0, isolated_api.stderr
+    assert all(
+        "protected recovery requires" not in error
+        for error in json.loads(isolated_api.stdout)
+    )
+
+    ordinary_cli = subprocess.run(
+        (sys.executable, str(script), "recovery-preview"),
+        cwd=ROOT,
+        env=base_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert ordinary_cli.returncode == 2, ordinary_cli.stderr
+    ordinary_result = json.loads(ordinary_cli.stdout)
+    assert ordinary_result["error"] == "protected recovery requires python -I -S -B"
+
+    isolated_cli = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            str(script),
+            "recovery-preview",
+        ),
+        cwd=ROOT,
+        env=base_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    isolated_result = json.loads(isolated_cli.stdout)
+    assert "protected recovery requires" not in str(isolated_result.get("error", ""))
+
+
+@pytest.mark.parametrize("index_flag", ("--skip-worktree", "--assume-unchanged"))
+def test_recovery_direct_entry_binds_config_to_ordinary_head_bytes(
+    tmp_path: Path,
+    index_flag: str,
+) -> None:
+    relative = (
+        "config/agent_supervisor_logic_governed_compositional_verification_fabric_"
+        "scheduler.json"
+    )
+    environment = {"HOME": str(tmp_path), "LANG": "C", "PATH": "/usr/bin:/bin"}
+    api_script = _sealed_materializer_script(tmp_path / "api")
+    api_repository = api_script.parents[1]
+    api_probe = r'''
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+script = Path(sys.argv[1])
+relative = sys.argv[2]
+index_flag = sys.argv[3]
+specification = importlib.util.spec_from_file_location("guard", script)
+module = importlib.util.module_from_spec(specification)
+sys.modules[specification.name] = module
+specification.loader.exec_module(module)
+subprocess.run(
+    ("/usr/bin/git", "update-index", index_flag, "--", relative),
+    cwd=script.parents[1],
+    check=True,
+)
+config = script.parents[1] / relative
+config.write_bytes(config.read_bytes() + b"\n")
+try:
+    module.preview_fresh_generation_recovery({}, {})
+except module.MaterializationError as exc:
+    print(json.dumps({"error": str(exc)}))
+else:
+    raise SystemExit("exceptional-index config was admitted")
+'''
+    direct = subprocess.run(
+        (
+            "/usr/bin/python3.12",
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            api_probe,
+            str(api_script),
+            relative,
+            index_flag,
+        ),
+        cwd=api_repository,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert direct.returncode == 0, direct.stderr
+    assert json.loads(direct.stdout) == {
+        "error": "protected recovery configuration differs from HEAD"
+    }
+    assert not (
+        api_repository
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
+    ).exists()
+
+    cli_script = _sealed_materializer_script(tmp_path / "cli")
+    cli_repository = cli_script.parents[1]
+    cli_config = cli_repository / relative
+    before_inventory = sorted(
+        path.relative_to(cli_repository).as_posix()
+        for path in cli_repository.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    )
+    subprocess.run(
+        ("/usr/bin/git", "update-index", index_flag, "--", relative),
+        cwd=cli_repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cli_config.write_bytes(cli_config.read_bytes() + b"\n")
+    cli = subprocess.run(
+        (
+            "/usr/bin/python3.12",
+            "-I",
+            "-S",
+            "-B",
+            str(cli_script),
+            "recovery-preview",
+        ),
+        cwd=cli_repository,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert cli.returncode != 0
+    assert "protected recovery configuration" in cli.stderr
+    assert not (
+        cli_repository
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
+    ).exists()
+    assert sorted(
+        path.relative_to(cli_repository).as_posix()
+        for path in cli_repository.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    ) == before_inventory
+
+
+@pytest.mark.parametrize("repository_scope", ("accelerator", "datasets"))
+@pytest.mark.parametrize("substitution", ("grafts", "replace"))
+def test_recovery_direct_entry_rejects_git_object_substitution(
+    tmp_path: Path,
+    repository_scope: str,
+    substitution: str,
+) -> None:
+    script = _sealed_materializer_script(tmp_path)
+    repository = script.parents[1]
+    selected = (
+        repository if repository_scope == "accelerator" else repository / "ipfs_datasets_py"
+    )
+    common = Path(
+        subprocess.run(
+            (
+                "/usr/bin/git",
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    if substitution == "grafts":
+        head = subprocess.run(
+            ("/usr/bin/git", "rev-parse", "HEAD"),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        grafts = common / "info/grafts"
+        grafts.parent.mkdir(parents=True, exist_ok=True)
+        grafts.write_text(head + "\n", encoding="utf-8")
+    else:
+        marker = selected / "replacement-parent-fixture"
+        marker.write_text("replacement parent\n", encoding="utf-8")
+        subprocess.run(
+            ("/usr/bin/git", "add", marker.name),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ("/usr/bin/git", "commit", "-qm", "replacement parent fixture"),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        head = subprocess.run(
+            ("/usr/bin/git", "rev-parse", "HEAD"),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        parent = subprocess.run(
+            ("/usr/bin/git", "rev-parse", "HEAD^"),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if repository_scope == "datasets":
+            subprocess.run(
+                ("/usr/bin/git", "add", "ipfs_datasets_py"),
+                cwd=repository,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ("/usr/bin/git", "commit", "-qm", "bind nested replacement fixture"),
+                cwd=repository,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        subprocess.run(
+            ("/usr/bin/git", "update-ref", f"refs/replace/{head}", parent),
+            cwd=selected,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    with pytest.raises(RuntimeError, match="(?:object substitution|replacement refs)"):
+        materializer._git_object_substitution_state(selected)  # noqa: SLF001
+
+    completed = subprocess.run(
+        (
+            "/usr/bin/python3.12",
+            "-I",
+            "-S",
+            "-B",
+            str(script),
+            "recovery-preview",
+        ),
+        cwd=repository,
+        env={"HOME": str(repository), "LANG": "C", "PATH": "/usr/bin:/bin"},
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode != 0
+    assert "protected recovery" in completed.stderr
+    assert not (
+        repository
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17"
+    ).exists()
+
+
+@pytest.mark.parametrize("repository_scope", ("accelerator", "datasets"))
+@pytest.mark.parametrize("attack", ("fsmonitor", "filter", "same-size-mtime"))
+def test_recovery_materializer_git_observations_are_raw_head_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository_scope: str,
+    attack: str,
+) -> None:
+    def git(repository: Path, *arguments: str) -> str:
+        return subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    outer = tmp_path / "accelerator"
+    outer_source = outer / "package/source.py"
+    outer_source.parent.mkdir(parents=True)
+    outer_source.write_bytes(b"VALUE = 'AAAA'\n")
+    nested = outer / "ipfs_datasets_py"
+    nested_source = nested / "package/source.py"
+    nested_source.parent.mkdir(parents=True)
+    nested_source.write_bytes(b"VALUE = 'AAAA'\n")
+    for repository in (nested, outer):
+        git(repository, "init", "-q")
+        git(repository, "config", "user.email", "fixture@example.invalid")
+        git(repository, "config", "user.name", "LGCVF Fixture")
+        git(repository, "add", ".")
+        git(repository, "commit", "-qm", "sealed raw Git fixture")
+
+    monkeypatch.setattr(
+        materializer,
+        "_ISOLATED_RECOVERY_PYCACHE_DIRECTORY",
+        object(),
+    )
+    selected = outer if repository_scope == "accelerator" else nested
+    source = outer_source if repository_scope == "accelerator" else nested_source
+    original = source.stat()
+    source.write_bytes(b"VALUE = 'BBBB'\n")
+    os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+
+    if attack == "same-size-mtime":
+        with pytest.raises(RuntimeError, match="differs from HEAD"):
+            materializer._scan_isolated_recovery_import_roots(  # noqa: SLF001
+                selected,
+                roots=("package",),
+                tracked_pathspecs=("package",),
+                root_import_candidates=False,
+            )
+        return
+
+    common = Path(
+        git(
+            selected,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        )
+    )
+    marker = tmp_path / f"{repository_scope}-{attack}-executed"
+    hook = common / f"{attack}-hook"
+    hook.write_text(
+        "#!/bin/sh\n"
+        f"touch {str(marker)!r}\n"
+        "cat\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o700)
+    if attack == "fsmonitor":
+        git(selected, "config", "core.fsmonitor", str(hook))
+        with pytest.raises(RuntimeError, match="source is not clean"):
+            materializer._clean_recovery_import_source(selected)  # noqa: SLF001
+    else:
+        git(selected, "config", "filter.lgcvf-evil.clean", str(hook))
+        attributes = common / "info/attributes"
+        attributes.parent.mkdir(parents=True, exist_ok=True)
+        attributes.write_text("*.py filter=lgcvf-evil\n", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="(?:substitution|filter drivers)"):
+            materializer._git_object_substitution_state(selected)  # noqa: SLF001
+    assert marker.exists() is False
+
+
+@pytest.mark.parametrize("authority", ("formal_plan_path", "taskboard_path"))
+def test_recovery_population_authority_rejects_raw_blob_drift(
+    tmp_path: Path,
+    authority: str,
+) -> None:
+    repository = tmp_path / "authority"
+    repository.mkdir()
+    relative = {
+        "formal_plan_path": "formal.json",
+        "taskboard_path": "taskboard.md",
+    }[authority]
+    path = repository / relative
+    path.write_bytes(b"trusted-authority-bytes\n")
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "LGCVF Fixture"),
+        ("add", "."),
+        ("commit", "-qm", "sealed authority fixture"),
+    ):
+        subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    _path, payload, _digest = materializer._read_regular_evidence_bytes(  # noqa: SLF001
+        repository,
+        relative,
+        field=authority,
+    )
+    materializer._require_head_bound_recovery_bytes(  # noqa: SLF001
+        repository,
+        relative,
+        payload,
+        field=authority,
+    )
+    original = path.stat()
+    changed = bytearray(payload)
+    changed[0] = ord("T")
+    path.write_bytes(changed)
+    os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
+    _path, changed_payload, _digest = materializer._read_regular_evidence_bytes(  # noqa: SLF001
+        repository,
+        relative,
+        field=authority,
+    )
+    with pytest.raises(materializer.MaterializationError, match="index and HEAD"):
+        materializer._require_head_bound_recovery_bytes(  # noqa: SLF001
+            repository,
+            relative,
+            changed_payload,
+            field=authority,
+        )
+
+
 def test_protected_generation_rejects_legacy_successor_routes_without_writes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1215,6 +1941,17 @@ def test_protected_generation_rejects_legacy_successor_routes_without_writes(
     target = materializer._fresh_recovery_paths(  # noqa: SLF001
         config, root=tmp_path
     )["target"]
+    authoritative_target = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=ROOT
+    )["target"]
+    authoritative_before = (
+        materializer._directory_fingerprint(  # noqa: SLF001
+            authoritative_target,
+            require_private=True,
+        )
+        if authoritative_target.exists()
+        else None
+    )
 
     for operation in (
         materializer.preview_successor,
@@ -1238,10 +1975,12 @@ def test_protected_generation_rejects_legacy_successor_routes_without_writes(
         result = json.loads(capsys.readouterr().out)
         assert result["valid"] is False
         assert "reject legacy successor" in result["error"]
-    authoritative_target = materializer._fresh_recovery_paths(  # noqa: SLF001
-        config, root=ROOT
-    )["target"]
-    assert not authoritative_target.exists()
+    assert authoritative_target.exists() is (authoritative_before is not None)
+    if authoritative_before is not None:
+        assert materializer._directory_fingerprint(  # noqa: SLF001
+            authoritative_target,
+            require_private=True,
+        ) == authoritative_before
 
 
 def test_fresh_recovery_atomic_idempotent_strict_and_read_only(
@@ -1276,6 +2015,23 @@ def test_fresh_recovery_atomic_idempotent_strict_and_read_only(
     )
 
     assert replay["receipt_cid"] == receipt["receipt_cid"]
+    assert receipt["schema"] == materializer.FRESH_RECOVERY_RECEIPT_SCHEMA
+    assert report["schema"] == materializer.FRESH_RECOVERY_VERIFICATION_SCHEMA
+    assert report["duckdb_runtime_cid"] == config["fresh_generation_recovery"][
+        "duckdb_runtime_cid"
+    ]
+    assert report["validation_projection_omission_commitment"] == qualification[
+        "validation_projection_omission_commitment"
+    ]
+    assert report["validation_projection_omission_root"] == qualification[
+        "validation_projection_omission_root"
+    ]
+    assert report["validation_projection_evidence_commitment"] == qualification[
+        "validation_projection_evidence_commitment"
+    ]
+    assert report["validation_projection_evidence_root"] == qualification[
+        "validation_projection_evidence_root"
+    ]
     assert (report["completed_count"], report["todo_count"], report["blocked_count"]) == (
         13,
         13,
@@ -1884,6 +2640,7 @@ import os
 import sys
 from pathlib import Path
 from scripts import materialize_logic_governed_compositional_verification_fabric_control_plane as materializer
+from scripts import qualify_logic_governed_compositional_verification_fabric as qualifier
 
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 config = payload["config"]
@@ -1895,6 +2652,8 @@ materializer._require_clean_recovery_source = lambda *_args, **_kwargs: (
     population["source_head"],
     str(population["repository_tree_id"]).removeprefix("git-tree:"),
 )
+materializer._require_isolated_recovery_interpreter = lambda: None
+qualifier._require_isolated_recovery_runtime = lambda: None
 materializer._run_and_verify_recovery_qualification = (
     lambda **_kwargs: copy.deepcopy(qualification)
 )

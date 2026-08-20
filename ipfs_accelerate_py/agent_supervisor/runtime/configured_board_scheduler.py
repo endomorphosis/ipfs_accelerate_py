@@ -13,10 +13,13 @@ optional tools.
 from __future__ import annotations
 
 import argparse
+import fcntl
+import grp
 import hashlib
 import json
 import math
 import os
+import pwd
 import re
 import shutil
 import signal
@@ -154,11 +157,17 @@ ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
 FRESH_RECOVERY_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "lgcvf-fresh-generation-recovery-policy@1"
+    "lgcvf-fresh-generation-recovery-policy@2"
 )
 FRESH_RECOVERY_VERIFICATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "lgcvf-fresh-generation-recovery-verification@1"
+    "lgcvf-fresh-generation-recovery-verification@3"
+)
+FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA = (
+    "lgcvf-recovery-validation-projection-omission@1"
+)
+FRESH_RECOVERY_PROJECTION_EVIDENCE_SCHEMA = (
+    "lgcvf-recovery-validation-projection-evidence@1"
 )
 FRESH_RECOVERY_TARGET_GENERATION = "lgcvf-run-v17"
 FRESH_RECOVERY_TARGET_RELATIVE_ROOT = (
@@ -183,6 +192,7 @@ FRESH_RECOVERY_VERIFICATION_FIELDS = frozenset(
         "manifest_cid",
         "receipt_cid",
         "source_evidence_cid",
+        "duckdb_runtime_cid",
         "completed_task_ids",
         "todo_task_ids",
         "blocked_task_ids",
@@ -191,6 +201,10 @@ FRESH_RECOVERY_VERIFICATION_FIELDS = frozenset(
         "blocked_count",
         "ready_task_ids",
         "validation_qualification_cid",
+        "validation_projection_omission_commitment",
+        "validation_projection_omission_root",
+        "validation_projection_evidence_commitment",
+        "validation_projection_evidence_root",
         "model_provider_route",
         "network_isolation_enforced",
         "candidate_authored_validation",
@@ -208,6 +222,36 @@ FRESH_RECOVERY_VERIFICATION_FIELDS = frozenset(
     }
 )
 FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES = 1_048_576
+FRESH_RECOVERY_GIT_STATUS_MAX_OUTPUT_BYTES = 1_048_576
+FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES = 100_000
+FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES = 16 * 1024 * 1024
+FRESH_RECOVERY_IMPORT_FILE_MAX_BYTES = 64 * 1024 * 1024
+FRESH_RECOVERY_IMPORT_CONTENT_MAX_BYTES = 512 * 1024 * 1024
+FRESH_RECOVERY_INTERPRETER_MAX_BYTES = 64 * 1024 * 1024
+FRESH_RECOVERY_MATERIALIZER_MAX_BYTES = 4 * 1024 * 1024
+FRESH_RECOVERY_MATERIALIZER_BOOTSTRAP = (
+    "import os,sys\n"
+    "_path=sys.argv[1]\n"
+    "_fd=int(sys.argv[2])\n"
+    "_pycache=sys.argv[3]\n"
+    "_cache_stat=os.lstat(_pycache)\n"
+    "if not os.path.isdir(_pycache): "
+    "raise RuntimeError('pycache root is not a directory')\n"
+    "if _cache_stat.st_uid!=os.geteuid() or (_cache_stat.st_mode&0o777)!=0o700: "
+    "raise RuntimeError('pycache root authority differs')\n"
+    "if os.listdir(_pycache): raise RuntimeError('pycache root is not empty')\n"
+    "sys.pycache_prefix=_pycache\n"
+    "_source=bytearray()\n"
+    "while True:\n"
+    " _chunk=os.read(_fd,1048576)\n"
+    " if not _chunk: break\n"
+    " _source.extend(_chunk)\n"
+    " if len(_source)>4194304: raise RuntimeError('materializer exceeds bound')\n"
+    "sys.argv=[_path,*sys.argv[4:]]\n"
+    "_scope={'__name__':'__main__','__file__':_path,'__package__':None,"
+    "'__cached__':None,'__spec__':None}\n"
+    "exec(compile(bytes(_source),_path,'exec',dont_inherit=True),_scope,_scope)\n"
+)
 SCHEDULER_PROVIDER_ENV_NAMES = (
     PROVIDER_ENV,
     FALLBACK_PROVIDER_ENV,
@@ -368,7 +412,9 @@ def _sanitized_git_environment() -> dict[str, str]:
         {
             "PATH": "/usr/bin:/bin",
             "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_ATTR_NOSYSTEM": "1",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
         }
@@ -382,7 +428,22 @@ def _git_run(
     cwd: Path,
     timeout: float = 120.0,
 ) -> subprocess.CompletedProcess[str]:
-    command = ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *argv]
+    command = [
+        "/usr/bin/git",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.untrackedCache=false",
+        "-c",
+        "core.trustctime=true",
+        "-c",
+        "core.checkStat=default",
+        "-c",
+        "core.attributesFile=/dev/null",
+        *argv,
+    ]
     try:
         return subprocess.run(
             command,
@@ -2179,39 +2240,913 @@ def _run(
         )
 
 
-def _run_fresh_recovery_verifier(
-    board: ConfiguredBoard,
-    materializer_path: Path,
-) -> subprocess.CompletedProcess[str]:
-    """Run the protected public verifier without ambient provider authority."""
+def _fresh_recovery_private_primary_gid() -> int:
+    """Prove that the current primary group has no second filesystem writer."""
 
-    command = [sys.executable, "-I", str(materializer_path), "verify"]
-    environment = _sanitized_git_environment()
-    environment.update(
-        {
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONHASHSEED": "0",
-            "PYTHONNOUSERSITE": "1",
-        }
-    )
     try:
-        return subprocess.run(
-            command,
-            cwd=board.repo_root,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=300.0,
+        effective_uid = os.geteuid()
+        effective_gid = os.getegid()
+        account = pwd.getpwuid(effective_uid)
+        group = grp.getgrgid(effective_gid)
+        accounts = pwd.getpwall()
+    except (KeyError, OSError) as exc:
+        raise ConfiguredBoardError(
+            "private primary-group evidence is unavailable"
+        ) from exc
+    if len(accounts) > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
+        raise ConfiguredBoardError(
+            "private primary-group account inventory exceeds its bound"
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return subprocess.CompletedProcess(
-            command,
-            124,
-            "",
-            f"{type(exc).__name__}: {exc}",
+    matching_accounts = [item for item in accounts if item.pw_gid == effective_gid]
+    if (
+        account.pw_uid != effective_uid
+        or account.pw_gid != effective_gid
+        or group.gr_gid != effective_gid
+        or group.gr_mem
+        or len(matching_accounts) != 1
+        or matching_accounts[0].pw_uid != effective_uid
+        or matching_accounts[0].pw_name != account.pw_name
+    ):
+        raise ConfiguredBoardError(
+            "current primary group is not provably private"
         )
+    return effective_gid
+
+
+def _reject_fresh_recovery_git_object_substitution(
+    repo_root: Path,
+    *,
+    label: str,
+) -> None:
+    """Reject repository-local commit grafts and replacement-object refs.
+
+    A clean worktree and raw ``HEAD`` do not bind the effective tree when Git
+    is permitted to honor ``info/grafts`` or ``refs/replace``.  All trusted Git
+    subprocesses disable replacement objects as defense in depth; this explicit
+    observation makes either mechanism a typed admission failure rather than
+    silently ignoring untrusted repository metadata.
+    """
+
+    common_dir_result = _git_run(
+        ("rev-parse", "--path-format=absolute", "--git-common-dir"),
+        cwd=repo_root,
+        timeout=60.0,
+    )
+    common_dir_stdout = common_dir_result.stdout or ""
+    common_dir_stderr = common_dir_result.stderr or ""
+    if (
+        common_dir_result.returncode != 0
+        or common_dir_stderr
+        or len(common_dir_stdout.encode("utf-8", errors="replace")) > 4_096
+        or common_dir_stdout.count("\n") > 1
+    ):
+        raise ConfiguredBoardError(f"{label} Git common directory is unavailable")
+    raw_common_dir = common_dir_stdout.strip()
+    if not raw_common_dir:
+        raise ConfiguredBoardError(f"{label} Git common directory is unavailable")
+    common_dir = _canonical_no_symlink_root(Path(raw_common_dir))
+
+    replacement_refs = _git_run(
+        ("for-each-ref", "--format=%(refname)", "refs/replace/"),
+        cwd=repo_root,
+        timeout=60.0,
+    )
+    refs_stdout = replacement_refs.stdout or ""
+    refs_stderr = replacement_refs.stderr or ""
+    if (
+        replacement_refs.returncode != 0
+        or refs_stderr
+        or len(refs_stdout.encode("utf-8", errors="replace")) > 4_096
+    ):
+        raise ConfiguredBoardError(
+            f"{label} Git replacement-ref inventory is unavailable"
+        )
+    if refs_stdout:
+        raise ConfiguredBoardError(
+            f"{label} Git object substitution metadata is present"
+        )
+
+    filter_config = _git_run(
+        ("config", "--name-only", "--get-regexp", r"^filter\."),
+        cwd=repo_root,
+        timeout=60.0,
+    )
+    filter_stdout = filter_config.stdout or ""
+    filter_stderr = filter_config.stderr or ""
+    if (
+        filter_config.returncode not in {0, 1}
+        or filter_stderr
+        or len(filter_stdout.encode("utf-8", errors="replace")) > 4_096
+    ):
+        raise ConfiguredBoardError(
+            f"{label} Git filter configuration is unavailable"
+        )
+    if filter_config.returncode == 0 or filter_stdout:
+        raise ConfiguredBoardError(
+            f"{label} Git filter execution metadata is present"
+        )
+
+    for relative in (
+        Path("info/grafts"),
+        Path("refs/replace"),
+        Path("info/attributes"),
+    ):
+        candidate = common_dir / relative
+        try:
+            os.lstat(candidate)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                f"{label} Git object substitution metadata is unavailable"
+            ) from exc
+        noun = (
+            "filter execution"
+            if relative == Path("info/attributes")
+            else "object substitution"
+        )
+        raise ConfiguredBoardError(f"{label} Git {noun} metadata is present")
+
+
+def _fresh_recovery_clean_source_identity(
+    board: ConfiguredBoard,
+) -> tuple[
+    str,
+    str,
+    str,
+    tuple[tuple[str, str, str, str, str], ...],
+    dict[str, Any],
+]:
+    """Return one clean, stable outer/nested Git forest identity.
+
+    Recovery verification imports repository Python modules.  This check must
+    therefore run before the verifier process exists, rather than relying on
+    the ordinary preflight cleanliness check that follows verifier admission.
+    The caller repeats it after verification and compares the whole tuple so a
+    verifier cannot authorize a different outer tree, gitlink, or nested tree.
+    """
+
+    def clean_status(repo_root: Path, *, label: str) -> None:
+        status = _git_run(
+            (
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=normal",
+                "--ignore-submodules=none",
+            ),
+            cwd=repo_root,
+            timeout=60.0,
+        )
+        stdout = status.stdout or ""
+        stderr = status.stderr or ""
+        if (
+            len(stdout.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_GIT_STATUS_MAX_OUTPUT_BYTES
+            or len(stderr.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_GIT_STATUS_MAX_OUTPUT_BYTES
+        ):
+            raise ConfiguredBoardError(f"{label} Git status exceeds its bound")
+        if status.returncode != 0 or stderr:
+            raise ConfiguredBoardError(f"{label} Git status is unavailable")
+        if stdout:
+            raise ConfiguredBoardError(f"{label} checkout is not clean")
+
+    def require_ordinary_index(repo_root: Path, *, label: str) -> None:
+        index = _git_run(
+            ("ls-files", "-v", "-z"),
+            cwd=repo_root,
+            timeout=60.0,
+        )
+        stdout = index.stdout or ""
+        stderr = index.stderr or ""
+        if (
+            index.returncode != 0
+            or len(stdout.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or len(stderr.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or stderr
+        ):
+            raise ConfiguredBoardError(f"{label} Git index is unavailable")
+        records = [record for record in stdout.split("\0") if record]
+        if len(records) > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
+            raise ConfiguredBoardError(f"{label} Git index exceeds its bound")
+        if any(
+            len(record) < 3
+            or record[1] != " "
+            or record[0] != "H"
+            or not record[2:]
+            for record in records
+        ):
+            raise ConfiguredBoardError(
+                f"{label} Git index contains an exceptional tracked entry"
+            )
+
+    def import_inventory(
+        repo_root: Path,
+        *,
+        private_gid: int,
+        root_relatives: tuple[str, ...],
+        omission_scope: str,
+        omission_path_prefix: str = "",
+        include_repo_root_candidates: bool = False,
+    ) -> tuple[str, tuple[dict[str, str], ...]]:
+        tracked_command = (
+            ("ls-files", "-v", "-z")
+            if include_repo_root_candidates
+            else (
+                "ls-files",
+                "-v",
+                "-z",
+                "--",
+                *root_relatives,
+            )
+        )
+        tracked_result = _git_run(
+            tracked_command,
+            cwd=repo_root,
+            timeout=60.0,
+        )
+        stage_command = (
+            ("ls-files", "--stage", "-z")
+            if include_repo_root_candidates
+            else (
+                "ls-files",
+                "--stage",
+                "-z",
+                "--",
+                *root_relatives,
+            )
+        )
+        stage_result = _git_run(
+            stage_command,
+            cwd=repo_root,
+            timeout=60.0,
+        )
+        head_command = (
+            ("ls-tree", "-r", "-z", "HEAD")
+            if include_repo_root_candidates
+            else (
+                "ls-tree",
+                "-r",
+                "-z",
+                "HEAD",
+                "--",
+                *root_relatives,
+            )
+        )
+        head_result = _git_run(
+            head_command,
+            cwd=repo_root,
+            timeout=60.0,
+        )
+        tracked_output = tracked_result.stdout or ""
+        tracked_stderr = tracked_result.stderr or ""
+        stage_output = stage_result.stdout or ""
+        stage_stderr = stage_result.stderr or ""
+        head_output = head_result.stdout or ""
+        head_stderr = head_result.stderr or ""
+        if (
+            tracked_result.returncode != 0
+            or stage_result.returncode != 0
+            or head_result.returncode != 0
+            or len(tracked_output.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or len(tracked_stderr.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or len(stage_output.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or len(stage_stderr.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or len(head_output.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or len(head_stderr.encode("utf-8", errors="replace"))
+            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+            or tracked_stderr
+            or stage_stderr
+            or head_stderr
+        ):
+            raise ConfiguredBoardError(
+                "recovery import tracked-file inventory is unavailable"
+            )
+        tracked: set[str] = set()
+        for record in tracked_output.split("\0"):
+            if not record:
+                continue
+            if len(record) < 3 or record[1] != " ":
+                raise ConfiguredBoardError(
+                    "recovery import tracked-file inventory is malformed"
+                )
+            tag, relative = record[0], record[2:]
+            if tag != "H" or not relative:
+                raise ConfiguredBoardError(
+                    "recovery import source has an exceptional index state"
+                )
+            tracked.add(relative)
+
+        index_entries: dict[str, tuple[str, str]] = {}
+        for record in stage_output.split("\0"):
+            if not record:
+                continue
+            try:
+                metadata, relative = record.split("\t", 1)
+                mode, object_id, stage = metadata.split(" ")
+            except ValueError as exc:
+                raise ConfiguredBoardError(
+                    "recovery import staged-file inventory is malformed"
+                ) from exc
+            if (
+                not relative
+                or relative in index_entries
+                or stage != "0"
+                or mode not in {"100644", "100755", "120000", "160000"}
+                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", object_id)
+                is None
+            ):
+                raise ConfiguredBoardError(
+                    "recovery import staged-file identity differs"
+                )
+            index_entries[relative] = (mode, object_id)
+        if set(index_entries) != tracked:
+            raise ConfiguredBoardError(
+                "recovery import tracked and staged inventories disagree"
+            )
+
+        head_entries: dict[str, tuple[str, str]] = {}
+        for record in head_output.split("\0"):
+            if not record:
+                continue
+            try:
+                metadata, relative = record.split("\t", 1)
+                mode, object_kind, object_id = metadata.split(" ")
+            except ValueError as exc:
+                raise ConfiguredBoardError(
+                    "recovery import HEAD inventory is malformed"
+                ) from exc
+            expected_kind = "commit" if mode == "160000" else "blob"
+            if (
+                not relative
+                or relative in head_entries
+                or mode not in {"100644", "100755", "120000", "160000"}
+                or object_kind != expected_kind
+                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", object_id)
+                is None
+            ):
+                raise ConfiguredBoardError(
+                    "recovery import HEAD identity differs"
+                )
+            head_entries[relative] = (mode, object_id)
+        if head_entries != index_entries:
+            raise ConfiguredBoardError(
+                "recovery import index and HEAD inventories disagree"
+            )
+
+        selected: list[dict[str, Any]] = []
+        directories: list[dict[str, Any]] = []
+        links: list[dict[str, Any]] = []
+        omissions: list[dict[str, str]] = []
+        entry_count = 0
+        path_bytes = 0
+        content_bytes = 0
+
+        def filesystem_identity(
+            relative: str,
+            observed: os.stat_result,
+        ) -> dict[str, Any]:
+            return {
+                "path": relative,
+                "uid": int(observed.st_uid),
+                "gid": int(observed.st_gid),
+                "mode": stat.S_IMODE(observed.st_mode),
+                "nlink": int(observed.st_nlink),
+                "device": int(observed.st_dev),
+                "inode": int(observed.st_ino),
+                "size": int(observed.st_size),
+                "mtime_ns": int(observed.st_mtime_ns),
+            }
+
+        def bind_regular_import_source(
+            relative: str,
+            path: Path,
+            observed: os.stat_result,
+        ) -> dict[str, Any]:
+            """Bind raw stable bytes to the exact index and HEAD blob."""
+
+            nonlocal content_bytes
+            index_entry = index_entries.get(relative)
+            if index_entry is None or index_entry[0] not in {"100644", "100755"}:
+                raise ConfiguredBoardError(
+                    f"recovery import source has no regular Git entry: {relative}"
+                )
+            expected_mode, expected_oid = index_entry
+            filesystem_mode = "100755" if observed.st_mode & 0o111 else "100644"
+            if filesystem_mode != expected_mode:
+                raise ConfiguredBoardError(
+                    f"recovery import source mode differs from Git: {relative}"
+                )
+            try:
+                payload, stable_evidence = _read_stable_regular_bytes(
+                    path,
+                    max_bytes=FRESH_RECOVERY_IMPORT_FILE_MAX_BYTES,
+                )
+            except _StableArtifactReadError as exc:
+                raise ConfiguredBoardError(
+                    f"recovery import source cannot be read stably: {relative}"
+                ) from exc
+            if payload is None:
+                raise ConfiguredBoardError(
+                    f"recovery import source disappeared: {relative}"
+                )
+            observed_identity = (
+                int(observed.st_dev),
+                int(observed.st_ino),
+                stat.S_IMODE(observed.st_mode),
+                int(observed.st_nlink),
+                int(observed.st_uid),
+                int(observed.st_gid),
+                int(observed.st_size),
+                int(observed.st_mtime_ns),
+            )
+            stable_identity = (
+                int(stable_evidence["device"]),
+                int(stable_evidence["inode"]),
+                stat.S_IMODE(int(stable_evidence["mode"])),
+                int(stable_evidence["link_count"]),
+                int(stable_evidence["uid"]),
+                int(stable_evidence["gid"]),
+                int(stable_evidence["size"]),
+                int(stable_evidence["mtime_ns"]),
+            )
+            if stable_identity != observed_identity:
+                raise ConfiguredBoardError(
+                    f"recovery import source changed before hashing: {relative}"
+                )
+            content_bytes += len(payload)
+            if content_bytes > FRESH_RECOVERY_IMPORT_CONTENT_MAX_BYTES:
+                raise ConfiguredBoardError(
+                    "recovery import source content exceeds its aggregate bound"
+                )
+            hash_constructor = (
+                hashlib.sha1 if len(expected_oid) == 40 else hashlib.sha256
+            )
+            git_blob = f"blob {len(payload)}\0".encode("ascii") + payload
+            observed_oid = hash_constructor(git_blob).hexdigest()
+            if observed_oid != expected_oid:
+                raise ConfiguredBoardError(
+                    f"recovery import source raw Git blob differs: {relative}"
+                )
+            result = filesystem_identity(relative, observed)
+            result.update(
+                {
+                    "git_mode": expected_mode,
+                    "git_blob_oid": expected_oid,
+                    "content_sha256": stable_evidence["content_sha256"],
+                }
+            )
+            return result
+
+        def require_safe_directory(
+            relative: str,
+            observed: os.stat_result,
+        ) -> None:
+            mode = stat.S_IMODE(observed.st_mode)
+            if (
+                observed.st_uid != os.geteuid()
+                or observed.st_nlink < 1
+                or mode & 0o002
+                or (mode & 0o020 and observed.st_gid != private_gid)
+            ):
+                raise ConfiguredBoardError(
+                    f"recovery import directory identity differs: {relative}"
+                )
+
+        if include_repo_root_candidates:
+            try:
+                root_status = os.lstat(repo_root)
+                with os.scandir(repo_root) as iterator:
+                    root_entries = sorted(iterator, key=lambda item: item.name)
+            except OSError as exc:
+                raise ConfiguredBoardError(
+                    "recovery repository-root import inventory is unavailable"
+                ) from exc
+            require_safe_directory(".", root_status)
+            directories.append(filesystem_identity(".", root_status))
+            for entry in root_entries:
+                entry_count += 1
+                if entry_count > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
+                    raise ConfiguredBoardError(
+                        "recovery import inventory exceeds its entry bound"
+                    )
+                relative = entry.name
+                path_bytes += len(relative.encode("utf-8"))
+                if path_bytes > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES:
+                    raise ConfiguredBoardError(
+                        "recovery import inventory exceeds its path bound"
+                    )
+                path = Path(entry.path)
+                suffix = path.suffix.lower()
+                if suffix not in {
+                    ".py",
+                    ".pyc",
+                    ".pyo",
+                    ".so",
+                    ".pyd",
+                    ".dylib",
+                }:
+                    continue
+                try:
+                    observed = entry.stat(follow_symlinks=False)
+                except OSError as exc:
+                    raise ConfiguredBoardError(
+                        "recovery root import identity is unavailable"
+                    ) from exc
+                if stat.S_ISLNK(observed.st_mode):
+                    raise ConfiguredBoardError(
+                        "recovery root import inventory contains an unsafe "
+                        f"link: {relative}"
+                    )
+                if not stat.S_ISREG(observed.st_mode):
+                    raise ConfiguredBoardError(
+                        "recovery root import inventory contains a special file"
+                    )
+                if (
+                    observed.st_uid != os.geteuid()
+                    or observed.st_nlink != 1
+                ):
+                    raise ConfiguredBoardError(
+                        "recovery root import source file identity differs"
+                    )
+                mode = stat.S_IMODE(observed.st_mode)
+                if mode & 0o002 or (
+                    mode & 0o020 and observed.st_gid != private_gid
+                ):
+                    raise ConfiguredBoardError(
+                        "recovery root import source has an unsafe writable mode"
+                    )
+                if suffix == ".py":
+                    if relative not in tracked:
+                        raise ConfiguredBoardError(
+                            "recovery root import inventory contains untracked "
+                            f"Python source: {relative}"
+                        )
+                    selected.append(
+                        bind_regular_import_source(relative, path, observed)
+                    )
+                elif suffix in {".pyc", ".pyo"}:
+                    raise ConfiguredBoardError(
+                        "recovery root import inventory contains adjacent "
+                        f"bytecode: {relative}"
+                    )
+                elif relative not in tracked:
+                    raise ConfiguredBoardError(
+                        "recovery root import inventory contains an untracked "
+                        f"native extension: {relative}"
+                    )
+                else:
+                    selected.append(
+                        bind_regular_import_source(relative, path, observed)
+                    )
+
+        for root_relative in root_relatives:
+            inventory_root, exact_relative = _lexical_repo_artifact(
+                repo_root,
+                repo_root / root_relative,
+            )
+            if exact_relative != root_relative:
+                raise ConfiguredBoardError(
+                    "recovery import inventory root differs"
+                )
+            try:
+                root_status = os.lstat(inventory_root)
+            except OSError as exc:
+                raise ConfiguredBoardError(
+                    "recovery import inventory root is unavailable"
+                ) from exc
+            if (
+                stat.S_ISLNK(root_status.st_mode)
+                or not stat.S_ISDIR(root_status.st_mode)
+            ):
+                raise ConfiguredBoardError(
+                    "recovery import inventory root is not a real directory"
+                )
+            require_safe_directory(root_relative, root_status)
+            directories.append(filesystem_identity(root_relative, root_status))
+            pending = [inventory_root]
+            while pending:
+                directory = pending.pop()
+                try:
+                    with os.scandir(directory) as iterator:
+                        entries = sorted(
+                            iterator,
+                            key=lambda item: item.name,
+                        )
+                except OSError as exc:
+                    raise ConfiguredBoardError(
+                        "recovery import inventory cannot be read"
+                    ) from exc
+                for entry in entries:
+                    entry_count += 1
+                    if entry_count > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
+                        raise ConfiguredBoardError(
+                            "recovery import inventory exceeds its entry bound"
+                        )
+                    path = Path(entry.path)
+                    try:
+                        relative = path.relative_to(repo_root).as_posix()
+                        observed = entry.stat(follow_symlinks=False)
+                    except (OSError, ValueError) as exc:
+                        raise ConfiguredBoardError(
+                            "recovery import inventory identity is unavailable"
+                        ) from exc
+                    path_bytes += len(relative.encode("utf-8"))
+                    if (
+                        path_bytes
+                        > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+                    ):
+                        raise ConfiguredBoardError(
+                            "recovery import inventory exceeds its path bound"
+                        )
+                    if stat.S_ISLNK(observed.st_mode):
+                        try:
+                            target = os.readlink(path)
+                            target_bytes = target.encode("utf-8")
+                        except (OSError, UnicodeEncodeError) as exc:
+                            raise ConfiguredBoardError(
+                                "recovery import link target is unsafe"
+                            ) from exc
+                        path_bytes += len(target_bytes)
+                        index_entry = index_entries.get(relative)
+                        if (
+                            not target
+                            or relative not in tracked
+                            or index_entry is None
+                            or index_entry[0] != "120000"
+                            or observed.st_uid != os.geteuid()
+                            or observed.st_nlink != 1
+                            or path_bytes
+                            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
+                        ):
+                            raise ConfiguredBoardError(
+                                "recovery import link target is unsafe"
+                            )
+                        object_id = index_entry[1]
+                        hash_constructor = (
+                            hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
+                        )
+                        git_blob = (
+                            f"blob {len(target_bytes)}\0".encode("ascii")
+                            + target_bytes
+                        )
+                        if hash_constructor(git_blob).hexdigest() != object_id:
+                            raise ConfiguredBoardError(
+                                "recovery import link differs from its Git blob"
+                            )
+                        link_identity = filesystem_identity(relative, observed)
+                        link_identity["target"] = target
+                        links.append(link_identity)
+                        logical_path = (
+                            PurePosixPath(omission_path_prefix)
+                            / PurePosixPath(relative)
+                        ).as_posix()
+                        omissions.append(
+                            {
+                                "scope": omission_scope,
+                                "path": logical_path,
+                                "git_target": target,
+                                "disposition": "omitted_source_symlink",
+                            }
+                        )
+                        continue
+                    if stat.S_ISDIR(observed.st_mode):
+                        require_safe_directory(relative, observed)
+                        directories.append(filesystem_identity(relative, observed))
+                        pending.append(path)
+                        continue
+                    if not stat.S_ISREG(observed.st_mode):
+                        raise ConfiguredBoardError(
+                            "recovery import inventory contains a special file"
+                        )
+                    suffix = path.suffix.lower()
+                    if (
+                        suffix in {".py", ".so", ".pyd", ".dylib"}
+                        and (
+                            observed.st_uid != os.geteuid()
+                            or observed.st_nlink != 1
+                        )
+                    ):
+                        raise ConfiguredBoardError(
+                            "recovery import source file identity differs"
+                        )
+                    mode = stat.S_IMODE(observed.st_mode)
+                    if mode & 0o002 or (
+                        mode & 0o020 and observed.st_gid != private_gid
+                    ):
+                        raise ConfiguredBoardError(
+                            "recovery import source has an unsafe writable mode"
+                        )
+                    if suffix == ".py":
+                        if relative not in tracked:
+                            raise ConfiguredBoardError(
+                                "recovery import inventory contains untracked "
+                                f"Python source: {relative}"
+                            )
+                        selected.append(
+                            bind_regular_import_source(relative, path, observed)
+                        )
+                    elif suffix in {".pyc", ".pyo"}:
+                        if "__pycache__" not in PurePosixPath(relative).parts:
+                            raise ConfiguredBoardError(
+                                "recovery import inventory contains adjacent "
+                                f"bytecode: {relative}"
+                            )
+                    elif suffix in {".so", ".pyd", ".dylib"}:
+                        if relative not in tracked:
+                            raise ConfiguredBoardError(
+                                "recovery import inventory contains an untracked "
+                                f"native extension: {relative}"
+                            )
+                        selected.append(
+                            bind_regular_import_source(relative, path, observed)
+                        )
+        inventory_root = _identity(
+            {
+                "effective_uid": os.geteuid(),
+                "effective_gid": private_gid,
+                "directories": sorted(directories, key=lambda item: item["path"]),
+                "tracked_source_links": sorted(
+                    links, key=lambda item: item["path"]
+                ),
+                "tracked_import_files": sorted(
+                    selected, key=lambda item: item["path"]
+                ),
+            }
+        )
+        return inventory_root, tuple(
+            sorted(omissions, key=lambda item: (item["scope"], item["path"]))
+        )
+
+    root = _canonical_no_symlink_root(board.repo_root)
+    _reject_fresh_recovery_git_object_substitution(root, label="accelerator")
+    for relative in board.worktree_submodule_paths:
+        preliminary_target, preliminary_relative = _lexical_repo_artifact(
+            root,
+            board.path(relative),
+        )
+        if preliminary_relative != relative:
+            raise ConfiguredBoardError("configured submodule path differs")
+        try:
+            preliminary_status = os.lstat(preliminary_target)
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                f"configured submodule is unavailable: {relative}"
+            ) from exc
+        if stat.S_ISLNK(preliminary_status.st_mode) or not stat.S_ISDIR(
+            preliminary_status.st_mode
+        ):
+            raise ConfiguredBoardError(
+                f"configured submodule is not a real directory: {relative}"
+            )
+        _reject_fresh_recovery_git_object_substitution(
+            _canonical_no_symlink_root(preliminary_target),
+            label=f"configured submodule {relative}",
+        )
+    top = _git_run(("rev-parse", "--show-toplevel"), cwd=root)
+    if top.returncode != 0 or Path(top.stdout.strip()) != root:
+        raise ConfiguredBoardError("accelerator repository root differs")
+    outer_head, outer_tree = _git_identity(root)
+    if (
+        re.fullmatch(r"[0-9a-f]{40,64}", outer_head) is None
+        or re.fullmatch(r"[0-9a-f]{40,64}", outer_tree) is None
+    ):
+        raise ConfiguredBoardError("accelerator Git identity is malformed")
+    private_gid = _fresh_recovery_private_primary_gid()
+    require_ordinary_index(root, label="accelerator")
+    clean_status(root, label="accelerator")
+    import_inventory_root, outer_omissions = import_inventory(
+        root,
+        private_gid=private_gid,
+        root_relatives=("scripts", "ipfs_accelerate_py", "test"),
+        omission_scope="accelerator",
+        include_repo_root_candidates=True,
+    )
+
+    nested_identities: list[tuple[str, str, str, str, str]] = []
+    source_omissions = list(outer_omissions)
+    for relative in board.worktree_submodule_paths:
+        target, exact_relative = _lexical_repo_artifact(
+            root,
+            board.path(relative),
+        )
+        if exact_relative != relative:
+            raise ConfiguredBoardError("configured submodule path differs")
+        try:
+            observed = os.lstat(target)
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                f"configured submodule is unavailable: {relative}"
+            ) from exc
+        if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+            raise ConfiguredBoardError(
+                f"configured submodule is not a real directory: {relative}"
+            )
+        nested_root = _canonical_no_symlink_root(target)
+        _reject_fresh_recovery_git_object_substitution(
+            nested_root,
+            label=f"configured submodule {relative}",
+        )
+        nested_top = _git_run(
+            ("rev-parse", "--show-toplevel"),
+            cwd=nested_root,
+        )
+        if (
+            nested_top.returncode != 0
+            or Path(nested_top.stdout.strip()) != nested_root
+        ):
+            raise ConfiguredBoardError(
+                f"configured submodule repository root differs: {relative}"
+            )
+        nested_head, nested_tree = _git_identity(nested_root)
+        if (
+            re.fullmatch(r"[0-9a-f]{40,64}", nested_head) is None
+            or re.fullmatch(r"[0-9a-f]{40,64}", nested_tree) is None
+        ):
+            raise ConfiguredBoardError(
+                f"configured submodule Git identity is malformed: {relative}"
+            )
+        gitlink = _git_run(
+            ("ls-tree", outer_head, "--", relative),
+            cwd=root,
+        )
+        expected_gitlink = f"160000 commit {nested_head}\t{relative}\n"
+        if gitlink.returncode != 0 or gitlink.stdout != expected_gitlink:
+            raise ConfiguredBoardError(
+                f"configured submodule gitlink differs: {relative}"
+            )
+        require_ordinary_index(
+            nested_root,
+            label=f"configured submodule {relative}",
+        )
+        clean_status(nested_root, label=f"configured submodule {relative}")
+        nested_import_inventory_root, nested_omissions = import_inventory(
+            nested_root,
+            private_gid=private_gid,
+            root_relatives=(".",),
+            omission_scope="datasets_gitlink",
+            omission_path_prefix=relative,
+        )
+        source_omissions.extend(nested_omissions)
+        if _git_identity(nested_root) != (nested_head, nested_tree):
+            raise ConfiguredBoardError(
+                f"configured submodule changed during admission: {relative}"
+            )
+        nested_identities.append(
+            (
+                relative,
+                nested_head,
+                nested_tree,
+                nested_head,
+                nested_import_inventory_root,
+            )
+        )
+
+    clean_status(root, label="accelerator")
+    if _git_identity(root) != (outer_head, outer_tree):
+        raise ConfiguredBoardError(
+            "accelerator repository changed during admission"
+        )
+    if len(nested_identities) != 1:
+        raise ConfiguredBoardError(
+            "fresh recovery requires exactly one datasets gitlink identity"
+        )
+    _nested_path, datasets_gitlink, datasets_tree, _head, _inventory = (
+        nested_identities[0]
+    )
+    ordered_omissions = sorted(
+        source_omissions,
+        key=lambda item: (item["scope"], item["path"]),
+    )
+    if len({item["path"] for item in ordered_omissions}) != len(
+        ordered_omissions
+    ):
+        raise ConfiguredBoardError(
+            "fresh recovery source symlink inventory is ambiguous"
+        )
+    omission_commitment: dict[str, Any] = {
+        "schema": FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA,
+        "accelerator_head": outer_head,
+        "accelerator_tree": outer_tree,
+        "datasets_gitlink": datasets_gitlink,
+        "datasets_tree": datasets_tree,
+        "omitted_source_symlinks": ordered_omissions,
+    }
+    omission_commitment["commitment_cid"] = _identity(omission_commitment)
+    return (
+        outer_head,
+        outer_tree,
+        import_inventory_root,
+        tuple(nested_identities),
+        omission_commitment,
+    )
 
 
 def _fresh_recovery_admission_failure(detail: str) -> ConfiguredBoardError:
@@ -2220,6 +3155,402 @@ def _fresh_recovery_admission_failure(detail: str) -> ConfiguredBoardError:
         f"{detail}; a typed live-continuity verifier is required after any "
         "legitimate runtime progress"
     )
+
+
+def _open_fresh_recovery_interpreter(
+    policy: Mapping[str, Any],
+) -> tuple[int, str, str]:
+    """Open and hash the exact root-owned interpreter selected by policy.
+
+    The returned descriptor remains open across ``execve``.  The child is
+    executed through ``/proc/self/fd`` while the canonical policy path remains
+    ``argv[0]``, so a pathname swap cannot change the bytes that were admitted.
+    """
+
+    raw_path = policy.get("verification_python_executable")
+    raw_digest = policy.get("verification_python_executable_sha256")
+    if (
+        not isinstance(raw_path, str)
+        or not raw_path
+        or not isinstance(raw_digest, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", raw_digest) is None
+    ):
+        raise _fresh_recovery_admission_failure(
+            "verification interpreter identity is absent"
+        )
+    path = Path(raw_path)
+    if (
+        not path.is_absolute()
+        or Path(os.path.abspath(path)) != path
+    ):
+        raise _fresh_recovery_admission_failure(
+            "verification interpreter path is not canonical absolute"
+        )
+    try:
+        lexical = os.lstat(path)
+        if path.resolve(strict=True) != path:
+            raise _fresh_recovery_admission_failure(
+                "verification interpreter path contains a symbolic link"
+            )
+    except ConfiguredBoardError:
+        raise
+    except OSError as exc:
+        raise _fresh_recovery_admission_failure(
+            "verification interpreter is unavailable"
+        ) from exc
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise _fresh_recovery_admission_failure(
+            "no-follow interpreter admission is unavailable"
+        )
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise _fresh_recovery_admission_failure(
+            "verification interpreter cannot be opened safely"
+        ) from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(lexical.st_mode)
+            or not stat.S_ISREG(opened.st_mode)
+            or lexical.st_uid != 0
+            or opened.st_uid != 0
+            or lexical.st_nlink != 1
+            or opened.st_nlink != 1
+            or stat.S_IMODE(opened.st_mode) != 0o755
+            or opened.st_size <= 0
+            or opened.st_size > FRESH_RECOVERY_INTERPRETER_MAX_BYTES
+            or (lexical.st_dev, lexical.st_ino)
+            != (opened.st_dev, opened.st_ino)
+        ):
+            raise _fresh_recovery_admission_failure(
+                "verification interpreter is not one immutable root-owned file"
+            )
+        digest = hashlib.sha256()
+        observed_size = 0
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+            observed_size += len(chunk)
+            if observed_size > FRESH_RECOVERY_INTERPRETER_MAX_BYTES:
+                raise _fresh_recovery_admission_failure(
+                    "verification interpreter exceeds its byte bound"
+                )
+        after = os.fstat(descriptor)
+        current = os.lstat(path)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            observed_size != opened.st_size
+            or any(
+                getattr(opened, field) != getattr(after, field)
+                for field in stable_fields
+            )
+            or any(
+                getattr(after, field) != getattr(current, field)
+                for field in stable_fields
+            )
+            or "sha256:" + digest.hexdigest() != raw_digest
+        ):
+            raise _fresh_recovery_admission_failure(
+                "verification interpreter content identity differs"
+            )
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        executable = f"/proc/self/fd/{descriptor}"
+        proc_status = os.stat(executable)
+        if (proc_status.st_dev, proc_status.st_ino) != (
+            after.st_dev,
+            after.st_ino,
+        ):
+            raise _fresh_recovery_admission_failure(
+                "held verification interpreter identity differs"
+            )
+        return descriptor, raw_path, executable
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _seal_fresh_recovery_materializer(payload: bytes) -> int:
+    """Copy exact tracked materializer bytes into one immutable anonymous file."""
+
+    if (
+        not isinstance(payload, bytes)
+        or not payload
+        or len(payload) > FRESH_RECOVERY_MATERIALIZER_MAX_BYTES
+    ):
+        raise _fresh_recovery_admission_failure(
+            "tracked recovery verifier bytes exceed their bound"
+        )
+    required = (
+        "memfd_create",
+        "MFD_CLOEXEC",
+        "MFD_ALLOW_SEALING",
+    )
+    if any(not hasattr(os, name) for name in required):
+        raise _fresh_recovery_admission_failure(
+            "sealed recovery verifier execution is unavailable"
+        )
+    seal_names = (
+        "F_ADD_SEALS",
+        "F_GET_SEALS",
+        "F_SEAL_SEAL",
+        "F_SEAL_SHRINK",
+        "F_SEAL_GROW",
+        "F_SEAL_WRITE",
+    )
+    if any(not hasattr(fcntl, name) for name in seal_names):
+        raise _fresh_recovery_admission_failure(
+            "sealed recovery verifier policy is unavailable"
+        )
+    flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+    try:
+        descriptor = os.memfd_create("lgcvf-recovery-materializer", flags)
+    except OSError as exc:
+        raise _fresh_recovery_admission_failure(
+            "sealed recovery verifier cannot be created"
+        ) from exc
+    try:
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise _fresh_recovery_admission_failure(
+                    "sealed recovery verifier write stalled"
+                )
+            view = view[written:]
+        os.fchmod(descriptor, 0o400)
+        os.fsync(descriptor)
+        seals = (
+            fcntl.F_SEAL_SEAL
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_WRITE
+        )
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, seals)
+        if fcntl.fcntl(descriptor, fcntl.F_GET_SEALS) != seals:
+            raise _fresh_recovery_admission_failure(
+                "sealed recovery verifier policy differs"
+            )
+        observed = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_IMODE(observed.st_mode) != 0o400
+            or observed.st_size != len(payload)
+        ):
+            raise _fresh_recovery_admission_failure(
+                "sealed recovery verifier identity differs"
+            )
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _run_fresh_recovery_verifier(
+    board: ConfiguredBoard,
+    materializer_path: Path,
+    materializer_bytes: bytes,
+) -> subprocess.CompletedProcess[str]:
+    """Run the protected public verifier with no ambient code authority."""
+
+    policy = board.payload.get("fresh_generation_recovery")
+    if not isinstance(policy, Mapping):
+        raise _fresh_recovery_admission_failure("recovery policy is not an object")
+    descriptor, interpreter_path, executable = _open_fresh_recovery_interpreter(
+        policy
+    )
+    try:
+        materializer_descriptor = _seal_fresh_recovery_materializer(
+            materializer_bytes
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+    environment = _sanitized_git_environment()
+    environment.update(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+        }
+    )
+    command = [
+        interpreter_path,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        FRESH_RECOVERY_MATERIALIZER_BOOTSTRAP,
+        str(materializer_path),
+        str(materializer_descriptor),
+        "<unavailable-private-pycache>",
+        "verify",
+    ]
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="lgcvf-recovery-pycache-",
+        ) as pycache_root_text:
+            pycache_root = Path(pycache_root_text)
+            observed = os.lstat(pycache_root)
+            if (
+                stat.S_ISLNK(observed.st_mode)
+                or not stat.S_ISDIR(observed.st_mode)
+                or observed.st_uid != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) != 0o700
+                or any(pycache_root.iterdir())
+            ):
+                raise _fresh_recovery_admission_failure(
+                    "private verifier bytecode root identity differs"
+                )
+            command[8] = str(pycache_root)
+            return subprocess.run(
+                command,
+                executable=executable,
+                pass_fds=(descriptor, materializer_descriptor),
+                cwd=board.repo_root,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=300.0,
+            )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(
+            command,
+            124,
+            "",
+            f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        os.close(materializer_descriptor)
+        os.close(descriptor)
+
+
+def _validate_fresh_recovery_projection_bindings(
+    report: Mapping[str, Any],
+    *,
+    source_omission_commitment: Mapping[str, Any],
+) -> None:
+    """Cross-check source-derived omissions and shape richer replay evidence."""
+
+    omission = report.get("validation_projection_omission_commitment")
+    omission_root = report.get("validation_projection_omission_root")
+    if (
+        not isinstance(omission, Mapping)
+        or set(omission)
+        != {
+            "schema",
+            "accelerator_head",
+            "accelerator_tree",
+            "datasets_gitlink",
+            "datasets_tree",
+            "omitted_source_symlinks",
+            "commitment_cid",
+        }
+        or dict(omission) != dict(source_omission_commitment)
+        or omission.get("schema") != FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA
+        or omission.get("commitment_cid")
+        != _identity(
+            {key: value for key, value in omission.items() if key != "commitment_cid"}
+        )
+        or omission_root != omission.get("commitment_cid")
+    ):
+        raise _fresh_recovery_admission_failure(
+            "public verifier source-derived projection omission binding differs"
+        )
+
+    evidence = report.get("validation_projection_evidence_commitment")
+    evidence_root = report.get("validation_projection_evidence_root")
+    if (
+        not isinstance(evidence, Mapping)
+        or set(evidence)
+        != {
+            "schema",
+            "source_binding_cid",
+            "omission_root",
+            "ordered_suites",
+            "commitment_cid",
+        }
+        or evidence.get("schema") != FRESH_RECOVERY_PROJECTION_EVIDENCE_SCHEMA
+        or evidence.get("omission_root") != omission_root
+        or evidence.get("commitment_cid")
+        != _identity(
+            {key: value for key, value in evidence.items() if key != "commitment_cid"}
+        )
+        or evidence_root != evidence.get("commitment_cid")
+        or re.fullmatch(
+            r"baguqeera[a-z2-7]{52}",
+            str(evidence.get("source_binding_cid") or ""),
+        )
+        is None
+    ):
+        raise _fresh_recovery_admission_failure(
+            "public verifier projection evidence binding differs"
+        )
+    suites = evidence.get("ordered_suites")
+    expected_task_ids = (
+        "LGCVF-051",
+        "LGCVF-060",
+        "LGCVF-061",
+        "LGCVF-070",
+        "LGCVF-071",
+        "LGCVF-080",
+    )
+    expected_suite_ids = tuple(
+        "recovery_" + task_id.casefold().replace("-", "_")
+        for task_id in expected_task_ids
+    )
+    if not isinstance(suites, list) or len(suites) != len(expected_task_ids):
+        raise _fresh_recovery_admission_failure(
+            "public verifier projection evidence suite population differs"
+        )
+    observed_suite_ids: list[str] = []
+    observed_task_ids: list[str] = []
+    for item in suites:
+        if not isinstance(item, Mapping) or set(item) != {
+            "suite_id",
+            "task_id",
+            "task_cid",
+            "projection_cid",
+            "copied_source_manifest_root",
+        }:
+            raise _fresh_recovery_admission_failure(
+                "public verifier projection evidence suite fields differ"
+            )
+        observed_suite_ids.append(str(item.get("suite_id") or ""))
+        observed_task_ids.append(str(item.get("task_id") or ""))
+        for field in (
+            "task_cid",
+            "projection_cid",
+            "copied_source_manifest_root",
+        ):
+            if re.fullmatch(
+                r"baguqeera[a-z2-7]{52}", str(item.get(field) or "")
+            ) is None:
+                raise _fresh_recovery_admission_failure(
+                    "public verifier projection evidence suite identity differs"
+                )
+    if (
+        tuple(observed_suite_ids) != expected_suite_ids
+        or tuple(observed_task_ids) != expected_task_ids
+    ):
+        raise _fresh_recovery_admission_failure(
+            "public verifier projection evidence suite order differs"
+        )
 
 
 def _verify_fresh_recovery_launch_admission(
@@ -2252,6 +3583,19 @@ def _verify_fresh_recovery_launch_admission(
     ):
         raise _fresh_recovery_admission_failure(
             "recovery policy schema or target generation differs"
+        )
+    duckdb_runtime_cid = policy.get("duckdb_runtime_cid")
+    source_generation = policy.get("source_generation")
+    if (
+        not isinstance(duckdb_runtime_cid, str)
+        or re.fullmatch(r"baguqeera[a-z2-7]{52}", duckdb_runtime_cid) is None
+    ):
+        raise _fresh_recovery_admission_failure(
+            "recovery policy DuckDB runtime identity is absent"
+        )
+    if not isinstance(source_generation, str) or not source_generation:
+        raise _fresh_recovery_admission_failure(
+            "recovery policy source generation is absent"
         )
     canonical_config, canonical_config_relative = _lexical_repo_artifact(
         board.repo_root,
@@ -2297,7 +3641,14 @@ def _verify_fresh_recovery_launch_admission(
         )
 
     try:
-        source_head, _source_tree = _git_identity(board.repo_root)
+        source_identity = _fresh_recovery_clean_source_identity(board)
+        (
+            source_head,
+            _source_tree,
+            _import_inventory_root,
+            _nested_source_identities,
+            source_omission_commitment,
+        ) = source_identity
         config_bytes, _config_snapshot = _tracked_head_snapshot(
             repo_root=board.repo_root,
             path=canonical_config,
@@ -2310,7 +3661,8 @@ def _verify_fresh_recovery_launch_admission(
         )
     except ConfiguredBoardError as exc:
         raise _fresh_recovery_admission_failure(
-            "canonical recovery config or verifier is not current tracked source"
+            "canonical recovery checkout is not one clean, current tracked "
+            f"outer/nested source forest ({exc})"
         ) from exc
     config_sha256 = hashlib.sha256(config_bytes).hexdigest()
     if (
@@ -2328,7 +3680,43 @@ def _verify_fresh_recovery_launch_admission(
             "loaded recovery config differs from its tracked canonical bytes"
         )
 
-    completed = _run_fresh_recovery_verifier(board, materializer_path)
+    completed = _run_fresh_recovery_verifier(
+        board,
+        materializer_path,
+        _materializer_bytes,
+    )
+    try:
+        after_identity = _fresh_recovery_clean_source_identity(board)
+        (
+            after_head,
+            _after_tree,
+            _after_import_inventory_root,
+            _after_nested_identities,
+            _after_omission_commitment,
+        ) = after_identity
+        after_config, _after_config_snapshot = _tracked_head_snapshot(
+            repo_root=board.repo_root,
+            path=canonical_config,
+            source_head=after_head,
+        )
+        after_materializer, _after_materializer_snapshot = _tracked_head_snapshot(
+            repo_root=board.repo_root,
+            path=materializer_path,
+            source_head=after_head,
+        )
+    except ConfiguredBoardError as exc:
+        raise _fresh_recovery_admission_failure(
+            "canonical recovery source changed during public verification"
+        ) from exc
+    if (
+        after_identity != source_identity
+        or after_head != source_head
+        or after_config != config_bytes
+        or after_materializer != _materializer_bytes
+    ):
+        raise _fresh_recovery_admission_failure(
+            "canonical recovery source changed during public verification"
+        )
     stdout = completed.stdout or ""
     stderr = completed.stderr or ""
     if (
@@ -2355,6 +3743,10 @@ def _verify_fresh_recovery_launch_admission(
         )
     if set(report) != FRESH_RECOVERY_VERIFICATION_FIELDS:
         raise _fresh_recovery_admission_failure("public verifier report shape differs")
+    _validate_fresh_recovery_projection_bindings(
+        report,
+        source_omission_commitment=source_omission_commitment,
+    )
 
     partitions = (
         ("completed_task_ids", "completed_count", 13),
@@ -2388,7 +3780,9 @@ def _verify_fresh_recovery_launch_admission(
         "schema": FRESH_RECOVERY_VERIFICATION_SCHEMA,
         "valid": True,
         "verification_mode": "read_only",
+        "source_generation": source_generation,
         "target_generation": FRESH_RECOVERY_TARGET_GENERATION,
+        "duckdb_runtime_cid": duckdb_runtime_cid,
         "ready_task_ids": ["LGCVF-081"],
         "model_provider_route": "none",
         "network_isolation_enforced": True,
@@ -2543,6 +3937,27 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
                 passed=False,
                 detail=str(exc),
             )
+            # The protected verifier has already established that source or
+            # recovery authority is unsafe.  Do not continue into generic Git
+            # or validator probes: repository-local attributes and filters are
+            # themselves among the rejected inputs and a later ``git status``
+            # could execute them even though launch admission has failed.
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "configured-board-preflight@1"
+                ),
+                "valid": False,
+                "config_path": str(board.config_path),
+                "repo_root": str(board.repo_root),
+                "board_namespace": board.board_namespace,
+                "taskboard_path": str(board.path(board.taskboard_path)),
+                "max_lanes": board.max_lanes,
+                "errors": errors,
+                "warnings": warnings,
+                "checks": checks,
+                "validator_report": {},
+            }
         else:
             assert recovery_admission is not None
             _append_check(
@@ -2553,6 +3968,22 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
                 detail={
                     "schema": recovery_admission["schema"],
                     "target_generation": recovery_admission["target_generation"],
+                    "duckdb_runtime_cid": recovery_admission[
+                        "duckdb_runtime_cid"
+                    ],
+                    "ready_task_ids": recovery_admission["ready_task_ids"],
+                    "model_provider_route": recovery_admission[
+                        "model_provider_route"
+                    ],
+                    "validation_completion_authoritative": recovery_admission[
+                        "validation_completion_authoritative"
+                    ],
+                    "validation_projection_omission_root": recovery_admission[
+                        "validation_projection_omission_root"
+                    ],
+                    "validation_projection_evidence_root": recovery_admission[
+                        "validation_projection_evidence_root"
+                    ],
                     "receipt_cid": recovery_admission["receipt_cid"],
                     "operational_verification_root": recovery_admission[
                         "operational_verification_root"
@@ -3179,6 +4610,18 @@ def configured_board_launch_plan(
         plan["fresh_generation_recovery_admission"] = {
             "schema": recovery_admission["schema"],
             "target_generation": recovery_admission["target_generation"],
+            "duckdb_runtime_cid": recovery_admission["duckdb_runtime_cid"],
+            "ready_task_ids": recovery_admission["ready_task_ids"],
+            "model_provider_route": recovery_admission["model_provider_route"],
+            "validation_completion_authoritative": recovery_admission[
+                "validation_completion_authoritative"
+            ],
+            "validation_projection_omission_root": recovery_admission[
+                "validation_projection_omission_root"
+            ],
+            "validation_projection_evidence_root": recovery_admission[
+                "validation_projection_evidence_root"
+            ],
             "manifest_cid": recovery_admission["manifest_cid"],
             "receipt_cid": recovery_admission["receipt_cid"],
             "operational_verification_root": recovery_admission[

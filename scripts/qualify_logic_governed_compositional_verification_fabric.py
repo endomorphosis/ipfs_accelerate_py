@@ -10,6 +10,7 @@ and never grants release or production authority.
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import binascii
 import contextlib
@@ -19,14 +20,19 @@ import ctypes.util
 import email.parser
 import email.policy
 import errno
+import grp
 import hashlib
+import importlib
 import importlib.abc
+import importlib.machinery
 import io
 import json
 import os
 import platform
+import pwd
 import re
 import resource
+import select
 import shutil
 import signal
 import site
@@ -42,7 +48,799 @@ from pathlib import Path, PurePath
 from threading import Thread
 from typing import Any, Final
 
+
+def _install_isolated_recovery_pycache() -> tuple[
+    tempfile.TemporaryDirectory[str] | None,
+    Path | None,
+    tuple[int, int] | None,
+]:
+    """Redirect exact isolated execution away from repository bytecode caches."""
+
+    flags = sys.flags
+    if (
+        flags.isolated != 1
+        or flags.ignore_environment != 1
+        or flags.no_site != 1
+        or flags.safe_path is not True
+        or flags.dont_write_bytecode != 1
+        or sys.dont_write_bytecode is not True
+    ):
+        return None, None, None
+    directory = tempfile.TemporaryDirectory(prefix="lgcvf-isolated-pycache-")
+    root = Path(directory.name).resolve(strict=True)
+    os.chmod(root, 0o700)
+    status = root.lstat()
+    sys.pycache_prefix = str(root)
+    return directory, root, (status.st_dev, status.st_ino)
+
+
+(
+    _ISOLATED_RECOVERY_PYCACHE_DIRECTORY,
+    _ISOLATED_RECOVERY_PYCACHE_ROOT,
+    _ISOLATED_RECOVERY_PYCACHE_IDENTITY,
+) = _install_isolated_recovery_pycache()
+
 ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+
+_MAX_RECOVERY_IMPORT_ROOT_ENTRIES: Final[int] = 32_768
+_MAX_RECOVERY_TRACKED_PATH_BYTES: Final[int] = 16 * 1024 * 1024
+_MAX_RECOVERY_IMPORT_DEPTH: Final[int] = 64
+_MAX_RECOVERY_IMPORT_FILE_BYTES: Final[int] = 32 * 1024 * 1024
+_MAX_RECOVERY_IMPORT_TOTAL_BYTES: Final[int] = 512 * 1024 * 1024
+_RECOVERY_GIT_CONFIG_OVERRIDES: Final[tuple[str, ...]] = (
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.untrackedCache=false",
+    "-c",
+    "core.trustctime=true",
+    "-c",
+    "core.checkStat=default",
+    "-c",
+    "core.attributesFile=/dev/null",
+)
+_RECOVERY_OMITTED_SOURCE_SYMLINKS: Final[dict[str, str]] = {
+    "test/run_dashboard_tests.py": (
+        "/home/barberb/ipfs_accelerate_py/test/duckdb_api/visualization/"
+        "advanced_visualization/test_customizable_dashboard.py"
+    ),
+}
+
+
+def _tracked_recovery_import_entries(
+    root: Path,
+    *,
+    pathspecs: tuple[str, ...],
+) -> dict[str, tuple[str, str]]:
+    """Bind ordinary stage-zero entries exactly to the current HEAD tree."""
+
+    tracked_payload = _bounded_recovery_git(
+        root,
+        "ls-files",
+        "-v",
+        "-z",
+        "--cached",
+        "--",
+        *pathspecs,
+    )
+    stage_payload = _bounded_recovery_git(
+        root, "ls-files", "-s", "-z", "--cached", "--", *pathspecs
+    )
+    head_payload = _bounded_recovery_git(
+        root, "ls-tree", "-r", "-z", "--full-tree", "HEAD"
+    )
+    if any(
+        payload and not payload.endswith(b"\0")
+        for payload in (tracked_payload, stage_payload, head_payload)
+    ):
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    tracked: set[str] = set()
+    for raw in tracked_payload.split(b"\0")[:-1]:
+        if not raw.startswith(b"H "):
+            raise RuntimeError("protected recovery tracked path has index flags")
+        try:
+            value = raw[2:].decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(
+                "protected recovery tracked path is not UTF-8"
+            ) from exc
+        logical = PurePath(value)
+        if (
+            not value
+            or logical.is_absolute()
+            or ".." in logical.parts
+            or logical.as_posix() != value
+            or value in tracked
+        ):
+            raise RuntimeError("protected recovery tracked-path set is ambiguous")
+        tracked.add(value)
+
+    def parse_entries(payload: bytes, *, head: bool) -> dict[str, tuple[str, str]]:
+        result: dict[str, tuple[str, str]] = {}
+        for raw in payload.split(b"\0")[:-1]:
+            try:
+                metadata, path_bytes = raw.split(b"\t", 1)
+                fields = metadata.decode("ascii", errors="strict").split(" ")
+                value = path_bytes.decode("utf-8", errors="strict")
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise RuntimeError(
+                    "protected recovery Git entry is malformed"
+                ) from exc
+            logical = PurePath(value)
+            if (
+                not value
+                or logical.is_absolute()
+                or ".." in logical.parts
+                or logical.as_posix() != value
+                or value in result
+            ):
+                raise RuntimeError("protected recovery Git entry is ambiguous")
+            if head:
+                if (
+                    len(fields) != 3
+                    or fields[1] not in {"blob", "commit"}
+                    or (fields[1] == "commit" and fields[0] != "160000")
+                ):
+                    raise RuntimeError("protected recovery HEAD entry differs")
+                mode, object_id = fields[0], fields[2]
+            else:
+                if len(fields) != 3 or fields[2] != "0":
+                    raise RuntimeError("protected recovery index entry differs")
+                mode, object_id = fields[0], fields[1]
+            if (
+                mode not in {"100644", "100755", "120000", "160000"}
+                or (not head and mode == "160000")
+                or len(object_id) not in {40, 64}
+                or any(character not in "0123456789abcdef" for character in object_id)
+            ):
+                raise RuntimeError("protected recovery Git blob identity differs")
+            result[value] = (mode, object_id)
+        return result
+
+    stage = parse_entries(stage_payload, head=False)
+    head_all = parse_entries(head_payload, head=True)
+    head = {value: head_all[value] for value in tracked if value in head_all}
+    if set(stage) != tracked or head != stage:
+        raise RuntimeError(
+            "protected recovery ordinary index differs from current HEAD"
+        )
+    return stage
+
+
+def _git_blob_matches(payload: bytes, object_id: str) -> bool:
+    """Return whether raw bytes have the exact repository blob identity."""
+
+    constructor = hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
+    digest = constructor(f"blob {len(payload)}\0".encode("ascii"))
+    digest.update(payload)
+    return digest.hexdigest() == object_id
+
+
+def _bounded_recovery_git(root: Path, *arguments: str) -> bytes:
+    """Run one fixed local Git observation with bounded stdout and time."""
+
+    git = Path("/usr/bin/git")
+    try:
+        git_status = git.lstat()
+    except OSError as exc:
+        raise RuntimeError("protected recovery import inventory is unavailable") from exc
+    if (
+        not stat.S_ISREG(git_status.st_mode)
+        or git_status.st_uid != 0
+        or git_status.st_mode & 0o022
+    ):
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    process = subprocess.Popen(
+        (
+            str(git),
+            *_RECOVERY_GIT_CONFIG_OVERRIDES,
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            str(root),
+            *arguments,
+        ),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env={
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "HOME": "/nonexistent",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin",
+        },
+        close_fds=True,
+    )
+    if process.stdout is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    payload = bytearray()
+    deadline = time.monotonic() + 15.0
+    try:
+        descriptor = process.stdout.fileno()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("protected recovery import inventory timed out")
+            readable, _, _ = select.select((descriptor,), (), (), remaining)
+            if not readable:
+                raise RuntimeError("protected recovery import inventory timed out")
+            block = os.read(
+                descriptor,
+                min(
+                    64 * 1024,
+                    _MAX_RECOVERY_TRACKED_PATH_BYTES + 1 - len(payload),
+                ),
+            )
+            if not block:
+                break
+            payload.extend(block)
+            if len(payload) > _MAX_RECOVERY_TRACKED_PATH_BYTES:
+                raise RuntimeError("protected recovery tracked-path set is too large")
+        returncode = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        raise
+    finally:
+        process.stdout.close()
+    if returncode != 0:
+        raise RuntimeError("protected recovery import inventory is unavailable")
+    return bytes(payload)
+
+
+def _git_object_substitution_state(root: Path) -> tuple[str, int, int]:
+    """Reject legacy grafts and replacement refs in the exact Git common dir."""
+
+    raw_common = _bounded_recovery_git(
+        root, "rev-parse", "--path-format=absolute", "--git-common-dir"
+    )
+    if (
+        not raw_common.endswith(b"\n")
+        or raw_common.count(b"\n") != 1
+        or b"\0" in raw_common
+        or len(raw_common) > 4_096
+    ):
+        raise RuntimeError("protected recovery Git common directory is ambiguous")
+    try:
+        common = Path(raw_common[:-1].decode("utf-8", errors="strict"))
+        resolved = common.resolve(strict=True)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RuntimeError(
+            "protected recovery Git common directory is unavailable"
+        ) from exc
+    if not common.is_absolute() or resolved != common:
+        raise RuntimeError("protected recovery Git common directory is unsafe")
+
+    uid, private_gid = _private_recovery_import_principal()
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        common_fd = os.open(common, flags)
+    except OSError as exc:
+        raise RuntimeError(
+            "protected recovery Git common directory is unavailable"
+        ) from exc
+    try:
+        common_status = os.fstat(common_fd)
+        common_mode = stat.S_IMODE(common_status.st_mode)
+        if (
+            not stat.S_ISDIR(common_status.st_mode)
+            or common_status.st_uid != uid
+            or common_mode & 0o002
+            or (common_mode & 0o020 and common_status.st_gid != private_gid)
+        ):
+            raise RuntimeError(
+                "protected recovery Git common directory permissions differ"
+            )
+        for directory, leaf in (
+            ("info", "grafts"),
+            ("info", "attributes"),
+            ("refs", "replace"),
+        ):
+            try:
+                directory_fd = os.open(directory, flags, dir_fd=common_fd)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise RuntimeError(
+                    "protected recovery Git substitution path is unsafe"
+                ) from exc
+            try:
+                try:
+                    os.stat(leaf, dir_fd=directory_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise RuntimeError(
+                        "protected recovery Git object substitution is present"
+                    )
+            finally:
+                os.close(directory_fd)
+    finally:
+        os.close(common_fd)
+    replacements = _bounded_recovery_git(
+        root, "for-each-ref", "--format=%(refname)", "refs/replace"
+    )
+    if replacements:
+        raise RuntimeError("protected recovery Git replacement refs are present")
+    config_names = _bounded_recovery_git(root, "config", "--name-only", "--list")
+    if any(line.lower().startswith(b"filter.") for line in config_names.splitlines()):
+        raise RuntimeError("protected recovery Git filter drivers are present")
+    return str(common), common_status.st_dev, common_status.st_ino
+
+
+def _clean_recovery_import_source(root: Path) -> tuple[str, str] | None:
+    """Bind one clean repository HEAD/tree before checkout code can execute."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    substitution_before = _git_object_substitution_state(root)
+    head = _bounded_recovery_git(root, "rev-parse", "--verify", "HEAD").strip()
+    tree = _bounded_recovery_git(
+        root, "rev-parse", "--verify", "HEAD^{tree}"
+    ).strip()
+    status = _bounded_recovery_git(
+        root,
+        "status",
+        "--porcelain=v2",
+        "-z",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    )
+    if (
+        status
+        or _git_object_substitution_state(root) != substitution_before
+        or len(head) not in {40, 64}
+        or len(tree) != len(head)
+        or any(character not in b"0123456789abcdef" for character in head + tree)
+    ):
+        raise RuntimeError("protected recovery import source is not clean")
+    return head.decode("ascii"), tree.decode("ascii")
+
+
+def _datasets_recovery_import_source(root: Path) -> tuple[str, str, str] | None:
+    """Bind the clean nested datasets checkout to the outer Git gitlink."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    nested = root / "ipfs_datasets_py"
+    nested_identity = _clean_recovery_import_source(nested)
+    if nested_identity is None:
+        raise RuntimeError("protected recovery datasets source is unavailable")
+    head, tree = nested_identity
+    stage = _bounded_recovery_git(
+        root, "ls-files", "-s", "-z", "--", "ipfs_datasets_py"
+    )
+    tracked = _bounded_recovery_git(
+        root, "ls-files", "-v", "-z", "--", "ipfs_datasets_py"
+    )
+    committed = _bounded_recovery_git(
+        root, "ls-tree", "-z", "HEAD", "--", "ipfs_datasets_py"
+    )
+    expected_stage = f"160000 {head} 0\tipfs_datasets_py\0".encode("ascii")
+    expected_commit = f"160000 commit {head}\tipfs_datasets_py\0".encode("ascii")
+    if (
+        stage != expected_stage
+        or tracked != b"H ipfs_datasets_py\0"
+        or committed != expected_commit
+    ):
+        raise RuntimeError("protected recovery datasets gitlink differs")
+    return head, tree, head
+
+
+def _private_recovery_import_principal() -> tuple[int, int]:
+    """Require the current primary group to be a single-principal private group."""
+
+    uid = os.geteuid()
+    try:
+        account = pwd.getpwuid(uid)
+        group = grp.getgrgid(account.pw_gid)
+    except KeyError as exc:
+        raise RuntimeError("protected recovery import principal is ambiguous") from exc
+    if (
+        account.pw_uid != uid
+        or account.pw_gid != os.getegid()
+        or group.gr_gid != account.pw_gid
+        or group.gr_mem
+    ):
+        raise RuntimeError("protected recovery import principal is ambiguous")
+    primary_accounts = []
+    for index, candidate in enumerate(pwd.getpwall()):
+        if index >= 4_096:
+            raise RuntimeError("protected recovery account database is too large")
+        if candidate.pw_gid == account.pw_gid:
+            primary_accounts.append((candidate.pw_uid, candidate.pw_name))
+    if primary_accounts != [(uid, account.pw_name)]:
+        raise RuntimeError("protected recovery import group is not private")
+    return uid, account.pw_gid
+
+
+def _scan_isolated_recovery_import_roots(
+    root: Path,
+    *,
+    roots: tuple[str, ...] = ("scripts", "ipfs_accelerate_py", "test"),
+    tracked_pathspecs: tuple[str, ...] = (
+        "scripts",
+        "ipfs_accelerate_py",
+        "test",
+        ":(top,glob)*.py",
+        ":(top,glob)*.pyc",
+        ":(top,glob)*.pyo",
+        ":(top,glob)*.so",
+    ),
+    whole_repository: bool = False,
+    root_import_candidates: bool = True,
+) -> tuple[
+    tuple[str, str, int, int, int, int, int, int, int, int, str], ...
+] | None:
+    """Close importable checkout files before the checkout enters ``sys.path``."""
+
+    if _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None:
+        return None
+    git_entries = _tracked_recovery_import_entries(root, pathspecs=tracked_pathspecs)
+    tracked = frozenset(git_entries)
+    uid, private_gid = _private_recovery_import_principal()
+    records: list[
+        tuple[str, str, int, int, int, int, int, int, int, int, str]
+    ] = []
+    entry_count = 0
+    total_file_bytes = 0
+    observed_blob_paths: set[str] = set()
+    observed_link_paths: set[str] = set()
+    directory_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+
+    def is_import_candidate(value: str) -> bool:
+        return value.endswith(".py") or value.endswith(
+            (".so", ".pyd", ".dylib", *importlib.machinery.EXTENSION_SUFFIXES)
+        )
+
+    def verify_blob_file(
+        directory_fd: int,
+        name: str,
+        status: os.stat_result,
+        value: str,
+    ) -> str:
+        """Stream one stable file and join it to its index/HEAD blob."""
+
+        nonlocal total_file_bytes
+        git_entry = git_entries.get(value)
+        if git_entry is None or git_entry[0] == "120000":
+            raise RuntimeError(
+                f"protected recovery import candidate is untracked: {value}"
+            )
+        descriptor = os.open(name, file_flags, dir_fd=directory_fd)
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                )
+                != (
+                    status.st_dev,
+                    status.st_ino,
+                    status.st_size,
+                    status.st_mtime_ns,
+                    status.st_ctime_ns,
+                )
+                or before.st_size < 0
+                or before.st_size > _MAX_RECOVERY_IMPORT_FILE_BYTES
+            ):
+                raise RuntimeError(
+                    f"protected recovery import candidate identity differs: {value}"
+                )
+            expected_mode = "100755" if stat.S_IMODE(before.st_mode) & 0o111 else "100644"
+            mode, object_id = git_entry
+            if mode != expected_mode:
+                raise RuntimeError(
+                    f"protected recovery import candidate mode differs: {value}"
+                )
+            total_file_bytes += before.st_size
+            if total_file_bytes > _MAX_RECOVERY_IMPORT_TOTAL_BYTES:
+                raise RuntimeError("protected recovery import bytes exceed their bound")
+            constructor = hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
+            digest = constructor(f"blob {before.st_size}\0".encode("ascii"))
+            observed = 0
+            while True:
+                block = os.read(descriptor, 1024 * 1024)
+                if not block:
+                    break
+                observed += len(block)
+                if observed > before.st_size:
+                    raise RuntimeError(
+                        f"protected recovery import candidate grew: {value}"
+                    )
+                digest.update(block)
+            after = os.fstat(descriptor)
+            if (
+                observed != before.st_size
+                or (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                )
+                != (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                )
+                or digest.hexdigest() != object_id
+            ):
+                raise RuntimeError(
+                    f"protected recovery import candidate differs from HEAD: {value}"
+                )
+        finally:
+            os.close(descriptor)
+        observed_blob_paths.add(value)
+        return f"{mode}:{object_id}"
+
+    def record(
+        status: os.stat_result,
+        value: str,
+        kind: str,
+        detail: str = "",
+    ) -> None:
+        mode = stat.S_IMODE(status.st_mode)
+        if (
+            status.st_uid != uid
+            or status.st_nlink < 1
+            or mode & 0o002
+            or (mode & 0o020 and status.st_gid != private_gid)
+            or (kind == "directory" and mode & 0o500 != 0o500)
+            or (kind != "directory" and status.st_nlink != 1)
+            or (kind != "directory" and mode & 0o400 != 0o400)
+        ):
+            raise RuntimeError(
+                f"protected recovery import candidate permissions differ: {value}"
+            )
+        records.append(
+            (
+                value,
+                kind,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_uid,
+                status.st_gid,
+                mode,
+                status.st_nlink,
+                detail,
+            )
+        )
+
+    def visit(directory_fd: int, relative: PurePath, depth: int) -> None:
+        nonlocal entry_count
+        if depth > _MAX_RECOVERY_IMPORT_DEPTH:
+            raise RuntimeError("protected recovery import tree is too deep")
+        with os.scandir(directory_fd) as entries:
+            for entry in entries:
+                if entry.name == ".git":
+                    continue
+                entry_count += 1
+                if entry_count > _MAX_RECOVERY_IMPORT_ROOT_ENTRIES:
+                    raise RuntimeError("protected recovery import tree is too large")
+                child = relative / entry.name
+                value = child.as_posix()
+                status = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(status.st_mode):
+                    target = os.readlink(entry.name, dir_fd=directory_fd)
+                    importable_link = entry.name.endswith(
+                        (
+                            ".py",
+                            ".pyc",
+                            ".pyo",
+                            ".so",
+                            *importlib.machinery.EXTENSION_SUFFIXES,
+                        )
+                    )
+                    admitted_omission = (
+                        not whole_repository
+                        and _RECOVERY_OMITTED_SOURCE_SYMLINKS.get(value) == target
+                    )
+                    git_entry = git_entries.get(value)
+                    target_bytes = target.encode("utf-8", errors="surrogateescape")
+                    if (
+                        value not in tracked
+                        or git_entry is None
+                        or git_entry[0] != "120000"
+                        or not _git_blob_matches(target_bytes, git_entry[1])
+                        or (importable_link and not admitted_omission)
+                    ):
+                        raise RuntimeError(
+                            f"protected recovery import tree contains an unsafe link: {value}"
+                        )
+                    normalized_target = os.path.normpath(
+                        (child.parent / target).as_posix()
+                    )
+                    if (
+                        not target
+                        or (
+                            importable_link
+                            and not admitted_omission
+                            and (
+                                os.path.isabs(target)
+                                or normalized_target == ".."
+                                or normalized_target.startswith("../")
+                            )
+                        )
+                    ):
+                        raise RuntimeError(
+                            f"protected recovery import link escapes its repository: {value}"
+                        )
+                    after = os.stat(
+                        entry.name, dir_fd=directory_fd, follow_symlinks=False
+                    )
+                    if (
+                        not stat.S_ISLNK(after.st_mode)
+                        or (after.st_dev, after.st_ino, after.st_mtime_ns)
+                        != (status.st_dev, status.st_ino, status.st_mtime_ns)
+                    ):
+                        raise RuntimeError("protected recovery import link changed")
+                    if status.st_uid != uid or status.st_nlink != 1:
+                        raise RuntimeError(
+                            f"protected recovery import link ownership differs: {value}"
+                        )
+                    records.append(
+                        (
+                            value,
+                            "symlink",
+                            status.st_dev,
+                            status.st_ino,
+                            status.st_size,
+                            status.st_mtime_ns,
+                            status.st_uid,
+                            status.st_gid,
+                            stat.S_IMODE(status.st_mode),
+                            status.st_nlink,
+                            target,
+                        )
+                    )
+                    observed_link_paths.add(value)
+                    continue
+                if stat.S_ISDIR(status.st_mode):
+                    if entry.name == "__pycache__":
+                        continue
+                    record(status, value, "directory")
+                    child_fd = os.open(entry.name, directory_flags, dir_fd=directory_fd)
+                    try:
+                        opened = os.fstat(child_fd)
+                        if (
+                            not stat.S_ISDIR(opened.st_mode)
+                            or (opened.st_dev, opened.st_ino)
+                            != (status.st_dev, status.st_ino)
+                        ):
+                            raise RuntimeError(
+                                "protected recovery import directory changed"
+                            )
+                        visit(child_fd, child, depth + 1)
+                    finally:
+                        os.close(child_fd)
+                    continue
+                python_source = entry.name.endswith(".py")
+                bytecode = entry.name.endswith((".pyc", ".pyo"))
+                native = entry.name.endswith(".so") or entry.name.endswith(
+                    tuple(importlib.machinery.EXTENSION_SUFFIXES)
+                )
+                if bytecode and "__pycache__" not in child.parts:
+                    raise RuntimeError(
+                        f"protected recovery import tree contains bytecode: {value}"
+                    )
+                if not python_source and not native:
+                    continue
+                if not stat.S_ISREG(status.st_mode) or value not in tracked:
+                    raise RuntimeError(
+                        f"protected recovery import candidate is untracked: {value}"
+                    )
+                detail = verify_blob_file(directory_fd, entry.name, status, value)
+                record(
+                    status,
+                    value,
+                    "python" if python_source else "native",
+                    detail,
+                )
+
+    root_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    root_flags |= getattr(os, "O_NOFOLLOW", 0)
+    root_fd = os.open(root, root_flags)
+    try:
+        record(os.fstat(root_fd), ".", "directory")
+        if whole_repository:
+            visit(root_fd, PurePath("."), 0)
+        for name in (() if whole_repository else roots):
+            directory_fd = os.open(name, directory_flags, dir_fd=root_fd)
+            try:
+                record(os.fstat(directory_fd), name, "directory")
+                visit(directory_fd, PurePath(name), 0)
+            finally:
+                os.close(directory_fd)
+        if root_import_candidates and not whole_repository:
+            with os.scandir(root_fd) as entries:
+                for entry in entries:
+                    entry_count += 1
+                    if entry_count > _MAX_RECOVERY_IMPORT_ROOT_ENTRIES:
+                        raise RuntimeError(
+                            "protected recovery import tree is too large"
+                        )
+                    name = entry.name
+                    python_source = name.endswith(".py")
+                    bytecode = name.endswith((".pyc", ".pyo"))
+                    native = name.endswith(".so") or name.endswith(
+                        tuple(importlib.machinery.EXTENSION_SUFFIXES)
+                    )
+                    if not python_source and not bytecode and not native:
+                        continue
+                    status = entry.stat(follow_symlinks=False)
+                    if bytecode:
+                        raise RuntimeError(
+                            f"protected recovery import tree contains bytecode: {name}"
+                        )
+                    if (
+                        stat.S_ISLNK(status.st_mode)
+                        or not stat.S_ISREG(status.st_mode)
+                        or name not in tracked
+                    ):
+                        raise RuntimeError(
+                            f"protected recovery import candidate is untracked: {name}"
+                        )
+                    detail = verify_blob_file(root_fd, name, status, name)
+                    record(
+                        status,
+                        name,
+                        "python" if python_source else "native",
+                        detail,
+                    )
+    finally:
+        os.close(root_fd)
+    expected_blob_paths = {
+        value
+        for value, (mode, _object_id) in git_entries.items()
+        if mode != "120000" and is_import_candidate(value)
+    }
+    expected_link_paths = {
+        value for value, (mode, _object_id) in git_entries.items() if mode == "120000"
+    }
+    if (
+        observed_blob_paths != expected_blob_paths
+        or observed_link_paths != expected_link_paths
+    ):
+        raise RuntimeError(
+            "protected recovery import filesystem differs from index and HEAD"
+        )
+    return tuple(sorted(records))
+
+
+_ISOLATED_RECOVERY_SOURCE_IDENTITY = _clean_recovery_import_source(ROOT)
+_ISOLATED_RECOVERY_IMPORT_INVENTORY = _scan_isolated_recovery_import_roots(ROOT)
+_ISOLATED_RECOVERY_DATASETS_SOURCE_IDENTITY = _datasets_recovery_import_source(ROOT)
+_ISOLATED_RECOVERY_DATASETS_IMPORT_INVENTORY = (
+    _scan_isolated_recovery_import_roots(
+        ROOT / "ipfs_datasets_py",
+        roots=(),
+        tracked_pathspecs=(".",),
+        whole_repository=True,
+        root_import_candidates=False,
+    )
+)
+
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -52,9 +850,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 
 SCHEMA: Final[str] = "lgcvf-independent-hermetic-qualification@1"
 WORKER_SCHEMA: Final[str] = "lgcvf-independent-pytest-observation@1"
-RECOVERY_SCHEMA: Final[str] = "lgcvf-independent-recovery-qualification@1"
+RECOVERY_SCHEMA: Final[str] = "lgcvf-independent-recovery-qualification@3"
 RECOVERY_WORKER_SCHEMA: Final[str] = (
-    "lgcvf-independent-recovery-pytest-observation@1"
+    "lgcvf-independent-recovery-pytest-observation@3"
 )
 RECOVERY_UNAVAILABLE_SCHEMA: Final[str] = (
     "lgcvf-independent-recovery-qualification-unavailable@1"
@@ -86,6 +884,35 @@ _MAX_PYTEST_DISTRIBUTION_CANDIDATES: Final[int] = 32
 _PYTEST_EXTERNAL_RECORD_PATHS: Final[frozenset[str]] = frozenset(
     {"../../../bin/py.test", "../../../bin/pytest"}
 )
+_MAX_DUCKDB_DISTRIBUTION_CANDIDATES: Final[int] = 8
+_MAX_DUCKDB_SITE_ROOT_ENTRIES: Final[int] = 4_096
+_MAX_DUCKDB_RUNTIME_FILE_BYTES: Final[int] = 64 * 1024 * 1024
+_DUCKDB_RUNTIME_SOURCE_PATHS: Final[tuple[str, ...]] = (
+    "duckdb/__init__.py",
+    "duckdb/_dbapi_type_object.py",
+    "duckdb/_version.py",
+    "duckdb/sqltypes/__init__.py",
+    "duckdb/value/__init__.py",
+    "duckdb/value/constant/__init__.py",
+)
+_DUCKDB_RUNTIME_MODULE_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "_duckdb",
+        "_duckdb._func",
+        "_duckdb._sqltypes",
+        "duckdb",
+        "duckdb._dbapi_type_object",
+        "duckdb._version",
+        "duckdb.sqltypes",
+        "duckdb.value",
+        "duckdb.value.constant",
+    }
+)
+_ACTIVE_DUCKDB_RUNTIME_CID: str | None = None
+_ACTIVE_DUCKDB_RUNTIME_EVIDENCE: dict[str, Any] | None = None
+_ACTIVE_DUCKDB_RUNTIME_DIRECTORY: tempfile.TemporaryDirectory[str] | None = None
+_ACTIVE_DUCKDB_RUNTIME_PROJECTION: Path | None = None
+_ACTIVE_DUCKDB_RUNTIME_MODULES: dict[str, Any] | None = None
 DECLARED_GENERATED_EVIDENCE_PATHS: Final[tuple[str, ...]] = (
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json",
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json",
@@ -676,11 +1503,11 @@ def _install_candidate_sandbox(
     file_size_bytes = _lower_resource_limit(resource.RLIMIT_FSIZE, 64 * 1024 * 1024)
     open_files = _lower_resource_limit(resource.RLIMIT_NOFILE, 256)
     # RLIMIT_NPROC is per real UID (and counts threads), not per worker.  The
-    # development host legitimately runs more than 512 same-UID threads, so a
+    # development host legitimately runs more than 2,048 same-UID threads, so a
     # lower ceiling prevents even deterministic library imports.  Keep a
     # finite ceiling and separately pin numerical libraries to one thread in
     # the sealed worker environment.
-    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 2_048)
+    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 4_096)
     cpu_seconds = _lower_resource_limit(resource.RLIMIT_CPU, 900)
     address_space_bytes = _lower_resource_limit(resource.RLIMIT_AS, 8 * 1024**3)
     landlock_abi = _install_landlock(write_root)
@@ -724,6 +1551,7 @@ def _sandbox_evidence_is_valid(
     }
     if require_recovery_policy:
         expected_fields.add("seccomp_policy")
+        expected_fields.add("worker_pycache")
     if not isinstance(value, Mapping) or set(value) != expected_fields:
         return False
     limits = value.get("resource_limits")
@@ -740,7 +1568,7 @@ def _sandbox_evidence_is_valid(
         "cpu_seconds": 900,
         "file_size_bytes": 64 * 1024 * 1024,
         "open_files": 256,
-        "processes": 2_048,
+        "processes": 4_096,
     }
     if any(
         isinstance(limits.get(name), bool)
@@ -779,6 +1607,18 @@ def _sandbox_evidence_is_valid(
             and policy.get("requested_syscalls") == list(_DENIED_SYSCALLS)
             and value.get("seccomp_denied_syscall_count") == len(installed)
         )
+        if value.get("worker_pycache") != {
+            "schema": "lgcvf-recovery-worker-pycache-isolation@1",
+            "write_root_relative_path": "python-pycache",
+            "environment_variable": "PYTHONPYCACHEPREFIX",
+            "python_prefix_active": True,
+            "dont_write_bytecode": True,
+            "owner_matches_worker": True,
+            "mode_octal": "0700",
+            "empty_before": True,
+            "empty_after": True,
+        }:
+            return False
     return (
         value.get("profile") == "landlock-readonly-seccomp-no-network"
         and isinstance(value.get("landlock_abi"), int)
@@ -857,6 +1697,12 @@ def _copy_projection_branch(
             item for item in copied_paths if item == relative or item.startswith(relative + "/")
         ]
         target = destination / entry.name
+        if entry.is_symlink():
+            if descendants:
+                raise QualificationError(
+                    f"qualification selected a symlink input: {relative}"
+                )
+            continue
         if not descendants:
             target.symlink_to(entry.resolve(), target_is_directory=entry.is_dir())
         elif entry.is_dir():
@@ -875,6 +1721,83 @@ def _copy_projection_branch(
             )
 
 
+def _projection_omitted_symlinks(
+    source: Path,
+    *,
+    prefix: PurePath,
+    copied_paths: frozenset[str],
+) -> list[dict[str, str]]:
+    """Return exact source symlinks omitted along projected branches."""
+
+    omitted: list[dict[str, str]] = []
+    for entry in sorted(source.iterdir(), key=lambda item: item.name):
+        relative = (prefix / entry.name).as_posix()
+        descendants = [
+            item
+            for item in copied_paths
+            if item == relative or item.startswith(relative + "/")
+        ]
+        if entry.is_symlink():
+            if descendants:
+                raise QualificationError(
+                    f"qualification selected a symlink input: {relative}"
+                )
+            omitted.append(
+                {
+                    "path": relative,
+                    "git_target": os.readlink(entry),
+                    "disposition": "omitted_source_symlink",
+                }
+            )
+        elif descendants and entry.is_dir():
+            omitted.extend(
+                _projection_omitted_symlinks(
+                    entry,
+                    prefix=prefix / entry.name,
+                    copied_paths=copied_paths,
+                )
+            )
+    return omitted
+
+
+def _execution_projection_receipt(
+    root: Path,
+    suites: Sequence[Suite],
+) -> dict[str, Any]:
+    """Build the closed read-only projection receipt without writing it."""
+
+    resolved_root = root.resolve(strict=True)
+    copied_paths = frozenset(
+        (Path(suite.owner_root) / relative).as_posix().lstrip("./")
+        for suite in suites
+        for relative in suite.paths
+    )
+    if not copied_paths:
+        raise QualificationError("qualification projection has no judged inputs")
+    copied = []
+    for relative in sorted(copied_paths):
+        source_bytes = _safe_source(resolved_root, relative).read_bytes()
+        copied.append(
+            {
+                "path": relative,
+                "sha256": _sha256_bytes(source_bytes),
+                "size_bytes": len(source_bytes),
+            }
+        )
+    result: dict[str, Any] = {
+        "schema": "lgcvf-readonly-test-projection@2",
+        "copied_sources": copied,
+        "omitted_source_symlinks": _projection_omitted_symlinks(
+            resolved_root,
+            prefix=PurePath(),
+            copied_paths=copied_paths,
+        ),
+        "original_checkout_writable": False,
+    }
+    result["projection_cid"] = content_identity(result)
+    return result
+
+
 def _prepare_execution_checkout(
     root: Path,
     destination: Path,
@@ -888,18 +1811,15 @@ def _prepare_execution_checkout(
         for suite in suites
         for relative in suite.paths
     )
-    if not copied_paths:
-        raise QualificationError("qualification projection has no judged inputs")
-    for relative in copied_paths:
-        _safe_source(resolved_root, relative)
+    expected = _execution_projection_receipt(resolved_root, suites)
     _copy_projection_branch(
         resolved_root,
         destination,
         prefix=Path(),
         copied_paths=copied_paths,
     )
-    copied = []
-    for relative in sorted(copied_paths):
+    for item in expected["copied_sources"]:
+        relative = str(item["path"])
         source = _safe_source(resolved_root, relative)
         projected_path = destination / relative
         projected = _safe_source(destination.resolve(strict=True), relative)
@@ -909,26 +1829,412 @@ def _prepare_execution_checkout(
             raise QualificationError(
                 f"qualification copied input differs: {relative}"
             )
-        copied.append(
-            {
-                "path": relative,
-                "sha256": _sha256_bytes(source_bytes),
-                "size_bytes": len(source_bytes),
-            }
+    for item in expected["omitted_source_symlinks"]:
+        try:
+            (destination / str(item["path"])).lstat()
+        except FileNotFoundError:
+            continue
+        raise QualificationError(
+            f"qualification projection retained a source symlink: {item['path']}"
         )
-    result = {
-        "schema": "lgcvf-readonly-test-projection@1",
-        "copied_sources": copied,
-        "original_checkout_writable": False,
+    return expected
+
+
+def _recovery_projection_source_paths(
+    root: Path,
+    suites: Sequence[Suite],
+) -> tuple[str, ...]:
+    """Select the closed Python/native/config dependency projection."""
+
+    selected = {
+        (Path(suite.owner_root) / relative).as_posix().lstrip("./")
+        for suite in suites
+        for relative in suite.paths
     }
-    result["projection_cid"] = content_identity(result)
+    source_roots = (
+        root / "ipfs_accelerate_py",
+        root / "scripts",
+        root / "ipfs_datasets_py/ipfs_datasets_py",
+    )
+    for source_root in source_roots:
+        if not source_root.is_dir() or source_root.is_symlink():
+            raise QualificationError("recovery projection source root differs")
+        for candidate in source_root.rglob("*"):
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            if candidate.name.endswith(".py") or candidate.name.endswith(".so") or candidate.name.endswith(
+                tuple(importlib.machinery.EXTENSION_SUFFIXES)
+            ):
+                selected.add(candidate.relative_to(root).as_posix())
+    for candidate in root.iterdir():
+        if (
+            not candidate.is_symlink()
+            and candidate.is_file()
+            and (
+                candidate.name.endswith(".py")
+                or candidate.name.endswith(".so")
+                or candidate.name.endswith(tuple(importlib.machinery.EXTENSION_SUFFIXES))
+            )
+        ):
+            selected.add(candidate.relative_to(root).as_posix())
+    # The accelerator's root conftest imports these shared fixtures at
+    # collection time.  Copy the closed helper package instead of exposing
+    # the rest of ``test/`` (which contains unrelated environments, reports,
+    # and external symlinks) to the recovery worker.
+    common_helpers = root / "test/common"
+    if not common_helpers.is_dir() or common_helpers.is_symlink():
+        raise QualificationError("recovery test helper root differs")
+    for candidate in common_helpers.iterdir():
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        if candidate.name.endswith(".py"):
+            selected.add(candidate.relative_to(root).as_posix())
+    for suite in suites:
+        selected_path = Path(suite.owner_root) / suite.paths[0]
+        parent = selected_path.parent
+        while parent != Path("."):
+            for support_name in ("conftest.py", "__init__.py"):
+                support = root / parent / support_name
+                if support.is_file() and not support.is_symlink():
+                    selected.add(support.relative_to(root).as_posix())
+            parent = parent.parent
+    for relative in (
+        "conftest.py",
+        "test/__init__.py",
+        "pytest.ini",
+        "pyproject.toml",
+        "ipfs_datasets_py/conftest.py",
+        "ipfs_datasets_py/pytest.ini",
+        "ipfs_datasets_py/pyproject.toml",
+    ):
+        candidate = root / relative
+        if candidate.is_file() and not candidate.is_symlink():
+            selected.add(relative)
+    if not selected or len(selected) > 8_192:
+        raise QualificationError("recovery projection population exceeds its bound")
+    return tuple(sorted(selected))
+
+
+def _recovery_projection_omitted_symlinks(root: Path) -> list[dict[str, str]]:
+    """Inventory every source symlink excluded from recovery worker reach."""
+
+    omitted: list[dict[str, str]] = []
+    count = 0
+
+    def visit(directory: Path, prefix: PurePath, depth: int) -> None:
+        nonlocal count
+        if depth > _MAX_RECOVERY_IMPORT_DEPTH:
+            raise QualificationError("recovery projection source tree is too deep")
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.name in {".git", "__pycache__"}:
+                    continue
+                count += 1
+                if count > 2 * _MAX_RECOVERY_IMPORT_ROOT_ENTRIES:
+                    raise QualificationError("recovery projection source tree is too large")
+                relative = prefix / entry.name
+                status = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(status.st_mode):
+                    omitted.append(
+                        {
+                            "path": relative.as_posix(),
+                            "git_target": os.readlink(entry.path),
+                            "disposition": "omitted_source_symlink",
+                        }
+                    )
+                elif stat.S_ISDIR(status.st_mode):
+                    visit(Path(entry.path), relative, depth + 1)
+
+    for relative in ("scripts", "ipfs_accelerate_py", "test", "ipfs_datasets_py"):
+        source = root / relative
+        if not source.is_dir() or source.is_symlink():
+            raise QualificationError("recovery projection source root differs")
+        visit(source, PurePath(relative), 0)
+    paths = [item["path"] for item in omitted]
+    if len(paths) != len(set(paths)):
+        raise QualificationError("recovery projection symlink inventory is ambiguous")
+    return sorted(omitted, key=lambda item: item["path"])
+
+
+def _read_recovery_projection_source(
+    root: Path,
+    relative: str,
+    *,
+    git_entry: tuple[str, str] | None = None,
+) -> bytes:
+    """Read one bounded regular source through a no-follow descriptor chain."""
+
+    logical = PurePath(relative)
+    if (
+        not relative
+        or logical.is_absolute()
+        or ".." in logical.parts
+        or logical.as_posix() != relative
+    ):
+        raise QualificationError("recovery projection path differs")
+    directory_flags = (
+        os.O_RDONLY
+        | os.O_CLOEXEC
+        | os.O_DIRECTORY
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(root, directory_flags)
+    except OSError as exc:
+        raise QualificationError(
+            "recovery projection source is unavailable"
+        ) from exc
+    try:
+        for component in logical.parts[:-1]:
+            child = os.open(component, directory_flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        source_fd = os.open(logical.name, file_flags, dir_fd=descriptor)
+        before = os.fstat(source_fd)
+        expected_mode = "100755" if stat.S_IMODE(before.st_mode) & 0o111 else "100644"
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > 16 * 1024 * 1024
+            or (git_entry is not None and git_entry[0] != expected_mode)
+        ):
+            raise QualificationError("recovery projection source identity differs")
+        try:
+            chunks: list[bytes] = []
+            observed = 0
+            while True:
+                block = os.read(
+                    source_fd,
+                    min(1024 * 1024, before.st_size + 1 - observed),
+                )
+                if not block:
+                    break
+                chunks.append(block)
+                observed += len(block)
+                if observed > before.st_size:
+                    raise QualificationError(
+                        "recovery projection source grew while read"
+                    )
+            after = os.fstat(source_fd)
+            payload = b"".join(chunks)
+            if (
+                observed != before.st_size
+                or (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                )
+                != (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                )
+                or (
+                    git_entry is not None
+                    and not _git_blob_matches(payload, git_entry[1])
+                )
+            ):
+                raise QualificationError(
+                    "recovery projection source differs from index and HEAD"
+                )
+            return payload
+        finally:
+            os.close(source_fd)
+    except OSError as exc:
+        raise QualificationError(
+            "recovery projection source is unavailable"
+        ) from exc
+    finally:
+        os.close(descriptor)
+
+
+def _recovery_projection_git_entries(
+    root: Path,
+    paths: Sequence[str],
+) -> dict[str, tuple[str, str]]:
+    """Bind every selected projection file to ordinary index and HEAD blobs."""
+
+    grouped: dict[Path, list[tuple[str, str]]] = {root: []}
+    nested_root = root / "ipfs_datasets_py"
+    grouped[nested_root] = []
+    prefix = "ipfs_datasets_py/"
+    for relative in paths:
+        if relative.startswith(prefix):
+            grouped[nested_root].append((relative, relative[len(prefix) :]))
+        else:
+            grouped[root].append((relative, relative))
+    result: dict[str, tuple[str, str]] = {}
+    for repository, values in grouped.items():
+        for offset in range(0, len(values), 256):
+            batch = values[offset : offset + 256]
+            try:
+                entries = _tracked_recovery_import_entries(
+                    repository,
+                    pathspecs=tuple(item[1] for item in batch),
+                )
+            except RuntimeError as exc:
+                raise QualificationError(
+                    "recovery projection Git authority differs"
+                ) from exc
+            if set(entries) != {item[1] for item in batch}:
+                raise QualificationError(
+                    "recovery projection source is not exactly tracked"
+                )
+            for public_path, repository_path in batch:
+                entry = entries[repository_path]
+                if entry[0] not in {"100644", "100755"}:
+                    raise QualificationError(
+                        "recovery projection selected a non-file Git entry"
+                    )
+                result[public_path] = entry
+    if set(result) != set(paths):
+        raise QualificationError("recovery projection Git population differs")
     return result
 
 
+def _recovery_projection_manifest(
+    root: Path,
+    paths: Sequence[str],
+    *,
+    head_bound: bool = True,
+) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
+    """Read and content-address every closed recovery projection file."""
+
+    manifest: list[dict[str, Any]] = []
+    payloads: dict[str, bytes] = {}
+    total = 0
+    git_entries = _recovery_projection_git_entries(root, paths) if head_bound else {}
+    for relative in paths:
+        logical = PurePath(relative)
+        if logical.is_absolute() or ".." in logical.parts or logical.as_posix() != relative:
+            raise QualificationError("recovery projection path differs")
+        payload = _read_recovery_projection_source(
+            root,
+            relative,
+            git_entry=git_entries.get(relative),
+        )
+        total += len(payload)
+        if total > 256 * 1024 * 1024:
+            raise QualificationError("recovery projection bytes exceed their bound")
+        payloads[relative] = payload
+        manifest.append(
+            {
+                "path": relative,
+                "sha256": _sha256_bytes(payload),
+                "size_bytes": len(payload),
+            }
+        )
+    return manifest, payloads
+
+
+def _recovery_execution_projection_receipt(
+    root: Path,
+    suites: Sequence[Suite],
+) -> dict[str, Any]:
+    """Build the compact closed-copy projection receipt."""
+
+    paths = _recovery_projection_source_paths(root, suites)
+    manifest, _payloads = _recovery_projection_manifest(root, paths)
+    selected_sources = []
+    for suite in suites:
+        relative = (Path(suite.owner_root) / suite.paths[0]).as_posix().lstrip("./")
+        selected_sources.append(next(item for item in manifest if item["path"] == relative))
+    body: dict[str, Any] = {
+        "schema": "lgcvf-closed-recovery-test-projection@1",
+        "selected_sources": selected_sources,
+        "copied_source_count": len(manifest),
+        "copied_source_bytes": sum(int(item["size_bytes"]) for item in manifest),
+        "copied_source_manifest_root": content_identity(manifest),
+        "omitted_source_symlinks": _recovery_projection_omitted_symlinks(root),
+        "contains_live_source_links": False,
+        "original_checkout_writable": False,
+    }
+    body["projection_cid"] = content_identity(body)
+    return body
+
+
+def _prepare_recovery_execution_checkout(
+    root: Path,
+    destination: Path,
+    suites: Sequence[Suite],
+) -> dict[str, Any]:
+    """Copy the exact closed recovery dependency projection with no links."""
+
+    paths = _recovery_projection_source_paths(root, suites)
+    manifest, payloads = _recovery_projection_manifest(root, paths)
+    destination.mkdir(mode=0o700, parents=True, exist_ok=False)
+    for item in manifest:
+        relative = str(item["path"])
+        target = destination.joinpath(*PurePath(relative).parts)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(
+            target,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC,
+            0o400,
+        )
+        try:
+            view = memoryview(payloads[relative])
+            while view:
+                written = os.write(descriptor, view)
+                if written < 1:
+                    raise QualificationError("recovery projection write made no progress")
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    for directory, directories, _files in os.walk(destination, topdown=False):
+        for name in directories:
+            os.chmod(Path(directory) / name, 0o500)
+        os.chmod(directory, 0o500)
+    expected = _recovery_execution_projection_receipt(root, suites)
+    copied_manifest, _ = _recovery_projection_manifest(
+        destination,
+        paths,
+        head_bound=False,
+    )
+    if (
+        content_identity(copied_manifest) != expected["copied_source_manifest_root"]
+        or any(path.is_symlink() for path in destination.rglob("*"))
+    ):
+        raise QualificationError("closed recovery projection differs after copy")
+    return expected
+
+
 def _git_bytes(root: Path, args: Sequence[str]) -> bytes:
+    try:
+        substitution_before = _git_object_substitution_state(root)
+    except RuntimeError as exc:
+        raise QualificationError(
+            "protected-input Git object substitution differs"
+        ) from exc
     completed = subprocess.run(
-        ["git", *args],
+        [
+            "/usr/bin/git",
+            *_RECOVERY_GIT_CONFIG_OVERRIDES,
+            "-c",
+            "core.hooksPath=/dev/null",
+            *args,
+        ],
         cwd=root,
+        env={
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "HOME": "/nonexistent",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin",
+        },
         capture_output=True,
         check=False,
         timeout=30,
@@ -940,6 +2246,15 @@ def _git_bytes(root: Path, args: Sequence[str]) -> bytes:
         )
     if len(completed.stdout) > _MAX_GIT_OBSERVATION_BYTES:
         raise QualificationError("protected-input Git observation exceeds its bound")
+    try:
+        if _git_object_substitution_state(root) != substitution_before:
+            raise QualificationError(
+                "protected-input Git object substitution changed"
+            )
+    except RuntimeError as exc:
+        raise QualificationError(
+            "protected-input Git object substitution differs"
+        ) from exc
     return completed.stdout
 
 
@@ -1037,11 +2352,21 @@ def _pytest_site_roots() -> tuple[Path, ...]:
     """Return only interpreter-derived package roots, never ambient sys.path."""
 
     raw_roots: list[str] = []
-    user_site = site.getusersitepackages()
-    if isinstance(user_site, str):
-        raw_roots.append(user_site)
-    elif isinstance(user_site, Sequence):
-        raw_roots.extend(str(item) for item in user_site)
+    try:
+        account_home = Path(pwd.getpwuid(os.geteuid()).pw_dir)
+    except (KeyError, OSError) as exc:
+        raise QualificationError("interpreter account home is unavailable") from exc
+    if not account_home.is_absolute():
+        raise QualificationError("interpreter account home is not absolute")
+    userbase = str(account_home / ".local")
+    for key in ("purelib", "platlib"):
+        candidate = sysconfig.get_path(
+            key,
+            scheme="posix_user",
+            vars={"userbase": userbase},
+        )
+        if candidate:
+            raw_roots.append(candidate)
     try:
         raw_roots.extend(site.getsitepackages())
     except AttributeError:
@@ -1108,6 +2433,28 @@ def _record_sha256_size(
     return digest, int(encoded_size)
 
 
+def _strict_record_relative_path(
+    relative: str,
+    *,
+    noun: str,
+    external_paths: frozenset[str] = frozenset(),
+) -> None:
+    """Reject ambiguous RECORD paths before any identity matching."""
+
+    components = relative.split("/")
+    if relative not in external_paths and (
+        not relative
+        or relative.startswith("/")
+        or "\\" in relative
+        or any(
+            ord(character) < 32 or ord(character) == 127 for character in relative
+        )
+        or re.match(r"^[A-Za-z]:", relative) is not None
+        or any(component in {"", ".", ".."} for component in components)
+    ):
+        raise QualificationError(f"{noun} contains an unsafe RECORD path")
+
+
 def _pytest_record_identity(
     record: bytes,
     *,
@@ -1130,19 +2477,11 @@ def _pytest_record_identity(
             if relative in observed_paths:
                 raise QualificationError(f"{noun} contains a duplicate RECORD path")
             observed_paths.add(relative)
-            components = relative.split("/")
-            if relative not in _PYTEST_EXTERNAL_RECORD_PATHS and (
-                not relative
-                or relative.startswith("/")
-                or "\\" in relative
-                or any(
-                    ord(character) < 32 or ord(character) == 127
-                    for character in relative
-                )
-                or re.match(r"^[A-Za-z]:", relative) is not None
-                or any(component in {"", ".", ".."} for component in components)
-            ):
-                raise QualificationError(f"{noun} contains an unsafe RECORD path")
+            _strict_record_relative_path(
+                relative,
+                noun=noun,
+                external_paths=_PYTEST_EXTERNAL_RECORD_PATHS,
+            )
             if relative == "pytest/__init__.py":
                 package_matches.append((digest, size))
             if relative == metadata_path:
@@ -1295,6 +2634,823 @@ def _pytest_distribution_version() -> str:
             "pytest distribution does not have one exact RECORD-matched installation"
         )
     return matches[0]
+
+
+def _read_owned_regular_relative(
+    root_fd: int,
+    relative: str,
+    *,
+    noun: str,
+    limit: int,
+) -> bytes:
+    """Read a strict relative file through an fd-scoped no-follow walk."""
+
+    _strict_record_relative_path(relative, noun=noun)
+    components = relative.split("/")
+    directory_fd = os.dup(root_fd)
+    try:
+        for component in components[:-1]:
+            child_fd = _open_owned_directory_at(
+                directory_fd,
+                component,
+                noun=f"{noun} directory",
+            )
+            os.close(directory_fd)
+            directory_fd = child_fd
+        return _read_owned_regular_at(
+            directory_fd,
+            components[-1],
+            noun=noun,
+            limit=limit,
+        )
+    finally:
+        os.close(directory_fd)
+
+
+def _duckdb_record_rows(
+    record_bytes: bytes,
+    *,
+    noun: str,
+) -> dict[str, tuple[str, str]]:
+    """Decode one closed DuckDB RECORD path map."""
+
+    rows: dict[str, tuple[str, str]] = {}
+    try:
+        parsed = csv.reader(io.StringIO(record_bytes.decode("utf-8", errors="strict")))
+        for row in parsed:
+            if len(row) != 3:
+                raise QualificationError(f"{noun} contains a malformed RECORD row")
+            relative, digest, size = row
+            _strict_record_relative_path(relative, noun=noun)
+            if relative in rows:
+                raise QualificationError(f"{noun} contains a duplicate RECORD path")
+            rows[relative] = (digest, size)
+    except (csv.Error, UnicodeDecodeError) as exc:
+        raise QualificationError(f"{noun} is not a valid UTF-8 RECORD") from exc
+    return rows
+
+
+def _duckdb_distribution_candidate_names(root_fd: int) -> list[str]:
+    """Stream and bound candidate discovery without listing a site root."""
+
+    pattern = re.compile(
+        r"duckdb-([0-9A-Za-z][0-9A-Za-z.!+_-]{0,127})\.dist-info"
+    )
+    names: list[str] = []
+    observed_entries = 0
+    with os.scandir(root_fd) as entries:
+        for entry in entries:
+            observed_entries += 1
+            if observed_entries > _MAX_DUCKDB_SITE_ROOT_ENTRIES:
+                raise QualificationError("DuckDB site root population exceeds its bound")
+            if not pattern.fullmatch(entry.name):
+                continue
+            names.append(entry.name)
+            if len(names) > _MAX_DUCKDB_DISTRIBUTION_CANDIDATES:
+                raise QualificationError(
+                    "DuckDB distribution population exceeds its bound"
+                )
+    names.sort()
+    return names
+
+
+def _resolve_bound_duckdb_runtime() -> tuple[dict[str, Any], dict[str, bytes]]:
+    """Resolve the sole RECORD-bound DuckDB runtime without importing it."""
+
+    matches: list[tuple[dict[str, Any], dict[str, bytes]]] = []
+    observed_candidates = 0
+    version_pattern = re.compile(
+        r"duckdb-([0-9A-Za-z][0-9A-Za-z.!+_-]{0,127})\.dist-info"
+    )
+    extension_suffix = str(sysconfig.get_config_var("EXT_SUFFIX") or "")
+    soabi = str(sysconfig.get_config_var("SOABI") or "")
+    if (
+        not extension_suffix
+        or extension_suffix not in importlib.machinery.EXTENSION_SUFFIXES
+        or not soabi
+    ):
+        raise QualificationError("Python native-extension identity is unavailable")
+    for root in _pytest_site_roots():
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            root_fd = os.open(root, flags)
+        except OSError as exc:
+            raise QualificationError("DuckDB distribution root cannot be opened") from exc
+        try:
+            root_status = os.fstat(root_fd)
+            if not stat.S_ISDIR(root_status.st_mode) or root_status.st_uid not in {
+                0,
+                os.geteuid(),
+            }:
+                raise QualificationError("DuckDB distribution root is not owned")
+            candidates = _duckdb_distribution_candidate_names(root_fd)
+            observed_candidates += len(candidates)
+            if observed_candidates > _MAX_DUCKDB_DISTRIBUTION_CANDIDATES:
+                raise QualificationError(
+                    "DuckDB distribution population exceeds its bound"
+                )
+            for distribution_name in candidates:
+                candidate_fd = _open_owned_directory_at(
+                    root_fd,
+                    distribution_name,
+                    noun="DuckDB distribution directory",
+                )
+                try:
+                    metadata_bytes = _read_owned_regular_at(
+                        candidate_fd,
+                        "METADATA",
+                        noun="DuckDB distribution METADATA",
+                        limit=_MAX_PYTEST_METADATA_BYTES,
+                    )
+                    record_bytes = _read_owned_regular_at(
+                        candidate_fd,
+                        "RECORD",
+                        noun="DuckDB distribution RECORD",
+                        limit=_MAX_PYTEST_RECORD_BYTES,
+                    )
+                finally:
+                    os.close(candidate_fd)
+                try:
+                    metadata = email.parser.BytesParser(
+                        policy=email.policy.compat32
+                    ).parsebytes(metadata_bytes, headersonly=True)
+                except (TypeError, ValueError) as exc:
+                    raise QualificationError(
+                        "DuckDB distribution METADATA is malformed"
+                    ) from exc
+                names_found = metadata.get_all("Name", [])
+                versions_found = metadata.get_all("Version", [])
+                version_match = version_pattern.fullmatch(distribution_name)
+                version = str(versions_found[0]).strip() if versions_found else ""
+                if (
+                    metadata.defects
+                    or len(names_found) != 1
+                    or len(versions_found) != 1
+                    or re.sub(r"[-_.]+", "-", str(names_found[0])).casefold()
+                    != "duckdb"
+                    or version_match is None
+                    or version != version_match.group(1)
+                ):
+                    raise QualificationError("DuckDB distribution identity differs")
+
+                rows = _duckdb_record_rows(
+                    record_bytes,
+                    noun=f"DuckDB {version} RECORD",
+                )
+                metadata_path = f"{distribution_name}/METADATA"
+                if metadata_path not in rows:
+                    raise QualificationError(
+                        "DuckDB RECORD does not bind its exact METADATA"
+                    )
+                metadata_identity = _record_sha256_size(
+                    *rows[metadata_path], noun="DuckDB METADATA"
+                )
+                if metadata_identity != (
+                    hashlib.sha256(metadata_bytes).digest(),
+                    len(metadata_bytes),
+                ):
+                    raise QualificationError("DuckDB METADATA identity differs")
+
+                native_candidates = sorted(
+                    path
+                    for path in rows
+                    if "/" not in path
+                    and path.startswith("_duckdb")
+                    and path.endswith(tuple(importlib.machinery.EXTENSION_SUFFIXES))
+                )
+                expected_native_path = f"_duckdb{extension_suffix}"
+                if native_candidates != [expected_native_path]:
+                    raise QualificationError(
+                        "DuckDB RECORD does not bind one native runtime"
+                    )
+                runtime_paths = (*_DUCKDB_RUNTIME_SOURCE_PATHS, expected_native_path)
+                runtime_files: list[dict[str, Any]] = []
+                runtime_bytes: dict[str, bytes] = {}
+                candidate_matches = True
+                for relative in runtime_paths:
+                    if relative not in rows:
+                        raise QualificationError(
+                            f"DuckDB RECORD omits runtime file: {relative}"
+                        )
+                    expected_identity = _record_sha256_size(
+                        *rows[relative], noun=f"DuckDB runtime {relative}"
+                    )
+                    observed = _read_owned_regular_relative(
+                        root_fd,
+                        relative,
+                        noun=f"DuckDB runtime {relative}",
+                        limit=_MAX_DUCKDB_RUNTIME_FILE_BYTES,
+                    )
+                    observed_identity = (hashlib.sha256(observed).digest(), len(observed))
+                    if expected_identity != observed_identity:
+                        candidate_matches = False
+                        break
+                    runtime_bytes[relative] = observed
+                    runtime_files.append(
+                        {
+                            "path": relative,
+                            "sha256": "sha256:" + observed_identity[0].hex(),
+                            "size_bytes": observed_identity[1],
+                        }
+                    )
+                if not candidate_matches:
+                    continue
+                runtime_files.sort(key=lambda item: str(item["path"]))
+                projected_bytes = {
+                    **runtime_bytes,
+                    metadata_path: metadata_bytes,
+                    f"{distribution_name}/RECORD": record_bytes,
+                }
+                body: dict[str, Any] = {
+                    "schema": "lgcvf-bound-duckdb-runtime@1",
+                    "distribution_name": "duckdb",
+                    "distribution_directory": distribution_name,
+                    "version": version,
+                    "python_cache_tag": str(sys.implementation.cache_tag),
+                    "python_soabi": soabi,
+                    "native_extension_suffix": extension_suffix,
+                    "machine": platform.machine(),
+                    "platform": platform.system(),
+                    "metadata": {
+                        "path": metadata_path,
+                        "sha256": _sha256_bytes(metadata_bytes),
+                        "size_bytes": len(metadata_bytes),
+                    },
+                    "record": {
+                        "path": f"{distribution_name}/RECORD",
+                        "sha256": _sha256_bytes(record_bytes),
+                        "size_bytes": len(record_bytes),
+                    },
+                    "runtime_files": runtime_files,
+                    "native_extension_path": expected_native_path,
+                    "projected_site_root_only": True,
+                    "pycache_projected": False,
+                    "pth_processed": False,
+                }
+                body["runtime_cid"] = content_identity(body)
+                matches.append((body, projected_bytes))
+        finally:
+            os.close(root_fd)
+    if observed_candidates != 1 or len(matches) != 1:
+        raise QualificationError(
+            "DuckDB runtime does not have one exact RECORD-matched distribution"
+        )
+    return matches[0]
+
+
+def bound_duckdb_runtime_evidence() -> dict[str, Any]:
+    """Return the content-bound DuckDB runtime identity without importing it."""
+
+    evidence, _files = _resolve_bound_duckdb_runtime()
+    return evidence
+
+
+def _require_isolated_recovery_runtime() -> None:
+    """Reject protected recovery work outside ``python -I -S -B``."""
+
+    flags = sys.flags
+    try:
+        cpython_flags = tuple(
+            ctypes.c_int.in_dll(ctypes.pythonapi, name).value
+            for name in (
+                "Py_IsolatedFlag",
+                "Py_IgnoreEnvironmentFlag",
+                "Py_NoSiteFlag",
+                "Py_DontWriteBytecodeFlag",
+            )
+        )
+    except (AttributeError, OSError, ValueError):
+        cpython_flags = ()
+    if (
+        flags.isolated != 1
+        or flags.ignore_environment != 1
+        or flags.no_site != 1
+        or flags.safe_path is not True
+        or flags.dont_write_bytecode != 1
+        or sys.dont_write_bytecode is not True
+        or cpython_flags != (1, 1, 1, 1)
+    ):
+        raise QualificationError(
+            "protected recovery requires python -I -S -B"
+        )
+    _require_isolated_recovery_pycache()
+    if (
+        _ISOLATED_RECOVERY_SOURCE_IDENTITY is None
+        or _clean_recovery_import_source(ROOT)
+        != _ISOLATED_RECOVERY_SOURCE_IDENTITY
+        or
+        _ISOLATED_RECOVERY_IMPORT_INVENTORY is None
+        or _scan_isolated_recovery_import_roots(ROOT)
+        != _ISOLATED_RECOVERY_IMPORT_INVENTORY
+        or _ISOLATED_RECOVERY_DATASETS_SOURCE_IDENTITY is None
+        or _datasets_recovery_import_source(ROOT)
+        != _ISOLATED_RECOVERY_DATASETS_SOURCE_IDENTITY
+        or _ISOLATED_RECOVERY_DATASETS_IMPORT_INVENTORY is None
+        or _scan_isolated_recovery_import_roots(
+            ROOT / "ipfs_datasets_py",
+            roots=(),
+            tracked_pathspecs=(".",),
+            whole_repository=True,
+            root_import_candidates=False,
+        )
+        != _ISOLATED_RECOVERY_DATASETS_IMPORT_INVENTORY
+    ):
+        raise QualificationError("protected recovery import inventory differs")
+
+
+def _require_isolated_recovery_pycache() -> None:
+    """Require the early, owner-private, empty bytecode lookup root."""
+
+    root = _ISOLATED_RECOVERY_PYCACHE_ROOT
+    identity = _ISOLATED_RECOVERY_PYCACHE_IDENTITY
+    if (
+        _ISOLATED_RECOVERY_PYCACHE_DIRECTORY is None
+        or root is None
+        or identity is None
+        or sys.pycache_prefix != str(root)
+    ):
+        raise QualificationError("protected recovery pycache isolation differs")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as exc:
+        raise QualificationError(
+            "protected recovery pycache isolation differs"
+        ) from exc
+    try:
+        status = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or (status.st_dev, status.st_ino) != identity
+            or status.st_uid != os.geteuid()
+            or stat.S_IMODE(status.st_mode) != 0o700
+        ):
+            raise QualificationError("protected recovery pycache isolation differs")
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise QualificationError(
+                    "protected recovery pycache isolation is not empty"
+                )
+    finally:
+        os.close(descriptor)
+
+
+def _duckdb_module_names() -> set[str]:
+    return {
+        name
+        for name in sys.modules
+        if name == "duckdb"
+        or name.startswith("duckdb.")
+        or name == "_duckdb"
+        or name.startswith("_duckdb.")
+    }
+
+
+def _write_bound_duckdb_projection(
+    root_fd: int,
+    *,
+    relative: str,
+    payload: bytes,
+    executable: bool,
+) -> None:
+    """Create one capsule file through a no-follow directory walk."""
+
+    _strict_record_relative_path(relative, noun="DuckDB projected runtime")
+    components = relative.split("/")
+    directory_fd = os.dup(root_fd)
+    try:
+        for component in components[:-1]:
+            try:
+                os.mkdir(component, 0o700, dir_fd=directory_fd)
+            except FileExistsError:
+                pass
+            child_fd = _open_owned_directory_at(
+                directory_fd,
+                component,
+                noun="DuckDB projected runtime directory",
+            )
+            os.fchmod(child_fd, 0o700)
+            os.close(directory_fd)
+            directory_fd = child_fd
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        mode = 0o500 if executable else 0o400
+        try:
+            descriptor = os.open(
+                components[-1],
+                flags,
+                mode,
+                dir_fd=directory_fd,
+            )
+        except OSError as exc:
+            raise QualificationError("DuckDB runtime projection cannot be created") from exc
+        try:
+            os.fchmod(descriptor, mode)
+            view = memoryview(payload)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise QualificationError("DuckDB runtime projection write stalled")
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _bound_duckdb_projection_expected_files(
+    evidence: Mapping[str, Any],
+) -> dict[str, tuple[str, int, int]]:
+    """Return the exact content and mode contract for one admitted capsule."""
+
+    expected: dict[str, tuple[str, int, int]] = {}
+    native_path = str(evidence.get("native_extension_path") or "")
+    runtime_files = evidence.get("runtime_files")
+    if not isinstance(runtime_files, list):
+        raise QualificationError("DuckDB runtime file evidence is absent")
+    for value in runtime_files:
+        if not isinstance(value, Mapping) or set(value) != {
+            "path",
+            "sha256",
+            "size_bytes",
+        }:
+            raise QualificationError("DuckDB runtime file evidence differs")
+        relative = str(value["path"])
+        if relative in expected:
+            raise QualificationError("DuckDB runtime file evidence is duplicated")
+        expected[relative] = (
+            str(value["sha256"]),
+            int(value["size_bytes"]),
+            0o500 if relative == native_path else 0o400,
+        )
+    for evidence_field in ("metadata", "record"):
+        value = evidence.get(evidence_field)
+        if not isinstance(value, Mapping) or set(value) != {
+            "path",
+            "sha256",
+            "size_bytes",
+        }:
+            raise QualificationError(f"DuckDB {evidence_field} evidence differs")
+        relative = str(value["path"])
+        if relative in expected:
+            raise QualificationError("DuckDB projected runtime path is duplicated")
+        expected[relative] = (
+            str(value["sha256"]),
+            int(value["size_bytes"]),
+            0o400,
+        )
+    expected_runtime_paths = set(_DUCKDB_RUNTIME_SOURCE_PATHS) | {native_path}
+    if set(expected) - {
+        str(evidence["metadata"]["path"]),
+        str(evidence["record"]["path"]),
+    } != expected_runtime_paths:
+        raise QualificationError("DuckDB projected runtime file set differs")
+    return expected
+
+
+def _validate_bound_duckdb_projection(
+    projection: Path,
+    evidence: Mapping[str, Any],
+) -> None:
+    """Revalidate the exact private capsule inventory and content."""
+
+    try:
+        lexical = projection.lstat()
+    except OSError as exc:
+        raise QualificationError("DuckDB runtime projection is unavailable") from exc
+    if (
+        not stat.S_ISDIR(lexical.st_mode)
+        or lexical.st_uid != os.geteuid()
+        or stat.S_IMODE(lexical.st_mode) != 0o700
+    ):
+        raise QualificationError("DuckDB runtime projection root differs")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        root_fd = os.open(projection, flags)
+    except OSError as exc:
+        raise QualificationError("DuckDB runtime projection cannot be opened") from exc
+    try:
+        opened = os.fstat(root_fd)
+        if (opened.st_dev, opened.st_ino) != (lexical.st_dev, lexical.st_ino):
+            raise QualificationError("DuckDB runtime projection changed while opened")
+        expected_files = _bound_duckdb_projection_expected_files(evidence)
+        expected_directories = {
+            "/".join(PurePath(relative).parts[:ordinal])
+            for relative in expected_files
+            for ordinal in range(1, len(PurePath(relative).parts))
+        }
+        observed_files: set[str] = set()
+        observed_directories: set[str] = set()
+
+        def inspect(directory_fd: int, prefix: str) -> None:
+            with os.scandir(directory_fd) as entries:
+                for entry in entries:
+                    relative = f"{prefix}/{entry.name}" if prefix else entry.name
+                    metadata = entry.stat(follow_symlinks=False)
+                    if stat.S_ISDIR(metadata.st_mode):
+                        if (
+                            relative not in expected_directories
+                            or metadata.st_uid != os.geteuid()
+                            or stat.S_IMODE(metadata.st_mode) != 0o700
+                        ):
+                            raise QualificationError(
+                                "DuckDB runtime projection directory differs"
+                            )
+                        child_fd = _open_owned_directory_at(
+                            directory_fd,
+                            entry.name,
+                            noun="DuckDB projected runtime directory",
+                        )
+                        try:
+                            child = os.fstat(child_fd)
+                            if (child.st_dev, child.st_ino) != (
+                                metadata.st_dev,
+                                metadata.st_ino,
+                            ):
+                                raise QualificationError(
+                                    "DuckDB projection directory changed while opened"
+                                )
+                            observed_directories.add(relative)
+                            inspect(child_fd, relative)
+                        finally:
+                            os.close(child_fd)
+                        continue
+                    if not stat.S_ISREG(metadata.st_mode):
+                        raise QualificationError(
+                            "DuckDB runtime projection contains a special entry"
+                        )
+                    expected = expected_files.get(relative)
+                    if (
+                        expected is None
+                        or metadata.st_uid != os.geteuid()
+                        or metadata.st_nlink != 1
+                        or stat.S_IMODE(metadata.st_mode) != expected[2]
+                    ):
+                        raise QualificationError("DuckDB runtime projection file differs")
+                    observed_files.add(relative)
+
+        inspect(root_fd, "")
+        if observed_files != set(expected_files) or observed_directories != expected_directories:
+            raise QualificationError("DuckDB runtime projection inventory differs")
+        for relative, (digest, size, _mode) in expected_files.items():
+            payload = _read_owned_regular_relative(
+                root_fd,
+                relative,
+                noun=f"DuckDB projected runtime {relative}",
+                limit=_MAX_DUCKDB_RUNTIME_FILE_BYTES,
+            )
+            if _sha256_bytes(payload) != digest or len(payload) != size:
+                raise QualificationError("DuckDB runtime projection content differs")
+    finally:
+        os.close(root_fd)
+
+
+def _module_file(module: Any) -> Path | None:
+    value = getattr(module, "__file__", None)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return Path(value).resolve(strict=True)
+    except OSError as exc:
+        raise QualificationError("imported module origin is unavailable") from exc
+
+
+def _validate_bound_duckdb_modules(
+    projection: Path,
+    evidence: Mapping[str, Any],
+) -> None:
+    """Require all admitted native/package modules to originate in the capsule."""
+
+    observed_names = _duckdb_module_names()
+    if observed_names != _DUCKDB_RUNTIME_MODULE_NAMES:
+        raise QualificationError("bound DuckDB runtime module set differs")
+    if _ACTIVE_DUCKDB_RUNTIME_MODULES is not None and any(
+        sys.modules[name] is not module
+        for name, module in _ACTIVE_DUCKDB_RUNTIME_MODULES.items()
+    ):
+        raise QualificationError("bound DuckDB runtime module identity differs")
+    duckdb = sys.modules.get("duckdb")
+    native = sys.modules.get("_duckdb")
+    if duckdb is None or native is None:
+        raise QualificationError("bound DuckDB runtime modules are absent")
+    projection = projection.resolve(strict=True)
+    package_origin = _module_file(duckdb)
+    native_origin = _module_file(native)
+    expected_package = (projection / "duckdb/__init__.py").resolve(strict=True)
+    expected_native = (
+        projection / str(evidence["native_extension_path"])
+    ).resolve(strict=True)
+    if (
+        str(getattr(duckdb, "__version__", "")) != evidence.get("version")
+        or package_origin != expected_package
+        or native_origin != expected_native
+    ):
+        raise QualificationError("imported DuckDB runtime identity differs")
+    allowed_python = {
+        (projection / relative).resolve(strict=True)
+        for relative in _DUCKDB_RUNTIME_SOURCE_PATHS
+    }
+    for name in observed_names:
+        origin = _module_file(sys.modules[name])
+        if origin is None:
+            raise QualificationError(f"DuckDB module has no capsule origin: {name}")
+        if origin != expected_native and origin not in allowed_python:
+            raise QualificationError(f"DuckDB module escaped its capsule: {name}")
+        cached = getattr(sys.modules[name], "__cached__", None)
+        if isinstance(cached, str) and Path(cached).exists():
+            raise QualificationError("DuckDB runtime loaded a bytecode cache")
+
+
+def _closed_import_meta_path() -> list[Any]:
+    return [
+        importlib.machinery.BuiltinImporter,
+        importlib.machinery.FrozenImporter,
+        importlib.machinery.PathFinder,
+    ]
+
+
+@contextlib.contextmanager
+def _bound_duckdb_import_scope(
+    projection: Path,
+    *,
+    hidden_module_roots: frozenset[str] = frozenset(),
+) -> Any:
+    original_path = list(sys.path)
+    original_meta_path = list(sys.meta_path)
+    original_dont_write_bytecode = sys.dont_write_bytecode
+    site_roots = _pytest_site_roots()
+
+    def ambient_path(value: str) -> bool:
+        if not value:
+            return False
+        try:
+            resolved = Path(value).resolve(strict=True)
+        except OSError:
+            return False
+        return any(
+            resolved == root or resolved.is_relative_to(root) for root in site_roots
+        )
+
+    hidden_modules: dict[str, Any] = {}
+    for name, module in tuple(sys.modules.items()):
+        if name.partition(".")[0] in hidden_module_roots:
+            hidden_modules[name] = module
+            sys.modules.pop(name, None)
+    sys.path[:] = [
+        str(projection),
+        *[
+            value
+            for value in original_path
+            if value != str(projection) and not ambient_path(value)
+        ],
+    ]
+    sys.meta_path[:] = _closed_import_meta_path()
+    sys.dont_write_bytecode = True
+    try:
+        yield
+    finally:
+        for name in hidden_modules:
+            replacement = sys.modules.get(name)
+            if replacement is not None and replacement is not hidden_modules[name]:
+                sys.modules.pop(name, None)
+        sys.modules.update(hidden_modules)
+        sys.path[:] = original_path
+        sys.meta_path[:] = original_meta_path
+        sys.dont_write_bytecode = original_dont_write_bytecode
+
+
+def _cleanup_bound_duckdb_runtime() -> None:
+    global _ACTIVE_DUCKDB_RUNTIME_DIRECTORY, _ACTIVE_DUCKDB_RUNTIME_MODULES
+    global _ACTIVE_DUCKDB_RUNTIME_PROJECTION
+
+    directory = _ACTIVE_DUCKDB_RUNTIME_DIRECTORY
+    _ACTIVE_DUCKDB_RUNTIME_DIRECTORY = None
+    _ACTIVE_DUCKDB_RUNTIME_MODULES = None
+    _ACTIVE_DUCKDB_RUNTIME_PROJECTION = None
+    if directory is not None:
+        directory.cleanup()
+
+
+atexit.register(_cleanup_bound_duckdb_runtime)
+
+
+@contextlib.contextmanager
+def isolated_bound_duckdb_runtime(
+    *,
+    expected_runtime_cid: str,
+) -> Any:
+    """Admit one process-lifetime content-bound DuckDB runtime capsule."""
+
+    _require_isolated_recovery_runtime()
+    global _ACTIVE_DUCKDB_RUNTIME_CID, _ACTIVE_DUCKDB_RUNTIME_DIRECTORY
+    global _ACTIVE_DUCKDB_RUNTIME_EVIDENCE, _ACTIVE_DUCKDB_RUNTIME_PROJECTION
+    global _ACTIVE_DUCKDB_RUNTIME_MODULES
+
+    evidence, projected = _resolve_bound_duckdb_runtime()
+    if not expected_runtime_cid or evidence.get("runtime_cid") != expected_runtime_cid:
+        raise QualificationError("DuckDB runtime differs from the configured identity")
+    if _ACTIVE_DUCKDB_RUNTIME_CID is None:
+        if _duckdb_module_names():
+            raise QualificationError(
+                "DuckDB runtime was preloaded before isolated admission"
+            )
+        optional_roots = frozenset(
+            {
+                "numpy",
+                "pandas",
+                "pyarrow",
+                "polars",
+                "adbc_driver_manager",
+                "adbc_driver_duckdb",
+            }
+        )
+        imported_before = set(sys.modules)
+        directory = tempfile.TemporaryDirectory(prefix="lgcvf-bound-duckdb-")
+        projection = Path(directory.name)
+        os.chmod(projection, 0o700)
+        try:
+            flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            root_fd = os.open(projection, flags)
+            try:
+                for relative, payload in sorted(projected.items()):
+                    _write_bound_duckdb_projection(
+                        root_fd,
+                        relative=relative,
+                        payload=payload,
+                        executable=relative == evidence["native_extension_path"],
+                    )
+                os.fsync(root_fd)
+            finally:
+                os.close(root_fd)
+            _validate_bound_duckdb_projection(projection, evidence)
+            with _bound_duckdb_import_scope(
+                projection,
+                hidden_module_roots=optional_roots,
+            ):
+                importlib.invalidate_caches()
+                importlib.import_module("duckdb")
+                _validate_bound_duckdb_modules(projection, evidence)
+                new_optional = optional_roots & set(sys.modules)
+                if new_optional:
+                    raise QualificationError(
+                        "DuckDB runtime imported an optional dependency"
+                    )
+                site_roots = _pytest_site_roots()
+                for name in set(sys.modules) - imported_before:
+                    origin = _module_file(sys.modules[name])
+                    if origin is not None and any(
+                        origin.is_relative_to(root) for root in site_roots
+                    ):
+                        raise QualificationError(
+                            f"DuckDB admission imported ambient package: {name}"
+                        )
+            _ACTIVE_DUCKDB_RUNTIME_CID = expected_runtime_cid
+            _ACTIVE_DUCKDB_RUNTIME_EVIDENCE = dict(evidence)
+            _ACTIVE_DUCKDB_RUNTIME_DIRECTORY = directory
+            _ACTIVE_DUCKDB_RUNTIME_MODULES = {
+                name: sys.modules[name] for name in _DUCKDB_RUNTIME_MODULE_NAMES
+            }
+            _ACTIVE_DUCKDB_RUNTIME_PROJECTION = projection
+            with _bound_duckdb_import_scope(projection):
+                yield dict(evidence)
+                _validate_bound_duckdb_modules(projection, evidence)
+                _validate_bound_duckdb_projection(projection, evidence)
+            return
+        except BaseException:
+            if _ACTIVE_DUCKDB_RUNTIME_CID is None:
+                _ACTIVE_DUCKDB_RUNTIME_EVIDENCE = None
+                _ACTIVE_DUCKDB_RUNTIME_DIRECTORY = None
+                _ACTIVE_DUCKDB_RUNTIME_MODULES = None
+                _ACTIVE_DUCKDB_RUNTIME_PROJECTION = None
+                for name in _duckdb_module_names() - imported_before:
+                    sys.modules.pop(name, None)
+                directory.cleanup()
+            raise
+    if (
+        _ACTIVE_DUCKDB_RUNTIME_CID != expected_runtime_cid
+        or _ACTIVE_DUCKDB_RUNTIME_EVIDENCE != evidence
+        or _ACTIVE_DUCKDB_RUNTIME_PROJECTION is None
+        or _ACTIVE_DUCKDB_RUNTIME_DIRECTORY is None
+        or _ACTIVE_DUCKDB_RUNTIME_MODULES is None
+    ):
+        raise QualificationError("active DuckDB runtime identity differs")
+    projection = _ACTIVE_DUCKDB_RUNTIME_PROJECTION
+    _validate_bound_duckdb_projection(projection, evidence)
+    _validate_bound_duckdb_modules(projection, evidence)
+    with _bound_duckdb_import_scope(projection):
+        yield dict(evidence)
+        _validate_bound_duckdb_modules(projection, evidence)
+        _validate_bound_duckdb_projection(projection, evidence)
 
 
 def _protected_path_identity(root: Path, relative: str) -> dict[str, Any]:
@@ -1697,12 +3853,146 @@ def _emit_worker_receipt(descriptor: int, value: Mapping[str, Any]) -> None:
         os.close(descriptor)
 
 
+def _recovery_worker_pycache_state(
+    write_root: Path,
+    *,
+    expected_identity: tuple[int, int] | None = None,
+) -> tuple[tuple[int, int], dict[str, Any]]:
+    """Validate the fresh, process-scoped bytecode lookup root."""
+
+    lexical = write_root / "python-pycache"
+    expected = lexical.resolve(strict=True)
+    if expected.parent != write_root or lexical.is_symlink():
+        raise QualificationError("recovery worker pycache path differs")
+    if (
+        os.environ.get("PYTHONPYCACHEPREFIX") != str(expected)
+        or sys.pycache_prefix != str(expected)
+        or os.environ.get("PYTHONDONTWRITEBYTECODE") != "1"
+        or sys.dont_write_bytecode is not True
+    ):
+        raise QualificationError("recovery worker pycache isolation differs")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(expected, flags)
+    except OSError as exc:
+        raise QualificationError("recovery worker pycache is unavailable") from exc
+    try:
+        status = os.fstat(descriptor)
+        identity = (status.st_dev, status.st_ino)
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or status.st_uid != os.geteuid()
+            or stat.S_IMODE(status.st_mode) != 0o700
+            or (expected_identity is not None and identity != expected_identity)
+        ):
+            raise QualificationError("recovery worker pycache identity differs")
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise QualificationError("recovery worker pycache is not empty")
+    finally:
+        os.close(descriptor)
+    return identity, {
+        "schema": "lgcvf-recovery-worker-pycache-isolation@1",
+        "write_root_relative_path": "python-pycache",
+        "environment_variable": "PYTHONPYCACHEPREFIX",
+        "python_prefix_active": True,
+        "dont_write_bytecode": True,
+        "owner_matches_worker": True,
+        "mode_octal": "0700",
+    }
+
+
+def _validate_worker_execution_projection(
+    value: Mapping[str, Any],
+    *,
+    worker_root: Path,
+    suite: Suite,
+) -> dict[str, Any]:
+    """Validate the parent's closed projection and every worker-visible path."""
+
+    if set(value) != {
+        "schema",
+        "selected_sources",
+        "copied_source_count",
+        "copied_source_bytes",
+        "copied_source_manifest_root",
+        "omitted_source_symlinks",
+        "contains_live_source_links",
+        "original_checkout_writable",
+        "projection_cid",
+    } or value.get("schema") != "lgcvf-closed-recovery-test-projection@1":
+        raise QualificationError("recovery worker projection fields differ")
+    body = {key: item for key, item in value.items() if key != "projection_cid"}
+    if value.get("projection_cid") != content_identity(body):
+        raise QualificationError("recovery worker projection identity differs")
+    selected = value.get("selected_sources")
+    omitted = value.get("omitted_source_symlinks")
+    if (
+        value.get("original_checkout_writable") is not False
+        or value.get("contains_live_source_links") is not False
+        or not isinstance(selected, list)
+        or not isinstance(omitted, list)
+        or len(selected) != 1
+        or len(omitted) > 256
+    ):
+        raise QualificationError("recovery worker projection population differs")
+    paths = _recovery_projection_source_paths(worker_root, (suite,))
+    manifest, _payloads = _recovery_projection_manifest(
+        worker_root,
+        paths,
+        head_bound=False,
+    )
+    selected_relative = (Path(suite.owner_root) / suite.paths[0]).as_posix().lstrip("./")
+    expected_selected = [
+        next(item for item in manifest if item["path"] == selected_relative)
+    ]
+    if (
+        selected != expected_selected
+        or value.get("copied_source_count") != len(manifest)
+        or value.get("copied_source_bytes")
+        != sum(int(item["size_bytes"]) for item in manifest)
+        or value.get("copied_source_manifest_root") != content_identity(manifest)
+        or any(path.is_symlink() for path in worker_root.rglob("*"))
+    ):
+        raise QualificationError("recovery worker copied source bytes differ")
+    omitted_paths: set[str] = set()
+    for item in omitted:
+        if not isinstance(item, Mapping) or set(item) != {
+            "path",
+            "git_target",
+            "disposition",
+        }:
+            raise QualificationError("recovery worker omitted symlink differs")
+        relative = str(item.get("path") or "")
+        logical = PurePath(relative)
+        if (
+            not relative
+            or logical.is_absolute()
+            or ".." in logical.parts
+            or logical.as_posix() != relative
+            or relative in omitted_paths
+            or not isinstance(item.get("git_target"), str)
+            or not item.get("git_target")
+            or item.get("disposition") != "omitted_source_symlink"
+        ):
+            raise QualificationError("recovery worker omitted symlink path differs")
+        omitted_paths.add(relative)
+        try:
+            worker_root.joinpath(*logical.parts).lstat()
+        except FileNotFoundError:
+            continue
+        raise QualificationError("recovery worker retained an omitted symlink")
+    return dict(value)
+
+
 def _worker(
     suite_id: str,
     *,
     execution_root: Path | None = None,
     write_root: Path | None = None,
     receipt_descriptor: int | None = None,
+    execution_projection: Mapping[str, Any] | None = None,
 ) -> int:
     receipt_descriptor = (
         os.dup(1) if receipt_descriptor is None else int(receipt_descriptor)
@@ -1720,11 +4010,32 @@ def _worker(
     worker_schema = RECOVERY_WORKER_SCHEMA if recovery is not None else WORKER_SCHEMA
     try:
         worker_root = ROOT if execution_root is None else execution_root.resolve(strict=True)
-        if execution_root is not None and worker_root == ROOT.resolve():
-            raise QualificationError("worker execution root is not isolated")
+        if execution_root is not None:
+            worker_script_root = ROOT.resolve()
+            if recovery is None and worker_root == worker_script_root:
+                raise QualificationError("worker execution root is not isolated")
+            if recovery is not None and worker_root != worker_script_root:
+                raise QualificationError(
+                    "recovery worker did not execute from its copied projection"
+                )
         if execution_root is not None and write_root is None:
             raise QualificationError("isolated worker has no write root")
         writable_root = write_root.resolve(strict=True) if write_root is not None else None
+        worker_pycache_identity: tuple[int, int] | None = None
+        worker_pycache: dict[str, Any] | None = None
+        if recovery is not None:
+            if writable_root is None:
+                raise QualificationError("isolated worker has no write root")
+            if execution_projection is None:
+                raise QualificationError("recovery worker projection is absent")
+            execution_projection = _validate_worker_execution_projection(
+                execution_projection,
+                worker_root=worker_root,
+                suite=suite,
+            )
+            worker_pycache_identity, worker_pycache = (
+                _recovery_worker_pycache_state(writable_root)
+            )
         manifest = _suite_manifest(suite, root=worker_root)
         owner = (worker_root / suite.owner_root).resolve(strict=True)
         if writable_root is not None:
@@ -1835,6 +4146,23 @@ def _worker(
                     pass
             os.chdir(previous)
         duration_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
+        if recovery is not None:
+            if worker_pycache_identity is None or worker_pycache is None:
+                raise QualificationError("recovery worker pycache evidence is absent")
+            after_identity, after_pycache = _recovery_worker_pycache_state(
+                writable_root,
+                expected_identity=worker_pycache_identity,
+            )
+            if after_identity != worker_pycache_identity or after_pycache != worker_pycache:
+                raise QualificationError("recovery worker pycache evidence differs")
+            isolation = {
+                **isolation,
+                "worker_pycache": {
+                    **worker_pycache,
+                    "empty_before": True,
+                    "empty_after": True,
+                },
+            }
         transcript = (captured_out.getvalue() + "\n" + captured_err.getvalue()).encode(
             "utf-8", errors="replace"
         )
@@ -1913,6 +4241,7 @@ def _worker(
                     "candidate_authored": True,
                     "self_authority": False,
                     "completion_authoritative": False,
+                    "readonly_projection": execution_projection,
                 }
             )
         payload["observation_cid"] = content_identity(payload)
@@ -2023,13 +4352,16 @@ def _run_suite(
     expected_worker_schema = (
         RECOVERY_WORKER_SCHEMA if recovery is not None else WORKER_SCHEMA
     )
+    source_root = root.resolve(strict=True)
     dependency_paths = tuple(
         dict.fromkeys(
-            str(Path(entry).resolve())
+            str(resolved)
             for entry in sys.path
             if entry
             and Path(entry).is_dir()
-            and Path(entry).resolve() != ROOT.resolve()
+            and not (
+                (resolved := Path(entry).resolve()).is_relative_to(source_root)
+            )
         )
     )
     if not dependency_paths:
@@ -2039,7 +4371,13 @@ def _run_suite(
         checkout = sandbox_path / "checkout"
         writable = sandbox_path / "writable"
         writable.mkdir(mode=0o700)
-        _prepare_execution_checkout(root, checkout, (suite,))
+        worker_pycache = writable / "python-pycache"
+        worker_pycache.mkdir(mode=0o700)
+        execution_projection = (
+            _prepare_recovery_execution_checkout(root, checkout, (suite,))
+            if recovery is not None
+            else _prepare_execution_checkout(root, checkout, (suite,))
+        )
         home_path = writable / "home"
         home_path.mkdir(mode=0o700)
         xdg_paths = {
@@ -2050,8 +4388,13 @@ def _run_suite(
         }
         for path in xdg_paths.values():
             path.mkdir(parents=True, exist_ok=True)
+        projected_import_paths = (
+            str(checkout),
+            str(checkout / "ipfs_datasets_py"),
+        )
         environment = {
             "HOME": str(home_path),
+            "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
             "LANG": "C.UTF-8",
             "NO_COLOR": "1",
             "OPENBLAS_NUM_THREADS": "1",
@@ -2059,7 +4402,10 @@ def _run_suite(
             "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
             "PYTHONNOUSERSITE": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONPATH": os.pathsep.join(dependency_paths),
+            "PYTHONPYCACHEPREFIX": str(worker_pycache),
+            "PYTHONPATH": os.pathsep.join(
+                (*projected_import_paths, *dependency_paths)
+            ),
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
             "PYTHONHASHSEED": "0",
             "MKL_NUM_THREADS": "1",
@@ -2073,19 +4419,34 @@ def _run_suite(
         stdout_handle = stdout_path.open("wb") if recovery is not None else None
         stderr_handle = stderr_path.open("wb") if recovery is not None else None
         try:
+            worker_arguments = [
+                sys.executable,
+                str(
+                    checkout
+                    / "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+                ),
+                "--worker",
+                suite.suite_id,
+                "--worker-root",
+                str(checkout),
+                "--worker-write-root",
+                str(writable),
+                "--worker-receipt-fd",
+                str(receipt_write),
+            ]
+            if recovery is not None:
+                encoded_projection = base64.urlsafe_b64encode(
+                    json.dumps(
+                        execution_projection,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).decode("ascii")
+                worker_arguments.extend(
+                    ("--worker-projection", encoded_projection)
+                )
             process = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(Path(__file__).resolve()),
-                    "--worker",
-                    suite.suite_id,
-                    "--worker-root",
-                    str(checkout),
-                    "--worker-write-root",
-                    str(writable),
-                    "--worker-receipt-fd",
-                    str(receipt_write),
-                ],
+                worker_arguments,
                 cwd=checkout,
                 env=environment,
                 stdout=stdout_handle if stdout_handle is not None else subprocess.PIPE,
@@ -2200,6 +4561,8 @@ def _run_suite(
         )
     if payload.get("manifest") != dict(expected_manifest):
         raise QualificationError(f"{suite.suite_id}: copied source manifest differs")
+    if recovery is not None and payload.get("readonly_projection") != execution_projection:
+        raise QualificationError(f"{suite.suite_id}: read-only projection differs")
     isolation = payload.get("isolation")
     if not _sandbox_evidence_is_valid(
         isolation,
@@ -2290,8 +4653,9 @@ def _recovery_source_binding(*, root: Path = ROOT) -> dict[str, Any]:
         raise QualificationError("recovery qualifier differs from the executing judge")
     executable = Path(sys.executable).resolve(strict=True)
     executable_digest, executable_size = _sha256_file(executable)
+    duckdb_runtime = bound_duckdb_runtime_evidence()
     body: dict[str, Any] = {
-        "schema": "lgcvf-recovery-source-binding@1",
+        "schema": "lgcvf-recovery-source-binding@2",
         "repository_topology": "accelerator_with_datasets_gitlink",
         "accelerator_head": accelerator_head,
         "accelerator_tree": accelerator_tree,
@@ -2317,6 +4681,7 @@ def _recovery_source_binding(*, root: Path = ROOT) -> dict[str, Any]:
             "python_implementation": sys.implementation.name,
             "python_version": platform.python_version(),
             "pytest_version": _pytest_distribution_version(),
+            "duckdb_runtime": duckdb_runtime,
         },
     }
     body["source_binding_cid"] = content_identity(body)
@@ -2344,6 +4709,77 @@ def _preregistered_recovery_manifest(*, root: Path = ROOT) -> dict[str, Any]:
     }
     value["manifest_cid"] = content_identity(value)
     return value
+
+
+def _recovery_projection_commitments(
+    source_binding: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build the source-derived omission and richer per-suite commitments."""
+
+    if len(observations) != len(RECOVERY_VALIDATIONS):
+        raise QualificationError("recovery projection population differs")
+    canonical_omissions: list[dict[str, str]] | None = None
+    suites: list[dict[str, Any]] = []
+    for validation, observation in zip(
+        RECOVERY_VALIDATIONS, observations, strict=True
+    ):
+        projection = observation.get("readonly_projection")
+        if not isinstance(projection, Mapping):
+            raise QualificationError("recovery projection receipt is absent")
+        omissions = projection.get("omitted_source_symlinks")
+        if not isinstance(omissions, list):
+            raise QualificationError("recovery projection omission set is absent")
+        closed_omissions = [dict(item) for item in omissions if isinstance(item, Mapping)]
+        if len(closed_omissions) != len(omissions):
+            raise QualificationError("recovery projection omission set differs")
+        if canonical_omissions is None:
+            canonical_omissions = closed_omissions
+        elif canonical_omissions != closed_omissions:
+            raise QualificationError("recovery suite omission sets disagree")
+        suites.append(
+            {
+                "suite_id": validation.suite.suite_id,
+                "task_id": validation.task_id,
+                "task_cid": validation.task_cid,
+                "projection_cid": projection.get("projection_cid"),
+                "copied_source_manifest_root": projection.get(
+                    "copied_source_manifest_root"
+                ),
+            }
+        )
+    scoped_omissions = []
+    for item in canonical_omissions or []:
+        path = str(item.get("path") or "")
+        scoped_omissions.append(
+            {
+                "scope": "datasets_gitlink"
+                if path.startswith("ipfs_datasets_py/")
+                else "accelerator",
+                "path": path,
+                "git_target": item.get("git_target"),
+                "disposition": item.get("disposition"),
+            }
+        )
+    omission: dict[str, Any] = {
+        "schema": "lgcvf-recovery-validation-projection-omission@1",
+        "accelerator_head": source_binding.get("accelerator_head"),
+        "accelerator_tree": source_binding.get("accelerator_tree"),
+        "datasets_gitlink": source_binding.get("datasets_gitlink"),
+        "datasets_tree": source_binding.get("datasets_tree"),
+        "omitted_source_symlinks": sorted(
+            scoped_omissions, key=lambda item: (item["scope"], item["path"])
+        ),
+    }
+    omission["commitment_cid"] = content_identity(omission)
+    evidence: dict[str, Any] = {
+        "schema": "lgcvf-recovery-validation-projection-evidence@1",
+        "source_binding_cid": source_binding.get("source_binding_cid"),
+        "omission_root": omission["commitment_cid"],
+        "ordered_suites": suites,
+    }
+    evidence["commitment_cid"] = content_identity(evidence)
+    return omission, evidence
 
 
 _RECOVERY_COUNT_FIELDS: Final[tuple[str, ...]] = (
@@ -2383,6 +4819,7 @@ _RECOVERY_OBSERVATION_FIELDS: Final[frozenset[str]] = frozenset(
         "candidate_authored",
         "self_authority",
         "completion_authoritative",
+        "readonly_projection",
         "worker_observation_cid",
         "raw_stdout_size_bytes",
         "raw_stdout_sha256",
@@ -2410,6 +4847,8 @@ def _validate_recovery_observation(
         or value.get("task_cid") != validation.task_cid
         or value.get("validation_spec") != validation.validation_spec()
         or value.get("manifest") != _suite_manifest(validation.suite, root=root)
+        or value.get("readonly_projection")
+        != _recovery_execution_projection_receipt(root, (validation.suite,))
     ):
         raise QualificationError(
             f"{validation.task_id}: recovery observation authority differs"
@@ -2544,6 +4983,7 @@ def run_preregistered_recovery_qualification(
 ) -> dict[str, Any]:
     """Run exactly six task-bound replays inside the protected OS sandbox."""
 
+    _require_isolated_recovery_runtime()
     try:
         manifest = _preregistered_recovery_manifest(root=root)
         before = _recovery_source_binding(root=root)
@@ -2566,6 +5006,9 @@ def run_preregistered_recovery_qualification(
             field: sum(int(item[field]) for item in observations)
             for field in _RECOVERY_COUNT_FIELDS
         }
+        omission_commitment, projection_evidence = _recovery_projection_commitments(
+            before, observations
+        )
         result: dict[str, Any] = {
             "schema": RECOVERY_SCHEMA,
             "plan_cid": PLAN_CID,
@@ -2581,6 +5024,14 @@ def run_preregistered_recovery_qualification(
             "passed": all(item.get("passed") is True for item in observations),
             "totals": totals,
             "suites": observations,
+            "validation_projection_omission_commitment": omission_commitment,
+            "validation_projection_omission_root": omission_commitment[
+                "commitment_cid"
+            ],
+            "validation_projection_evidence_commitment": projection_evidence,
+            "validation_projection_evidence_root": projection_evidence[
+                "commitment_cid"
+            ],
             "provider_route": "none",
             "network_permitted": False,
             "cache_reused": False,
@@ -2617,6 +5068,10 @@ _RECOVERY_RESULT_FIELDS: Final[frozenset[str]] = frozenset(
         "passed",
         "totals",
         "suites",
+        "validation_projection_omission_commitment",
+        "validation_projection_omission_root",
+        "validation_projection_evidence_commitment",
+        "validation_projection_evidence_root",
         "provider_route",
         "network_permitted",
         "cache_reused",
@@ -2659,6 +5114,7 @@ def verify_preregistered_recovery_qualification(
 ) -> dict[str, Any]:
     """Content-check a recovery receipt against this exact clean checkout."""
 
+    _require_isolated_recovery_runtime()
     if value.get("schema") == RECOVERY_UNAVAILABLE_SCHEMA:
         if set(value) != _RECOVERY_UNAVAILABLE_FIELDS:
             raise QualificationError("recovery unavailable receipt fields differ")
@@ -2756,6 +5212,24 @@ def verify_preregistered_recovery_qualification(
             totals[count_field] += int(observation[count_field])
     if not isinstance(value.get("totals"), Mapping) or dict(value["totals"]) != totals:
         raise QualificationError("recovery totals do not reconstruct")
+    (
+        expected_omission_commitment,
+        expected_projection_evidence,
+    ) = _recovery_projection_commitments(
+        current_source,
+        [dict(item) for item in observations],
+    )
+    if (
+        value.get("validation_projection_omission_commitment")
+        != expected_omission_commitment
+        or value.get("validation_projection_omission_root")
+        != expected_omission_commitment["commitment_cid"]
+        or value.get("validation_projection_evidence_commitment")
+        != expected_projection_evidence
+        or value.get("validation_projection_evidence_root")
+        != expected_projection_evidence["commitment_cid"]
+    ):
+        raise QualificationError("recovery projection omission commitment differs")
     limitations = value.get("limitations")
     if limitations != list(RECOVERY_LIMITATIONS):
         raise QualificationError("recovery limitations differ from mandatory caveats")
@@ -3054,6 +5528,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--worker-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--worker-write-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--worker-receipt-fd", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--worker-projection", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.worker:
         if args.check or args.recovery or args.verify_recovery is not None:
@@ -3065,16 +5540,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         ):
             print(json.dumps({"schema": WORKER_SCHEMA, "error": "sandbox_required"}))
             return 2
+        execution_projection: Mapping[str, Any] | None = None
+        if args.worker_projection is not None:
+            try:
+                encoded = args.worker_projection.encode("ascii")
+                if len(encoded) > 64 * 1024:
+                    raise QualificationError("worker projection exceeds its bound")
+                decoded = base64.b64decode(encoded, altchars=b"-_", validate=True)
+                raw_projection = _strict_json_loads(
+                    decoded.decode("utf-8"), noun="worker projection"
+                )
+            except (UnicodeDecodeError, UnicodeEncodeError, ValueError) as exc:
+                raise QualificationError("worker projection is malformed") from exc
+            if not isinstance(raw_projection, dict):
+                raise QualificationError("worker projection root is not an object")
+            execution_projection = raw_projection
         return _worker(
             args.worker,
             execution_root=args.worker_root,
             write_root=args.worker_write_root,
             receipt_descriptor=args.worker_receipt_fd,
+            execution_projection=execution_projection,
         )
     if (
         args.worker_root is not None
         or args.worker_write_root is not None
         or args.worker_receipt_fd is not None
+        or args.worker_projection is not None
     ):
         parser.error("worker sandbox arguments require --worker")
     try:
