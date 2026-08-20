@@ -220,6 +220,7 @@ from ..task_sources.taskboard_store import (
 from ..validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+    compact_project_dependency_preflight_receipt,
     project_dependency_preflight_backoff_seconds,
     project_dependency_preflight_error_receipt,
     preflight_validation_project_dependencies,
@@ -4698,6 +4699,15 @@ def transitive_task_dependents(
             break
         affected_task_ids.update(newly_affected)
     return affected_task_ids - roots
+
+
+def _task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
+    """Return the shared deterministic alias-hash home lane."""
+
+    if shard_count <= 1:
+        return 0
+    digest = hashlib.sha256(str(task_alias).encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % shard_count
 
 
 class PortalImplementationDaemon:
@@ -11855,10 +11865,7 @@ class PortalImplementationDaemon:
     def _task_home_shard_index(self, task_id: str) -> int:
         """Return the deterministic hash-home lane for ``task_id``."""
 
-        if self.task_shard_count <= 1:
-            return 0
-        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
-        return int(digest[:8], 16) % self.task_shard_count
+        return _task_alias_home_shard_index(task_id, self.task_shard_count)
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
         """Return whether this daemon lane should implement ``task_id``.
@@ -20283,7 +20290,11 @@ class PortalImplementationDaemon:
                     "provider_dispatched": False,
                     "attempt_consumed": False,
                     "backoff_seconds": backoff_seconds,
-                    "dependency_preflight": dict(exc.receipt),
+                    "dependency_preflight": (
+                        compact_project_dependency_preflight_receipt(
+                            exc.receipt
+                        )
+                    ),
                     "workspace_path": str(workspace_path),
                     "context_receipt_path": str(
                         context_receipt_path
@@ -29275,7 +29286,9 @@ class PortalImplementationDaemon:
                 "attempt": attempt,
                 "worktree_path": str(workspace_path),
                 "branch": branch_name,
-                "dependency_preflight": receipt,
+                "dependency_preflight": (
+                    compact_project_dependency_preflight_receipt(receipt)
+                ),
                 "backoff_seconds": backoff_seconds,
             },
         )
@@ -29585,7 +29598,9 @@ class PortalImplementationDaemon:
             if isinstance(baseline_dependency_preflight, Mapping):
                 workspace_setup[
                     "validation_project_dependency_preflight_baseline"
-                ] = dict(baseline_dependency_preflight)
+                ] = compact_project_dependency_preflight_receipt(
+                    baseline_dependency_preflight
+                )
             prior_seed_dependency_authority = (
                 self._dependency_prior_seed_authority(
                     task=task,
@@ -29609,7 +29624,9 @@ class PortalImplementationDaemon:
             )
             workspace_setup[
                 "validation_project_dependency_preflight"
-            ] = dependency_preflight
+            ] = compact_project_dependency_preflight_receipt(
+                dependency_preflight
+            )
             command = (
                 []
                 if deterministic_only or retry_no_change_probe_only
@@ -31259,7 +31276,11 @@ class PortalImplementationDaemon:
                         "provider_call_allowed": False,
                         "attempt_consumed": False,
                         "backoff_seconds": int(exc.backoff_seconds),
-                        "dependency_preflight": dict(exc.receipt),
+                        "dependency_preflight": (
+                            compact_project_dependency_preflight_receipt(
+                                exc.receipt
+                            )
+                        ),
                     }
                 )
             generic_pre_dispatch_deferral = bool(
@@ -31746,7 +31767,9 @@ class PortalImplementationDaemon:
             if isinstance(dependency_preflight, Mapping):
                 workspace_setup[
                     "validation_project_dependency_preflight"
-                ] = dict(dependency_preflight)
+                ] = compact_project_dependency_preflight_receipt(
+                    dependency_preflight
+                )
         result = {
             "task_id": task.task_id,
             "task_cid": self._canonical_ref(task),
@@ -64975,61 +64998,17 @@ class PortalImplementationDaemon:
         if not isinstance(raw_setup, Mapping):
             return projected
         setup = dict(raw_setup)
-        raw_preflight = setup.get(
-            "validation_project_dependency_preflight"
-        )
-        if not isinstance(raw_preflight, Mapping):
-            projected["workspace_setup"] = setup
-            return projected
-
-        def bounded_count(field: str) -> int:
-            value = raw_preflight.get(field)
-            if isinstance(value, Sequence) and not isinstance(
-                value,
-                (str, bytes, bytearray),
-            ):
-                return len(value)
-            return 0
-
-        def bounded_int(field: str) -> int:
-            try:
-                return max(0, int(raw_preflight.get(field) or 0))
-            except (TypeError, ValueError):
-                return 0
-
-        setup["validation_project_dependency_preflight"] = {
-            "schema": str(raw_preflight.get("schema") or "")[:512],
-            "receipt_id": str(
-                raw_preflight.get("receipt_id") or ""
-            )[:1024],
-            "retry_fingerprint": str(
-                raw_preflight.get("retry_fingerprint") or ""
-            )[:1024],
-            "passed": raw_preflight.get("passed") is True,
-            "applicable": raw_preflight.get("applicable") is True,
-            "reason": str(raw_preflight.get("reason") or "")[:1000],
-            "automatic_install_attempted": (
-                raw_preflight.get("automatic_install_attempted") is True
-            ),
-            "probe_scope": str(
-                raw_preflight.get("probe_scope") or ""
-            )[:512],
-            "validation_command_count": bounded_int(
-                "validation_command_count"
-            ),
-            "project_count": bounded_count("projects"),
-            "project_root_count": bounded_count("project_roots"),
-            "missing_count": bounded_count("missing_requirements"),
-            "incompatible_count": bounded_count(
-                "incompatible_requirements"
-            ),
-            "invalid_requirement_count": bounded_count(
-                "invalid_requirements"
-            ),
-            "invalid_command_count": bounded_count("invalid_commands"),
-            "event_projection_compacted": True,
-            "full_receipt_event": "implementation_started",
-        }
+        for field_name in (
+            "validation_project_dependency_preflight_baseline",
+            "validation_project_dependency_preflight",
+        ):
+            raw_preflight = setup.get(field_name)
+            if isinstance(raw_preflight, Mapping):
+                setup[field_name] = (
+                    compact_project_dependency_preflight_receipt(
+                        raw_preflight
+                    )
+                )
         projected["workspace_setup"] = setup
         return projected
 
@@ -67621,6 +67600,9 @@ class DatabaseImplementationDaemon:
         pid_path: Path | str | None = None,
         queue_path: Path | str | None = None,
         lease_ms: int = 60_000,
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        strict_task_sharding: bool = False,
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
@@ -67717,6 +67699,26 @@ class DatabaseImplementationDaemon:
         self.pid_path = Path(pid_path).absolute() if pid_path else None
         self.queue_path = Path(queue_path).absolute() if queue_path else None
         self.lease_ms = int(lease_ms)
+        if (
+            isinstance(task_shard_count, bool)
+            or not isinstance(task_shard_count, int)
+            or task_shard_count < 1
+        ):
+            raise ValueError("task_shard_count must be a positive integer")
+        if (
+            isinstance(task_shard_index, bool)
+            or not isinstance(task_shard_index, int)
+            or task_shard_index < 0
+            or task_shard_index >= task_shard_count
+        ):
+            raise ValueError(
+                "task_shard_index must be in range [0, task_shard_count)"
+            )
+        if type(strict_task_sharding) is not bool:  # noqa: E721
+            raise ValueError("strict_task_sharding must be a boolean")
+        self.task_shard_count = task_shard_count
+        self.task_shard_index = task_shard_index
+        self.strict_task_sharding = strict_task_sharding
         self._provider_fn = provider_fn
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
@@ -68762,12 +68764,33 @@ class DatabaseImplementationDaemon:
         }
         return manual_completion or review_only
 
+    def _task_home_shard_index(self, task_alias: str) -> int:
+        """Return the deterministic alias-hash home for a canonical task."""
+
+        return _task_alias_home_shard_index(task_alias, self.task_shard_count)
+
+    def _task_belongs_to_strict_shard(self, task: Any) -> bool:
+        """Return whether ``task`` is admitted to this strict database lane.
+
+        The mutable display alias is read only from the current authoritative
+        task projection.  A CID is never treated as substitute routing
+        authority; a missing alias fails closed.
+        """
+
+        if not self.strict_task_sharding:
+            return True
+        task_alias = str(getattr(task, "task_alias", "") or "").strip()
+        if not task_alias:
+            return False
+        return self._task_home_shard_index(task_alias) == self.task_shard_index
+
     def _automatic_claim_exclusions(self) -> set[str]:
-        ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        tasks, _ready_cids = self._stable_authoritative_task_projection()
         return {
             str(task.task_cid)
-            for task in ready.tasks
+            for task in tasks
             if self._automatic_claim_forbidden(task)
+            or not self._task_belongs_to_strict_shard(task)
         }
 
     # -- claim / attempt ----------------------------------------------------
@@ -68847,6 +68870,145 @@ class DatabaseImplementationDaemon:
 
         return self._shared_claim_binding_for_this_owner(task) is not None
 
+    def _shared_claim_binding_matches_attempt(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Bind shared-board ownership to one exact durable attempt."""
+
+        binding = self._shared_claim_binding_for_this_owner(task)
+        if binding is None:
+            return False
+        expected = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        return all(binding.get(name) == value for name, value in expected.items())
+
+    def _shared_retry_binding_matches_attempt(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+        *,
+        local_task_body: Mapping[str, Any],
+        local_projection: Mapping[str, Any],
+    ) -> bool:
+        """Validate an exact lane-local retry derived from the shared claim."""
+
+        if int(attempt.attempt_number) <= 1:
+            return False
+        binding = self._shared_claim_binding_for_this_owner(task)
+        if binding is None:
+            return False
+        if local_task_body.get("restart_recovery_ready") is not True:
+            return False
+        if local_task_body.get("restart_recovery_owner_session_id") != (
+            self.owner_session_id
+        ):
+            return False
+        local_binding = local_task_body.get("restart_recovery_binding")
+        if not isinstance(local_binding, Mapping) or dict(local_binding) != dict(
+            binding
+        ):
+            return False
+        claim_rows = [
+            row
+            for row in local_projection.get("task_claims", ())
+            if str(row.get("task_cid") or "") == attempt.task_cid
+        ]
+        prior = next(
+            (
+                row
+                for row in claim_rows
+                if all(
+                    row.get(name) == binding.get(name)
+                    for name in (
+                        "claim_id",
+                        "attempt_id",
+                        "lease_id",
+                        "owner_session_id",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                )
+            ),
+            None,
+        )
+        current = next(
+            (
+                row
+                for row in claim_rows
+                if row.get("claim_id") == attempt.claim_id
+                and row.get("attempt_id") == attempt.attempt_id
+                and row.get("lease_id") == attempt.lease_id
+                and row.get("owner_session_id") == attempt.owner_session_id
+                and row.get("fencing_token") == int(attempt.fencing_token)
+                and row.get("fence_epoch") == int(attempt.fence_epoch)
+                and row.get("attempt_number") == int(attempt.attempt_number)
+            ),
+            None,
+        )
+        if prior is None or current is None:
+            return False
+        if str(prior.get("state") or "") not in {"released", "expired"}:
+            return False
+        if str(current.get("state") or "") != "accepted":
+            return False
+        prior_number = prior.get("attempt_number")
+        if (
+            isinstance(prior_number, bool)
+            or not isinstance(prior_number, int)
+            or prior_number >= int(attempt.attempt_number)
+        ):
+            return False
+        for row in claim_rows:
+            number = row.get("attempt_number")
+            if isinstance(number, bool) or not isinstance(number, int):
+                return False
+            if number > int(attempt.attempt_number):
+                return False
+            if prior_number < number < int(attempt.attempt_number) and str(
+                row.get("state") or ""
+            ) not in {"released", "expired"}:
+                return False
+        return True
+
+    @staticmethod
+    def _strict_resume_rejection_receipt_matches(
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Return whether control truth records this exact strict rejection."""
+
+        task_status = str(getattr(task, "status", "") or "").strip().lower()
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return False
+        operation = str(receipt.get("operation") or "")
+        expected_status = {
+            "database_strict_resume_requeue": "ready",
+            "database_strict_resume_quarantine": "quarantined",
+        }.get(operation)
+        if expected_status is None or task_status != expected_status:
+            return False
+        expected = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        return all(receipt.get(name) == value for name, value in expected.items())
+
     def claim_next(
         self,
         *,
@@ -68901,8 +69063,14 @@ class DatabaseImplementationDaemon:
                 and isinstance(local_rows[0].get("body"), Mapping)
                 else {}
             )
+            local_task_alias = (
+                str(local_rows[0].get("task_id") or "")
+                if len(local_rows) == 1
+                else ""
+            )
             projection_matches = bool(
                 task is not None
+                and local_task_alias == str(task.task_alias or "").strip()
                 and local_body.get("authority") == "task_source"
                 and int(local_body.get("authoritative_revision") or 0)
                 == int(task.revision)
@@ -68918,9 +69086,18 @@ class DatabaseImplementationDaemon:
                     for dependency in (str(dep) for dep in task.dependencies)
                 )
             )
+            # The preclaim exclusion is an optimization, not authority.  Bind
+            # strict lane admission to the alias from this fresh authoritative
+            # read after the local lease is acquired so an alias/revision race
+            # cannot send work to the wrong lane.
+            shard_admitted = bool(
+                task is not None
+                and self._task_belongs_to_strict_shard(task)
+            )
             ready = (
                 task is not None
                 and projection_matches
+                and shard_admitted
                 and task_status in _DATABASE_READY_TASK_STATUSES
                 and str(claim.task_cid) in authoritative_ready_cids
             )
@@ -68930,6 +69107,7 @@ class DatabaseImplementationDaemon:
             fenced_retry = (
                 task is not None
                 and projection_matches
+                and shard_admitted
                 and task_status == "in_progress"
                 and dependencies_satisfied
                 and int(claim.attempt_number) > 1
@@ -68938,7 +69116,11 @@ class DatabaseImplementationDaemon:
             if not ready and not fenced_retry:
                 self._release_unadmitted_claim(
                     claim,
-                    reason="shared_board_task_not_ready",
+                    reason=(
+                        "shared_board_task_out_of_strict_shard"
+                        if task is not None and not shard_admitted
+                        else "shared_board_task_not_ready"
+                    ),
                 )
                 excluded.add(str(claim.task_cid))
                 continue
@@ -68961,6 +69143,7 @@ class DatabaseImplementationDaemon:
                             "lease_id": claim.lease_id,
                             "fencing_token": int(claim.fencing_token),
                             "fence_epoch": int(claim.fence_epoch),
+                            "claimed_from_revision": int(task.revision),
                         },
                     )
             except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
@@ -69134,11 +69317,12 @@ class DatabaseImplementationDaemon:
             ATTEMPT_PHASE_BLOCKED,
         }:
             raise DatabaseImplementationDaemonError(f"unknown attempt phase: {phase!r}")
-        current = (
-            attempt
+        attempt_id = str(
+            getattr(attempt, "attempt_id", "")
             if isinstance(attempt, DatabaseTaskAttempt)
-            else self.get_attempt(str(attempt))
+            else attempt
         )
+        current = self.get_attempt(attempt_id)
         if current is None:
             raise KeyError(f"unknown attempt: {attempt!r}")
         if current.status != "running" and phase_text not in {
@@ -69305,6 +69489,20 @@ class DatabaseImplementationDaemon:
             return None
         raw = row[0] if not isinstance(row, Mapping) else row.get("result_json")
         return _database_daemon_load_json(raw)
+
+    def provider_invocation_exists(self, attempt_id: str) -> bool:
+        """Return whether any durable provider key exists for this attempt."""
+
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT 1 FROM provider_invocations
+            WHERE attempt_id = ?
+            LIMIT 1
+            """,
+            [str(attempt_id)],
+        ).fetchone()
+        return row is not None
 
     def effect_claim_recorded(
         self,
@@ -69957,6 +70155,318 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _settle_strict_resume_rejection(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> DatabaseTaskAttempt:
+        """Retire local authority after an exact shared strict rejection."""
+
+        task = self.task_source.get(attempt.task_cid)
+        if task is None or not self._strict_resume_rejection_receipt_matches(
+            task,
+            attempt,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "strict resume rejection has no exact shared-board receipt"
+            )
+        task_body = task.body if isinstance(task.body, Mapping) else {}
+        rejection_receipt = task_body.get("completion_receipt")
+        operation = str(
+            rejection_receipt.get("operation")
+            if isinstance(rejection_receipt, Mapping)
+            else ""
+        )
+        provider_invocation_receipt_present = bool(
+            rejection_receipt.get("provider_invocation_receipt_present")
+            if isinstance(rejection_receipt, Mapping)
+            else False
+        )
+        quarantined = operation == "database_strict_resume_quarantine"
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            raise DatabaseImplementationAuthorityError(
+                "strict resume rejection has no exact local claim"
+            )
+        identity = claim.to_dict()
+        expected_identity = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        mismatched = [
+            name
+            for name, expected in expected_identity.items()
+            if identity.get(name) != expected
+        ]
+        if mismatched:
+            raise DatabaseImplementationConflictError(
+                "strict resume rejection claim identity mismatch: "
+                + ", ".join(mismatched)
+            )
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+        )
+        now = self._now_ms()
+        if claim_state == "accepted" and int(claim.expires_at_ms) > now:
+            lease = self._protect_attempt_claim(attempt, claim)
+            try:
+                self.coordinator.release(
+                    lease,
+                    reason="strict_resume_not_admitted",
+                    expected_fencing_token=int(attempt.fencing_token),
+                    expected_fence_epoch=int(attempt.fence_epoch),
+                    now_ms=now,
+                )
+            except Exception:
+                refreshed_claim = self.coordinator.get_task_claim(attempt.claim_id)
+                refreshed_state = str(
+                    getattr(
+                        getattr(refreshed_claim, "state", ""),
+                        "value",
+                        getattr(refreshed_claim, "state", ""),
+                    )
+                    or ""
+                )
+                if refreshed_state != "released":
+                    raise
+                claim = refreshed_claim
+        elif claim_state == "accepted":
+            expire_claim = getattr(self.coordinator, "expire_task_claim", None)
+            if not callable(expire_claim):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator cannot expire a strict resume rejection"
+                )
+            expire_claim(claim, now_ms=now)
+        elif claim_state not in {"released", "expired"}:
+            raise DatabaseImplementationAuthorityError(
+                "strict resume rejection has inadmissible local claim state "
+                f"{claim_state!r}"
+            )
+        outcome = {
+            "task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "status": "failed",
+            "retry_required": not quarantined,
+            "provider_evidence_reused": False,
+            "effect_evidence_reused": False,
+            "provider_invocation_receipt_present": (
+                provider_invocation_receipt_present
+            ),
+            "reason": "strict_resume_not_admitted",
+            "disposition": "quarantined" if quarantined else "requeued",
+        }
+        failed = self._commit_reconciled_attempt_terminal(
+            identity,
+            succeeded=False,
+            reconciliation=outcome,
+        )
+        if failed is None:
+            raise DatabaseImplementationAuthorityError(
+                "strict resume rejection lost its durable execution attempt"
+            )
+        return failed
+
+    def _reject_strict_resume(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        reasons: Sequence[str],
+        shared_resume_authorized: bool,
+    ) -> tuple[DatabaseTaskAttempt, str]:
+        """Reject one exact shared claim without duplicating prior phases."""
+
+        if not shared_resume_authorized:
+            raise DatabaseImplementationAuthorityError(
+                "strict resume rejection cannot requeue without exact shared claim"
+            )
+        self._protect_attempt_write(attempt)
+        provider_invocation_present = self.provider_invocation_exists(
+            attempt.attempt_id
+        )
+        provider_phase_committed = attempt.phase_committed(
+            ATTEMPT_PHASE_PROVIDER
+        )
+        # Provider invocation evidence is committed before the PROVIDER phase.
+        # A crash between those writes leaves an apparently pre-provider
+        # attempt whose external call may already have happened.  Requeue only
+        # when both durable authorities prove that provider work never began.
+        requeue_safe = (
+            not provider_phase_committed and not provider_invocation_present
+        )
+        disposition = "requeued" if requeue_safe else "quarantined"
+        operation = (
+            "database_strict_resume_requeue"
+            if requeue_safe
+            else "database_strict_resume_quarantine"
+        )
+        receipt = {
+            "operation": operation,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "rejected_task_alias": str(task.task_alias or ""),
+            "rejected_task_revision": int(task.revision),
+            "provider_phase_committed": provider_phase_committed,
+            "provider_invocation_receipt_present": (
+                provider_invocation_present
+            ),
+            "task_shard_count": self.task_shard_count,
+            "task_shard_index": self.task_shard_index,
+            "reasons": sorted({str(reason) for reason in reasons}),
+            "shared_claim_binding": dict(
+                self._shared_claim_binding_for_this_owner(task) or {}
+            ),
+        }
+        try:
+            self._cas_task_status_database(
+                attempt.task_cid,
+                expected_revision=int(task.revision),
+                new_status="ready" if requeue_safe else "quarantined",
+                receipt=receipt,
+            )
+        except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+            refreshed = self.task_source.get(attempt.task_cid)
+            if refreshed is None or not self._strict_resume_rejection_receipt_matches(
+                refreshed,
+                attempt,
+            ):
+                raise
+        return self._settle_strict_resume_rejection(attempt), disposition
+
+    def _strict_resume_admission_result(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        """Admit or safely requeue a durable attempt under strict sharding."""
+
+        if not self.strict_task_sharding:
+            return None
+        tasks, _ready_cids = self._stable_authoritative_task_projection()
+        by_cid = {str(task.task_cid): task for task in tasks}
+        task = by_cid.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "strict resume task is absent from authoritative population"
+            )
+        task_alias = str(task.task_alias or "").strip()
+        task_status = str(task.status or "").strip().lower()
+        reasons: list[str] = []
+        if not task_alias:
+            reasons.append("authoritative_alias_missing")
+        elif task_alias != attempt.task_alias:
+            reasons.append("authoritative_alias_changed")
+        if not self._task_belongs_to_strict_shard(task):
+            reasons.append("authoritative_alias_out_of_home_shard")
+        if task_status != "in_progress":
+            reasons.append("authoritative_status_not_in_progress")
+        if not all(
+            dependency in by_cid
+            and str(by_cid[dependency].status or "").strip().lower()
+            in _DATABASE_COMPLETED_TASK_STATUSES
+            for dependency in (str(dep) for dep in task.dependencies)
+        ):
+            reasons.append("authoritative_dependency_incomplete")
+        local_projection = self.coordinator.coordination_registry_projection()
+        local_rows = [
+            row
+            for row in local_projection.get("tasks", ())
+            if str(row.get("task_cid") or "") == attempt.task_cid
+        ]
+        local_body = (
+            local_rows[0].get("body")
+            if len(local_rows) == 1
+            and isinstance(local_rows[0].get("body"), Mapping)
+            else {}
+        )
+        body = task.body if isinstance(task.body, Mapping) else {}
+        shared_receipt = body.get("completion_receipt")
+        claimed_from_revision = (
+            shared_receipt.get("claimed_from_revision")
+            if isinstance(shared_receipt, Mapping)
+            else None
+        )
+        claim_revision_bound = not (
+            isinstance(claimed_from_revision, bool)
+            or not isinstance(claimed_from_revision, int)
+            or claimed_from_revision < 1
+            or int(task.revision) != claimed_from_revision + 1
+        )
+        if not claim_revision_bound:
+            reasons.append("shared_claim_revision_unbound")
+        direct_shared_binding = self._shared_claim_binding_matches_attempt(
+            task,
+            attempt,
+        )
+        retry_shared_binding = self._shared_retry_binding_matches_attempt(
+            task,
+            attempt,
+            local_task_body=local_body,
+            local_projection=local_projection,
+        )
+        if len(local_rows) != 1:
+            reasons.append("local_task_projection_missing_or_duplicated")
+        else:
+            if str(local_rows[0].get("task_id") or "") != task_alias:
+                reasons.append("local_task_alias_stale")
+            if local_body.get("authority") != "task_source":
+                reasons.append("local_task_projection_unauthoritative")
+            # A root claim deliberately retains the exact pre-CAS ready
+            # projection so an expired owner can be fenced and replaced by
+            # the coordination authority.  A lane-local retry is created
+            # only after synchronizing the current in-progress projection.
+            expected_local_revision = (
+                claimed_from_revision
+                if direct_shared_binding and claim_revision_bound
+                else int(task.revision)
+            )
+            expected_local_statuses = (
+                _DATABASE_READY_TASK_STATUSES
+                if direct_shared_binding
+                else {task_status}
+            )
+            if int(local_body.get("authoritative_revision") or 0) != int(
+                expected_local_revision or 0
+            ):
+                reasons.append("local_task_revision_stale")
+            if str(local_body.get("authoritative_status") or "").strip().lower() not in (
+                expected_local_statuses
+            ):
+                reasons.append("local_task_status_stale")
+        shared_resume_authorized = bool(
+            direct_shared_binding or retry_shared_binding
+        )
+        if not shared_resume_authorized:
+            reasons.append("shared_claim_binding_changed")
+
+        if not reasons:
+            self._protect_attempt_write(attempt)
+            return None
+        failed, disposition = self._reject_strict_resume(
+            attempt,
+            task,
+            reasons=reasons,
+            shared_resume_authorized=shared_resume_authorized,
+        )
+        return {
+            "resumed": False,
+            "reason": "strict_resume_not_admitted",
+            "rejection_reasons": sorted(set(reasons)),
+            "attempt": failed.to_dict(),
+            "provider_duplicated": False,
+            "effect_duplicated": False,
+            "task_requeued": disposition == "requeued",
+            "task_quarantined": disposition == "quarantined",
+        }
+
     def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
         """Retire exact local attempts whose coordination authority expired.
 
@@ -70003,6 +70513,31 @@ class DatabaseImplementationDaemon:
                 getattr(getattr(claim, "state", ""), "value", claim.state)
                 or ""
             )
+            task = self.task_source.get(attempt.task_cid)
+            if task is not None and self._strict_resume_rejection_receipt_matches(
+                task,
+                attempt,
+            ):
+                failed = self._settle_strict_resume_rejection(attempt)
+                task_status = str(task.status or "").strip().lower()
+                quarantined = task_status == "quarantined"
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "claim_id": attempt.claim_id,
+                        "attempt_id": attempt.attempt_id,
+                        "status": failed.status,
+                        "retry_required": not quarantined,
+                        "provider_evidence_reused": False,
+                        "effect_evidence_reused": False,
+                        "reason": "strict_resume_not_admitted",
+                        "disposition": (
+                            "quarantined" if quarantined else "requeued"
+                        ),
+                        "replayed": True,
+                    }
+                )
+                continue
             completion = self.coordinator.get_prepared_task_completion(
                 attempt.task_cid
             )
@@ -70076,11 +70611,16 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any]:
         """Resume from the last committed phase without duplicating work."""
 
-        current = (
-            attempt
+        attempt_id = str(
+            attempt.attempt_id
             if isinstance(attempt, DatabaseTaskAttempt)
-            else self.get_attempt(str(attempt))
+            else attempt
         )
+        # A caller may retain an object from before a durable provider/effect
+        # commit.  Always reload before strict phase-safety decisions so a
+        # stale object can never turn quarantine into a requeue and duplicate
+        # an external effect.
+        current = self.get_attempt(attempt_id)
         if current is None:
             raise KeyError(f"unknown attempt: {attempt!r}")
         if current.status != "running":
@@ -70091,6 +70631,9 @@ class DatabaseImplementationDaemon:
                 "provider_duplicated": False,
                 "effect_duplicated": False,
             }
+        strict_admission = self._strict_resume_admission_result(current)
+        if strict_admission is not None:
+            return strict_admission
         self._protect_attempt_write(
             current,
             allow_logically_completed=current.phase_committed(
@@ -70231,19 +70774,45 @@ class DatabaseImplementationDaemon:
                 raise
             failed = None
             try:
-                current = (
-                    attempt
-                    if isinstance(attempt, DatabaseTaskAttempt)
-                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
+                attempt_id = str(
+                    getattr(attempt, "attempt_id", "") or attempt
                 )
+                # ``resume_attempt`` may have committed CONTEXT before Portal
+                # returned a typed deferral.  Always reload the durable
+                # revision instead of attempting FAILED with the stale object
+                # supplied to this method.
+                current = self.get_attempt(attempt_id)
                 if current is not None and current.status == "running":
-                    failed = self.commit_phase(
-                        current,
-                        ATTEMPT_PHASE_FAILED,
-                        body={
-                            "reason": str(exc),
-                            "portal_retryable_failure": True,
-                        },
+                    claim = self._attempt_claim(current)
+                    lease = self._protect_attempt_claim(current, claim)
+                    failure_body = {
+                        "reason": str(exc),
+                        "portal_retryable_failure": True,
+                    }
+                    try:
+                        failed = self.commit_phase(
+                            current,
+                            ATTEMPT_PHASE_FAILED,
+                            body=failure_body,
+                        )
+                    except Exception:
+                        # A response loss after the execution-store commit must
+                        # not strand the exact accepted coordination lease.
+                        refreshed = self.get_attempt(attempt_id)
+                        if not (
+                            refreshed is not None
+                            and refreshed.status == "failed"
+                            and refreshed.committed_phase
+                            == ATTEMPT_PHASE_FAILED
+                        ):
+                            raise
+                        failed = refreshed
+                    self.coordinator.release(
+                        lease,
+                        reason="portal_retryable_failure",
+                        expected_fencing_token=int(current.fencing_token),
+                        expected_fence_epoch=int(current.fence_epoch),
+                        now_ms=self._now_ms(),
                     )
             except Exception as fail_exc:
                 return {
@@ -71038,6 +71607,9 @@ def main(argv: list[str] | None = None) -> None:
             events_path=None,
             pid_path=None,
             queue_path=None,
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
             require_real_execution=bool(args.implement),
         )
         bind_database_portal_execution_from_args(

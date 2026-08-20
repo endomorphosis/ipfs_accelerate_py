@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -13,12 +14,16 @@ from ipfs_accelerate_py.agent_supervisor.validation import (
 )
 from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
     MAX_DEPENDENCY_MANIFEST_FILES,
+    MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES,
+    MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES,
     MAX_INSTALLED_VERSION_BYTES,
     MAX_PYPROJECT_BYTES,
+    PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     PROJECT_DEPENDENCY_PROBE_SCHEMA,
     _evaluate_dependency_payload,
     _run_bounded_probe_process,
+    compact_project_dependency_preflight_receipt,
     preflight_validation_project_dependencies,
     project_dependency_preflight_backoff_seconds,
 )
@@ -409,6 +414,183 @@ def test_dependency_preflight_backoff_is_fingerprinted_and_bounded() -> None:
         )
         == 300
     )
+
+
+def test_dependency_preflight_compaction_binds_oversized_receipt() -> None:
+    oversized = "x" * 80_000
+    receipt = {
+        "schema": PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
+        "receipt_id": "a" * 64,
+        "retry_fingerprint": "b" * 64,
+        "passed": False,
+        "applicable": True,
+        "reason": "approved_validation_environment_dependency_drift",
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+        "validation_command_count": 7,
+        "validation_roots": ["."],
+        "project_roots": ["."],
+        "projects": [{"root": ".", "closure": oversized} for _ in range(16)],
+        "dependency_neutral_commands": [],
+        "missing_requirements": [],
+        "incompatible_requirements": [
+            {
+                "name": "urllib3",
+                "requirement": "urllib3<2",
+                "installed_version": "2.7.0",
+                "closure": oversized,
+            }
+        ],
+        "invalid_requirements": [],
+        "invalid_commands": [],
+        "probe": {
+            "reason": "project_dependency_drift_detected",
+            "python_executable": "/usr/bin/python3.12",
+            "python_version": "3.12.3",
+            "projects": [{"closure": oversized} for _ in range(16)],
+        },
+        "remediation": {
+            "kind": "provision_approved_validation_environment",
+            "python_executable": "/usr/bin/python3.12",
+            "requirements": ["urllib3<2"],
+            "automatic_provisioning": False,
+            "rerun_required": True,
+        },
+    }
+    assert len(json.dumps(receipt).encode("utf-8")) > 1_048_576
+
+    compact = compact_project_dependency_preflight_receipt(receipt)
+
+    assert compact == compact_project_dependency_preflight_receipt(receipt)
+    assert compact_project_dependency_preflight_receipt(compact) == compact
+    assert compact["schema"] == PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA
+    assert compact["source_receipt_id"] == receipt["receipt_id"]
+    assert compact["retry_fingerprint"] == receipt["retry_fingerprint"]
+    assert compact["incompatible_count"] == 1
+    assert compact["incompatible_requirements"][0] == {
+        "name": "urllib3",
+        "requirement": "urllib3<2",
+        "installed_version": "2.7.0",
+        "issue_sha256": compact["incompatible_requirements"][0][
+            "issue_sha256"
+        ],
+    }
+    assert oversized not in json.dumps(compact)
+    assert (
+        len(json.dumps(compact).encode("utf-8"))
+        <= MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES
+    )
+
+
+@pytest.mark.parametrize("long_text", ["x" * 4096, "\x00" * 4096])
+def test_dependency_preflight_compaction_fits_worst_case_samples(
+    long_text: str,
+) -> None:
+    issue = {
+        "name": long_text,
+        "requirement": long_text,
+        "installed_version": long_text,
+        "reason": long_text,
+        "root": long_text,
+    }
+    issue_count = 32
+    receipt = {
+        "schema": PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
+        "receipt_id": "a" * 64,
+        "retry_fingerprint": "b" * 64,
+        "passed": False,
+        "applicable": True,
+        "reason": "approved_validation_environment_dependency_drift",
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+        "validation_command_count": 7,
+        "validation_roots": ["."],
+        "project_roots": ["."],
+        "projects": [],
+        "dependency_neutral_commands": [],
+        "missing_requirements": [dict(issue) for _ in range(issue_count)],
+        "incompatible_requirements": [dict(issue) for _ in range(issue_count)],
+        "invalid_requirements": [dict(issue) for _ in range(issue_count)],
+        "invalid_commands": [long_text for _ in range(issue_count)],
+        "probe": {
+            "reason": long_text,
+            "python_executable": long_text,
+            "python_version": long_text,
+            "projects": [],
+            "validation_python_launcher": {},
+        },
+        "remediation": {
+            "kind": long_text,
+            "python_executable": long_text,
+            "requirements": [long_text for _ in range(issue_count)],
+            "automatic_provisioning": False,
+            "rerun_required": True,
+        },
+    }
+
+    compact = compact_project_dependency_preflight_receipt(receipt)
+
+    assert compact["missing_count"] == issue_count
+    assert compact["incompatible_count"] == issue_count
+    assert compact["invalid_requirement_count"] == issue_count
+    assert compact["invalid_command_count"] == issue_count
+    assert compact["issues_truncated"] is True
+    assert all(
+        len(compact[field]) == MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES
+        for field in (
+            "missing_requirements",
+            "incompatible_requirements",
+            "invalid_requirements",
+        )
+    )
+    assert (
+        len(json.dumps(compact).encode("utf-8"))
+        <= MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES
+    )
+    assert compact_project_dependency_preflight_receipt(compact) == compact
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["top", "probe", "launcher", "remediation", "issue"],
+)
+def test_dependency_preflight_projection_rejects_hidden_claim_fields(
+    location: str,
+) -> None:
+    compact = compact_project_dependency_preflight_receipt(
+        {
+            "schema": PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
+            "receipt_id": "a" * 64,
+            "retry_fingerprint": "b" * 64,
+            "missing_requirements": [
+                {"name": "missing", "requirement": "missing>=1"}
+            ],
+            "incompatible_requirements": [],
+            "invalid_requirements": [],
+            "invalid_commands": [],
+            "projects": [],
+            "project_roots": [],
+            "validation_roots": [],
+            "dependency_neutral_commands": [],
+            "probe": {"validation_python_launcher": {}},
+            "remediation": {"requirements": []},
+        }
+    )
+    tampered = deepcopy(compact)
+    targets = {
+        "top": tampered,
+        "probe": tampered["probe"],
+        "launcher": tampered["probe"]["validation_python_launcher"],
+        "remediation": tampered["remediation"],
+        "issue": tampered["missing_requirements"][0],
+    }
+    targets[location]["hidden_model_authority"] = True
+    unsigned = dict(tampered)
+    unsigned.pop("projection_id")
+    tampered["projection_id"] = preflight_module._content_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="not closed|unknown"):
+        compact_project_dependency_preflight_receipt(tampered)
 
 
 def test_dependency_probe_output_is_bounded_while_child_is_running(

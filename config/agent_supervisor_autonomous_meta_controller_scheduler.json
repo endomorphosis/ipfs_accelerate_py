@@ -99,7 +99,8 @@
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py"
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py"
   ],
   "runtime_paths": {
     "root": "state/agent_supervisor_autonomous_meta_controller",
@@ -114,34 +115,35 @@
       "index": 0,
       "name": "apmc-lane-0",
       "strict_shard_remainder": 0,
-      "initial_task_ids": [
-        "APMC-012"
-      ],
-      "initial_focus": "plan-suffix-route-policy-and-event-runtime"
+      "initial_task_ids": [],
+      "initial_focus": "available-for-later-alias-hash-shard-work"
     },
     {
       "index": 1,
       "name": "apmc-lane-1",
       "strict_shard_remainder": 1,
-      "initial_task_ids": [],
-      "initial_focus": "policy-evaluation-repair-and-control"
+      "initial_task_ids": [
+        "APMC-012"
+      ],
+      "initial_focus": "plan-suffix-controller"
     },
     {
       "index": 2,
       "name": "apmc-lane-2",
       "strict_shard_remainder": 2,
       "initial_task_ids": [
-        "APMC-006",
-        "APMC-014"
+        "APMC-006"
       ],
-      "initial_focus": "experience-distillation-and-human-escalation"
+      "initial_focus": "experience-ledger"
     },
     {
       "index": 3,
       "name": "apmc-lane-3",
       "strict_shard_remainder": 3,
-      "initial_task_ids": [],
-      "initial_focus": "causal-attribution-skills-memory-and-promotion"
+      "initial_task_ids": [
+        "APMC-014"
+      ],
+      "initial_focus": "human-escalation-compiler"
     }
   ],
   "task_groups": {

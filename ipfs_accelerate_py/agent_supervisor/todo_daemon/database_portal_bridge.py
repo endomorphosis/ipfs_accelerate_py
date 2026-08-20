@@ -650,8 +650,14 @@ class DatabasePortalExecutionBridge:
                 self._verify_projection(paths, binding)
                 failure = self._terminal_failure(raw_result)
                 if failure:
+                    implementation = raw_result.get("implementation_result")
+                    explicitly_deferred = bool(
+                        isinstance(implementation, Mapping)
+                        and implementation.get("deferred") is True
+                    )
                     if (
-                        "deferred" in failure
+                        explicitly_deferred
+                        or "deferred" in failure
                         or "backoff" in failure
                         or "capacity" in failure
                         or "resource_claim" in failure

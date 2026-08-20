@@ -93,6 +93,13 @@ DATABASE_COORDINATION_TEST_PATH = (
 DATABASE_IMPLEMENTATION_DAEMON_TEST_PATH = (
     REPO_ROOT / "test/api/test_agent_supervisor_database_implementation_daemon.py"
 )
+PROJECT_DEPENDENCY_PREFLIGHT_PATH = (
+    REPO_ROOT
+    / "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py"
+)
+PROJECT_DEPENDENCY_PREFLIGHT_TEST_PATH = (
+    REPO_ROOT / "test/api/test_agent_supervisor_project_dependency_preflight.py"
+)
 
 REQUIRED_CONTROL_FILES = (
     PLAN_PATH,
@@ -125,12 +132,14 @@ REQUIRED_CONTROL_FILES = (
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    PROJECT_DEPENDENCY_PREFLIGHT_PATH,
     REPO_ROOT / "scripts/ops/agent_supervisor/quack_state_server.py",
     REPO_ROOT / "scripts/lgswf_start_quack_control.py",
     REPO_ROOT / "test/api/test_agent_supervisor_intent_repository.py",
     DATABASE_COORDINATION_TEST_PATH,
     DATABASE_IMPLEMENTATION_DAEMON_TEST_PATH,
     DATABASE_PORTAL_BRIDGE_TEST_PATH,
+    PROJECT_DEPENDENCY_PREFLIGHT_TEST_PATH,
     REPO_ROOT / "test/api/test_agent_supervisor_database_runner_propagation.py",
     REPO_ROOT / "test/api/test_agent_supervisor_duckdb_connection_policy.py",
     REPO_ROOT / "test/api/test_agent_supervisor_implementation_auto_rescue.py",
@@ -418,10 +427,14 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         "root_goal_id": ROOT_OBJECTIVE,
     }
     expected_lane_frontier = {
-        0: ["APMC-012"],
-        1: [],
-        2: ["APMC-006", "APMC-014"],
-        3: [],
+        lane_index: [
+            task_id
+            for task_id in EXPECTED_PRELAUNCH_READY_TASK_IDS
+            if int(hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:8], 16)
+            % 4
+            == lane_index
+        ]
+        for lane_index in range(4)
     }
     observed_lane_frontier = {
         int(lane.get("index", -1)): list(lane.get("initial_task_ids") or ())
@@ -432,6 +445,9 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
     database_coordination_relative = DATABASE_COORDINATION_PATH.relative_to(
         REPO_ROOT
     ).as_posix()
+    project_dependency_preflight_relative = (
+        PROJECT_DEPENDENCY_PREFLIGHT_PATH.relative_to(REPO_ROOT).as_posix()
+    )
     scheduler_ok = bool(
         scheduler.get("board_namespace") == PROGRAM_ID
         and scheduler.get("task_prefix") == TASK_PREFIX
@@ -451,6 +467,7 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         and SCHEDULER_CONFIG_PATH.relative_to(REPO_ROOT).as_posix() in protected_paths
         and portal_bridge_relative in protected_paths
         and database_coordination_relative in protected_paths
+        and project_dependency_preflight_relative in protected_paths
     )
     _append(
         checks,
@@ -476,6 +493,7 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
             "observed_projection": scheduler.get("initial_projection"),
             "expected_lane_frontier": expected_lane_frontier,
             "observed_lane_frontier": observed_lane_frontier,
+            "strict_shard_identity": "sha256-task-alias-first-32-bits-mod-4",
         },
     )
     try:
@@ -1082,6 +1100,28 @@ def _p0_and_benchmark_checks(checks: list[dict[str, Any]], errors: list[str]) ->
                 "test/api/test_agent_supervisor_database_implementation_daemon.py::test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim",
                 "test/api/test_agent_supervisor_database_implementation_daemon.py::test_restart_retires_prepared_absent_expired_attempt_then_refences_retry",
                 "test/api/test_agent_supervisor_database_implementation_daemon.py::test_expired_preparation_without_control_cas_is_aborted_and_requeued",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_database_lane_claims_only_alias_hash_home_tasks",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_non_strict_database_lane_preserves_cross_shard_claiming",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_resumes_exact_in_home_claim",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_requeues_pre_provider_out_of_home_attempt",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_quarantines_effect_committed_out_of_home_attempt",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_quarantines_provider_receipt_before_phase_commit",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_database_lane_rechecks_authoritative_alias_after_local_claim",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_parse_args_accepts_database_authority_flags",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_runner_builds_database_daemon_without_json_projections",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_database_runner_preserves_exact_shard_types_for_constructor_guard",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_runner_portal_builder_selects_database_daemon",
+                "test/api/test_agent_supervisor_database_portal_bridge.py::test_bridge_preserves_explicit_non_consuming_portal_deferral",
+                "test/api/test_agent_supervisor_project_dependency_preflight.py::test_dependency_preflight_compaction_binds_oversized_receipt",
+                "test/api/test_agent_supervisor_project_dependency_preflight.py::test_dependency_preflight_compaction_fits_worst_case_samples",
+                "test/api/test_agent_supervisor_project_dependency_preflight.py::test_dependency_preflight_projection_rejects_hidden_claim_fields",
             ),
             (
                 "python3",

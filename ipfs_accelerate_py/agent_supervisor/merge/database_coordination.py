@@ -2204,6 +2204,11 @@ class DatabaseCoordinator:
                             AttemptStatus.EXPIRED.value,
                             LeaseState.EXPIRED.value,
                         ),
+                        (
+                            LeaseState.RELEASED.value,
+                            AttemptStatus.RELEASED.value,
+                            LeaseState.RELEASED.value,
+                        ),
                     }:
                         raise DatabaseCoordinationConflictError(
                             f"restart recovery local authority state is inadmissible for {cid}"

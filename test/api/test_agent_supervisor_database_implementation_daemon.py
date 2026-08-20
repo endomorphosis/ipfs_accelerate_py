@@ -12,7 +12,9 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import hashlib
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -30,8 +32,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeDeferred,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
+    ATTEMPT_PHASE_CONTEXT,
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
@@ -150,8 +156,12 @@ def _open_daemon(
     provider_fn: Callable[[DatabaseTaskAttempt], dict[str, object]] | None = None,
     lease_ms: int = 60_000,
     clock_ms: Callable[[], int] | None = None,
+    task_shard_count: int = 1,
+    task_shard_index: int = 0,
+    strict_task_sharding: bool = False,
+    control_path: Path | None = None,
 ) -> DatabaseImplementationDaemon:
-    database_path = tmp_path / "control.duckdb"
+    database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"
     execution_path = tmp_path / "execution.duckdb"
 
@@ -186,10 +196,18 @@ def _open_daemon(
         pid_path=None,
         queue_path=None,
         lease_ms=lease_ms,
+        task_shard_count=task_shard_count,
+        task_shard_index=task_shard_index,
+        strict_task_sharding=strict_task_sharding,
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         clock_ms=clock_ms,
     )
+
+
+def _alias_home(task_alias: str, shard_count: int) -> int:
+    digest = hashlib.sha256(task_alias.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % shard_count
 
 
 def test_interface_identities() -> None:
@@ -206,6 +224,384 @@ def test_interface_identities() -> None:
     assert not is_database_authority_mode(
         authority_mode="legacy_markdown", task_source_kind="legacy-markdown"
     )
+
+
+def test_strict_database_lane_claims_only_alias_hash_home_tasks(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:strict-lane-0",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(8))
+        claimed_aliases: list[str] = []
+        while True:
+            attempt = daemon.claim_next()
+            if attempt is None:
+                break
+            claimed_aliases.append(attempt.task_alias)
+
+        expected = {
+            f"DQP-T{index:03d}"
+            for index in range(1, 9)
+            if _alias_home(f"DQP-T{index:03d}", 2) == 0
+        }
+        assert set(claimed_aliases) == expected
+        assert claimed_aliases
+        assert all(_alias_home(alias, 2) == 0 for alias in claimed_aliases)
+    finally:
+        daemon.close()
+
+
+def test_non_strict_database_lane_preserves_cross_shard_claiming(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:non-strict-lane-0",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=False,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_alias == "DQP-T001"
+        assert _alias_home(attempt.task_alias, 2) == 1
+    finally:
+        daemon.close()
+
+
+def test_strict_restart_resumes_exact_in_home_claim(
+    tmp_path: Path,
+) -> None:
+    first = _open_daemon(
+        tmp_path,
+        session="session:strict-in-home",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(3))
+        attempt = first.claim_next()
+        assert attempt is not None
+        assert attempt.task_alias == "DQP-T003"
+        assert _alias_home(attempt.task_alias, 2) == 0
+    finally:
+        first.close()
+
+    provider_calls: list[str] = []
+    restarted = _open_daemon(
+        tmp_path,
+        session="session:strict-in-home",
+        provider_calls=provider_calls,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        result = restarted.run_once()["implementation_result"]
+        assert result["resumed"] is True
+        assert result["status"] == "succeeded"
+        assert provider_calls == [attempt.task_cid]
+    finally:
+        restarted.close()
+
+
+def test_strict_restart_requeues_pre_provider_out_of_home_attempt(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane-0"
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:lane-0",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=False,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        assert attempt.task_alias == "DQP-T001"
+        assert _alias_home(attempt.task_alias, 2) == 1
+    finally:
+        first.close()
+
+    restart_provider_calls: list[str] = []
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:lane-0",
+        provider_calls=restart_provider_calls,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        result = restarted.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["reason"] == "strict_resume_not_admitted"
+        assert implementation["task_requeued"] is True
+        assert implementation["task_quarantined"] is False
+        assert restart_provider_calls == []
+        failed = restarted.get_attempt(attempt.attempt_id)
+        assert failed is not None
+        assert failed.status == "failed"
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "ready"
+        assert task.body["completion_receipt"]["operation"] == (
+            "database_strict_resume_requeue"
+        )
+        claim = restarted.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        assert str(getattr(claim.state, "value", claim.state)) == "released"
+    finally:
+        restarted.close()
+
+    home = _open_daemon(
+        tmp_path / "lane-1",
+        control_path=control_path,
+        session="session:lane-1",
+        task_shard_count=2,
+        task_shard_index=1,
+        strict_task_sharding=True,
+    )
+    try:
+        admitted = home.claim_next()
+        assert admitted is not None
+        assert admitted.task_cid == attempt.task_cid
+        assert admitted.task_alias == "DQP-T001"
+    finally:
+        home.close()
+
+
+def test_strict_restart_quarantines_effect_committed_out_of_home_attempt(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane-0"
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:lane-0-effect",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=False,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        current = first.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_CONTEXT,
+            body={"test": "strict-restart"},
+        )
+        current, provider_result, _duplicated = first.run_provider(current)
+        current, _effect_result, _duplicated = first.run_effect(
+            current,
+            provider_result,
+        )
+        assert current.committed_phase == "effect"
+        assert provider_calls == [attempt.task_cid]
+        assert effect_calls == [attempt.task_cid]
+    finally:
+        first.close()
+
+    restart_provider_calls: list[str] = []
+    restart_effect_calls: list[str] = []
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:lane-0-effect",
+        provider_calls=restart_provider_calls,
+        effect_calls=restart_effect_calls,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        result = restarted.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["reason"] == "strict_resume_not_admitted"
+        assert implementation["task_requeued"] is False
+        assert implementation["task_quarantined"] is True
+        assert restart_provider_calls == []
+        assert restart_effect_calls == []
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "quarantined"
+        assert task.body["completion_receipt"]["operation"] == (
+            "database_strict_resume_quarantine"
+        )
+        assert restarted.claim_next() is None
+    finally:
+        restarted.close()
+
+
+@pytest.mark.parametrize(
+    "provider_idempotency_key",
+    ["", "provider:custom-crash-key"],
+    ids=["canonical-key", "custom-key"],
+)
+def test_strict_restart_quarantines_provider_receipt_before_phase_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_idempotency_key: str,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane-0"
+    provider_calls: list[str] = []
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:lane-0-provider-crash",
+        provider_calls=provider_calls,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=False,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        current = first.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_CONTEXT,
+            body={"test": "provider-receipt-crash"},
+        )
+        original_commit_phase = first.commit_phase
+
+        def crash_before_provider_phase(
+            current_attempt: DatabaseTaskAttempt,
+            phase: str,
+            *,
+            body: dict[str, object] | None = None,
+        ) -> DatabaseTaskAttempt:
+            if phase == ATTEMPT_PHASE_PROVIDER:
+                raise RuntimeError("injected crash after provider receipt")
+            return original_commit_phase(current_attempt, phase, body=body)
+
+        monkeypatch.setattr(first, "commit_phase", crash_before_provider_phase)
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash after provider receipt",
+        ):
+            first.run_provider(
+                current,
+                idempotency_key=provider_idempotency_key,
+            )
+        persisted = first.get_attempt(attempt.attempt_id)
+        assert persisted is not None
+        assert persisted.committed_phase == ATTEMPT_PHASE_CONTEXT
+        recorded_key = (
+            provider_idempotency_key
+            or f"provider:{attempt.attempt_id}"
+        )
+        assert first.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=recorded_key,
+        ) is not None
+        assert first.provider_invocation_exists(attempt.attempt_id) is True
+        assert provider_calls == [attempt.task_cid]
+    finally:
+        first.close()
+
+    restart_provider_calls: list[str] = []
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:lane-0-provider-crash",
+        provider_calls=restart_provider_calls,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        result = restarted.run_once()["implementation_result"]
+        assert result["reason"] == "strict_resume_not_admitted"
+        assert result["task_requeued"] is False
+        assert result["task_quarantined"] is True
+        assert restart_provider_calls == []
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == "database_strict_resume_quarantine"
+        assert receipt["provider_phase_committed"] is False
+        assert receipt["provider_invocation_receipt_present"] is True
+    finally:
+        restarted.close()
+
+
+@pytest.mark.parametrize("raced_alias", ["", "DQP-T001", "DQP-T004"])
+def test_strict_database_lane_rechecks_authoritative_alias_after_local_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raced_alias: str,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:strict-race",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(3))
+        original_projection = daemon._stable_authoritative_task_projection
+        reads = 0
+
+        def raced_projection() -> tuple[tuple[object, ...], frozenset[str]]:
+            nonlocal reads
+            tasks, ready_cids = original_projection()
+            reads += 1
+            if reads < 3:
+                return tasks, ready_cids
+            return (
+                tuple(
+                    replace(task, task_alias=raced_alias)
+                    if task.task_alias == "DQP-T003"
+                    else task
+                    for task in tasks
+                ),
+                ready_cids,
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_stable_authoritative_task_projection",
+            raced_projection,
+        )
+
+        assert daemon.claim_next() is None
+        assert reads >= 3
+        task = daemon.task_source.get_task("task:cid:003")
+        assert task is not None
+        assert task.status == "ready"
+        projection = daemon.coordinator.coordination_registry_projection()
+        claim = next(
+            row
+            for row in projection["task_claims"]
+            if row["task_cid"] == "task:cid:003"
+        )
+        assert claim["state"] == "released"
+    finally:
+        daemon.close()
 
 
 def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
@@ -340,6 +736,69 @@ def test_removed_authoritative_task_is_excluded_without_idle_growth(
         for _pass in range(2):
             assert daemon.claim_next(exclude_task_cids=(authoritative_cid,)) is None
             assert daemon.coordinator.coordination_registry_projection() == before
+    finally:
+        daemon.close()
+
+
+def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+
+    def defer_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if len(provider_calls) == 1:
+            raise DatabasePortalBridgeDeferred(
+                "validation_project_dependency_preflight_failed"
+            )
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-deferral",
+        provider_fn=defer_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+
+        result = daemon._resume_attempt_without_process_crash(attempt)
+
+        assert provider_calls == [attempt.attempt_id]
+        assert result["status"] == "failed"
+        assert "fail_error" not in result
+        failed = daemon.get_attempt(attempt.attempt_id)
+        assert failed is not None
+        assert failed.committed_phase == "failed"
+        assert failed.status == "failed"
+        assert failed.revision > attempt.revision
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert next(
+            row["state"]
+            for row in projection["task_claims"]
+            if row["claim_id"] == attempt.claim_id
+        ) == "released"
+        assert next(
+            row["status"]
+            for row in projection["task_attempts"]
+            if row["attempt_id"] == attempt.attempt_id
+        ) == "released"
+        assert next(
+            row["state"]
+            for row in projection["fenced_leases"]
+            if row["lease_id"] == attempt.lease_id
+        ) == "released"
+
+        retry = daemon.claim_next()
+        assert retry is not None
+        assert retry.task_cid == attempt.task_cid
+        assert retry.attempt_number == 2
+        resumed = daemon.resume_attempt(retry)
+        assert resumed["resumed"] is True
+        assert resumed["status"] == "succeeded"
+        assert provider_calls == [attempt.attempt_id, retry.attempt_id]
     finally:
         daemon.close()
 
@@ -1565,6 +2024,11 @@ def test_runner_builds_database_daemon_without_json_projections(
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "3",
+            "--strict-task-sharding",
             "--once",
         ]
     )
@@ -1577,12 +2041,47 @@ def test_runner_builds_database_daemon_without_json_projections(
         assert daemon.state_path is None
         assert daemon.events_path is None
         assert daemon.projections_required() is False
+        assert daemon.task_shard_count == 4
+        assert daemon.task_shard_index == 3
+        assert daemon.strict_task_sharding is True
         daemon.materialize_population(_population(1))
         result = daemon.run_once()
         assert result["authority_mode"] == "embedded"
         assert result["markdown_status_writes"] == 0
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "malformed", "message"),
+    [
+        ("task_shard_count", True, "positive integer"),
+        ("task_shard_index", False, "range"),
+        ("strict_task_sharding", 1, "boolean"),
+    ],
+)
+def test_database_runner_preserves_exact_shard_types_for_constructor_guard(
+    tmp_path: Path,
+    field_name: str,
+    malformed: object,
+    message: str,
+) -> None:
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "unused.md"),
+            "--once",
+        ]
+    )
+    setattr(args, field_name, malformed)
+    with pytest.raises(ValueError, match=message):
+        build_database_implementation_daemon_from_args(args)
 
 
 def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
@@ -1601,6 +2100,11 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--task-shard-count",
+            "2",
+            "--task-shard-index",
+            "1",
+            "--strict-task-sharding",
             "--once",
         ]
     )
@@ -1611,6 +2115,9 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
     try:
         assert isinstance(daemon, DatabaseImplementationDaemon)
         assert context.state_path.name.startswith("dqp_")
+        assert daemon.task_shard_count == 2
+        assert daemon.task_shard_index == 1
+        assert daemon.strict_task_sharding is True
         daemon.materialize_population(_population(2))
         first = daemon.claim_next()
         second = daemon.claim_next()

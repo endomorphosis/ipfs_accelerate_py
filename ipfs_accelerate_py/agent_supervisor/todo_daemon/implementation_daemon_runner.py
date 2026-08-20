@@ -13,14 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ..objectives.scan_receipts import RefillScanResult
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_repeated_default,
 )
+from ..objectives.scan_receipts import RefillScanResult
 from ..runtime.event_log import append_jsonl_event
-
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
@@ -1363,6 +1362,11 @@ def build_portal_implementation_daemon_from_args(
             events_path=optional_events if use_projections else None,
             pid_path=None,
             queue_path=None,
+            task_shard_count=getattr(parsed, "task_shard_count", 1),
+            task_shard_index=getattr(parsed, "task_shard_index", 0),
+            strict_task_sharding=getattr(
+                parsed, "strict_task_sharding", False
+            ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
         )
         bind_database_portal_execution_from_args(
@@ -1509,6 +1513,9 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        task_shard_count=getattr(parsed, "task_shard_count", 1),
+        task_shard_index=getattr(parsed, "task_shard_index", 0),
+        strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
     )
 
 

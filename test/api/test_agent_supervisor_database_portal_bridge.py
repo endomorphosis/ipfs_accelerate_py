@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -317,6 +318,44 @@ def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
     )
     with pytest.raises(DatabasePortalBridgeError, match="outside its mutable status"):
         bridge.run_provider(_attempt())
+
+
+def test_bridge_preserves_explicit_non_consuming_portal_deferral(
+    tmp_path: Path,
+) -> None:
+    class DeferredPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": (
+                        "validation_project_dependency_preflight_failed"
+                    ),
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                }
+            }
+
+    portals: list[DeferredPortal] = []
+
+    def factory(paths: object, alias: str) -> DeferredPortal:
+        portal = DeferredPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="validation_project_dependency_preflight_failed",
+    ):
+        bridge.run_provider(_attempt())
+    assert portals and portals[0].closed is True
 
 
 def test_bridge_rejects_completion_event_for_another_canonical_task(
