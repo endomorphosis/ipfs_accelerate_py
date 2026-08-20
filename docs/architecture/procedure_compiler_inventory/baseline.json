@@ -1,0 +1,59 @@
+{
+  "excluded_sources": [
+    "planning_document_status",
+    "receipt_shaped_unadmitted_json",
+    "task_board_status",
+    "uncommitted_working_tree_overlays"
+  ],
+  "package": {
+    "name": "ipfs_accelerate_py",
+    "version": "0.0.45"
+  },
+  "qualified_release_ancestors": {
+    "adversarial_assurance": "4b4f57143",
+    "incremental_proof_sealer": "5edc45694",
+    "incremental_verification_planner": "52e8fe17f",
+    "semantic_compression_governor": "485edc087"
+  },
+  "repository": {
+    "branch_created": "codex/proof-carrying-procedure-compiler-v1",
+    "commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "origin_main_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "remote": "endomorphosis/ipfs_accelerate_py",
+    "tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58"
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-baseline@1",
+  "sibling_gitlinks": {
+    "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+  },
+  "submodule_checkout_state": "deinitialized_in_clean_worktree",
+  "test_evidence": [
+    {
+      "collected": 136,
+      "failed": 0,
+      "scope": "semantic harness/governor, adversarial public API, incremental verification planner, context compiler, control service"
+    },
+    {
+      "collected": 77,
+      "failed": 0,
+      "scope": "incremental proof sealer leaf APIs with exact pinned siblings"
+    },
+    {
+      "collected": 26,
+      "failed": 1,
+      "scope": "value-of-information and delta-retry core plus daemon integration"
+    },
+    {
+      "collected": 197,
+      "failed": 23,
+      "scope": "provider route, worktree, lease, fencing, and merge sample",
+      "typed_failures": {
+        "default_provider_route_stale": 21,
+        "worktree_test_import_errors": 2
+      }
+    }
+  ],
+  "timestamp_date_utc": "2026-08-20"
+}

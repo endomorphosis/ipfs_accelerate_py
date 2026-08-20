@@ -1,0 +1,112 @@
+{
+  "baseline_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+  "baseline_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+  "dispositions": [
+    {
+      "authority": "SemanticCompressionHarness",
+      "interface": "SemanticCompressionHarness@1",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+      "status": "available"
+    },
+    {
+      "authority": "SemanticCompressionGovernor",
+      "interface": "SemanticCompressionGovernor@1",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py",
+      "status": "available"
+    },
+    {
+      "authority": "AdversarialAssuranceEngine",
+      "canonical_adapter_target": "AssuranceCampaignApi",
+      "caveat": "No Python class has the requested exact name; the complete committed authority is the typed AssuranceCampaignApi facade.",
+      "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py",
+      "status": "available_with_caveats"
+    },
+    {
+      "authority": "IncrementalVerificationPlanner",
+      "interface": "IncrementalVerificationPlanner@1",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+      "status": "available"
+    },
+    {
+      "authority": "IncrementalProofSealer",
+      "caveat": "Leaf class APIs are committed and qualified with pinned siblings, but the package facade does not export the class and primary result types.",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py",
+      "status": "available_with_caveats"
+    },
+    {
+      "authority": "AdaptivePlanner",
+      "blocker": "adaptive_planner_import_missing_committed_mcp_contract_catalog",
+      "caveat": "The class exists, but a clean committed import traverses mcp_contract_analysis.py into a missing committed mcp_contract_catalog.py. An unrelated untracked overlay is excluded.",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+      "status": "incompatible"
+    },
+    {
+      "authority": "SupervisorControlService",
+      "interface": "SupervisorControlService@1",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+      "status": "available"
+    },
+    {
+      "authority": "ContextCompiler",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "status": "available"
+    },
+    {
+      "authority": "ValueOfInformation evidence selection",
+      "canonical_owner": "ContextCompiler",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "status": "available"
+    },
+    {
+      "authority": "Delta retry contexts",
+      "caveat": "Core compiler behavior passes; one current daemon integration loses validation.attempted.",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "status": "available_with_caveats"
+    },
+    {
+      "authority": "Provider capacity and route policy",
+      "caveat": "Typed capacity and ModelRoutePlanner are usable; 21 of 23 focused default Grok/Codex daemon-route tests fail on the committed baseline.",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_monitor.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py"
+      ],
+      "status": "available_with_caveats"
+    },
+    {
+      "authority": "Worktree lease fencing and merge controls",
+      "caveat": "Core controls pass focused tests. Board-scoped checkout locks, longer provider leases, and some sharded claim fixes exist only as excluded uncommitted overlays.",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py"
+      ],
+      "status": "available_with_caveats"
+    },
+    {
+      "authority": "AutonomousMetaController",
+      "status": "missing"
+    },
+    {
+      "authority": "autonomy package",
+      "status": "missing"
+    },
+    {
+      "authority": "cognitive scheduler",
+      "status": "missing"
+    },
+    {
+      "authority": "experience ledger",
+      "status": "missing"
+    },
+    {
+      "authority": "policy-distillation subsystem",
+      "status": "missing"
+    }
+  ],
+  "package_version": "0.0.45",
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@1"
+}
