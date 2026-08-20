@@ -110,6 +110,7 @@ from .provider_capacity_monitor import (
     DEFAULT_RESPONSE_TOKENS_PER_REQUEST,
     ProviderCapacityMonitor,
     ProviderCapacityMonitorConfig,
+    count_active_cli_processes,
 )
 from .resource_scheduler import sample_host_resources
 
@@ -637,6 +638,95 @@ def _tracked_head_snapshot(
     return payload, revision
 
 
+def _eaaef_task_status_projection_path(board: "ConfiguredBoard") -> Path:
+    return board.path(board.runtime_paths["state"]) / "task-status-projection.json"
+
+
+def _eaaef_write_task_status_projection(
+    board: "ConfiguredBoard",
+    overlay: Mapping[str, str],
+) -> None:
+    path = _eaaef_task_status_projection_path(board)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "eaaef-task-status-projection@1"
+                    ),
+                    "statuses": dict(sorted(overlay.items())),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
+def _eaaef_task_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
+    """Return DuckDB (or cached projection) status keyed by task alias.
+
+    Markdown remains the tracked task specification.  Operational readiness
+    for EAAEF comes from the bootstrap control plane so completed bootstrap
+    work is not re-planned as ``todo``.
+    """
+
+    if not _eaaef_plan_bound_profile(board):
+        return {}
+    allowed = {"todo", "blocked", "completed", "cancelled", "failed", "quarantined"}
+    raw_bootstrap = board.payload.get("bootstrap_database_program")
+    store_id = (
+        str(raw_bootstrap.get("store_id") or "")
+        if isinstance(raw_bootstrap, Mapping)
+        else ""
+    )
+    overlay: dict[str, str] = {}
+    if store_id.endswith((".duckdb", ".ddb")):
+        db_path = board.path(store_id)
+        if db_path.is_file():
+            try:
+                import duckdb
+
+                connection = duckdb.connect(str(db_path), read_only=True)
+                try:
+                    rows = connection.execute(
+                        "SELECT task_alias, status FROM tasks"
+                    ).fetchall()
+                finally:
+                    connection.close()
+            except Exception:
+                rows = ()
+            for alias, status in rows:
+                task_id = str(alias or "").strip()
+                normalized = str(status or "").strip().lower()
+                if task_id and normalized in allowed:
+                    overlay[task_id] = normalized
+    if overlay:
+        _eaaef_write_task_status_projection(board, overlay)
+        return overlay
+    projection_path = _eaaef_task_status_projection_path(board)
+    if not projection_path.is_file():
+        return {}
+    try:
+        payload = json.loads(projection_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    statuses = payload.get("statuses") if isinstance(payload, dict) else None
+    if not isinstance(statuses, Mapping):
+        return {}
+    for alias, status in statuses.items():
+        task_id = str(alias or "").strip()
+        normalized = str(status or "").strip().lower()
+        if task_id and normalized in allowed:
+            overlay[task_id] = normalized
+    return overlay
+
+
 def _configured_board_task_records(
     board: "ConfiguredBoard",
     *,
@@ -715,6 +805,12 @@ def _configured_board_task_records(
                 ),
             }
         )
+    overlay = _eaaef_task_status_overlay(board)
+    if overlay:
+        for record in records:
+            status = overlay.get(str(record["task_id"]))
+            if status:
+                record["status"] = status
     return tuple(records)
 
 
@@ -1055,6 +1151,16 @@ def configured_board_capacity_observation(
         configured_concurrency = int(
             provider_payload.get("max_concurrency") or 1
         )
+        process_counter = None
+        if _eaaef_plan_bound_profile(board):
+            markers = (
+                str(board.repo_root),
+                "external_agent_autonomous_execution_fabric",
+                "external-agent-autonomous-execution-fabric",
+            )
+            process_counter = lambda: count_active_cli_processes(
+                cmdline_markers=markers
+            )
         monitor = ProviderCapacityMonitor(
             ProviderCapacityMonitorConfig(
                 snapshot_path=(
@@ -1078,7 +1184,8 @@ def configured_board_capacity_observation(
                     configured_concurrency
                     * DEFAULT_RESPONSE_TOKENS_PER_REQUEST
                 ),
-            )
+            ),
+            process_counter=process_counter,
         )
         sampled, _diagnostics = monitor.sample()
         providers = tuple(dict(item.to_dict()) for item in sampled)
@@ -1215,9 +1322,16 @@ def materialize_configured_board_execution_plan(
         route_capacity_profile_id=str(route_capacity["profile_id"]),
     )
     providers = (route_capacity,)
-    capacity = {
+    observed = int(host.get("observed_at_ms") or current_ms)
+    host_capacity = {
         **host,
-        "host": host,
+        "observed_at_ms": observed,
+        "fresh_until_ms": observed + 60_000,
+        "max_age_ms": 60_000,
+    }
+    capacity = {
+        **host_capacity,
+        "host": host_capacity,
         "providers": list(providers),
         "provider_observations": [
             dict(item) for item in provider_observations
@@ -3977,10 +4091,28 @@ def _run_plan_bound_coordinator(
 
     started = time.monotonic()
     base_stamp = utc_run_stamp()
-    for wave_index in range(MAX_COORDINATOR_WAVES):
+    wave_index = 0
+    while True:
         elapsed = time.monotonic() - started
         if math.isfinite(duration_seconds) and elapsed >= duration_seconds:
             return 0
+        if (
+            wave_index >= MAX_COORDINATOR_WAVES
+            and not _eaaef_plan_bound_profile(board)
+        ):
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "errors": [
+                            "adaptive coordinator exceeded its wave bound"
+                        ],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 2
         try:
             current_board = load_configured_board(
                 board.config_path,
@@ -4023,6 +4155,7 @@ def _run_plan_bound_coordinator(
                     board.payload.get("poll_interval_seconds") or 5
                 )
                 time.sleep(max(1.0, min(retry_seconds, 30.0)))
+                wave_index += 1
                 continue
             return 2
         if receipt is None:
@@ -4039,8 +4172,19 @@ def _run_plan_bound_coordinator(
                     },
                     indent=2,
                     sort_keys=True,
-                )
+                ),
+                flush=True,
             )
+            if (
+                _eaaef_plan_bound_profile(board)
+                and not math.isfinite(duration_seconds)
+            ):
+                retry_seconds = float(
+                    board.payload.get("poll_interval_seconds") or 5
+                )
+                time.sleep(max(1.0, min(retry_seconds, 30.0)))
+                wave_index += 1
+                continue
             return 0
         remaining = (
             max(0.0, duration_seconds - elapsed)
@@ -4063,20 +4207,11 @@ def _run_plan_bound_coordinator(
         _apply_configured_board_environment(plan)
         result = int(multi_supervisor_main(plan["argv"]))
         if result == PLAN_BOUND_REPLAN_RETURN_CODE:
+            wave_index += 1
             continue
         if result != 0:
             return result
-    print(
-        json.dumps(
-            {
-                "valid": False,
-                "errors": ["adaptive coordinator exceeded its wave bound"],
-            },
-            indent=2,
-            sort_keys=True,
-        )
-    )
-    return 2
+        wave_index += 1
 
 
 def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
