@@ -23,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     RESOURCE_CLAIM_INTERFACE,
     TASK_CLAIM_INTERFACE,
     AttemptStatus,
+    DatabaseCoordinationBoundsError,
     DatabaseCoordinationConflictError,
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationNotReadyError,
@@ -722,6 +723,269 @@ def test_coordination_registry_projection_is_exact_and_timestamp_free(
     finally:
         first.close()
         second.close()
+
+
+def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepared(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        completed = coordinator.synchronize_authoritative_task(
+            task_cid="task:dep",
+            task_id="DEP",
+            authoritative_status="completed",
+            authoritative_revision=1,
+            authoritative_ready=False,
+            authoritative_completed=True,
+            now_ms=1_000_000,
+        )
+        assert completed["changed"] is True
+        replay = coordinator.synchronize_authoritative_task(
+            task_cid="task:dep",
+            task_id="DEP",
+            authoritative_status="completed",
+            authoritative_revision=1,
+            authoritative_ready=False,
+            authoritative_completed=True,
+            now_ms=1_000_100,
+        )
+        assert replay["changed"] is False
+        advanced = coordinator.synchronize_authoritative_task(
+            task_cid="task:dep",
+            task_id="DEP",
+            authoritative_status="completed",
+            authoritative_revision=2,
+            authoritative_ready=False,
+            authoritative_completed=True,
+            now_ms=1_000_150,
+        )
+        assert advanced["changed"] is True
+        dependency_completion = next(
+            completion
+            for completion in coordinator.coordination_registry_projection()[
+                "logical_completions"
+            ]
+            if completion["task_cid"] == "task:dep"
+        )
+        assert dependency_completion["body"]["authoritative_revision"] == 2
+        for invalid_revision in (True, 2.0, "2"):
+            with pytest.raises(DatabaseCoordinationBoundsError, match="positive integer"):
+                coordinator.synchronize_authoritative_task(
+                    task_cid="task:invalid-revision",
+                    task_id="INVALID-REVISION",
+                    authoritative_status="ready",
+                    authoritative_revision=invalid_revision,  # type: ignore[arg-type]
+                    authoritative_ready=True,
+                    authoritative_completed=False,
+                )
+
+        coordinator.synchronize_authoritative_task(
+            task_cid="task:child",
+            task_id="CHILD",
+            dependency_task_cids=("task:dep",),
+            authoritative_status="ready",
+            authoritative_revision=1,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            now_ms=1_000_200,
+        )
+        assert coordinator.claimability("task:child")["claimable"] is True
+
+        with pytest.raises(DatabaseCoordinationConflictError, match="dependency drift"):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:child",
+                task_id="CHILD",
+                dependency_task_cids=(),
+                authoritative_status="ready",
+                authoritative_revision=1,
+                authoritative_ready=True,
+                authoritative_completed=False,
+            )
+        with pytest.raises(DatabaseCoordinationConflictError, match="contradicts"):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:dep",
+                task_id="DEP",
+                authoritative_status="completed",
+                authoritative_revision=2,
+                authoritative_ready=False,
+                authoritative_completed=False,
+            )
+        with pytest.raises(DatabaseCoordinationConflictError, match="same-revision"):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:dep",
+                task_id="DEP",
+                authoritative_status="ready",
+                authoritative_revision=2,
+                authoritative_ready=True,
+                authoritative_completed=False,
+            )
+        with pytest.raises(DatabaseCoordinationConflictError, match="revision regression"):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:dep",
+                task_id="DEP",
+                authoritative_status="completed",
+                authoritative_revision=1,
+                authoritative_ready=False,
+                authoritative_completed=True,
+            )
+        with pytest.raises(DatabaseCoordinationConflictError, match="no prior local claim"):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:fresh-retry",
+                task_id="FRESH-RETRY",
+                authoritative_status="in_progress",
+                authoritative_revision=2,
+                authoritative_ready=False,
+                authoritative_completed=False,
+                restart_recovery_ready=True,
+                restart_recovery_owner_session_id="session:forged-retry",
+                restart_recovery_binding={
+                    "claim_id": "claim:forged",
+                    "attempt_id": "attempt:forged",
+                    "lease_id": "lease:forged",
+                    "owner_session_id": "session:forged-retry",
+                    "fencing_token": 1,
+                    "fence_epoch": 1,
+                },
+            )
+
+        coordinator.synchronize_authoritative_task(
+            task_cid="task:recovery",
+            task_id="RECOVERY",
+            authoritative_status="ready",
+            authoritative_revision=1,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            now_ms=1_000_000,
+        )
+        recovery_claim = coordinator.claim_task(
+            task_cid="task:recovery",
+            owner_session_id="session:recovery",
+            lease_ms=5_000,
+            now_ms=1_000_000,
+        )
+        recovery_binding = {
+            "claim_id": recovery_claim.claim_id,
+            "attempt_id": recovery_claim.attempt_id,
+            "lease_id": recovery_claim.lease_id,
+            "owner_session_id": recovery_claim.owner_session_id,
+            "fencing_token": recovery_claim.fencing_token,
+            "fence_epoch": recovery_claim.fence_epoch,
+        }
+        expired = coordinator.synchronize_authoritative_task(
+            task_cid="task:recovery",
+            task_id="RECOVERY",
+            authoritative_status="in_progress",
+            authoritative_revision=2,
+            authoritative_ready=False,
+            authoritative_completed=False,
+            restart_recovery_ready=True,
+            restart_recovery_owner_session_id="session:recovery",
+            restart_recovery_binding=recovery_binding,
+            now_ms=1_006_000,
+        )
+        assert expired["changed"] is True
+        assert expired["ready"] is True
+        assert expired["active_claim_preserved"] is False
+        expired_replay = coordinator.synchronize_authoritative_task(
+            task_cid="task:recovery",
+            task_id="RECOVERY",
+            authoritative_status="in_progress",
+            authoritative_revision=2,
+            authoritative_ready=False,
+            authoritative_completed=False,
+            restart_recovery_ready=True,
+            restart_recovery_owner_session_id="session:recovery",
+            restart_recovery_binding=recovery_binding,
+            now_ms=1_006_100,
+        )
+        assert expired_replay["changed"] is False
+        assert (
+            coordinator.claim_ready_task(
+                owner_session_id="session:foreign-recovery",
+                exclude_task_cids=("task:child",),
+                now_ms=1_006_200,
+            )
+            is None
+        )
+        later_active = coordinator.claim_ready_task(
+            owner_session_id="session:recovery",
+            exclude_task_cids=("task:child",),
+            now_ms=1_006_200,
+        )
+        assert later_active is not None
+        assert later_active.attempt_number == 2
+        with pytest.raises(DatabaseCoordinationConflictError, match="later active"):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:recovery",
+                task_id="RECOVERY",
+                authoritative_status="in_progress",
+                authoritative_revision=2,
+                authoritative_ready=False,
+                authoritative_completed=False,
+                restart_recovery_ready=True,
+                restart_recovery_owner_session_id="session:recovery",
+                restart_recovery_binding=recovery_binding,
+                now_ms=1_006_300,
+            )
+
+        reopened = coordinator.synchronize_authoritative_task(
+            task_cid="task:dep",
+            task_id="DEP",
+            authoritative_status="ready",
+            authoritative_revision=3,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            now_ms=1_000_300,
+        )
+        assert reopened["changed"] is True
+        coordinator.synchronize_authoritative_task(
+            task_cid="task:child",
+            task_id="CHILD",
+            dependency_task_cids=("task:dep",),
+            authoritative_status="ready",
+            authoritative_revision=1,
+            authoritative_ready=False,
+            authoritative_completed=False,
+            now_ms=1_000_300,
+        )
+        assert coordinator.claimability("task:child")["claimable"] is False
+
+        coordinator.synchronize_authoritative_task(
+            task_cid="task:prepared",
+            task_id="PREPARED",
+            authoritative_status="ready",
+            authoritative_revision=1,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            now_ms=1_000_400,
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:prepared",
+            owner_session_id="session:prepared-sync",
+            now_ms=1_000_400,
+        )
+        coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:" + "a" * 64,
+            now_ms=1_000_500,
+        )
+        preserved = coordinator.synchronize_authoritative_task(
+            task_cid="task:prepared",
+            task_id="PREPARED",
+            authoritative_status="completed",
+            authoritative_revision=2,
+            authoritative_ready=False,
+            authoritative_completed=True,
+            now_ms=1_000_600,
+        )
+        assert preserved["prepared_completion_preserved"] is True
+        assert preserved["ready"] is False
+        assert coordinator.get_prepared_task_completion("task:prepared")["status"] == (
+            "prepared"
+        )
+    finally:
+        coordinator.close()
 
 
 def test_coordination_registry_projection_exposes_exact_claim_and_lease_counts(

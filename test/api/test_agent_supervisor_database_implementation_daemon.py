@@ -85,6 +85,61 @@ def _population(task_count: int = 4) -> dict[str, object]:
     }
 
 
+def _apmc_bootstrap_frontier_population() -> dict[str, object]:
+    completed = tuple(f"APMC-{index:03d}" for index in range(6)) + ("APMC-018",)
+    dependencies = {
+        "APMC-001": ("APMC-000",),
+        "APMC-002": ("APMC-001",),
+        "APMC-003": ("APMC-001",),
+        "APMC-004": ("APMC-001", "APMC-003"),
+        "APMC-005": ("APMC-002", "APMC-004"),
+        "APMC-018": ("APMC-000",),
+        "APMC-006": ("APMC-001",),
+        "APMC-012": ("APMC-002", "APMC-005"),
+        "APMC-014": ("APMC-002", "APMC-004"),
+    }
+
+    def task(task_id: str, *, ordinal: int, status: str) -> dict[str, object]:
+        return {
+            "task_cid": f"task:cid:{task_id}",
+            "task_id": task_id,
+            "goal_cid": "goal:cid:apmc",
+            "status": status,
+            "priority": "P0",
+            "ordinal": ordinal,
+            "title": task_id,
+            "dependencies": [
+                f"task:cid:{dependency}"
+                for dependency in dependencies.get(task_id, ())
+            ],
+        }
+
+    frontier = ("APMC-006", "APMC-012", "APMC-014")
+    return {
+        "repository_tree_id": "tree:apmc-qualified-bootstrap",
+        "objectives": [
+            {
+                "objective_id": "APMC-G000",
+                "objective_alias": "APMC-G000",
+                "title": "Autonomous meta-controller",
+                "goal_cid": "goal:cid:apmc",
+                "goal_alias": "APMC-G000",
+                "status": "open",
+            }
+        ],
+        "tasks": [
+            *(
+                task(task_id, ordinal=index, status="completed")
+                for index, task_id in enumerate(completed, start=1)
+            ),
+            *(
+                task(task_id, ordinal=index, status="ready")
+                for index, task_id in enumerate(frontier, start=len(completed) + 1)
+            ),
+        ],
+    }
+
+
 def _open_daemon(
     tmp_path: Path,
     *,
@@ -193,6 +248,317 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         assert markdown.read_text(encoding="utf-8") == original_markdown
     finally:
         idle.close()
+
+
+def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "apmc-control.duckdb"
+    seed = DatabaseImplementationDaemon(
+        database_path=database_path,
+        coordination_path=tmp_path / "seed-coordination.duckdb",
+        execution_path=tmp_path / "seed-execution.duckdb",
+        owner_session_id="apmc-seed",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+    )
+    try:
+        seed.materialize_population(_apmc_bootstrap_frontier_population())
+    finally:
+        seed.close()
+
+    expected_ready = {
+        "task:cid:APMC-006",
+        "task:cid:APMC-012",
+        "task:cid:APMC-014",
+    }
+    claimed: set[str] = set()
+    for lane in range(3):
+        coordination_path = tmp_path / f"lane-{lane}-coordination.duckdb"
+        execution_path = tmp_path / f"lane-{lane}-execution.duckdb"
+        daemon = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            owner_session_id=f"apmc-lane-{lane}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+        )
+        try:
+            ready = set(daemon.sync_ready_tasks_into_coordination())
+            assert ready == expected_ready - claimed
+            for task_cid in ready:
+                assert daemon.coordinator.claimability(task_cid)["claimable"] is True
+            if lane == 0:
+                first_projection = daemon.coordinator.coordination_registry_projection()
+                assert set(daemon.sync_ready_tasks_into_coordination()) == ready
+                assert (
+                    daemon.coordinator.coordination_registry_projection()
+                    == first_projection
+                )
+        finally:
+            daemon.close()
+
+        # Reopening the exact lane sidecars is an idempotent projection replay.
+        daemon = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            owner_session_id=f"apmc-lane-{lane}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+        )
+        try:
+            assert set(daemon.sync_ready_tasks_into_coordination()) == ready
+            attempt = daemon.claim_next()
+            assert attempt is not None
+            assert attempt.task_cid in ready
+            claimed.add(attempt.task_cid)
+        finally:
+            daemon.close()
+
+    assert claimed == expected_ready
+
+
+def test_removed_authoritative_task_is_excluded_without_idle_growth(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:removed-task")
+    authoritative_cid = "task:cid:001"
+    removed_cid = "task:cid:removed"
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.coordinator.register_task(
+            task_cid=removed_cid,
+            task_id="REMOVED",
+            body={"status": "ready"},
+        )
+        assert daemon.coordinator.claimability(removed_cid)["claimable"] is True
+        assert daemon.sync_ready_tasks_into_coordination() == [authoritative_cid]
+        before = daemon.coordinator.coordination_registry_projection()
+
+        for _pass in range(2):
+            assert daemon.claim_next(exclude_task_cids=(authoritative_cid,)) is None
+            assert daemon.coordinator.coordination_registry_projection() == before
+    finally:
+        daemon.close()
+
+
+def test_authoritative_dependency_reopen_invalidates_stale_lane_readiness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:dependency-reopen")
+    dependency_cid = "task:cid:dependency"
+    dependent_cid = "task:cid:dependent"
+    try:
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:dependency-reopen",
+                "objectives": [
+                    {
+                        "objective_id": "objective:dependency-reopen",
+                        "goal_cid": "goal:cid:root",
+                        "status": "open",
+                    }
+                ],
+                "tasks": [
+                    {
+                        "task_cid": dependency_cid,
+                        "task_id": "DEP",
+                        "goal_cid": "goal:cid:root",
+                        "status": "completed",
+                        "ordinal": 1,
+                    },
+                    {
+                        "task_cid": dependent_cid,
+                        "task_id": "WORK",
+                        "goal_cid": "goal:cid:root",
+                        "status": "ready",
+                        "ordinal": 2,
+                        "dependencies": [dependency_cid],
+                    },
+                ],
+            }
+        )
+        assert daemon.sync_ready_tasks_into_coordination() == [dependent_cid]
+        assert daemon.coordinator.claimability(dependent_cid)["claimable"] is True
+
+        real_claim_ready_task = daemon.coordinator.claim_ready_task
+        reopened = False
+
+        def claim_then_reopen_dependency(**kwargs: object) -> object:
+            nonlocal reopened
+            claim = real_claim_ready_task(**kwargs)
+            if claim is not None and not reopened:
+                dependency = daemon.task_source.get(dependency_cid)
+                assert dependency is not None
+                daemon.task_source.compare_and_set_status(
+                    dependency_cid,
+                    expected_revision=int(dependency.revision),
+                    status="ready",
+                )
+                reopened = True
+            return claim
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "claim_ready_task",
+            claim_then_reopen_dependency,
+        )
+        assert daemon.claim_next(exclude_task_cids=(dependency_cid,)) is None
+        assert reopened is True
+        assert daemon.list_running_attempts() == []
+        dependent = daemon.task_source.get(dependent_cid)
+        assert dependent is not None
+        assert dependent.status == "ready"
+        assert dependent.revision == 1
+
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert {
+            (edge["task_cid"], edge["dependency_task_cid"])
+            for edge in projection["dependency_edges"]
+        } >= {(dependent_cid, dependency_cid)}
+        rejected_claims = [
+            claim
+            for claim in projection["task_claims"]
+            if claim["task_cid"] == dependent_cid
+        ]
+        assert len(rejected_claims) == 1
+        assert rejected_claims[0]["state"] == "released"
+
+        assert daemon.sync_ready_tasks_into_coordination() == [dependency_cid]
+        blocked = daemon.coordinator.claimability(dependent_cid)
+        assert blocked["claimable"] is False
+        assert blocked["blocked_dependency_task_cids"] == [dependency_cid]
+        assert daemon.claim_next(exclude_task_cids=(dependency_cid,)) is None
+    finally:
+        daemon.close()
+
+
+def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:fenced-retry-dependency",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    dependency_cid = "task:cid:retry-dependency"
+    dependent_cid = "task:cid:retry-dependent"
+    try:
+        assert daemon._automatic_claim_forbidden(object()) is False
+        assert daemon._shared_claim_binding_for_this_owner(object()) is None
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:fenced-retry-dependency",
+                "objectives": [
+                    {
+                        "objective_id": "objective:fenced-retry-dependency",
+                        "goal_cid": "goal:cid:root",
+                        "status": "open",
+                    }
+                ],
+                "tasks": [
+                    {
+                        "task_cid": dependency_cid,
+                        "task_id": "RETRY-DEP",
+                        "goal_cid": "goal:cid:root",
+                        "status": "completed",
+                        "ordinal": 1,
+                    },
+                    {
+                        "task_cid": dependent_cid,
+                        "task_id": "RETRY-WORK",
+                        "goal_cid": "goal:cid:root",
+                        "status": "ready",
+                        "ordinal": 2,
+                        "dependencies": [dependency_cid],
+                    },
+                ],
+            }
+        )
+        first_attempt = daemon.claim_next(exclude_task_cids=(dependency_cid,))
+        assert first_attempt is not None
+        assert first_attempt.task_cid == dependent_cid
+        current = daemon.task_source.get(dependent_cid)
+        assert current is not None
+        assert current.status == "in_progress"
+        assert current.revision == 2
+
+        now["ms"] = 7_000
+        real_claim_ready_task = daemon.coordinator.claim_ready_task
+        reopened = False
+
+        def retry_then_reopen_dependency(**kwargs: object) -> object:
+            nonlocal reopened
+            claim = real_claim_ready_task(**kwargs)
+            if claim is not None and not reopened:
+                assert claim.task_cid == dependent_cid
+                assert claim.attempt_number == 2
+                dependency = daemon.task_source.get(dependency_cid)
+                assert dependency is not None
+                daemon.task_source.compare_and_set_status(
+                    dependency_cid,
+                    expected_revision=int(dependency.revision),
+                    status="ready",
+                )
+                reopened = True
+            return claim
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "claim_ready_task",
+            retry_then_reopen_dependency,
+        )
+        assert daemon.claim_next(exclude_task_cids=(dependency_cid,)) is None
+        assert reopened is True
+        assert [attempt.attempt_id for attempt in daemon.list_running_attempts()] == [
+            first_attempt.attempt_id
+        ]
+        unchanged = daemon.task_source.get(dependent_cid)
+        assert unchanged is not None
+        assert unchanged.status == "in_progress"
+        assert unchanged.revision == 2
+
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert {
+            (edge["task_cid"], edge["dependency_task_cid"])
+            for edge in projection["dependency_edges"]
+        } >= {(dependent_cid, dependency_cid)}
+        retry_claims = [
+            claim
+            for claim in projection["task_claims"]
+            if claim["task_cid"] == dependent_cid
+            and int(claim["attempt_number"]) == 2
+        ]
+        assert len(retry_claims) == 1
+        assert retry_claims[0]["state"] == "released"
+
+        evidence_digest = "sha256:" + "d" * 64
+        daemon.task_source.record_validation_result(
+            task_cid=dependency_cid,
+            outcome="passed",
+            evidence_digest=evidence_digest,
+            argv=("dependency-recompleted",),
+        )
+        reopened_dependency = daemon.task_source.get(dependency_cid)
+        assert reopened_dependency is not None
+        daemon.task_source.compare_and_set_status(
+            dependency_cid,
+            expected_revision=int(reopened_dependency.revision),
+            status="completed",
+            evidence_digests=(evidence_digest,),
+        )
+        converged_retry = daemon.claim_next(exclude_task_cids=(dependency_cid,))
+        assert converged_retry is not None
+        assert converged_retry.task_cid == dependent_cid
+        assert converged_retry.attempt_number == 3
+    finally:
+        daemon.close()
 
 
 def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> None:

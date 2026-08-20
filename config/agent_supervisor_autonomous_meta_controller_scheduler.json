@@ -85,6 +85,7 @@
     "scripts/lgswf_start_quack_control.py",
     "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
     "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",

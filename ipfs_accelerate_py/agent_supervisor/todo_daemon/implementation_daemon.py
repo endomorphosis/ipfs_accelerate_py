@@ -67362,6 +67362,27 @@ _DATABASE_AUTHORITY_MODES = frozenset(
     {"embedded", "embedded_exclusive", "quack"}
 )
 _DATABASE_TASK_SOURCE_KINDS = frozenset({"duckdb"})
+_DATABASE_READY_TASK_STATUSES = frozenset(
+    {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
+)
+_DATABASE_COMPLETED_TASK_STATUSES = frozenset(
+    {"completed", "skipped", "complete", "done"}
+)
+_DATABASE_CLOSED_TASK_STATUSES = frozenset(
+    {
+        *_DATABASE_READY_TASK_STATUSES,
+        *_DATABASE_COMPLETED_TASK_STATUSES,
+        "cancelled",
+        "failed",
+        "quarantined",
+        "rejected",
+        "claimed",
+        "in_progress",
+        "running",
+        "blocked",
+    }
+)
+_DATABASE_PROJECTION_READ_ATTEMPTS = 4
 
 _DAEMON_EXECUTION_SQL = """
 CREATE TABLE IF NOT EXISTS daemon_execution_metadata (
@@ -68608,23 +68629,119 @@ class DatabaseImplementationDaemon:
             }
         )
 
-    def sync_ready_tasks_into_coordination(self) -> list[str]:
-        """Ensure ready tasks from the intent repository are claimable."""
+    def _stable_authoritative_task_projection(
+        self,
+    ) -> tuple[tuple[Any, ...], frozenset[str]]:
+        """Read one bounded, generation-stable task and readiness projection."""
 
-        ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-        registered: list[str] = []
-        for task in ready.tasks:
-            status = str(task.status or "").strip().lower()
-            if status in {"completed", "complete", "done", "skipped", "cancelled"}:
+        for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
+            before = self.task_source.snapshot()
+            population = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            after = self.task_source.snapshot()
+            if str(before.projection_cid) != str(after.projection_cid):
                 continue
-            self.coordinator.register_task(
-                task_cid=task.task_cid,
-                task_id=task.task_alias or task.task_cid,
-                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
-                body={"task_alias": task.task_alias, "status": task.status},
+            tasks = tuple(population.tasks)
+            expected_count = int(after.task_count)
+            if expected_count > TASK_SOURCE_QUERY_LIMIT:
+                raise DatabaseImplementationAuthorityError(
+                    "authoritative task population exceeds coordination sync bound"
+                )
+            if len(tasks) != expected_count or bool(population.next_cursor):
+                raise DatabaseImplementationAuthorityError(
+                    "authoritative task population is incomplete"
+                )
+            by_cid: dict[str, Any] = {}
+            for task in tasks:
+                task_cid = str(task.task_cid or "")
+                status = str(task.status or "").strip().lower()
+                if not task_cid or task_cid in by_cid:
+                    raise DatabaseImplementationAuthorityError(
+                        "authoritative task population has a missing or duplicate CID"
+                    )
+                if status not in _DATABASE_CLOSED_TASK_STATUSES:
+                    raise DatabaseImplementationAuthorityError(
+                        f"authoritative task {task_cid} has unknown status {status!r}"
+                    )
+                by_cid[task_cid] = task
+            ready_cids = frozenset(str(task.task_cid or "") for task in ready.tasks)
+            if "" in ready_cids or not ready_cids.issubset(by_cid):
+                raise DatabaseImplementationAuthorityError(
+                    "authoritative ready set is not a subset of the task population"
+                )
+            for task_cid in ready_cids:
+                status = str(by_cid[task_cid].status or "").strip().lower()
+                if status not in _DATABASE_READY_TASK_STATUSES:
+                    raise DatabaseImplementationAuthorityError(
+                        f"authoritative ready task {task_cid} has status {status!r}"
+                    )
+            return tasks, ready_cids
+        raise DatabaseImplementationConflictError(
+            "authoritative task projection changed during bounded read"
+        )
+
+    def _synchronize_authoritative_task_projection(
+        self,
+    ) -> tuple[list[str], frozenset[str]]:
+        """Synchronize and return the exact population used for this pass."""
+
+        tasks, ready_cids = self._stable_authoritative_task_projection()
+        synchronize = getattr(
+            self.coordinator,
+            "synchronize_authoritative_task",
+            None,
+        )
+        if not callable(synchronize):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement authoritative task projection sync"
             )
-            registered.append(task.task_cid)
-        return registered
+        by_cid = {str(task.task_cid): task for task in tasks}
+        for task in tasks:
+            task_cid = str(task.task_cid)
+            status = str(task.status or "").strip().lower()
+            dependencies_satisfied = all(
+                dependency in by_cid
+                and str(by_cid[dependency].status or "").strip().lower()
+                in _DATABASE_COMPLETED_TASK_STATUSES
+                for dependency in (str(dep) for dep in task.dependencies)
+            )
+            restart_recovery_binding = self._shared_claim_binding_for_this_owner(task)
+            restart_recovery_ready = bool(
+                status == "in_progress"
+                and dependencies_satisfied
+                and restart_recovery_binding is not None
+            )
+            synchronize(
+                task_cid=task_cid,
+                task_id=task.task_alias or task_cid,
+                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
+                authoritative_status=status,
+                authoritative_revision=int(task.revision),
+                authoritative_ready=task_cid in ready_cids,
+                authoritative_completed=status in _DATABASE_COMPLETED_TASK_STATUSES,
+                restart_recovery_ready=restart_recovery_ready,
+                restart_recovery_owner_session_id=(
+                    self.owner_session_id if restart_recovery_ready else ""
+                ),
+                restart_recovery_binding=(
+                    restart_recovery_binding if restart_recovery_ready else None
+                ),
+                now_ms=self._now_ms(),
+            )
+        ready_task_cids = [
+            str(task.task_cid)
+            for task in tasks
+            if str(task.task_cid) in ready_cids
+        ]
+        return ready_task_cids, frozenset(by_cid)
+
+    def sync_ready_tasks_into_coordination(self) -> list[str]:
+        """Synchronize exact authoritative task/dependency status into this lane."""
+
+        ready_task_cids, _authoritative_task_cids = (
+            self._synchronize_authoritative_task_projection()
+        )
+        return ready_task_cids
 
     @staticmethod
     def _automatic_claim_forbidden(task: Any) -> bool:
@@ -68677,8 +68794,11 @@ class DatabaseImplementationDaemon:
             now_ms=self._now_ms(),
         )
 
-    def _shared_claim_belongs_to_this_owner(self, task: Any) -> bool:
-        """Bind an in-progress retry to this lane's authoritative claim receipt.
+    def _shared_claim_binding_for_this_owner(
+        self,
+        task: Any,
+    ) -> Mapping[str, Any] | None:
+        """Return the exact shared claim tuple authorizing lane-local retry.
 
         Attempt numbers are lane-local and therefore cannot establish ownership
         of a task in the shared task board.  The durable receipt written by the
@@ -68687,17 +68807,45 @@ class DatabaseImplementationDaemon:
 
         body = getattr(task, "body", None)
         if not isinstance(body, Mapping):
-            return False
+            return None
         receipt = body.get("completion_receipt")
         if not isinstance(receipt, Mapping):
-            return False
-        return (
-            str(receipt.get("operation") or "") == "database_claim"
-            and str(receipt.get("owner_session_id") or "")
-            == self.owner_session_id
-            and bool(str(receipt.get("claim_id") or ""))
-            and bool(str(receipt.get("attempt_id") or ""))
+            return None
+        if str(receipt.get("operation") or "") != "database_claim":
+            return None
+        owner = str(receipt.get("owner_session_id") or "")
+        if owner != self.owner_session_id:
+            return None
+        text_fields = {
+            name: str(receipt.get(name) or "").strip()
+            for name in ("claim_id", "attempt_id", "lease_id")
+        }
+        if not all(text_fields.values()):
+            return None
+        fencing_token = receipt.get("fencing_token")
+        fence_epoch = receipt.get("fence_epoch")
+        if (
+            isinstance(fencing_token, bool)
+            or not isinstance(fencing_token, int)
+            or fencing_token < 1
+            or isinstance(fence_epoch, bool)
+            or not isinstance(fence_epoch, int)
+            or fence_epoch < 1
+        ):
+            return None
+        return MappingProxyType(
+            {
+                **text_fields,
+                "owner_session_id": owner,
+                "fencing_token": fencing_token,
+                "fence_epoch": fence_epoch,
+            }
         )
+
+    def _shared_claim_belongs_to_this_owner(self, task: Any) -> bool:
+        """Return whether the task binds an exact claim tuple to this lane."""
+
+        return self._shared_claim_binding_for_this_owner(task) is not None
 
     def claim_next(
         self,
@@ -68707,13 +68855,21 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt | None:
         """Claim one task, resolving lane-local races through shared-board CAS."""
 
-        self.sync_ready_tasks_into_coordination()
+        _ready_task_cids, authoritative_task_cids = (
+            self._synchronize_authoritative_task_projection()
+        )
         excluded = {
             str(task_cid)
             for task_cid in exclude_task_cids
             if str(task_cid)
         }
         excluded.update(self._automatic_claim_exclusions())
+        local_projection = self.coordinator.coordination_registry_projection()
+        excluded.update(
+            str(row.get("task_cid") or "")
+            for row in local_projection.get("tasks", ())
+            if str(row.get("task_cid") or "") not in authoritative_task_cids
+        )
         for _claim_attempt in range(TASK_SOURCE_QUERY_LIMIT):
             claim = self.coordinator.claim_ready_task(
                 owner_session_id=self.owner_session_id,
@@ -68723,22 +68879,61 @@ class DatabaseImplementationDaemon:
             )
             if claim is None:
                 return None
-            task = self.task_source.get(claim.task_cid)
+            # A lane-local registry can outlive a control-plane status or
+            # dependency change.  Re-read the dependency-aware authoritative
+            # task projection after taking the local lease and before the
+            # shared CAS; target status alone is not sufficient authority.
+            current_tasks, authoritative_ready_cids = (
+                self._stable_authoritative_task_projection()
+            )
+            current_by_cid = {str(item.task_cid): item for item in current_tasks}
+            task = current_by_cid.get(str(claim.task_cid))
             task_status = str(getattr(task, "status", "") or "").lower()
-            ready = task is not None and task_status in {
-                "todo",
-                "ready",
-                "open",
-            }
-            # A fenced retry from this lane may legitimately inherit the
-            # owner's durable in_progress projection after its prior lease
-            # expired. A first attempt never receives that exception: another
-            # lane's in_progress task remains unavailable.
+            local_projection = self.coordinator.coordination_registry_projection()
+            local_rows = [
+                row
+                for row in local_projection.get("tasks", ())
+                if str(row.get("task_cid") or "") == str(claim.task_cid)
+            ]
+            local_body = (
+                local_rows[0].get("body")
+                if len(local_rows) == 1
+                and isinstance(local_rows[0].get("body"), Mapping)
+                else {}
+            )
+            projection_matches = bool(
+                task is not None
+                and local_body.get("authority") == "task_source"
+                and int(local_body.get("authoritative_revision") or 0)
+                == int(task.revision)
+                and str(local_body.get("authoritative_status") or "").strip().lower()
+                == task_status
+            )
+            dependencies_satisfied = bool(
+                task is not None
+                and all(
+                    dependency in current_by_cid
+                    and str(current_by_cid[dependency].status or "").strip().lower()
+                    in _DATABASE_COMPLETED_TASK_STATUSES
+                    for dependency in (str(dep) for dep in task.dependencies)
+                )
+            )
+            ready = (
+                task is not None
+                and projection_matches
+                and task_status in _DATABASE_READY_TASK_STATUSES
+                and str(claim.task_cid) in authoritative_ready_cids
+            )
+            # A fenced retry from this lane may inherit its exact durable
+            # in_progress receipt after expiry, but never after an
+            # authoritative dependency becomes incomplete.
             fenced_retry = (
                 task is not None
+                and projection_matches
                 and task_status == "in_progress"
+                and dependencies_satisfied
                 and int(claim.attempt_number) > 1
-                and self._shared_claim_belongs_to_this_owner(task)
+                and self._shared_claim_binding_for_this_owner(task) is not None
             )
             if not ready and not fenced_retry:
                 self._release_unadmitted_claim(

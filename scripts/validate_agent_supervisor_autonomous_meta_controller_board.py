@@ -84,6 +84,15 @@ DATABASE_PORTAL_BRIDGE_PATH = (
 DATABASE_PORTAL_BRIDGE_TEST_PATH = (
     REPO_ROOT / "test/api/test_agent_supervisor_database_portal_bridge.py"
 )
+DATABASE_COORDINATION_PATH = (
+    REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py"
+)
+DATABASE_COORDINATION_TEST_PATH = (
+    REPO_ROOT / "test/api/test_agent_supervisor_database_coordination.py"
+)
+DATABASE_IMPLEMENTATION_DAEMON_TEST_PATH = (
+    REPO_ROOT / "test/api/test_agent_supervisor_database_implementation_daemon.py"
+)
 
 REQUIRED_CONTROL_FILES = (
     PLAN_PATH,
@@ -102,6 +111,7 @@ REQUIRED_CONTROL_FILES = (
     MCP_INVOCATION_TRACE_PATH,
     OBJECTIVE_DAEMON_IMPORT_TEST_PATH,
     APMC_MATERIALIZER_TEST_PATH,
+    DATABASE_COORDINATION_PATH,
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
@@ -118,6 +128,8 @@ REQUIRED_CONTROL_FILES = (
     REPO_ROOT / "scripts/ops/agent_supervisor/quack_state_server.py",
     REPO_ROOT / "scripts/lgswf_start_quack_control.py",
     REPO_ROOT / "test/api/test_agent_supervisor_intent_repository.py",
+    DATABASE_COORDINATION_TEST_PATH,
+    DATABASE_IMPLEMENTATION_DAEMON_TEST_PATH,
     DATABASE_PORTAL_BRIDGE_TEST_PATH,
     REPO_ROOT / "test/api/test_agent_supervisor_database_runner_propagation.py",
     REPO_ROOT / "test/api/test_agent_supervisor_duckdb_connection_policy.py",
@@ -417,6 +429,9 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         if isinstance(lane, Mapping) and type(lane.get("index")) is int
     }
     portal_bridge_relative = DATABASE_PORTAL_BRIDGE_PATH.relative_to(REPO_ROOT).as_posix()
+    database_coordination_relative = DATABASE_COORDINATION_PATH.relative_to(
+        REPO_ROOT
+    ).as_posix()
     scheduler_ok = bool(
         scheduler.get("board_namespace") == PROGRAM_ID
         and scheduler.get("task_prefix") == TASK_PREFIX
@@ -435,6 +450,7 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         and authority_policy.get("ducklake_projection_required_for_scheduling") is False
         and SCHEDULER_CONFIG_PATH.relative_to(REPO_ROOT).as_posix() in protected_paths
         and portal_bridge_relative in protected_paths
+        and database_coordination_relative in protected_paths
     )
     _append(
         checks,
@@ -1053,6 +1069,19 @@ def _p0_and_benchmark_checks(checks: list[dict[str, Any]], errors: list[str]) ->
                 "pytest",
                 "-q",
                 "test/api/test_agent_supervisor_database_portal_bridge.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_database_coordination.py::test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepared",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_removed_authoritative_task_is_excluded_without_idle_growth",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_authoritative_dependency_reopen_invalidates_stale_lane_readiness",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_restart_retires_prepared_absent_expired_attempt_then_refences_retry",
+                "test/api/test_agent_supervisor_database_implementation_daemon.py::test_expired_preparation_without_control_cas_is_aborted_and_requeued",
             ),
             (
                 "python3",
