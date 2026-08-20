@@ -844,6 +844,24 @@ class DatabaseTaskSource:
     def get_goal(self, goal_cid: str) -> Mapping[str, Any] | None:
         return self._intent.get_goal(goal_cid)
 
+    def list_goal_edges(
+        self,
+        *,
+        limit: int = DEFAULT_QUERY_LIMIT,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return the bounded canonical goal-edge projection."""
+
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit < 1
+            or limit > MAX_QUERY_LIMIT
+        ):
+            raise TaskSourceBoundsError(
+                f"limit must be in [1, {MAX_QUERY_LIMIT}]"
+            )
+        return self._intent.list_goal_edges(limit=limit)
+
     def get_plan(self, plan_cid: str) -> Mapping[str, Any] | None:
         return self._intent.get_plan(plan_cid)
 

@@ -12,12 +12,22 @@ import fcntl
 import os
 import re
 import sqlite3
+import stat as stat_module
 import threading
 import time
+import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
+
+from .quack_owner_mutation import (
+    QuackOwnerMutationEnvelopeError,
+    build_mutation_request,
+    parse_mutation_result,
+    read_envelope,
+    write_envelope_atomic,
+)
 
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
@@ -582,6 +592,42 @@ def _quack_owner_mutation_required(normalized: str) -> bool:
     return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
 
 
+def _prepare_quack_owner_mutation_dir(target: Path) -> None:
+    """Verify the local owner inbox without chmod or writes through a symlink."""
+
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires no-follow directory support"
+        )
+    try:
+        descriptor = os.open(
+            target,
+            os.O_RDONLY | nofollow | getattr(os, "O_DIRECTORY", 0),
+        )
+    except OSError as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox is not a safe owner directory"
+        ) from exc
+    try:
+        os.fchmod(descriptor, 0o700)
+        opened = os.fstat(descriptor)
+        named = os.lstat(target)
+        if (
+            not stat_module.S_ISDIR(opened.st_mode)
+            or not stat_module.S_ISDIR(named.st_mode)
+            or opened.st_uid != os.geteuid()
+            or stat_module.S_IMODE(opened.st_mode) != 0o700
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox identity or ownership is unsafe"
+            )
+    finally:
+        os.close(descriptor)
+
+
 def _execute_quack_owner_mutation(
     statement: str,
     parameters: Iterable[Any] | Mapping[str, Any] | None,
@@ -595,9 +641,6 @@ def _execute_quack_owner_mutation(
     already holds the exclusive file connection.
     """
 
-    import json
-    import uuid
-
     target = quack_owner_mutation_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
@@ -606,7 +649,7 @@ def _execute_quack_owner_mutation(
             "IPFS_ACCELERATE_AGENT_STATE_STORE_ID so the state-owner can "
             "apply the mutation"
         )
-    target.mkdir(parents=True, exist_ok=True)
+    _prepare_quack_owner_mutation_dir(target)
     request_id = uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"
@@ -616,28 +659,57 @@ def _execute_quack_owner_mutation(
         bound = dict(parameters)
     else:
         bound = list(parameters)
-    request_path.write_text(
-        json.dumps({"sql": statement, "parameters": bound}, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
+    token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "")
+    store_id = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
     )
+    generation_raw = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
+    )
+    try:
+        generation = int(generation_raw)
+        envelope = build_mutation_request(
+            request_id=request_id,
+            store_id=store_id,
+            generation=generation,
+            sql=statement,
+            parameters=bound,
+            token=token,
+        )
+        write_envelope_atomic(request_path, envelope, replace=False)
+    except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
+        raise DuckDBConnectionPolicyError(
+            f"could not create authenticated Quack owner mutation: {type(exc).__name__}"
+        ) from exc
     deadline = time.monotonic() + 15.0
     while time.monotonic() < deadline:
         if done_path.is_file():
-            payload = json.loads(done_path.read_text(encoding="utf-8"))
             try:
-                request_path.unlink(missing_ok=True)
-                done_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+                payload = parse_mutation_result(
+                    read_envelope(done_path),
+                    token=token,
+                    expected_request_id=request_id,
+                    expected_store_id=store_id,
+                    expected_generation=generation,
+                )
+            except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
+                raise DuckDBConnectionPolicyError(
+                    f"Quack owner mutation result was not admissible: {type(exc).__name__}"
+                ) from exc
+            finally:
+                try:
+                    request_path.unlink(missing_ok=True)
+                    done_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             if payload.get("ok") is not True:
                 raise DuckDBConnectionPolicyError(
                     "quack owner mutation failed: "
-                    + str(payload.get("error") or "unknown")
+                    + str(payload.get("error_code") or "unknown")
                 )
             cursor = DuckDBCursor.__new__(DuckDBCursor)
-            cursor._columns = ()
-            cursor._rows = []
+            cursor._columns = tuple(str(item) for item in payload.get("columns") or ())
+            cursor._rows = [tuple(item) for item in payload.get("rows") or ()]
             cursor._offset = 0
             cursor.rowcount = int(payload.get("rowcount") or -1)
             return cursor

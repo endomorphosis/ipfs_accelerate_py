@@ -29,6 +29,7 @@ import logging
 import os
 import secrets
 import socket
+import stat as stat_module
 import threading
 import time
 import uuid
@@ -75,6 +76,16 @@ from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
     probe_quack_capabilities,
 )
+from ..task_sources.quack_owner_mutation import (
+    MAX_MUTATION_REQUEST_BYTES,
+    MAX_MUTATION_RESULT_ROWS,
+    QuackOwnerMutationEnvelopeError,
+    build_mutation_result,
+    parse_mutation_request,
+    parse_mutation_result,
+    read_envelope,
+    write_envelope_atomic,
+)
 
 # ---------------------------------------------------------------------------
 # Interface / schema identities
@@ -104,6 +115,8 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
+MUTATION_INBOX_DIRNAME: Final = "mutations"
+MAX_MUTATIONS_PER_POLL: Final[int] = 64
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
     {
@@ -145,6 +158,9 @@ _PROVIDER_ENV_DENY_SUBSTRINGS: Final[tuple[str, ...]] = (
     "AUTHORIZATION",
     "BEARER",
     "QUACK_AUTH",
+)
+_PROVIDER_ENV_DENY_NAMES: Final[frozenset[str]] = frozenset(
+    {"IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"}
 )
 
 _logger = logging.getLogger(__name__)
@@ -426,7 +442,9 @@ def provider_safe_environment(
         for key, value in source.items():
             name = str(key)
             upper = name.upper()
-            if any(token in upper for token in _PROVIDER_ENV_DENY_SUBSTRINGS):
+            if upper in _PROVIDER_ENV_DENY_NAMES or any(
+                token in upper for token in _PROVIDER_ENV_DENY_SUBSTRINGS
+            ):
                 continue
             text = str(value)
             # Fail closed if a secret-handle-shaped value is smuggled under a
@@ -1314,6 +1332,250 @@ class QuackStateServer:
 
     def stop_control_path(self) -> Path:
         return self.config.state_dir / CONTROL_STOP_FILENAME
+
+    def mutation_inbox_path(self) -> Path:
+        """Return the owner-only inbox used for unsupported remote DML."""
+
+        return self.config.state_dir / MUTATION_INBOX_DIRNAME
+
+    def _prepare_mutation_inbox(self) -> Path:
+        """Create and verify the owner-only inbox without following a symlink."""
+
+        inbox = self.mutation_inbox_path()
+        inbox.mkdir(parents=True, exist_ok=True, mode=0o700)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            raise QuackStateServerReadyError(
+                "mutation inbox requires no-follow directory support"
+            )
+        flags = os.O_RDONLY | nofollow | getattr(os, "O_DIRECTORY", 0)
+        try:
+            descriptor = os.open(inbox, flags)
+        except OSError as exc:
+            raise QuackStateServerReadyError(
+                "mutation inbox is not a safe owner directory"
+            ) from exc
+        try:
+            os.fchmod(descriptor, 0o700)
+            opened = os.fstat(descriptor)
+            named = os.lstat(inbox)
+            if (
+                not stat_module.S_ISDIR(opened.st_mode)
+                or not stat_module.S_ISDIR(named.st_mode)
+                or opened.st_uid != os.geteuid()
+                or stat_module.S_IMODE(opened.st_mode) != 0o700
+                or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+            ):
+                raise QuackStateServerReadyError(
+                    "mutation inbox identity or ownership is unsafe"
+                )
+        finally:
+            os.close(descriptor)
+        return inbox
+
+    @staticmethod
+    def _mutation_result_rows(result: Any) -> tuple[tuple[str, ...], list[list[Any]], int]:
+        """Project one already-executed DML cursor into a bounded response."""
+
+        columns = tuple(str(item) for item in getattr(result, "_columns", ()) or ())
+        rowcount = int(getattr(result, "rowcount", -1) or -1)
+        raw_rows = result.fetchall() if callable(getattr(result, "fetchall", None)) else []
+        if raw_rows and not columns:
+            description = getattr(result, "description", None) or ()
+            columns = tuple(str(item[0]) for item in description)
+            if not columns and isinstance(raw_rows[0], Mapping):
+                columns = tuple(str(item) for item in raw_rows[0])
+        rows: list[list[Any]] = []
+        for raw in raw_rows:
+            if isinstance(raw, Mapping):
+                rows.append([raw[name] for name in columns])
+            else:
+                rows.append(list(raw))
+            if len(rows) > MAX_MUTATION_RESULT_ROWS:
+                raise QuackOwnerMutationEnvelopeError(
+                    "mutation result row count exceeds its bound",
+                    code="result_not_serializable",
+                )
+        return columns, rows, rowcount
+
+    def process_mutation_inbox(
+        self,
+        *,
+        max_requests: int = MAX_MUTATIONS_PER_POLL,
+        now_ms: int | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Serialize mutation processing with lifecycle and owner teardown."""
+
+        with self._lock:
+            return self._process_mutation_inbox_locked(
+                max_requests=max_requests,
+                now_ms=now_ms,
+            )
+
+    def _process_mutation_inbox_locked(
+        self,
+        *,
+        max_requests: int = MAX_MUTATIONS_PER_POLL,
+        now_ms: int | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Apply authenticated bounded DML on the exclusive owner connection.
+
+        The method is intentionally polling-oriented: Quack remains the read
+        transport while UPDATE/DELETE/CAS operations stay on the process that
+        owns the DuckDB file.  Every request is HMAC-bound to the current
+        store generation and every response is signed with the same secret.
+        """
+
+        if (
+            self._lifecycle is not ServerLifecycle.READY
+            or self._connection is None
+            or self._identity is None
+            or self._vault is None
+        ):
+            raise QuackStateServerReadyError(
+                "mutation inbox requires the live exclusive state owner"
+            )
+        if (
+            isinstance(max_requests, bool)
+            or not isinstance(max_requests, int)
+            or max_requests < 1
+            or max_requests > MAX_MUTATIONS_PER_POLL
+        ):
+            raise ValueError(
+                f"max_requests must be in [1, {MAX_MUTATIONS_PER_POLL}]"
+            )
+        inbox = self._prepare_mutation_inbox()
+        token = self._vault.resolve(self._identity.secret_handle)
+        suffix = ".request.json"
+        summaries: list[Mapping[str, Any]] = []
+        for request_path in sorted(inbox.glob(f"*{suffix}"))[:max_requests]:
+            request_id = request_path.name[: -len(suffix)]
+            done_path = request_path.with_name(f"{request_id}.done.json")
+            error_code = ""
+            error = ""
+            columns: tuple[str, ...] = ()
+            rows: list[list[Any]] = []
+            rowcount = -1
+            ok = False
+
+            # A signed result is an idempotency tombstone.  This handles the
+            # important crash/retry edge where the result was published but
+            # unlinking the request failed: never execute that DML twice.
+            if os.path.lexists(done_path):
+                try:
+                    prior = parse_mutation_result(
+                        read_envelope(done_path),
+                        token=token,
+                        expected_request_id=request_id,
+                        expected_store_id=self._identity.store_id,
+                        expected_generation=self._identity.generation,
+                    )
+                except QuackOwnerMutationEnvelopeError:
+                    # An unauthenticated or unsafe collision must not be
+                    # overwritten and must never cause the request to run.
+                    try:
+                        request_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    summaries.append(
+                        MappingProxyType(
+                            {
+                                "request_id": request_id,
+                                "ok": False,
+                                "error_code": "result_collision",
+                                "rowcount": -1,
+                            }
+                        )
+                    )
+                    continue
+                try:
+                    request_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                summaries.append(
+                    MappingProxyType(
+                        {
+                            "request_id": request_id,
+                            "ok": bool(prior["ok"]),
+                            "error_code": str(prior["error_code"]),
+                            "rowcount": int(prior["rowcount"]),
+                            "replayed": True,
+                        }
+                    )
+                )
+                continue
+            try:
+                request = parse_mutation_request(
+                    read_envelope(
+                        request_path,
+                        max_bytes=MAX_MUTATION_REQUEST_BYTES,
+                    ),
+                    token=token,
+                    expected_request_id=request_id,
+                    expected_store_id=self._identity.store_id,
+                    expected_generation=self._identity.generation,
+                    now_ms=now_ms,
+                )
+                parameters = request["parameters"]
+                if parameters is None:
+                    result = self._connection.execute(request["sql"])
+                else:
+                    result = self._connection.execute(request["sql"], parameters)
+                columns, rows, rowcount = self._mutation_result_rows(result)
+                ok = True
+            except QuackOwnerMutationEnvelopeError as exc:
+                error_code = exc.code
+                error = str(exc)
+            except Exception as exc:  # noqa: BLE001 - typed owner boundary
+                error_code = "execution_failed"
+                error = f"owner mutation execution failed: {type(exc).__name__}"
+            try:
+                response = build_mutation_result(
+                    request_id=request_id,
+                    store_id=self._identity.store_id,
+                    generation=self._identity.generation,
+                    ok=ok,
+                    token=token,
+                    rowcount=rowcount,
+                    columns=columns,
+                    rows=rows,
+                    error_code=error_code,
+                    error=error,
+                    completed_at_ms=now_ms,
+                )
+                write_envelope_atomic(done_path, response, replace=True)
+            except QuackOwnerMutationEnvelopeError:
+                # An invalid filename cannot be reflected into a valid signed
+                # receipt.  Remove it so a forged path cannot spin forever.
+                try:
+                    request_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                summaries.append(
+                    MappingProxyType(
+                        {
+                            "request_id": "",
+                            "ok": False,
+                            "error_code": "malformed_filename",
+                        }
+                    )
+                )
+                continue
+            try:
+                request_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            summaries.append(
+                MappingProxyType(
+                    {
+                        "request_id": request_id,
+                        "ok": ok,
+                        "error_code": error_code,
+                        "rowcount": rowcount,
+                    }
+                )
+            )
+        return tuple(summaries)
 
     # -- capability + migration -------------------------------------------
 

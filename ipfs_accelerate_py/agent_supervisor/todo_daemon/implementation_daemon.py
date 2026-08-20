@@ -167,6 +167,9 @@ from ..merge.merge_conflict_repair import (
 )
 from ..core.submodule_degradation import DegradationState
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
+from ..task_sources.database_task_source import (
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
 from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
@@ -206,6 +209,7 @@ from .implementation_daemon_runner import (
     bounded_daemon_wait_timeout,
     daemon_pass_is_idle,
     log_daemon_pass_result,
+    resolve_database_implementation_paths,
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
@@ -239,6 +243,8 @@ from ..validation.validation_commands import (
     validation_command_repository_root,
 )
 from ..validation.validation_runtime import (
+    PROOF_REUSE_STATE_ROOT_ENV,
+    PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
@@ -337,9 +343,16 @@ MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "model-assisted-provider-route-integration@1"
 )
+PROVIDER_ROUTE_RECEIPT_SCHEMA = "ipfs_accelerate_py/provider-route@1"
+MAX_PROVIDER_ROUTE_RECEIPT_BYTES = 16 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
+# Retry diagnostics cross a durable/event boundary and are subsequently added
+# to provider context. Keep this deliberately smaller than normal context.
+MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES = 16 * 1024
+MAX_ACTIONABLE_RETRY_TEXT_BYTES = 2_048
+ACTIONABLE_RETRY_EVIDENCE_SCHEMA = "ptr/actionable-retry-evidence@1"
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
 PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS = 2.0
 PROVIDER_RUNNER_BIRTH_POLL_SECONDS = 0.005
@@ -1066,6 +1079,14 @@ PLAYWRIGHT_BROWSER_MISSING_MARKER = (
 )
 RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS_ENV = (
     "IPFS_ACCELERATE_AGENT_RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS"
+)
+RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "reconciliation-proposal-admission@1"
+)
+RECONCILIATION_LIFECYCLE_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "reconciliation-lifecycle-authority@1"
 )
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
@@ -67624,6 +67645,8 @@ class DatabaseImplementationDaemon:
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
 
+        return False
+
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
         try:
@@ -68277,13 +68300,57 @@ class DatabaseImplementationDaemon:
 
     # -- claim / attempt ----------------------------------------------------
 
+    def _release_unadmitted_claim(self, claim: Any, *, reason: str) -> None:
+        """Release an exact local claim that did not win shared-board CAS."""
+
+        get_lease = getattr(self.coordinator, "get_lease", None)
+        release = getattr(self.coordinator, "release", None)
+        if not callable(get_lease) or not callable(release):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot release an unadmitted task claim"
+            )
+        lease = get_lease(str(claim.lease_id))
+        if lease is None:
+            raise DatabaseImplementationAuthorityError(
+                f"unadmitted claim {claim.claim_id} has no fenced lease"
+            )
+        release(
+            lease,
+            reason=str(reason or "shared_board_claim_conflict"),
+            expected_fencing_token=int(claim.fencing_token),
+            expected_fence_epoch=int(claim.fence_epoch),
+            now_ms=self._now_ms(),
+        )
+
+    def _shared_claim_belongs_to_this_owner(self, task: Any) -> bool:
+        """Bind an in-progress retry to this lane's authoritative claim receipt.
+
+        Attempt numbers are lane-local and therefore cannot establish ownership
+        of a task in the shared task board.  The durable receipt written by the
+        successful shared-board CAS is the exclusion authority across lanes.
+        """
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return False
+        return (
+            str(receipt.get("operation") or "") == "database_claim"
+            and str(receipt.get("owner_session_id") or "")
+            == self.owner_session_id
+            and bool(str(receipt.get("claim_id") or ""))
+            and bool(str(receipt.get("attempt_id") or ""))
+        )
+
     def claim_next(
         self,
         *,
         exclude_task_cids: Iterable[str] = (),
         lease_ms: int | None = None,
     ) -> DatabaseTaskAttempt | None:
-        """Claim one ready task for this session; four sessions never share work."""
+        """Claim one task, resolving lane-local races through shared-board CAS."""
 
         self.sync_ready_tasks_into_coordination()
         excluded = {
@@ -68292,46 +68359,82 @@ class DatabaseImplementationDaemon:
             if str(task_cid)
         }
         excluded.update(self._automatic_claim_exclusions())
-        claim = self.coordinator.claim_ready_task(
-            owner_session_id=self.owner_session_id,
-            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
-            exclude_task_cids=excluded,
-            now_ms=self._now_ms(),
-        )
-        if claim is None:
-            return None
-        task = self.task_source.get(claim.task_cid)
-        task_alias = (
-            str(task.task_alias)
-            if task is not None and getattr(task, "task_alias", None)
-            else claim.task_cid
-        )
-        # Move durable task status through the database only (never Markdown).
-        if task is not None and str(task.status).lower() in {
-            "todo",
-            "ready",
-            "open",
-        }:
-            self._protect_new_claim(claim)
-            self._cas_task_status_database(
-                task.task_cid,
-                expected_revision=int(task.revision),
-                new_status="in_progress",
-                receipt={
-                    "operation": "database_claim",
-                    "claim_id": claim.claim_id,
-                    "attempt_id": claim.attempt_id,
-                    "owner_session_id": self.owner_session_id,
-                },
+        for _claim_attempt in range(TASK_SOURCE_QUERY_LIMIT):
+            claim = self.coordinator.claim_ready_task(
+                owner_session_id=self.owner_session_id,
+                lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+                exclude_task_cids=excluded,
+                now_ms=self._now_ms(),
             )
-        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
-        self._record_event(
-            "task_claimed",
-            attempt_id=attempt.attempt_id,
-            task_cid=attempt.task_cid,
-            body=attempt.to_dict(),
+            if claim is None:
+                return None
+            task = self.task_source.get(claim.task_cid)
+            task_status = str(getattr(task, "status", "") or "").lower()
+            ready = task is not None and task_status in {
+                "todo",
+                "ready",
+                "open",
+            }
+            # A fenced retry from this lane may legitimately inherit the
+            # owner's durable in_progress projection after its prior lease
+            # expired. A first attempt never receives that exception: another
+            # lane's in_progress task remains unavailable.
+            fenced_retry = (
+                task is not None
+                and task_status == "in_progress"
+                and int(claim.attempt_number) > 1
+                and self._shared_claim_belongs_to_this_owner(task)
+            )
+            if not ready and not fenced_retry:
+                self._release_unadmitted_claim(
+                    claim,
+                    reason="shared_board_task_not_ready",
+                )
+                excluded.add(str(claim.task_cid))
+                continue
+
+            task_alias = str(task.task_alias or claim.task_cid)
+            self._protect_new_claim(claim)
+            try:
+                # The owner-side status CAS is the shared exclusion point for
+                # daemons whose fenced coordination stores are lane-local.
+                if ready:
+                    self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="in_progress",
+                        receipt={
+                            "operation": "database_claim",
+                            "claim_id": claim.claim_id,
+                            "attempt_id": claim.attempt_id,
+                            "owner_session_id": self.owner_session_id,
+                            "lease_id": claim.lease_id,
+                            "fencing_token": int(claim.fencing_token),
+                            "fence_epoch": int(claim.fence_epoch),
+                        },
+                    )
+            except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                self._release_unadmitted_claim(
+                    claim,
+                    reason="shared_board_claim_conflict",
+                )
+                excluded.add(str(claim.task_cid))
+                continue
+
+            attempt = self._insert_attempt_from_claim(
+                claim,
+                task_alias=task_alias,
+            )
+            self._record_event(
+                "task_claimed",
+                attempt_id=attempt.attempt_id,
+                task_cid=attempt.task_cid,
+                body=attempt.to_dict(),
+            )
+            return attempt
+        raise DatabaseImplementationConflictError(
+            "shared task-board claim retry bound exhausted"
         )
-        return attempt
 
     def _insert_attempt_from_claim(
         self,
@@ -70330,7 +70433,11 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
 
     program = database_program_from_daemon_namespace(args)
-    database_path = getattr(args, "database_path", None)
+    db_paths = resolve_database_implementation_paths(
+        args,
+        authority_mode=program.authority_mode if program is not None else "",
+    )
+    database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
         candidate = Path(program.store_id)
         if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
@@ -70368,7 +70475,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         daemon: Any = DatabaseImplementationDaemon(
             database_path=Path(database_path),
-            coordination_path=getattr(args, "coordination_path", None),
+            coordination_path=db_paths["coordination_path"],
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -70996,4 +71103,3 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
-

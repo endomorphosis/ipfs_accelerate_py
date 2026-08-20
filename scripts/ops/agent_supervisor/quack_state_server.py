@@ -215,7 +215,8 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control_path.is_file():
                 break
-            time.sleep(0.25)
+            server.process_mutation_inbox()
+            time.sleep(0.05)
         return server.stop()
     finally:
         signal.signal(signal.SIGINT, previous_int)

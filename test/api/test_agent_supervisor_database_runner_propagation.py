@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     STATE_AUTHORITY_MODE_ENV,
     STATE_CREDENTIAL_ENV_NAMES,
     STATE_ENDPOINT_SECRET_HANDLE_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
     TASK_SOURCE_KIND_ENV,
     expand_database_implementation_track_lanes,
     parse_database_program_config,
@@ -143,6 +144,7 @@ def test_argv_and_env_redaction_keeps_handles_not_tokens() -> None:
         "PATH": "/usr/bin",
         STATE_ENDPOINT_SECRET_HANDLE_ENV: "env://QUACK_TOKEN",
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "also-secret",
+        STATE_QUACK_MUTATION_DIR_ENV: "/private/quack-owner/mutations",
     }
     cleaned = scrub_state_credentials_from_environment(
         env,
@@ -150,6 +152,7 @@ def test_argv_and_env_redaction_keeps_handles_not_tokens() -> None:
     )
     assert "QUACK_TOKEN" not in cleaned
     assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in cleaned
+    assert STATE_QUACK_MUTATION_DIR_ENV not in cleaned
     assert cleaned["PATH"] == "/usr/bin"
     assert cleaned[STATE_ENDPOINT_SECRET_HANDLE_ENV] == "env://QUACK_TOKEN"
     for name in STATE_CREDENTIAL_ENV_NAMES:
@@ -164,6 +167,7 @@ def test_provider_subprocess_lacks_state_credentials() -> None:
         STATE_AUTHORITY_MODE_ENV: "quack",
         TASK_SOURCE_KIND_ENV: "duckdb",
         DATABASE_PROGRAM_JSON_ENV: json.dumps(program.to_dict()),
+        STATE_QUACK_MUTATION_DIR_ENV: "/private/quack-owner/mutations",
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
     }
     provider_env = provider_subprocess_environment(
@@ -174,6 +178,7 @@ def test_provider_subprocess_lacks_state_credentials() -> None:
     assert STATE_AUTHORITY_MODE_ENV not in provider_env
     assert TASK_SOURCE_KIND_ENV not in provider_env
     assert DATABASE_PROGRAM_JSON_ENV not in provider_env
+    assert STATE_QUACK_MUTATION_DIR_ENV not in provider_env
     assert provider_env["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"] == (
         "grok_cli"
     )

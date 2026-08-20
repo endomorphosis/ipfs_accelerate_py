@@ -1130,6 +1130,35 @@ class IntentRepository:
                 },
             )
 
+    def list_goal_edges(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_LIMIT,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return a bounded, stable projection of the admitted goal graph."""
+
+        selected = _bounded_limit(limit)
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                """
+                SELECT parent_goal_cid, child_goal_cid, edge_kind
+                FROM goal_edges
+                ORDER BY parent_goal_cid, child_goal_cid, edge_kind
+                LIMIT ?
+                """,
+                [selected],
+            ).fetchall()
+        return tuple(
+            MappingProxyType(
+                {
+                    "parent_goal_cid": str(row[0]),
+                    "child_goal_cid": str(row[1]),
+                    "edge_kind": str(row[2]),
+                }
+            )
+            for row in rows
+        )
+
     def reopen_goal(
         self,
         *,

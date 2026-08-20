@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentCompletionError,
     IntentEventType,
     IntentRepository,
+    IntentRepositoryBoundsError,
     IntentRepositoryConflictError,
     PlanRevisionRepository,
     open_intent_repository,
@@ -178,6 +179,16 @@ def test_objectives_goals_plans_tasks_retain_canonical_ids(tmp_path: Path) -> No
         # Alias lookup preserves the durable CID.
         by_task_alias = repo.get_task("DQP-012-A")
         assert by_task_alias is not None
+
+        assert tuple(dict(item) for item in repo.list_goal_edges()) == (
+            {
+                "parent_goal_cid": "goal:cid:root",
+                "child_goal_cid": "goal:cid:child",
+                "edge_kind": "depends_on",
+            },
+        )
+        with pytest.raises(IntentRepositoryBoundsError):
+            repo.list_goal_edges(limit=MAX_QUERY_LIMIT + 1)
         assert by_task_alias["task_cid"] == "task:cid:001"
         assert by_task_alias["dependencies"] == ()
         assert len(by_task_alias["acceptance"]) == 1
@@ -634,6 +645,57 @@ def test_database_task_source_public_api_and_completion_gate(tmp_path: Path) -> 
             source.list_tasks(limit=MAX_QUERY_LIMIT + 1)
     finally:
         source.close()
+
+
+def test_database_task_source_forwards_sorted_bounded_goal_edges(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "goal-edges.duckdb") as source:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:goal-edges",
+                "objectives": [
+                    {"goal_cid": "goal:root", "goal_id": "G0", "title": "Root"},
+                    {"goal_cid": "goal:a", "goal_id": "GA", "title": "A"},
+                    {"goal_cid": "goal:b", "goal_id": "GB", "title": "B"},
+                ],
+                "goal_edges": [
+                    {
+                        "parent_goal_cid": "goal:a",
+                        "child_goal_cid": "goal:b",
+                        "edge_kind": "goal_dependency",
+                    },
+                    {
+                        "parent_goal_cid": "goal:root",
+                        "child_goal_cid": "goal:a",
+                        "edge_kind": "goal_parent",
+                    },
+                ],
+                "taskboard": [
+                    {
+                        "task_cid": "task:goal-edges",
+                        "task_id": "T-GOAL-EDGES",
+                        "goal_cid": "goal:a",
+                        "acceptance_criteria": ["goal graph is exact"],
+                    }
+                ],
+            }
+        )
+
+        assert tuple(dict(item) for item in source.list_goal_edges()) == (
+            {
+                "parent_goal_cid": "goal:a",
+                "child_goal_cid": "goal:b",
+                "edge_kind": "goal_dependency",
+            },
+            {
+                "parent_goal_cid": "goal:root",
+                "child_goal_cid": "goal:a",
+                "edge_kind": "goal_parent",
+            },
+        )
+        with pytest.raises(TaskSourceBoundsError):
+            source.list_goal_edges(limit=MAX_QUERY_LIMIT + 1)
 
 
 def test_database_task_source_stale_cursor_and_cas_conflict(tmp_path: Path) -> None:
