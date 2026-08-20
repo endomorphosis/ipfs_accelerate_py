@@ -1,7 +1,0 @@
-{
-  "plugins": {
-    "md013": {
-      "enabled": false
-    }
-  }
-}
