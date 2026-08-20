@@ -98,7 +98,17 @@ def _import_admitted_duckdb(repo_root: Path) -> Any:
         raise QuackDaemonGatewayError(
             f"imported DuckDB {version!r} is not the admitted 1.5.5 pin"
         )
-    return duckdb
+    extension = Path(
+        str(
+            ((evidence.get("quack_probe") or {}).get("extension") or {}).get(
+                "install_path"
+            )
+            or ""
+        )
+    )
+    if not extension.is_file():
+        raise QuackDaemonGatewayError("admitted Quack extension file is absent")
+    return duckdb, extension
 
 
 def _resolve_owner_token(handle: str, *, vault_dir: Path) -> str:
@@ -488,7 +498,7 @@ def build_eaaef_host_admitted_command_gateway(
         or str(program.endpoint_secret_handle or "") != _OWNER_HANDLE
     ):
         return None
-    _import_admitted_duckdb(root)
+    duckdb, extension = _import_admitted_duckdb(root)
     bundle = _eaaef_host_receipt(root, "EAAEF-191") or {}
     binding_cid = str(bundle.get("receipt_cid") or _cid({"gateway": "eaaef-host-admitted"}))
     generation = str(program.store_generation or "eaaef-run-v14")
@@ -499,10 +509,27 @@ def build_eaaef_host_admitted_command_gateway(
         / run_dir
         / "live/state/quack-owner"
     )
+
+    def _open_admitted_connection(endpoint: Any) -> Any:
+        uri = str(getattr(endpoint, "quack_uri", "") or getattr(endpoint, "target", "") or "")
+        handle = str(getattr(endpoint, "secret_handle", "") or program.endpoint_secret_handle)
+        token = _resolve_owner_token(handle, vault_dir=vault_dir)
+        if not str(uri).startswith("quack:127.0.0.1:"):
+            raise QuackDaemonGatewayError("host-admitted Quack URI is not loopback")
+        connection = duckdb.connect(":memory:")
+        connection.execute(f"LOAD '{extension}'")
+        connection.execute(
+            f"ATTACH '{uri}' AS control_plane (TYPE QUACK, TOKEN ?)",
+            [token],
+        )
+        connection.execute("USE control_plane")
+        return connection
+
     client = QuackStateClient(
         owner_id=owner_session_id or "eaaef-host-admitted-daemon",
         store_id=str(program.store_id),
         secret_resolver=lambda handle: _resolve_owner_token(handle, vault_dir=vault_dir),
+        connection_factory=_open_admitted_connection,
     )
     return EAAEFHostAdmittedCommandGateway(
         repo_root=root,
