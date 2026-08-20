@@ -34,9 +34,7 @@ DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
 )
-_TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
-    {"completed", "complete", "done"}
-)
+_TERMINAL_STATUSES: Final[frozenset[str]] = frozenset({"completed", "complete", "done"})
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
 
@@ -197,6 +195,45 @@ def _acceptance_value(record: Any, body: Mapping[str, Any]) -> str:
     return " ; ".join(values)
 
 
+def _projection_task_identity(
+    record: Any,
+    body: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Return the exact database identity admitted into a Portal projection.
+
+    Portal's Markdown parser recognizes a canonical identity only when both
+    the key and CID are present.  A database task CID rendered merely as
+    descriptive metadata would otherwise be re-derived from the disposable
+    projection and create a second identity for the same claimed task.
+    """
+
+    task_cid = str(getattr(record, "task_cid", "") or "").strip()
+    if not task_cid or len(task_cid) > 1024 or any(character.isspace() for character in task_cid):
+        raise DatabasePortalBridgeError("database task CID is not projection-safe")
+
+    def claimed_values(*names: str) -> set[str]:
+        selected = set(names)
+        return {
+            str(value).strip()
+            for key, value in body.items()
+            if str(key).strip().lower().replace("_", " ") in selected and value not in (None, "")
+        }
+
+    claimed_cids = claimed_values("task cid", "canonical task cid")
+    if any(value != task_cid for value in claimed_cids):
+        raise DatabasePortalBridgeError("database task body contradicts its authoritative task CID")
+
+    claimed_keys = claimed_values("task key", "canonical task key")
+    if len(claimed_keys) > 1:
+        raise DatabasePortalBridgeError(
+            "database task body contains contradictory canonical task keys"
+        )
+    task_key = next(iter(claimed_keys), task_cid)
+    if not task_key or len(task_key) > 1024 or any(character.isspace() for character in task_key):
+        raise DatabasePortalBridgeError("database task key is not projection-safe")
+    return task_key, task_cid
+
+
 def _projection_immutable_digest(text: str) -> str:
     normalized = _MUTABLE_PROJECTION_LINE.sub("- Status: <mutable>", text)
     return _sha256_bytes(normalized.encode("utf-8"))
@@ -324,12 +361,17 @@ class DatabasePortalExecutionBridge:
 
     def _binding(self, attempt: Any, record: Any, seed: str) -> dict[str, Any]:
         body = dict(getattr(record, "body", {}) or {})
+        canonical_task_key, canonical_task_cid = _projection_task_identity(
+            record,
+            body,
+        )
         payload = {
             "schema": DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
             "interface": self.INTERFACE,
             "attempt_id": str(attempt.attempt_id),
             "claim_id": str(attempt.claim_id),
-            "task_cid": str(attempt.task_cid),
+            "task_cid": canonical_task_cid,
+            "canonical_task_key": canonical_task_key,
             "task_alias": str(
                 getattr(record, "task_alias", "")
                 or getattr(attempt, "task_alias", "")
@@ -352,6 +394,10 @@ class DatabasePortalExecutionBridge:
 
     def _render_projection(self, attempt: Any, record: Any) -> str:
         body = dict(getattr(record, "body", {}) or {})
+        canonical_task_key, canonical_task_cid = _projection_task_identity(
+            record,
+            body,
+        )
         alias = _line_value(
             getattr(record, "task_alias", "")
             or getattr(attempt, "task_alias", "")
@@ -365,9 +411,7 @@ class DatabasePortalExecutionBridge:
         outputs = _output_values(record, body)
         validations = _validation_values(record, body)
         acceptance = _acceptance_value(record, body)
-        priority = _line_value(
-            getattr(record, "priority", "") or body.get("priority") or "P2"
-        )
+        priority = _line_value(getattr(record, "priority", "") or body.get("priority") or "P2")
         reserved = {
             "status",
             "completion",
@@ -380,6 +424,10 @@ class DatabasePortalExecutionBridge:
             "validations",
             "validation_commands",
             "acceptance",
+            "task key",
+            "task cid",
+            "canonical task key",
+            "canonical task cid",
         }
         lines = [
             "# Database attempt projection (non-authoritative)",
@@ -394,6 +442,8 @@ class DatabasePortalExecutionBridge:
             f"- Outputs: {', '.join(outputs)}",
             f"- Validation: {' ; '.join(validations)}",
             f"- Acceptance: {acceptance}",
+            f"- Canonical Task Key: {canonical_task_key}",
+            f"- Canonical Task CID: {canonical_task_cid}",
             f"- Database task CID: {_line_value(attempt.task_cid)}",
             f"- Database attempt ID: {_line_value(attempt.attempt_id)}",
             f"- Database claim ID: {_line_value(attempt.claim_id)}",
@@ -467,7 +517,12 @@ class DatabasePortalExecutionBridge:
         return text
 
     @staticmethod
-    def _has_completion_event(paths: DatabasePortalAttemptPaths, alias: str) -> bool:
+    def _has_completion_event(
+        paths: DatabasePortalAttemptPaths,
+        alias: str,
+        canonical_task_key: str,
+        canonical_task_cid: str,
+    ) -> bool:
         if not paths.events.is_file():
             return False
         try:
@@ -483,6 +538,8 @@ class DatabasePortalExecutionBridge:
                 isinstance(event, Mapping)
                 and event.get("type") == "task_completed"
                 and str(event.get("task_id") or "") == alias
+                and str(event.get("canonical_task_key") or "") == canonical_task_key
+                and str(event.get("canonical_task_cid") or "") == canonical_task_cid
             ):
                 return True
         return False
@@ -515,7 +572,12 @@ class DatabasePortalExecutionBridge:
         projection_text = self._verify_projection(paths, binding)
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
             raise DatabasePortalBridgeDeferred("Portal task projection is not complete")
-        if not self._has_completion_event(paths, alias):
+        if not self._has_completion_event(
+            paths,
+            alias,
+            str(binding.get("canonical_task_key") or ""),
+            str(binding.get("task_cid") or ""),
+        ):
             raise DatabasePortalBridgeError(
                 "Portal completion lacks a matching durable task_completed event"
             )
@@ -569,7 +631,10 @@ class DatabasePortalExecutionBridge:
                 if _projection_status(
                     projection
                 ) in _TERMINAL_STATUSES and self._has_completion_event(
-                    paths, str(binding.get("task_alias") or "")
+                    paths,
+                    str(binding.get("task_alias") or ""),
+                    str(binding.get("canonical_task_key") or ""),
+                    str(binding.get("task_cid") or ""),
                 ):
                     return self._acceptance_receipt(
                         attempt=attempt,

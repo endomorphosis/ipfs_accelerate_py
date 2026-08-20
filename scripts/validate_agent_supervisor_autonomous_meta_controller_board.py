@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -30,6 +32,19 @@ TASK_PREFIX = "APMC-"
 ROOT_OBJECTIVE = "APMC-G000"
 TASK_IDS = tuple(f"APMC-{index:03d}" for index in range(21))
 GOAL_IDS = tuple(["APMC-G000", *(f"APMC-G{index:03d}" for index in range(10, 111, 10))])
+EXPECTED_PRELAUNCH_QUALIFIED_TASK_IDS = (
+    "APMC-000",
+    "APMC-001",
+    "APMC-018",
+    "APMC-002",
+    "APMC-003",
+    "APMC-004",
+    "APMC-005",
+)
+EXPECTED_PRELAUNCH_COMPLETED_TASK_IDS = tuple(f"APMC-{index:03d}" for index in range(6)) + (
+    "APMC-018",
+)
+EXPECTED_PRELAUNCH_READY_TASK_IDS = ("APMC-006", "APMC-012", "APMC-014")
 
 PLAN_PATH = REPO_ROOT / "docs/architecture/AGENT_SUPERVISOR_AUTONOMOUS_META_CONTROLLER_PLAN.md"
 OBJECTIVES_PATH = (
@@ -62,6 +77,13 @@ MCP_INVOCATION_TRACE_PATH = (
 OBJECTIVE_DAEMON_IMPORT_TEST_PATH = (
     REPO_ROOT / "test/api/test_agent_supervisor_objective_daemon_import.py"
 )
+APMC_MATERIALIZER_TEST_PATH = REPO_ROOT / "test/api/test_agent_supervisor_apmc_materializer.py"
+DATABASE_PORTAL_BRIDGE_PATH = (
+    REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+)
+DATABASE_PORTAL_BRIDGE_TEST_PATH = (
+    REPO_ROOT / "test/api/test_agent_supervisor_database_portal_bridge.py"
+)
 
 REQUIRED_CONTROL_FILES = (
     PLAN_PATH,
@@ -79,6 +101,7 @@ REQUIRED_CONTROL_FILES = (
     MCP_CONTRACT_CATALOG_PATH,
     MCP_INVOCATION_TRACE_PATH,
     OBJECTIVE_DAEMON_IMPORT_TEST_PATH,
+    APMC_MATERIALIZER_TEST_PATH,
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
@@ -86,6 +109,7 @@ REQUIRED_CONTROL_FILES = (
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+    DATABASE_PORTAL_BRIDGE_PATH,
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
     REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
@@ -94,6 +118,7 @@ REQUIRED_CONTROL_FILES = (
     REPO_ROOT / "scripts/ops/agent_supervisor/quack_state_server.py",
     REPO_ROOT / "scripts/lgswf_start_quack_control.py",
     REPO_ROOT / "test/api/test_agent_supervisor_intent_repository.py",
+    DATABASE_PORTAL_BRIDGE_TEST_PATH,
     REPO_ROOT / "test/api/test_agent_supervisor_database_runner_propagation.py",
     REPO_ROOT / "test/api/test_agent_supervisor_duckdb_connection_policy.py",
     REPO_ROOT / "test/api/test_agent_supervisor_implementation_auto_rescue.py",
@@ -371,6 +396,27 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         else {}
     )
     protected_paths = {str(item) for item in scheduler.get("protected_paths") or ()}
+    expected_initial_projection = {
+        "task_count": len(TASK_IDS),
+        "completed_task_ids": list(EXPECTED_PRELAUNCH_COMPLETED_TASK_IDS),
+        "ready_task_ids": list(EXPECTED_PRELAUNCH_READY_TASK_IDS),
+        "blocked_task_ids": [],
+        "terminal_task_id": "APMC-020",
+        "goal_count": len(GOAL_IDS),
+        "root_goal_id": ROOT_OBJECTIVE,
+    }
+    expected_lane_frontier = {
+        0: ["APMC-012"],
+        1: [],
+        2: ["APMC-006", "APMC-014"],
+        3: [],
+    }
+    observed_lane_frontier = {
+        int(lane.get("index", -1)): list(lane.get("initial_task_ids") or ())
+        for lane in scheduler.get("lanes") or ()
+        if isinstance(lane, Mapping) and type(lane.get("index")) is int
+    }
+    portal_bridge_relative = DATABASE_PORTAL_BRIDGE_PATH.relative_to(REPO_ROOT).as_posix()
     scheduler_ok = bool(
         scheduler.get("board_namespace") == PROGRAM_ID
         and scheduler.get("task_prefix") == TASK_PREFIX
@@ -388,6 +434,7 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         and authority_policy.get("ducklake_projection_authoritative") is False
         and authority_policy.get("ducklake_projection_required_for_scheduling") is False
         and SCHEDULER_CONFIG_PATH.relative_to(REPO_ROOT).as_posix() in protected_paths
+        and portal_bridge_relative in protected_paths
     )
     _append(
         checks,
@@ -398,6 +445,21 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
             "max_lanes": scheduler.get("max_lanes"),
             "database_program": database_program,
             "authority_policy": authority_policy,
+        },
+    )
+    _append(
+        checks,
+        errors,
+        name="scheduler_prelaunch_projection",
+        passed=(
+            scheduler.get("initial_projection") == expected_initial_projection
+            and observed_lane_frontier == expected_lane_frontier
+        ),
+        detail={
+            "expected_projection": expected_initial_projection,
+            "observed_projection": scheduler.get("initial_projection"),
+            "expected_lane_frontier": expected_lane_frontier,
+            "observed_lane_frontier": observed_lane_frontier,
         },
     )
     try:
@@ -538,12 +600,27 @@ def _structural_checks(checks: list[dict[str, Any]], errors: list[str]) -> dict[
         for task in tasks
         if task.task_id != "APMC-000" and set(task.depends_on).issubset({"APMC-000"})
     )
+    completed_prelaunch = set(EXPECTED_PRELAUNCH_COMPLETED_TASK_IDS)
+    after_prelaunch = tuple(
+        task.task_id
+        for task in tasks
+        if task.task_id not in completed_prelaunch
+        and set(task.depends_on).issubset(completed_prelaunch)
+    )
     _append(
         checks,
         errors,
         name="parallel_bootstrap_frontier",
-        passed=initial_ready == ("APMC-000",) and after_baseline == ("APMC-001", "APMC-018"),
-        detail={"initial": initial_ready, "after_baseline": after_baseline},
+        passed=(
+            initial_ready == ("APMC-000",)
+            and after_baseline == ("APMC-001", "APMC-018")
+            and after_prelaunch == EXPECTED_PRELAUNCH_READY_TASK_IDS
+        ),
+        detail={
+            "initial": initial_ready,
+            "after_baseline": after_baseline,
+            "after_prelaunch_qualification": after_prelaunch,
+        },
     )
 
     output_owners: dict[str, list[str]] = defaultdict(list)
@@ -839,6 +916,171 @@ def _p0_and_benchmark_checks(checks: list[dict[str, Any]], errors: list[str]) ->
             checks,
             errors,
             name="closed_contract_population",
+            passed=False,
+            detail=f"{type(exc).__name__}: {exc}",
+        )
+
+    try:
+        materializer_tree = ast.parse(
+            MATERIALIZER_PATH.read_text(encoding="utf-8"),
+            filename=str(MATERIALIZER_PATH),
+        )
+        build_function = next(
+            node
+            for node in materializer_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "build_population"
+        )
+        policy_node = next(
+            value.elts[0]
+            for node in ast.walk(build_function)
+            if isinstance(node, ast.Dict)
+            for key, value in zip(node.keys, node.values, strict=True)
+            if isinstance(key, ast.Constant)
+            and key.value == "acceptance"
+            and isinstance(value, ast.List)
+            and len(value.elts) == 1
+            and isinstance(value.elts[0], ast.Dict)
+        )
+        literal_policy = {
+            str(key.value): value.value
+            for key, value in zip(
+                policy_node.keys,
+                policy_node.values,
+                strict=True,
+            )
+            if isinstance(key, ast.Constant)
+            and isinstance(key.value, str)
+            and isinstance(value, ast.Constant)
+        }
+        evidence_unpacks = [
+            value
+            for key, value in zip(
+                policy_node.keys,
+                policy_node.values,
+                strict=True,
+            )
+            if key is None
+            and {
+                "BASELINE_TASK_ID",
+                "BASELINE_VALIDATION_SET_EVIDENCE_KIND",
+                "PRELAUNCH_COMPLETED_TASK_IDS",
+                "PRELAUNCH_VALIDATION_SET_EVIDENCE_KIND",
+            }.issubset(
+                {candidate.id for candidate in ast.walk(value) if isinstance(candidate, ast.Name)}
+            )
+        ]
+        assignments = {
+            target.id: node.value
+            for node in materializer_tree.body
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        baseline_evidence_kind = ast.literal_eval(
+            assignments["BASELINE_VALIDATION_SET_EVIDENCE_KIND"]
+        )
+        prelaunch_evidence_kind = ast.literal_eval(
+            assignments["PRELAUNCH_VALIDATION_SET_EVIDENCE_KIND"]
+        )
+        qualified_task_ids = tuple(ast.literal_eval(assignments["PRELAUNCH_QUALIFIED_TASK_IDS"]))
+        ready_task_ids = tuple(ast.literal_eval(assignments["PRELAUNCH_READY_TASK_IDS"]))
+        expected_completed_expression = ast.parse(
+            "tuple(f'APMC-{index:03d}' for index in range(6)) + ('APMC-018',)",
+            mode="eval",
+        ).body
+        completed_expression_exact = ast.dump(
+            assignments["PRELAUNCH_COMPLETED_TASK_IDS"],
+            include_attributes=False,
+        ) == ast.dump(expected_completed_expression, include_attributes=False)
+        nested_policy = any(
+            isinstance(key, ast.Constant) and key.value == "evidence_policy"
+            for key in policy_node.keys
+        )
+        policy_ok = bool(
+            literal_policy.get("current_tree_required") is True
+            and literal_policy.get("declared_validation_required") is True
+            and literal_policy.get("markdown_status_is_authority") is False
+            and not nested_policy
+            and len(evidence_unpacks) == 1
+            and baseline_evidence_kind == "apmc_baseline_validation_set"
+            and prelaunch_evidence_kind == "apmc_prelaunch_validation_set"
+            and qualified_task_ids == EXPECTED_PRELAUNCH_QUALIFIED_TASK_IDS
+            and completed_expression_exact
+            and ready_task_ids == EXPECTED_PRELAUNCH_READY_TASK_IDS
+        )
+        _append(
+            checks,
+            errors,
+            name="baseline_top_level_evidence_policy",
+            passed=policy_ok,
+            detail={
+                "literal_policy": literal_policy,
+                "baseline_dedicated_kind": baseline_evidence_kind,
+                "prelaunch_dedicated_kind": prelaunch_evidence_kind,
+                "top_level_evidence_unpack_count": len(evidence_unpacks),
+                "qualified_task_ids": qualified_task_ids,
+                "completed_task_expression_exact": completed_expression_exact,
+                "ready_task_ids": ready_task_ids,
+            },
+        )
+
+        tasks = parse_task_text(
+            TODO_PATH.read_text(encoding="utf-8"),
+            path=TODO_PATH,
+            task_header_prefix="## APMC-",
+        )
+        baseline_task = next(task for task in tasks if task.task_id == "APMC-000")
+        validation_argv = tuple(tuple(shlex.split(command)) for command in baseline_task.validation)
+        required_completion_validations = (
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_apmc_materializer.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_intent_repository.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_database_portal_bridge.py",
+            ),
+            (
+                "python3",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_quack_state_server.py::test_mutation_request_is_published_only_after_complete_fsync",
+                "test/api/test_agent_supervisor_quack_state_server.py::test_mutation_request_publication_fails_closed_without_atomic_rename",
+            ),
+        )
+        exact_completion_validations = all(
+            validation_argv.count(expected) == 1 for expected in required_completion_validations
+        )
+        _append(
+            checks,
+            errors,
+            name="baseline_completion_validation_commands",
+            passed=exact_completion_validations,
+            detail={
+                "required": required_completion_validations,
+                "observed": validation_argv,
+            },
+        )
+    except Exception as exc:
+        _append(
+            checks,
+            errors,
+            name="baseline_top_level_evidence_policy",
             passed=False,
             detail=f"{type(exc).__name__}: {exc}",
         )

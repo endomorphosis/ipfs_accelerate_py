@@ -13,10 +13,14 @@ readiness, queue retry, goal reopen, current evidence.
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
@@ -28,6 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceBoundsError,
     TaskSourceCompletionError,
     TaskSourceConflictError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     INTENT_REPOSITORY_INTERFACE,
@@ -238,6 +245,172 @@ def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:
                 title="stale",
                 expected_revision=0,
             )
+
+
+def test_quack_concurrent_task_status_cas_has_one_winner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Quack CAS loser cannot append a duplicate revision or domain event."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        build_server,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
+        QuackCapabilityStatus,
+        probe_quack_capabilities,
+    )
+
+    capability = probe_quack_capabilities(allow_network_install=False)
+    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
+
+    class _BarrierCursor:
+        def __init__(self, cursor: Any, barrier: threading.Barrier) -> None:
+            self._cursor = cursor
+            self._barrier = barrier
+
+        def fetchall(self) -> Any:
+            rows = self._cursor.fetchall()
+            self._barrier.wait(timeout=10.0)
+            return rows
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._cursor, name)
+
+    class _BarrierConnection:
+        def __init__(self, connection: Any, barrier: threading.Barrier) -> None:
+            self._connection = connection
+            self._barrier = barrier
+
+        def execute(self, sql: str, parameters: Any = None) -> Any:
+            if parameters is None:
+                cursor = self._connection.execute(sql)
+            else:
+                cursor = self._connection.execute(sql, parameters)
+            normalized = " ".join(str(sql).strip().upper().split())
+            if "FROM TASKS WHERE TASK_CID = ? OR TASK_ALIAS = ?" in normalized:
+                return _BarrierCursor(cursor, self._barrier)
+            return cursor
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._connection, name)
+
+    class _RacingIntentRepository(IntentRepository):
+        def __init__(self, *args: Any, barrier: threading.Barrier, **kwargs: Any) -> None:
+            self._select_barrier = barrier
+            super().__init__(*args, **kwargs)
+
+        @contextmanager
+        def _connection(self, *, write: bool = False) -> Iterator[Any]:
+            with super()._connection(write=write) as connection:
+                yield _BarrierConnection(connection, self._select_barrier)
+
+    database_path = tmp_path / "control.duckdb"
+    with open_intent_repository(database_path, owner_id="owner:seed") as seed:
+        ids = _seed_graph(seed)
+        baseline_watermark = seed.event_watermark()
+
+    server = build_server(
+        database_path=database_path,
+        state_dir=tmp_path / "quack-owner",
+        port=0,
+        store_id="intent-cas-race",
+        secret_handle="handle:intent-cas-race",
+    )
+    identity = server.start()
+    assert server._vault is not None  # noqa: SLF001 - exact owner test boundary
+    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        str(server.mutation_inbox_path()),
+    )
+
+    stop = threading.Event()
+    pump_errors: list[BaseException] = []
+
+    def pump() -> None:
+        try:
+            while not stop.wait(0.002):
+                server.process_mutation_inbox()
+        except BaseException as exc:  # pragma: no cover - asserted below
+            pump_errors.append(exc)
+
+    pump_thread = threading.Thread(target=pump, daemon=True)
+    pump_thread.start()
+    barrier = threading.Barrier(2)
+    repositories = tuple(
+        _RacingIntentRepository(
+            identity.listen_uri,
+            owner_id=f"owner:race:{ordinal}",
+            install_schema=False,
+            barrier=barrier,
+        )
+        for ordinal in range(2)
+    )
+
+    def change_status(ordinal: int, status: str) -> tuple[str, str]:
+        try:
+            receipt = repositories[ordinal].cas_task_status(
+                task_cid=ids["task_a"],
+                expected_revision=1,
+                new_status=status,
+            )
+        except IntentRepositoryConflictError:
+            return "conflict", status
+        return "success", str(receipt.details["status"])
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = (
+                executor.submit(change_status, 0, "in_progress"),
+                executor.submit(change_status, 1, "blocked"),
+            )
+            outcomes = tuple(future.result(timeout=20.0) for future in futures)
+        assert sorted(outcome for outcome, _status in outcomes) == [
+            "conflict",
+            "success",
+        ]
+        assert pump_thread.is_alive()
+        assert not pump_errors
+        winning_status = next(status for outcome, status in outcomes if outcome == "success")
+    finally:
+        for repository in repositories:
+            repository.close()
+        stop.set()
+        pump_thread.join(timeout=2.0)
+        server.stop()
+
+    assert not pump_thread.is_alive()
+    assert not pump_errors
+    with open_intent_repository(database_path, owner_id="owner:verify") as verify:
+        task = verify.get_task(ids["task_a"])
+        assert task is not None
+        assert task["revision"] == 2
+        assert task["status"] == winning_status
+        events = verify.list_events(after_global_sequence=baseline_watermark)
+        assert len(events) == 1
+        assert events[0]["event_type"] == IntentEventType.TASK_STATUS_CHANGED.value
+        assert events[0]["task_cid"] == ids["task_a"]
+
+    connection = open_duckdb_connection(database_path)
+    try:
+        revisions = connection.execute(
+            """
+            SELECT revision, status FROM task_revisions
+            WHERE task_cid = ? ORDER BY revision
+            """,
+            [ids["task_a"]],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [(int(row[0]), str(row[1])) for row in revisions] == [
+        (1, "ready"),
+        (2, winning_status),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -487,22 +660,16 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
             new_status="completed",
             evidence_digests=[ids["evidence_digest"]],
         )
-        repo.record_queue_backoff(
-            task_cid=ids["task_b"], delay_ms=5_000, reason="retry later"
-        )
+        repo.record_queue_backoff(task_cid=ids["task_b"], delay_ms=5_000, reason="retry later")
 
         before = repo.snapshot()
         assert before.task_count == 2
         assert before.event_watermark > 0
 
         events = repo.list_events(limit=1000)
+        assert any(item["event_type"] == IntentEventType.TASK_UPSERTED.value for item in events)
         assert any(
-            item["event_type"] == IntentEventType.TASK_UPSERTED.value
-            for item in events
-        )
-        assert any(
-            item["event_type"] == IntentEventType.COMPLETION_RECORDED.value
-            for item in events
+            item["event_type"] == IntentEventType.COMPLETION_RECORDED.value for item in events
         )
 
         after = repo.rebuild_projections_from_events()
@@ -559,11 +726,15 @@ def test_database_task_source_public_api_and_completion_gate(tmp_path: Path) -> 
                             }
                         ],
                         "validation_commands": [
-                            "python -m pytest -q test/api/test_agent_supervisor_intent_repository.py"
+                            "python -m pytest -q "
+                            "test/api/test_agent_supervisor_intent_repository.py"
                         ],
                         "effects": [
                             {
-                                "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+                                "path": (
+                                    "ipfs_accelerate_py/agent_supervisor/"
+                                    "task_sources/intent_repository.py"
+                                ),
                                 "effect": "create",
                             }
                         ],

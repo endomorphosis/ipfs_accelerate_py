@@ -19,9 +19,19 @@
   },
   "initial_projection": {
     "task_count": 21,
-    "completed_task_ids": [],
+    "completed_task_ids": [
+      "APMC-000",
+      "APMC-001",
+      "APMC-002",
+      "APMC-003",
+      "APMC-004",
+      "APMC-005",
+      "APMC-018"
+    ],
     "ready_task_ids": [
-      "APMC-000"
+      "APMC-006",
+      "APMC-012",
+      "APMC-014"
     ],
     "blocked_task_ids": [],
     "terminal_task_id": "APMC-020",
@@ -83,6 +93,7 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
@@ -102,31 +113,34 @@
       "index": 0,
       "name": "apmc-lane-0",
       "strict_shard_remainder": 0,
-      "initial_task_ids": [],
-      "initial_focus": "contracts-decision-graph-and-runtime"
+      "initial_task_ids": [
+        "APMC-012"
+      ],
+      "initial_focus": "plan-suffix-route-policy-and-event-runtime"
     },
     {
       "index": 1,
       "name": "apmc-lane-1",
       "strict_shard_remainder": 1,
       "initial_task_ids": [],
-      "initial_focus": "budget-scheduler-and-experience"
+      "initial_focus": "policy-evaluation-repair-and-control"
     },
     {
       "index": 2,
       "name": "apmc-lane-2",
       "strict_shard_remainder": 2,
       "initial_task_ids": [
-        "APMC-000"
+        "APMC-006",
+        "APMC-014"
       ],
-      "initial_focus": "authority-seal-policy-and-benchmark"
+      "initial_focus": "experience-distillation-and-human-escalation"
     },
     {
       "index": 3,
       "name": "apmc-lane-3",
       "strict_shard_remainder": 3,
       "initial_task_ids": [],
-      "initial_focus": "suffix-repair-human-memory-and-control"
+      "initial_focus": "causal-attribution-skills-memory-and-promotion"
     }
   ],
   "task_groups": {

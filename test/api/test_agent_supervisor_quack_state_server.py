@@ -80,7 +80,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import 
     probe_quack_capabilities,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
+    QuackOwnerMutationEnvelopeError,
     build_mutation_request,
+    parse_mutation_request,
     parse_mutation_result,
     read_envelope,
     write_envelope_atomic,
@@ -319,10 +321,7 @@ class _OwnerMutationTaskSource:
         )
 
     def _select(self, *, task_cid: str = "") -> tuple[TaskRecord, ...]:
-        sql = (
-            "SELECT task_cid, task_alias, goal_cid, ordinal, status, revision "
-            "FROM tasks"
-        )
+        sql = "SELECT task_cid, task_alias, goal_cid, ordinal, status, revision FROM tasks"
         params: list[Any] = []
         if task_cid:
             sql += " WHERE task_cid = ?"
@@ -515,9 +514,7 @@ def test_started_server_never_leaks_token_to_surfaces(tmp_path: Path) -> None:
     assert "AUTH_TOKEN" not in provider_env
     assert provider_env.get("NORMAL") == "ok"
     assert identity.secret_handle
-    assert "token" not in identity.secret_handle or identity.secret_handle.startswith(
-        "handle:"
-    )
+    assert "token" not in identity.secret_handle or identity.secret_handle.startswith("handle:")
     # Status may include secret_handle but never raw token keys with values.
     assert status.get("secret_handle") == identity.secret_handle
     assert status.get("token") in (None, "secret_material")
@@ -559,6 +556,117 @@ def test_second_owner_fails_closed(tmp_path: Path) -> None:
     first.stop()
 
 
+def test_mutation_request_is_published_only_after_complete_fsync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Polling cannot observe a final request path while its bytes are partial."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        quack_owner_mutation,
+    )
+
+    token = "atomic-publication-token"
+    request_id = "ac" * 16
+    request = build_mutation_request(
+        request_id=request_id,
+        store_id="store:atomic-publication",
+        generation=1,
+        sql="UPDATE tasks SET revision = revision + 1 "
+        "WHERE task_cid = ? AND revision = ? RETURNING revision",
+        parameters=["task:atomic", 1],
+        token=token,
+    )
+    target = tmp_path / f"{request_id}.request.json"
+    publish_entered = threading.Event()
+    allow_publish = threading.Event()
+    real_publish = quack_owner_mutation._publish_without_replace  # noqa: SLF001
+
+    def delayed_publish(source: Path, destination: Path) -> None:
+        publish_entered.set()
+        assert allow_publish.wait(timeout=5.0)
+        real_publish(source, destination)
+
+    monkeypatch.setattr(
+        quack_owner_mutation,
+        "_publish_without_replace",
+        delayed_publish,
+    )
+    writer_errors: list[BaseException] = []
+
+    def writer() -> None:
+        try:
+            write_envelope_atomic(target, request, replace=False)
+        except BaseException as exc:  # pragma: no cover - asserted below
+            writer_errors.append(exc)
+
+    thread = threading.Thread(target=writer, daemon=True)
+    thread.start()
+    assert publish_entered.wait(timeout=5.0)
+    try:
+        assert not target.exists()
+        temporary = list(tmp_path.glob(f".{target.name}.*.tmp"))
+        assert len(temporary) == 1
+        parsed_temporary = parse_mutation_request(
+            read_envelope(temporary[0]),
+            token=token,
+            expected_request_id=request_id,
+            expected_store_id="store:atomic-publication",
+            expected_generation=1,
+        )
+        assert parsed_temporary["request_id"] == request_id
+    finally:
+        allow_publish.set()
+        thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert not writer_errors
+    assert target.stat().st_nlink == 1
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+    parsed = parse_mutation_request(
+        read_envelope(target),
+        token=token,
+        expected_request_id=request_id,
+        expected_store_id="store:atomic-publication",
+        expected_generation=1,
+    )
+    assert parsed["request_id"] == request_id
+
+    original = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        write_envelope_atomic(target, request, replace=False)
+    assert target.read_bytes() == original
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+def test_mutation_request_publication_fails_closed_without_atomic_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        quack_owner_mutation,
+    )
+
+    request = build_mutation_request(
+        request_id="ad" * 16,
+        store_id="store:no-atomic-publication",
+        generation=1,
+        sql="UPDATE tasks SET revision = revision + 1 "
+        "WHERE task_cid = ? AND revision = ? RETURNING revision",
+        parameters=["task:no-atomic", 1],
+        token="atomic-publication-token",
+    )
+    target = tmp_path / f"{'ad' * 16}.request.json"
+    monkeypatch.setattr(quack_owner_mutation, "_RENAMEAT2", None)
+    with pytest.raises(
+        QuackOwnerMutationEnvelopeError,
+        match="atomic no-replace publication is unavailable",
+    ):
+        write_envelope_atomic(target, request, replace=False)
+    assert not target.exists()
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
 def test_authenticated_owner_mutation_pump_returns_cas_row(
     tmp_path: Path,
@@ -577,9 +685,7 @@ def test_authenticated_owner_mutation_pump_returns_cas_row(
     token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation)
-    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
         str(server.mutation_inbox_path()),
@@ -656,10 +762,13 @@ def test_owner_mutation_pump_does_not_reexecute_request_after_signed_result(
         write_envelope_atomic(request_path, request, replace=False)
         first = server.process_mutation_inbox()
         assert first[0]["ok"] is True
-        assert owner_connection.execute(
-            "SELECT revision FROM mutation_replay_probe WHERE probe_id = ?",
-            ["probe:replay"],
-        ).fetchone()[0] == 2
+        assert (
+            owner_connection.execute(
+                "SELECT revision FROM mutation_replay_probe WHERE probe_id = ?",
+                ["probe:replay"],
+            ).fetchone()[0]
+            == 2
+        )
 
         # Recreate the exact request as though request unlink failed.  The
         # authenticated result must suppress another execution.
@@ -667,10 +776,13 @@ def test_owner_mutation_pump_does_not_reexecute_request_after_signed_result(
         replay = server.process_mutation_inbox()
         assert replay[0]["replayed"] is True
         assert replay[0]["ok"] is True
-        assert owner_connection.execute(
-            "SELECT revision FROM mutation_replay_probe WHERE probe_id = ?",
-            ["probe:replay"],
-        ).fetchone()[0] == 2
+        assert (
+            owner_connection.execute(
+                "SELECT revision FROM mutation_replay_probe WHERE probe_id = ?",
+                ["probe:replay"],
+            ).fetchone()[0]
+            == 2
+        )
         parsed = parse_mutation_result(
             read_envelope(done_path),
             token=token,
@@ -700,9 +812,7 @@ def test_owner_mutation_pump_rejects_symlinked_inbox(
     token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation)
-    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
         str(server.mutation_inbox_path()),
@@ -799,9 +909,7 @@ def test_two_database_daemons_claim_distinct_tasks_through_one_quack_owner(
     token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation)
-    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
         str(server.mutation_inbox_path()),
@@ -847,17 +955,13 @@ def test_two_database_daemons_claim_distinct_tasks_through_one_quack_owner(
     )
     programs = tuple(database_program_from_daemon_namespace(args) for args in lane_args)
     assert all(program is not None for program in programs)
-    assert {program.store_id for program in programs if program is not None} == {
-        shared_store_id
-    }
+    assert {program.store_id for program in programs if program is not None} == {shared_store_id}
     lane_paths = tuple(
-        resolve_database_implementation_paths(args, authority_mode="quack")
-        for args in lane_args
+        resolve_database_implementation_paths(args, authority_mode="quack") for args in lane_args
     )
     assert lane_paths[0]["database_path"] != lane_paths[1]["database_path"]
     assert all(
-        str(paths["database_path"]).endswith("quack-lane-control.duckdb")
-        for paths in lane_paths
+        str(paths["database_path"]).endswith("quack-lane-control.duckdb") for paths in lane_paths
     )
 
     daemons = tuple(
@@ -890,12 +994,8 @@ def test_two_database_daemons_claim_distinct_tasks_through_one_quack_owner(
             # the other lane's durable in-progress task.
             for source in task_sources:
                 source._first_claim_barrier = threading.Barrier(1)  # noqa: SLF001
-            duplicate_futures = [
-                executor.submit(daemon.claim_next) for daemon in daemons
-            ]
-            duplicate_attempts = tuple(
-                future.result(timeout=10.0) for future in duplicate_futures
-            )
+            duplicate_futures = [executor.submit(daemon.claim_next) for daemon in daemons]
+            duplicate_attempts = tuple(future.result(timeout=10.0) for future in duplicate_futures)
 
         assert all(attempt is not None for attempt in attempts)
         assert {attempt.task_cid for attempt in attempts if attempt is not None} == {

@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseTaskAttempt,
     PortalImplementationDaemon,
     parse_args,
+    parse_task_file,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
@@ -61,6 +62,7 @@ def _record() -> SimpleNamespace:
         acceptance=({"criterion": "Focused validation passes"},),
         body={
             "objective": "Produce the current authority inventory",
+            "task_key": "task/v1/current-authority-inventory",
             "completion": "auto",
             "track": "analysis",
             "read_scope": ["ipfs_accelerate_py/agent_supervisor"],
@@ -80,10 +82,26 @@ def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     )
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
-        '{"credential":"must-not-propagate"}',
+        json.dumps(
+            {
+                "authority_mode": "quack",
+                "task_source_kind": "duckdb",
+                "endpoint_secret_handle": "handle:test-portal-bridge",
+                "quack_endpoint": "quack:127.0.0.1:45123",
+                "store_id": "state/test-portal-bridge/control.duckdb",
+                "store_generation": "1",
+                "schema_revision": "1",
+                "failover_policy": "fail_closed",
+            }
+        ),
     )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "secret-token")
-    portal = SimpleNamespace(_canonical_ref=lambda task: "task:cid:004")
+    portal = SimpleNamespace(
+        _canonical_ref=lambda task: "task:cid:004",
+        _implementation_untrusted_process_environment=(
+            PortalImplementationDaemon._implementation_untrusted_process_environment
+        ),
+    )
     task = SimpleNamespace(task_id="LGSWF-004")
 
     environment = PortalImplementationDaemon._implementation_process_environment(
@@ -100,13 +118,11 @@ def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
 
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
-    ordinary_environment = (
-        PortalImplementationDaemon._implementation_process_environment(
-            portal,
-            task,
-            attempt=3,
-            checkpoint_dir=tmp_path / "ordinary-checkpoint",
-        )
+    ordinary_environment = PortalImplementationDaemon._implementation_process_environment(
+        portal,
+        task,
+        attempt=3,
+        checkpoint_dir=tmp_path / "ordinary-checkpoint",
     )
     assert SEMANTIC_TRUTH_AUTHORITY_ENV not in ordinary_environment
     assert SEMANTIC_WRITER_POLICY_ENV not in ordinary_environment
@@ -146,6 +162,8 @@ class _CompletingPortal:
                 {
                     "type": "task_completed",
                     "task_id": self.task_alias,
+                    "canonical_task_key": "task/v1/current-authority-inventory",
+                    "canonical_task_cid": "task:cid:004",
                     "event_id": "event:complete",
                 }
             )
@@ -219,6 +237,66 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
 
 
+def test_bridge_projection_preserves_authoritative_database_task_identity(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), record)
+    projected = parse_task_file(paths.task_projection, "LGSWF-")
+
+    assert len(projected) == 1
+    assert projected[0].canonical_task_key == record.body["task_key"]
+    assert projected[0].canonical_task_cid == record.task_cid
+    assert binding["canonical_task_key"] == record.body["task_key"]
+    assert binding["task_cid"] == record.task_cid
+
+
+@pytest.mark.parametrize(
+    ("identity_fields", "message"),
+    [
+        (
+            {"canonical_task_cid": "task:cid:forged"},
+            "contradicts its authoritative task CID",
+        ),
+        (
+            {
+                "task_key": "task/v1/one",
+                "canonical_task_key": "task/v1/two",
+            },
+            "contradictory canonical task keys",
+        ),
+        (
+            {
+                "task_key": "task/v1/one",
+                "task key": "task/v1/two",
+            },
+            "contradictory canonical task keys",
+        ),
+    ],
+)
+def test_bridge_projection_rejects_contradictory_database_identity(
+    tmp_path: Path,
+    identity_fields: dict[str, str],
+    message: str,
+) -> None:
+    record = _record()
+    record.body.update(identity_fields)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match=message):
+        bridge._ensure_attempt_projection(_attempt(), record)
+
+
 def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
     class TamperingPortal(_CompletingPortal):
         def run_once(self) -> dict[str, object]:
@@ -238,6 +316,31 @@ def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
         portal_factory=lambda paths, alias: TamperingPortal(paths, alias),
     )
     with pytest.raises(DatabasePortalBridgeError, match="outside its mutable status"):
+        bridge.run_provider(_attempt())
+
+
+def test_bridge_rejects_completion_event_for_another_canonical_task(
+    tmp_path: Path,
+) -> None:
+    class ForgedCompletionPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            result = super().run_once()
+            event = json.loads(self.paths.events.read_text(encoding="utf-8"))
+            event["canonical_task_cid"] = "task:cid:other"
+            self.paths.events.write_text(
+                json.dumps(event) + "\n",
+                encoding="utf-8",
+            )
+            return result
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: ForgedCompletionPortal(paths, alias),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="matching durable"):
         bridge.run_provider(_attempt())
 
 

@@ -8,6 +8,8 @@ handoff typed and authenticated without ever writing the raw Quack token.
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import hmac
 import json
@@ -16,6 +18,7 @@ import os
 import re
 import stat as stat_module
 import time
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -75,6 +78,23 @@ _RESULT_FIELDS: Final = frozenset(
     }
 )
 
+_AT_FDCWD: Final[int] = -100
+_RENAME_NOREPLACE: Final[int] = 1
+try:
+    _LIBC = ctypes.CDLL(None, use_errno=True)
+    _RENAMEAT2 = getattr(_LIBC, "renameat2", None)
+except OSError:  # pragma: no cover - fail-closed platform boundary
+    _RENAMEAT2 = None
+if _RENAMEAT2 is not None:
+    _RENAMEAT2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    _RENAMEAT2.restype = ctypes.c_int
+
 
 class QuackOwnerMutationEnvelopeError(ValueError):
     """A mutation request/result failed its closed envelope contract."""
@@ -82,6 +102,27 @@ class QuackOwnerMutationEnvelopeError(ValueError):
     def __init__(self, message: str, *, code: str = "malformed_envelope") -> None:
         super().__init__(message)
         self.code = str(code)
+
+
+def _publish_without_replace(source: Path, target: Path) -> None:
+    """Atomically publish one complete file while preserving collision denial."""
+
+    if _RENAMEAT2 is None:
+        raise QuackOwnerMutationEnvelopeError(
+            "atomic no-replace publication is unavailable",
+            code="atomic_publication_unavailable",
+        )
+    ctypes.set_errno(0)
+    result = _RENAMEAT2(
+        _AT_FDCWD,
+        os.fsencode(source),
+        _AT_FDCWD,
+        os.fsencode(target),
+        _RENAME_NOREPLACE,
+    )
+    if result != 0:
+        error_number = ctypes.get_errno() or errno.EIO
+        raise OSError(error_number, os.strerror(error_number), str(target))
 
 
 def _canonical_bytes(payload: Mapping[str, Any]) -> bytes:
@@ -94,9 +135,7 @@ def _canonical_bytes(payload: Mapping[str, Any]) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise QuackOwnerMutationEnvelopeError(
-            "mutation envelope is not canonical JSON"
-        ) from exc
+        raise QuackOwnerMutationEnvelopeError("mutation envelope is not canonical JSON") from exc
     return encoded
 
 
@@ -175,9 +214,7 @@ def admit_mutation_sql(sql: Any) -> str:
 
 def _parameters(value: Any) -> Any:
     if value is not None and not isinstance(value, (list, dict)):
-        raise QuackOwnerMutationEnvelopeError(
-            "parameters must be null, an array, or an object"
-        )
+        raise QuackOwnerMutationEnvelopeError("parameters must be null, an array, or an object")
     encoded = _canonical_bytes({"parameters": value})
     if len(encoded) > MAX_MUTATION_PARAMETERS_BYTES:
         raise QuackOwnerMutationEnvelopeError("parameters exceed their byte bound")
@@ -251,9 +288,7 @@ def parse_mutation_request(
     issued_at = _positive_int(payload.get("issued_at_ms"), name="issued_at_ms")
     observed = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if issued_at < observed - MAX_MUTATION_REQUEST_AGE_MS:
-        raise QuackOwnerMutationEnvelopeError(
-            "mutation request is stale", code="stale_request"
-        )
+        raise QuackOwnerMutationEnvelopeError("mutation request is stale", code="stale_request")
     if issued_at > observed + MAX_MUTATION_FUTURE_SKEW_MS:
         raise QuackOwnerMutationEnvelopeError(
             "mutation request is from the future", code="stale_request"
@@ -303,10 +338,7 @@ def build_mutation_result(
         raise QuackOwnerMutationEnvelopeError("result columns exceed their bound")
     if len(rows) > MAX_MUTATION_RESULT_ROWS:
         raise QuackOwnerMutationEnvelopeError("result rows exceed their bound")
-    normalized_rows = [
-        [_result_scalar(value) for value in row]
-        for row in rows
-    ]
+    normalized_rows = [[_result_scalar(value) for value in row] for row in rows]
     if any(len(row) != len(names) for row in normalized_rows):
         raise QuackOwnerMutationEnvelopeError("result row width does not match columns")
     payload: dict[str, Any] = {
@@ -394,26 +426,25 @@ def write_envelope_atomic(path: Path, payload: Mapping[str, Any], *, replace: bo
     except OSError:
         pass
     data = _canonical_bytes(payload) + b"\n"
-    if replace:
-        temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if replace:
             os.replace(temporary, target)
-        finally:
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
-        return
-    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "wb") as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
+        else:
+            # ``RENAME_NOREPLACE`` makes the complete fsynced file visible in
+            # one operation with link count one.  It also preserves collision
+            # denial; no existing request can be overwritten or replayed.
+            _publish_without_replace(temporary, target)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def read_envelope(path: Path, *, max_bytes: int = MAX_MUTATION_RESULT_BYTES) -> Mapping[str, Any]:
@@ -436,9 +467,7 @@ def read_envelope(path: Path, *, max_bytes: int = MAX_MUTATION_RESULT_BYTES) -> 
                 )
             encoded = stream.read(max_bytes + 1)
             if len(encoded) != observed.st_size:
-                raise QuackOwnerMutationEnvelopeError(
-                    "mutation envelope changed while being read"
-                )
+                raise QuackOwnerMutationEnvelopeError("mutation envelope changed while being read")
         payload = json.loads(encoded.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise QuackOwnerMutationEnvelopeError("mutation envelope JSON is malformed") from exc
