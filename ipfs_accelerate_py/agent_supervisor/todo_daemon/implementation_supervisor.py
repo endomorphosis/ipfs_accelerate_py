@@ -10730,6 +10730,12 @@ class PortalImplementationSupervisor:
                 database_program=self.config.database_program,
             ),
         )
+        sealed_fds: tuple[int, ...] = ()
+        if (
+            self.config.plan_bound_dispatch
+            and int(self.config.accepted_control_plane_descriptor) >= 3
+        ):
+            sealed_fds = (int(self.config.accepted_control_plane_descriptor),)
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
@@ -10749,6 +10755,7 @@ class PortalImplementationSupervisor:
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
+            pass_fds=sealed_fds,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -19872,11 +19879,18 @@ class PortalImplementationSupervisor:
                 database_program=self.config.database_program,
             )
         )
+        pass_fds: tuple[int, ...] = ()
+        if (
+            self.config.plan_bound_dispatch
+            and int(self.config.accepted_control_plane_descriptor) >= 3
+        ):
+            pass_fds = (int(self.config.accepted_control_plane_descriptor),)
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
             text=True,
             env=env,
+            pass_fds=pass_fds,
         )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
