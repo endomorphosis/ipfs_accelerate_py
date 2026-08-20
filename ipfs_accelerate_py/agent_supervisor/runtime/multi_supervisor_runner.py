@@ -5512,10 +5512,10 @@ def start_track(
         if _eaaef_host_receipt_admitted(Path(repo_root), "EAAEF-191"):
             path_entries = ["/usr/bin", "/bin"]
             for command_name in ("grok", "codex"):
-                resolved = shutil.which(command_name)
-                if not resolved:
+                binary = shutil.which(command_name)
+                if not binary:
                     continue
-                directory = str(Path(resolved).parent)
+                directory = str(Path(binary).parent)
                 if directory and directory not in path_entries:
                     path_entries.insert(0, directory)
             launch_environment["PATH"] = os.pathsep.join(path_entries)
