@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -16,8 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts impo
     FormalWorkPlan,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
-    CODEX_MODEL_ENV,
-    PROVIDER_ENV,
+    ConfiguredBoardError,
     configured_board_launch_plan,
     load_configured_board,
 )
@@ -52,6 +52,98 @@ def _population() -> tuple[dict[str, Any], dict[str, Any]]:
         source=source,
     )
     return config, population
+
+
+def _fresh_recovery_population() -> tuple[dict[str, Any], dict[str, Any]]:
+    """Project revision 2 against the real immutable Git commit/tree."""
+
+    config = materializer.load_config()
+    formal = FormalWorkPlan.from_dict(
+        json.loads((ROOT / str(config["formal_plan_path"])).read_text(encoding="utf-8"))
+    )
+    source = materializer._project_source_binding(  # noqa: SLF001
+        config,
+        root=ROOT,
+        require_clean=False,
+    )
+    population = materializer.project_population(
+        config,
+        formal_plan=formal,
+        todo_text=(ROOT / str(config["taskboard_path"])).read_text(encoding="utf-8"),
+        source={
+            "accelerator_head": source["accelerator_head"],
+            "accelerator_tree": source["accelerator_tree"],
+            "source_forest_root": source["source_forest_root"],
+        },
+    )
+    return config, population
+
+
+def _fake_recovery_qualification(preview: dict[str, Any]) -> dict[str, Any]:
+    """Test-only corroboration; production exposes no receipt injection API."""
+
+    suites: list[dict[str, Any]] = []
+    for evidence in preview["merge_completion_evidence"]:
+        observation = {
+            "task_id": evidence["task_id"],
+            "task_cid": evidence["task_cid"],
+            "validation_spec": evidence["validation_spec"],
+        }
+        observation["observation_cid"] = materializer.content_identity(observation)
+        suites.append(observation)
+    receipt = {"schema": "test-only-recovery-qualification", "suites": suites}
+    receipt["receipt_cid"] = materializer.content_identity(receipt)
+    return receipt
+
+
+def _patch_recovery_judge(
+    monkeypatch: pytest.MonkeyPatch,
+    population: dict[str, Any],
+    qualification: dict[str, Any],
+) -> None:
+    monkeypatch.setattr(
+        materializer,
+        "_require_clean_recovery_source",
+        lambda *_args, **_kwargs: (
+            population["source_head"],
+            str(population["repository_tree_id"]).removeprefix("git-tree:"),
+        ),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_run_and_verify_recovery_qualification",
+        lambda **_kwargs: copy.deepcopy(qualification),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_recovery_qualification",
+        lambda value, **_kwargs: copy.deepcopy(dict(value)),
+    )
+
+
+def _patch_recovery_qualification_only(
+    monkeypatch: pytest.MonkeyPatch,
+    qualification: dict[str, Any],
+) -> None:
+    """Replace only the protected judge; retain the real Git clean check."""
+
+    monkeypatch.setattr(
+        materializer,
+        "_run_and_verify_recovery_qualification",
+        lambda **_kwargs: copy.deepcopy(qualification),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_recovery_qualification",
+        lambda value, **_kwargs: copy.deepcopy(dict(value)),
+    )
+
+
+def _fresh_recovery_staging_container(
+    config: dict[str, Any], root: Path
+) -> Path:
+    target = materializer._fresh_recovery_paths(config, root=root)["target"]  # noqa: SLF001
+    return target.with_name(f"{target.name}-fresh-recovery-staging")
 
 
 def test_population_rejects_scheduler_formal_task_prefix_projection_drift() -> None:
@@ -140,16 +232,34 @@ def _revision_one_runtime(
         source=source,
     )
     runtime_config = copy.deepcopy(config)
+    runtime_config.pop("fresh_generation_recovery")
+    runtime_config["runtime_paths"].update(
+        {
+            "root": "run",
+            "state": "run/state",
+            "worktrees": "run/worktrees",
+            "merge_queue": "run/merge-queue",
+            "logs": "run/logs",
+            "evidence": "run/evidence",
+        }
+    )
+    runtime_config["database_program"].update(
+        {
+            "store_generation": "lgcvf-successor-test",
+            "export_profile": "lgcvf-successor-test",
+            "event_store_path": "run/events",
+            "runtime_registry_path": "run/registry",
+            "worktree_root": "run/worktrees",
+        }
+    )
     runtime_config["database_program"]["store_id"] = "run/control.duckdb"
-    runtime_config["runtime_paths"]["state"] = "run/state"
-    runtime_config["runtime_paths"]["evidence"] = "run/evidence"
     archive_target = (
         tmp_path
         / str(runtime_config["formal_plan_path"])
     ).parent / "plan_revisions" / f"{predecessor.content_id}.json"
     archive_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(archive_path, archive_target)
-    materializer.materialize(
+    materializer._materialize_canonical(  # noqa: SLF001
         runtime_config,
         predecessor_population,
         root=tmp_path,
@@ -182,7 +292,10 @@ import json
 import os
 import sys
 from pathlib import Path
-from scripts import materialize_logic_governed_compositional_verification_fabric_control_plane as materializer
+from scripts import (
+    materialize_logic_governed_compositional_verification_fabric_control_plane
+    as materializer,
+)
 
 root = Path(sys.argv[1])
 config = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
@@ -250,15 +363,18 @@ def test_lgcvf_scheduler_is_single_writer_and_protects_control_evidence() -> Non
     assert program.task_source_kind == "duckdb"
     assert program.quack_endpoint == ""
     assert program.failover_policy == "fail_closed"
-    launch = configured_board_launch_plan(
-        board,
-        implement=True,
-        detach=False,
-    )
-    assert launch["environment"][PROVIDER_ENV] == "grok_cli"
-    # This is an explicit one-provider route. Exporting CODEX_MODEL_ENV would
-    # instead be parsed as an incomplete sealed Grok/Codex fallback tuple.
-    assert CODEX_MODEL_ENV not in launch["environment"]
+    assert config["provider"]["provider_id"] == "grok_cli"
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="fresh-generation recovery initial launch admission failed",
+    ):
+        # The authoritative checkout deliberately has no run-v17 yet.  The
+        # scheduler must fail before it renders an executable launch plan.
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+        )
     protected = set(board.protected_paths)
     assert {
         str(config["formal_plan_path"]),
@@ -342,7 +458,7 @@ def test_typed_materialization_read_only_replay_and_overwrite_rejection(
     temporary["database_program"]["store_id"] = "run-v1/control.duckdb"
     temporary["runtime_paths"]["evidence"] = "run-v1/evidence"
 
-    receipt = materializer.materialize(
+    receipt = materializer._materialize_canonical(  # noqa: SLF001
         temporary,
         population,
         root=tmp_path,
@@ -354,7 +470,17 @@ def test_typed_materialization_read_only_replay_and_overwrite_rejection(
     assert receipt["verification"]["valid"] is True
     assert receipt["verification"]["stores_unchanged"] is True
 
-    live = materializer.verify_read_only(
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="generic verification is not admission authority",
+    ):
+        materializer.verify_read_only(
+            temporary,
+            population,
+            root=tmp_path,
+            expected_stage="live",
+        )
+    live = materializer._verify_read_only_core(  # noqa: SLF001
         temporary,
         population,
         root=tmp_path,
@@ -383,7 +509,7 @@ def test_typed_materialization_read_only_replay_and_overwrite_rejection(
     assert external.body["construction_status"] == "blocked_external_authority"
 
     with pytest.raises(materializer.MaterializationError, match="refusing to overwrite"):
-        materializer.materialize(
+        materializer._materialize_canonical(  # noqa: SLF001
             temporary,
             population,
             root=tmp_path,
@@ -899,3 +1025,1121 @@ def test_successor_read_only_verify_preserves_all_store_fingerprints(
         paths["revision_store"]
     )
     assert before_receipt == materializer._sha256_file(receipt_file)  # noqa: SLF001
+
+
+def test_fresh_recovery_preview_is_no_write_and_rejects_quarantine_drift(
+    tmp_path: Path,
+) -> None:
+    config, population = _fresh_recovery_population()
+    with pytest.raises(materializer.MaterializationError, match="ambiguous JSON"):
+        materializer._decode_evidence_json(  # noqa: SLF001
+            b'{"task_id":"LGCVF-080","task_id":"LGCVF-081"}',
+            noun="pinned recovery evidence",
+        )
+    forensic_root = (
+        ROOT
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16"
+    )
+
+    def forensic_inventory() -> dict[str, tuple[Any, ...]]:
+        result: dict[str, tuple[Any, ...]] = {}
+        for path in sorted(forensic_root.rglob("*")):
+            status = path.lstat()
+            relative = path.relative_to(forensic_root).as_posix()
+            if path.is_symlink():
+                result[relative] = ("symlink", status.st_mode, os.readlink(path))
+            elif path.is_dir():
+                result[relative] = ("directory", status.st_mode)
+            elif path.is_file():
+                result[relative] = (
+                    "file",
+                    status.st_mode,
+                    status.st_size,
+                    status.st_mtime_ns,
+                    materializer._sha256_file(path),
+                )
+            else:
+                result[relative] = ("special", status.st_mode)
+        return result
+
+    before = forensic_inventory()
+
+    preview = materializer.preview_fresh_generation_recovery(
+        config, population, root=tmp_path, source_root=ROOT
+    )
+    forest_poison = copy.deepcopy(population)
+    forest_poison.pop("population_root")
+    forest_poison["source_forest_root"] = "baguqeera-forged-source-forest"
+    forest_poison["population_root"] = materializer.content_identity(forest_poison)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="population differs from canonical source projection",
+    ):
+        materializer.preview_fresh_generation_recovery(
+            config,
+            forest_poison,
+            root=tmp_path,
+            source_root=ROOT,
+        )
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="canonical-only materialization is not admissible",
+    ):
+        materializer.materialize(
+            config, population, root=tmp_path, recheck_source=False
+        )
+
+    stripped = copy.deepcopy(config)
+    stripped.pop("fresh_generation_recovery")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="canonical-only materialization is not admissible",
+    ):
+        materializer.materialize(
+            stripped, population, root=tmp_path, recheck_source=False
+        )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="generic verification is not admission authority",
+    ):
+        materializer.verify_read_only(
+            stripped, population, root=tmp_path, expected_stage="live"
+        )
+
+    protected_target = tmp_path / Path(
+        str(config["fresh_generation_recovery"]["target_runtime_root"])
+    )
+    protected_target.parent.mkdir(parents=True, exist_ok=True)
+    alias = tmp_path / "ordinary-runtime-alias"
+    os.symlink(protected_target.relative_to(tmp_path), alias)
+    aliased = copy.deepcopy(stripped)
+    aliased["runtime_paths"].update(
+        {
+            "root": alias.name,
+            "state": f"{alias.name}/state",
+            "worktrees": f"{alias.name}/worktrees",
+            "merge_queue": f"{alias.name}/merge-queue",
+            "logs": f"{alias.name}/logs",
+            "evidence": f"{alias.name}/evidence",
+        }
+    )
+    aliased["database_program"].update(
+        {
+            "store_generation": "ordinary-generation",
+            "export_profile": "ordinary-profile",
+            "store_id": f"{alias.name}/control.duckdb",
+            "event_store_path": f"{alias.name}/events",
+            "runtime_registry_path": f"{alias.name}/registry",
+            "worktree_root": f"{alias.name}/worktrees",
+        }
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="canonical-only materialization is not admissible",
+    ):
+        materializer.materialize(
+            aliased, population, root=tmp_path, recheck_source=False
+        )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="generic verification is not admission authority",
+    ):
+        materializer.verify_read_only(
+            aliased, population, root=tmp_path, expected_stage="live"
+        )
+    for operation in (
+        materializer.preview_successor,
+        materializer.steer_successor,
+        materializer.verify_successor_read_only,
+    ):
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="reject legacy successor",
+        ):
+            operation(aliased, population, root=tmp_path)
+    assert alias.is_symlink()
+    assert not protected_target.exists()
+
+    assert preview["write_performed"] is False
+    assert preview["target_state"] == "absent"
+    assert preview["completion_partition"]["completed_count"] == 13
+    assert preview["completion_partition"]["todo_count"] == 13
+    assert preview["completion_partition"]["blocked_count"] == 2
+    assert not materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=tmp_path
+    )["target"].exists()
+    assert before == forensic_inventory()
+
+    drifted = copy.deepcopy(config)
+    drifted["fresh_generation_recovery"][
+        "contaminated_coordination_rejected_record_set_cid"
+    ] = "baguqeera-forged"
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="configuration differs from the canonical profile",
+    ):
+        materializer.preview_fresh_generation_recovery(
+            drifted, population, root=tmp_path, source_root=ROOT
+        )
+
+
+def test_generic_verify_cli_routes_to_strict_fresh_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config, population = _population()
+    monkeypatch.setattr(materializer, "load_config", lambda: config)
+    monkeypatch.setattr(materializer, "build_population", lambda _config: population)
+    monkeypatch.setattr(
+        materializer,
+        "verify_fresh_generation_recovery",
+        lambda *_args, **_kwargs: {"schema": "strict-recovery-test", "valid": True},
+    )
+    monkeypatch.setattr(
+        materializer,
+        "verify_read_only",
+        lambda *_args, **_kwargs: pytest.fail("generic verifier must not admit run-v17"),
+    )
+
+    assert materializer.main(["verify"]) == 0
+    assert json.loads(capsys.readouterr().out)["schema"] == "strict-recovery-test"
+
+
+def test_protected_generation_rejects_legacy_successor_routes_without_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config, population = _fresh_recovery_population()
+    target = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=tmp_path
+    )["target"]
+
+    for operation in (
+        materializer.preview_successor,
+        materializer.steer_successor,
+        materializer.verify_successor_read_only,
+    ):
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="reject legacy successor",
+        ):
+            operation(config, population, root=tmp_path)
+        assert not target.exists()
+        assert not target.parent.exists()
+
+    monkeypatch.setattr(materializer, "load_config", lambda: config)
+    monkeypatch.setattr(
+        materializer, "build_population", lambda _config: population
+    )
+    for command in ("successor-preview", "successor-steer", "successor-verify"):
+        assert materializer.main([command]) == 2
+        result = json.loads(capsys.readouterr().out)
+        assert result["valid"] is False
+        assert "reject legacy successor" in result["error"]
+    authoritative_target = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=ROOT
+    )["target"]
+    assert not authoritative_target.exists()
+
+
+def test_fresh_recovery_atomic_idempotent_strict_and_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, population = _fresh_recovery_population()
+    preview = materializer.preview_fresh_generation_recovery(
+        config, population, root=tmp_path, source_root=ROOT
+    )
+    qualification = _fake_recovery_qualification(preview)
+    _patch_recovery_judge(monkeypatch, population, qualification)
+
+    receipt = materializer.materialize_fresh_generation_recovery(
+        config, population, root=tmp_path, source_root=ROOT
+    )
+    paths = materializer._fresh_recovery_paths(config, root=tmp_path)  # noqa: SLF001
+    store_paths = {
+        key: path
+        for key, path in paths.items()
+        if key in {"control", "coordination", "execution", "receipt", "recovery_receipt"}
+    }
+    before_verify = {
+        key: (path.stat().st_size, path.stat().st_mtime_ns, materializer._sha256_file(path))
+        for key, path in store_paths.items()
+    }
+    report = materializer.verify_fresh_generation_recovery(
+        config, population, root=tmp_path, source_root=ROOT
+    )
+    replay = materializer.materialize_fresh_generation_recovery(
+        config, population, root=tmp_path, source_root=ROOT
+    )
+
+    assert replay["receipt_cid"] == receipt["receipt_cid"]
+    assert (report["completed_count"], report["todo_count"], report["blocked_count"]) == (
+        13,
+        13,
+        2,
+    )
+    assert report["ready_task_ids"] == ["LGCVF-081"]
+    assert before_verify == {
+        key: (path.stat().st_size, path.stat().st_mtime_ns, materializer._sha256_file(path))
+        for key, path in store_paths.items()
+    }
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="generic verification is not admission authority",
+    ):
+        materializer.verify_read_only(
+            config, population, root=tmp_path, expected_stage="live"
+        )
+    operational = materializer._verify_read_only_core(  # noqa: SLF001
+        config, population, root=tmp_path, expected_stage="live"
+    )
+    observations = {
+        item["task_id"]: item["observation_cid"] for item in qualification["suites"]
+    }
+    for evidence in operational["control"]["evidence"]:
+        alias = evidence["body"]["request_id"]
+        task_id = next(
+            item["task_id"]
+            for item in preview["merge_completion_evidence"]
+            if item["request_id"] == alias
+        )
+        assert evidence["digest"] != observations[task_id]
+        assert evidence["body"]["validation_observation_cid"] == observations[task_id]
+    for completion in operational["control"]["completion_receipts"]:
+        digests = completion["body"]["evidence_digests"]
+        assert len(digests) == 1
+        assert digests[0] not in observations.values()
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinator,
+    )
+
+    coordination_backup = tmp_path / "coordination-before-history.duckdb"
+    shutil.copy2(paths["coordination"], coordination_backup)
+    coordinator = DatabaseCoordinator(paths["coordination"])
+    try:
+        coordinator.open()
+        lease = coordinator.acquire(
+            lease_kind="merge",
+            scope="fresh-recovery-adversarial-history",
+            owner_session_id="test:foreign-history",
+            lease_ms=30_000,
+        )
+        coordinator.release(lease, reason="closed but still contaminating history")
+    finally:
+        coordinator.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="coordination (?:projection differs|history is not empty)",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    shutil.copy2(coordination_backup, paths["coordination"])
+    assert materializer.verify_fresh_generation_recovery(
+        config, population, root=tmp_path, source_root=ROOT
+    )["valid"] is True
+
+    state = tmp_path / Path(str(config["runtime_paths"]["state"]))
+    revision_store = state / "plan-revision-store"
+    revision_store.mkdir(parents=True)
+    state.chmod(0o700)
+    revision_store.chmod(0o700)
+    with pytest.raises(materializer.MaterializationError, match="state directory is not empty"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    revision_store.rmdir()
+    state.rmdir()
+
+    paths["target"].chmod(0o555)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="directory is not owner-accessible",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    paths["target"].chmod(0o700)
+
+    paths["control"].chmod(0o444)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="file is not owner-accessible",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    paths["control"].chmod(0o600)
+
+    paths["control"].chmod(0o666)
+    with pytest.raises(materializer.MaterializationError, match="permissions differ"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    paths["control"].chmod(0o600)
+
+    control_backup = tmp_path / "control-before-authority-tamper.duckdb"
+    shutil.copy2(paths["control"], control_backup)
+
+    def restore_control() -> None:
+        shutil.copy2(control_backup, paths["control"])
+
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        output_row = connection.execute(
+            "SELECT task_cid, ordinal, effect_json FROM task_outputs "
+            "ORDER BY task_cid, ordinal LIMIT 1"
+        ).fetchone()
+        assert output_row is not None
+        raw_effect = str(output_row[2])
+        decoded_effect = json.loads(raw_effect)
+        effect_key = next(iter(decoded_effect))
+        forged_effect = (
+            "{"
+            + json.dumps(effect_key)
+            + ":\"forged-first-value\","
+            + raw_effect[1:]
+        )
+        connection.execute(
+            "UPDATE task_outputs SET effect_json = ? "
+            "WHERE task_cid = ? AND ordinal = ?",
+            [forged_effect, str(output_row[0]), int(output_row[1])],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="control typed authority contains invalid JSON",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        connection.execute(
+            "UPDATE tasks SET extension_json = '' WHERE task_alias = 'LGCVF-090'"
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="control typed authority contains invalid JSON",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        connection.execute(
+            "UPDATE control_plane_metadata SET value = ? WHERE key = 'database_uuid'",
+            ["00000000-0000-5000-8000-000000000000"],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="control residual content differs",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        connection.execute(
+            "CREATE INDEX forged_schema_contract_index "
+            "ON schema_contracts(interface_name)"
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="control (?:schema|catalog) differs",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    baseline_catalog = materializer._read_only_duckdb_catalog(  # noqa: SLF001
+        paths["control"], noun="baseline control"
+    )
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        index_name = str(
+            connection.execute(
+                "SELECT index_name FROM duckdb_indexes() "
+                "WHERE database_name = current_database() "
+                "ORDER BY index_name LIMIT 1"
+            ).fetchone()[0]
+        )
+        quoted_index = '"' + index_name.replace('"', '""') + '"'
+        connection.execute(
+            f"COMMENT ON INDEX {quoted_index} IS 'forged authority comment'"
+        )
+    finally:
+        connection.close()
+    commented_catalog = materializer._read_only_duckdb_catalog(  # noqa: SLF001
+        paths["control"], noun="commented control"
+    )
+    assert commented_catalog["catalog_root"] != baseline_catalog["catalog_root"]
+    assert any(
+        item["name"] == index_name
+        and item["comment"] == "forged authority comment"
+        for item in commented_catalog["indexes"]
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="control (?:schema|catalog) differs",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        connection.execute("CREATE SCHEMA hidden_authority")
+        connection.execute(
+            "CREATE TABLE hidden_authority.contaminated(value INTEGER)"
+        )
+        connection.execute("CREATE MACRO hidden_macro(value) AS value + 1")
+        connection.execute("CREATE SEQUENCE hidden_sequence")
+        connection.execute(
+            "CREATE TYPE hidden_authority_state AS ENUM ('present', 'absent')"
+        )
+    finally:
+        connection.close()
+    hidden_catalog = materializer._read_only_duckdb_catalog(  # noqa: SLF001
+        paths["control"], noun="adversarial control"
+    )
+    assert {item["name"] for item in hidden_catalog["schemas"]} >= {
+        "hidden_authority"
+    }
+    assert {
+        (item["schema"], item["name"]) for item in hidden_catalog["tables"]
+    } >= {("hidden_authority", "contaminated")}
+    assert {item["name"] for item in hidden_catalog["macros"]} >= {
+        "hidden_macro"
+    }
+    assert {item["name"] for item in hidden_catalog["sequences"]} >= {
+        "hidden_sequence"
+    }
+    assert {item["name"] for item in hidden_catalog["types"]} >= {
+        "hidden_authority_state"
+    }
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="control (?:schema|catalog) differs",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        connection.execute(
+            "UPDATE schema_migrations SET receipt_cid = ? WHERE version = 1",
+            ["baguqeera-forged-migration-receipt"],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match=(
+            "schema_(?:migrations receipt identity|migration_attempts authority) "
+            "differs"
+        ),
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    connection = duckdb.connect(str(paths["control"]))
+    try:
+        event_row = connection.execute(
+            "SELECT event_id, stream_id, sequence, global_sequence, event_type, body_json "
+            "FROM domain_events WHERE event_type = 'intent.goal_edge_linked' "
+            "ORDER BY global_sequence LIMIT 1"
+        ).fetchone()
+        wrapper = json.loads(str(event_row[5]))
+        wrapper["body"]["annotation"] = {"updated_at": "forged-nested-clock"}
+        event_id = materializer.content_identity(
+            {
+                "stream_id": str(event_row[1]),
+                "sequence": int(event_row[2]),
+                "global_sequence": int(event_row[3]),
+                "event_type": str(event_row[4]),
+                "body": wrapper,
+            }
+        )
+        connection.execute(
+            "UPDATE domain_events SET event_id = ?, body_json = ? WHERE event_id = ?",
+            [
+                event_id,
+                json.dumps(wrapper, sort_keys=True, separators=(",", ":")),
+                str(event_row[0]),
+            ],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="semantic event stream differs",
+    ):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    restore_control()
+
+    hardlink_origin = tmp_path / "control-hardlink-origin.duckdb"
+    paths["control"].rename(hardlink_origin)
+    os.link(hardlink_origin, paths["control"])
+    with pytest.raises(materializer.MaterializationError, match="file identity differs"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    paths["control"].unlink()
+    hardlink_origin.rename(paths["control"])
+
+    tampered = json.loads(paths["recovery_receipt"].read_text(encoding="utf-8"))
+    tampered["unknown_authority"] = True
+    tampered.pop("receipt_cid")
+    tampered["receipt_cid"] = materializer.content_identity(tampered)
+    materializer._atomic_write_json(paths["recovery_receipt"], tampered)  # noqa: SLF001
+    with pytest.raises(materializer.MaterializationError, match="receipt fields differ"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+
+    materializer._atomic_write_json(paths["recovery_receipt"], receipt)  # noqa: SLF001
+    receipt_bytes = paths["recovery_receipt"].read_bytes()
+    receipt_schema = f'"schema":"{receipt["schema"]}"'.encode()
+    assert receipt_schema in receipt_bytes
+    paths["recovery_receipt"].write_bytes(
+        receipt_bytes.replace(
+            receipt_schema, receipt_schema + b"," + receipt_schema, 1
+        )
+    )
+    with pytest.raises(materializer.MaterializationError, match="ambiguous JSON"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    paths["recovery_receipt"].write_bytes(receipt_bytes)
+
+    manifest_path = paths["recovery"] / f'{receipt["manifest_cid"]}.manifest.json'
+    manifest_bytes = manifest_path.read_bytes()
+    manifest = json.loads(manifest_bytes)
+    manifest_schema = f'"schema":"{manifest["schema"]}"'.encode()
+    assert manifest_schema in manifest_bytes
+    manifest_path.write_bytes(
+        manifest_bytes.replace(
+            manifest_schema, manifest_schema + b"," + manifest_schema, 1
+        )
+    )
+    with pytest.raises(materializer.MaterializationError, match="ambiguous JSON"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+    manifest_path.write_bytes(manifest_bytes)
+
+    evidence_dir = Path(str(config["runtime_paths"]["evidence"]))
+    lexical_evidence = tmp_path / evidence_dir
+    redirected = lexical_evidence.with_name("evidence.redirected")
+    lexical_evidence.rename(redirected)
+    os.symlink(redirected.name, lexical_evidence)
+    with pytest.raises(materializer.MaterializationError, match="contains a symlink"):
+        materializer.verify_fresh_generation_recovery(
+            config, population, root=tmp_path, source_root=ROOT
+        )
+
+
+def test_fresh_recovery_real_clean_checkout_keeps_stage_ignored_and_rechecks_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the real Git clean check around the ignored atomic stage."""
+
+    config, population = _fresh_recovery_population()
+    clean_root = tmp_path / "clean-checkout"
+    git_env = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+    }
+
+    def git(*argv: str, cwd: Path = tmp_path) -> str:
+        completed = subprocess.run(
+            ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *argv],
+            cwd=cwd,
+            env=git_env,
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=120,
+        )
+        return completed.stdout.strip()
+
+    git("clone", "--shared", "--no-checkout", str(ROOT), str(clean_root))
+    git(
+        "checkout",
+        "-B",
+        str(config["source_binding"]["accelerator_required_branch"]),
+        population["source_head"],
+        cwd=clean_root,
+    )
+    datasets = clean_root / "ipfs_datasets_py"
+    if datasets.exists():
+        assert not any(datasets.iterdir())
+        datasets.rmdir()
+    datasets_head = git("rev-parse", "HEAD", cwd=ROOT / "ipfs_datasets_py")
+    git(
+        "clone",
+        "--shared",
+        "--no-checkout",
+        str(ROOT / "ipfs_datasets_py"),
+        str(datasets),
+    )
+    git("checkout", "--detach", datasets_head, cwd=datasets)
+
+    source_run = (
+        ROOT
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16"
+    )
+    target_run = (
+        clean_root
+        / "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16"
+    )
+    for relative in (
+        Path("evidence/plan-revisions"),
+        Path("evidence/quarantine"),
+        Path("merge-queue/completed"),
+        Path("merge-queue/train/receipts"),
+    ):
+        shutil.copytree(
+            source_run / relative,
+            target_run / relative,
+            symlinks=True,
+            copy_function=shutil.copy2,
+        )
+    assert git("status", "--porcelain=v1", "--untracked-files=all", cwd=clean_root) == ""
+
+    population = materializer.build_population(config, root=clean_root)
+    target = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=clean_root
+    )["target"]
+    config_poison = copy.deepcopy(config)
+    config_poison["poll_interval_seconds"] = int(
+        config_poison["poll_interval_seconds"]
+    ) + 1
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="configuration differs from the canonical profile",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config_poison,
+            population,
+            root=clean_root,
+            source_root=clean_root,
+        )
+    assert not target.exists()
+    assert not _fresh_recovery_staging_container(config, clean_root).exists()
+    metadata_poison = copy.deepcopy(population)
+    poisoned_task = next(
+        item for item in metadata_poison["tasks"] if item["task_id"] == "LGCVF-090"
+    )
+    poisoned_task["title"] = "forged recovery task title"
+    forged_root = copy.deepcopy(population)
+    forged_root["population_root"] = "baguqeera-forged-population-root"
+    forged_task = copy.deepcopy(population)
+    forged_task["tasks"][0]["task_cid"] = "baguqeera-forged-task-cid"
+    for poisoned in (metadata_poison, forged_root, forged_task):
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="population differs from canonical source projection",
+        ):
+            materializer.materialize_fresh_generation_recovery(
+                config,
+                poisoned,
+                root=clean_root,
+                source_root=clean_root,
+            )
+        assert not target.exists()
+        assert not _fresh_recovery_staging_container(config, clean_root).exists()
+
+    preview = materializer.preview_fresh_generation_recovery(
+        config, population, root=clean_root, source_root=clean_root
+    )
+    qualification = _fake_recovery_qualification(preview)
+    _patch_recovery_qualification_only(monkeypatch, qualification)
+    tracked = clean_root / "README.md"
+    tracked_bytes = tracked.read_bytes()
+
+    def drift_tracked_source(point: str) -> None:
+        if point == "after_stage_verification":
+            tracked.write_bytes(tracked_bytes + b"\nsource-race\n")
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="exact clean source binding.*dirty execution worktree",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=clean_root,
+            source_root=clean_root,
+            fault_injector=drift_tracked_source,
+        )
+    tracked.write_bytes(tracked_bytes)
+    assert not target.exists()
+    assert git("status", "--porcelain=v1", "--untracked-files=all", cwd=clean_root) == ""
+
+    merge_path = clean_root / str(
+        config["fresh_generation_recovery"]["merge_completions"][0][
+            "completed_record_path"
+        ]
+    )
+    merge_bytes = merge_path.read_bytes()
+
+    def drift_ignored_forensic_evidence(point: str) -> None:
+        if point == "after_stage_verification":
+            merge_path.write_bytes(merge_bytes + b"\n")
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="(?:SHA-256|bytes|evidence|record)",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=clean_root,
+            source_root=clean_root,
+            fault_injector=drift_ignored_forensic_evidence,
+        )
+    merge_path.write_bytes(merge_bytes)
+    assert not target.exists()
+    assert git("status", "--porcelain=v1", "--untracked-files=all", cwd=clean_root) == ""
+
+    receipt = materializer.materialize_fresh_generation_recovery(
+        config, population, root=clean_root, source_root=clean_root
+    )
+    assert receipt["completed_count"] == 13
+    assert target.is_dir()
+    staging = _fresh_recovery_staging_container(config, clean_root)
+    assert (staging / "recovery.lock").is_file()
+    assert not list(staging.glob("stage-*"))
+    assert git("status", "--porcelain=v1", "--untracked-files=all", cwd=clean_root) == ""
+
+
+def test_fresh_recovery_crash_collision_lock_and_qualifier_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, population = _fresh_recovery_population()
+    real_qualification_verifier = materializer._verify_recovery_qualification  # noqa: SLF001
+
+    crash_root = tmp_path / "crash"
+    crash_root.mkdir()
+    preview = materializer.preview_fresh_generation_recovery(
+        config, population, root=crash_root, source_root=ROOT
+    )
+    qualification = _fake_recovery_qualification(preview)
+    _patch_recovery_judge(monkeypatch, population, qualification)
+
+    kill_root = tmp_path / "killed-before-publish"
+    kill_root.mkdir()
+    kill_paths = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=kill_root
+    )
+
+    child_input = kill_root / "child-input.json"
+    materializer._atomic_write_json(  # noqa: SLF001
+        child_input,
+        {
+            "config": config,
+            "population": population,
+            "qualification": qualification,
+        },
+    )
+    child_program = """
+import copy
+import json
+import os
+import sys
+from pathlib import Path
+from scripts import materialize_logic_governed_compositional_verification_fabric_control_plane as materializer
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+config = payload["config"]
+population = payload["population"]
+qualification = payload["qualification"]
+source_root = Path(sys.argv[2])
+target_root = Path(sys.argv[3])
+materializer._require_clean_recovery_source = lambda *_args, **_kwargs: (
+    population["source_head"],
+    str(population["repository_tree_id"]).removeprefix("git-tree:"),
+)
+materializer._run_and_verify_recovery_qualification = (
+    lambda **_kwargs: copy.deepcopy(qualification)
+)
+materializer._verify_recovery_qualification = (
+    lambda value, **_kwargs: copy.deepcopy(dict(value))
+)
+
+def exit_before_publish(point):
+    if point == "after_stage_verification":
+        os._exit(73)
+
+materializer.materialize_fresh_generation_recovery(
+    config,
+    population,
+    root=target_root,
+    source_root=source_root,
+    fault_injector=exit_before_publish,
+)
+os._exit(75)
+"""
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            child_program,
+            str(child_input),
+            str(ROOT),
+            str(kill_root),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=180,
+    )
+    assert child.returncode == 73, (child.stdout, child.stderr)
+    assert not kill_paths["target"].exists()
+    kill_staging = _fresh_recovery_staging_container(config, kill_root)
+    stale_stages = list(kill_staging.glob("stage-*"))
+    assert len(stale_stages) == 1
+    assert materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=stale_stages[0]
+    )["target"].is_dir()
+    killed_replay = materializer.materialize_fresh_generation_recovery(
+        config,
+        population,
+        root=kill_root,
+        source_root=ROOT,
+    )
+    assert killed_replay["completed_count"] == 13
+    assert kill_paths["target"].is_dir()
+    assert not list(kill_staging.glob("stage-*"))
+
+    redirect_root = tmp_path / "redirect"
+    redirect_root.mkdir()
+    redirect_target = redirect_root / Path(
+        str(config["fresh_generation_recovery"]["target_runtime_root"])
+    )
+    redirect_target.parent.mkdir(parents=True)
+    redirect_destination = redirect_target.parent / "redirected-run-v17"
+    os.symlink(redirect_destination.name, redirect_target)
+    with pytest.raises(materializer.MaterializationError, match="contains a symlink"):
+        materializer.materialize_fresh_generation_recovery(
+            config, population, root=redirect_root, source_root=ROOT
+        )
+    assert not redirect_destination.exists()
+    assert not _fresh_recovery_staging_container(config, redirect_root).exists()
+
+    unsafe_stale_root = tmp_path / "unsafe-stale-stage"
+    unsafe_stale_root.mkdir()
+    unsafe_staging = _fresh_recovery_staging_container(config, unsafe_stale_root)
+    unsafe_staging.mkdir(parents=True, mode=0o700)
+    unsafe_staging.chmod(0o700)
+    outside = unsafe_stale_root / "outside"
+    outside.mkdir()
+    os.symlink(outside, unsafe_staging / "stage-forged-link")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="stale fresh recovery stage root identity differs",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=unsafe_stale_root,
+            source_root=ROOT,
+        )
+    assert outside.is_dir()
+    assert (unsafe_staging / "stage-forged-link").is_symlink()
+    assert not materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=unsafe_stale_root
+    )["target"].exists()
+
+    def crash(point: str) -> None:
+        if point == "after_stage_verification":
+            container = _fresh_recovery_staging_container(config, crash_root)
+            stages = list(container.glob("stage-*"))
+            assert len(stages) == 1
+            staged_target = stages[0] / Path(
+                str(config["fresh_generation_recovery"]["target_runtime_root"])
+            )
+            verified = staged_target.with_name("run-v17.verified-but-swapped")
+            staged_target.rename(verified)
+            staged_target.mkdir()
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="stage (?:root identity differs|changed after strict verification)",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=crash_root,
+            source_root=ROOT,
+            fault_injector=crash,
+        )
+    crash_paths = materializer._fresh_recovery_paths(config, root=crash_root)  # noqa: SLF001
+    assert not crash_paths["target"].exists()
+    crash_staging = _fresh_recovery_staging_container(config, crash_root)
+    assert crash_staging.is_dir()
+    assert not list(crash_staging.glob("stage-*"))
+
+    inner_swap_root = tmp_path / "inner-swap"
+    inner_swap_root.mkdir()
+
+    def mutate_verified_inner_file(point: str) -> None:
+        if point != "after_stage_verification":
+            return
+        container = _fresh_recovery_staging_container(config, inner_swap_root)
+        stages = list(container.glob("stage-*"))
+        assert len(stages) == 1
+        staged_receipt = materializer._fresh_recovery_paths(  # noqa: SLF001
+            config, root=stages[0]
+        )["recovery_receipt"]
+        staged_receipt.write_bytes(staged_receipt.read_bytes() + b"\n")
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="stage (?:file identity changed|changed after strict verification)",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=inner_swap_root,
+            source_root=ROOT,
+            fault_injector=mutate_verified_inner_file,
+        )
+    inner_paths = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=inner_swap_root
+    )
+    assert not inner_paths["target"].exists()
+    inner_staging = _fresh_recovery_staging_container(config, inner_swap_root)
+    assert inner_staging.is_dir()
+    assert not list(inner_staging.glob("stage-*"))
+
+    permission_root = tmp_path / "permission-swap"
+    permission_root.mkdir()
+
+    def chmod_verified_stage(point: str) -> None:
+        if point != "after_stage_verification":
+            return
+        stages = list(
+            _fresh_recovery_staging_container(
+                config, permission_root
+            ).glob("stage-*")
+        )
+        assert len(stages) == 1
+        staged_target = materializer._fresh_recovery_paths(  # noqa: SLF001
+            config, root=stages[0]
+        )["target"]
+        staged_target.chmod(0o777)
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="stage (?:root identity|changed after strict verification)",
+    ):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=permission_root,
+            source_root=ROOT,
+            fault_injector=chmod_verified_stage,
+        )
+    assert not materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=permission_root
+    )["target"].exists()
+
+    def crash_after_publish(point: str) -> None:
+        if point == "after_publish":
+            raise RuntimeError("injected-after-publish")
+
+    with pytest.raises(RuntimeError, match="injected-after-publish"):
+        materializer.materialize_fresh_generation_recovery(
+            config,
+            population,
+            root=crash_root,
+            source_root=ROOT,
+            fault_injector=crash_after_publish,
+        )
+    assert crash_paths["target"].is_dir()
+    replay = materializer.materialize_fresh_generation_recovery(
+        config, population, root=crash_root, source_root=ROOT
+    )
+    assert replay["completed_count"] == 13
+
+    collision_root = tmp_path / "collision"
+    collision_root.mkdir()
+    collision_target = materializer._fresh_recovery_paths(  # noqa: SLF001
+        config, root=collision_root
+    )["target"]
+    collision_target.mkdir(parents=True)
+    with pytest.raises(materializer.MaterializationError):
+        materializer.materialize_fresh_generation_recovery(
+            config, population, root=collision_root, source_root=ROOT
+        )
+
+    lock_root = tmp_path / "hardlink-lock"
+    lock_root.mkdir()
+    lock_target = materializer._fresh_recovery_paths(config, root=lock_root)[  # noqa: SLF001
+        "target"
+    ]
+    lock_container = _fresh_recovery_staging_container(config, lock_root)
+    lock_container.mkdir(parents=True, mode=0o700)
+    lock_container.chmod(0o700)
+    seed = lock_container / "lock-seed"
+    seed.write_text("preserved", encoding="utf-8")
+    seed.chmod(0o600)
+    os.link(seed, lock_container / "recovery.lock")
+    with pytest.raises(materializer.MaterializationError, match="lock identity differs"):
+        materializer.materialize_fresh_generation_recovery(
+            config, population, root=lock_root, source_root=ROOT
+        )
+    assert not lock_target.exists()
+
+    monkeypatch.setattr(
+        materializer,
+        "_verify_recovery_qualification",
+        real_qualification_verifier,
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="qualification is absent or invalid",
+    ):
+        # A minimal self-authored pass cannot enter the protected verifier.
+        materializer._verify_recovery_qualification(  # noqa: SLF001
+            {"passed": True, "returncode": 0},
+            preview=preview,
+            source_root=ROOT,
+        )

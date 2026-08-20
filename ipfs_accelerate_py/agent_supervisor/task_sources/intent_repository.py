@@ -358,13 +358,20 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
     if isinstance(value, (dict, list)):
         return value
     text = str(value)
-    if not text:
-        return {}
+
+    def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = item
+        return result
+
     try:
-        return json.loads(text)
+        return json.loads(text, object_pairs_hook=closed_object)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise IntentRepositoryIntegrityError(
-            f"{noun} is not valid JSON"
+            f"{noun} is not valid unambiguous JSON"
         ) from exc
 
 
@@ -2878,6 +2885,7 @@ class IntentRepository:
                 )
                 event_body["completion_receipt_cid"] = receipt_cid
                 event_body["evidence_digest"] = evidence_digest
+                event_body["evidence_digests"] = list(evidence_digests or ())
                 return self._append_event(
                     connection,
                     event_type=IntentEventType.COMPLETION_RECORDED,
@@ -3788,6 +3796,24 @@ class IntentRepository:
                     _canonical(body, noun="task body"),
                 ],
             )
+            connection.execute(
+                "DELETE FROM task_revisions WHERE task_cid = ? AND revision = ?",
+                [tcid, revision],
+            )
+            connection.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    tcid,
+                    revision,
+                    str(payload.get("status") or "ready"),
+                    _canonical(body, noun="task revision body"),
+                    now,
+                ],
+            )
             if "dependencies" in payload:
                 deps = payload.get("dependencies") or []
                 if isinstance(deps, Sequence) and not isinstance(deps, (str, bytes)):
@@ -3891,6 +3917,24 @@ class IntentRepository:
                         _canonical(body, noun="task body"),
                     ],
                 )
+            connection.execute(
+                "DELETE FROM task_revisions WHERE task_cid = ? AND revision = ?",
+                [tcid, revision],
+            )
+            connection.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    tcid,
+                    revision,
+                    status,
+                    _canonical(body, noun="task revision body"),
+                    now,
+                ],
+            )
             if event_type == IntentEventType.COMPLETION_RECORDED.value:
                 receipt_cid = str(
                     payload.get("completion_receipt_cid")
@@ -3906,6 +3950,50 @@ class IntentRepository:
                     payload.get("evidence_digest")
                     or content_identity({"task_cid": tcid, "revision": revision})
                 )
+                raw_evidence_digests = payload.get("evidence_digests", [])
+                if not isinstance(raw_evidence_digests, list) or any(
+                    not isinstance(item, str) or not item
+                    for item in raw_evidence_digests
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "completion event evidence_digests are malformed"
+                    )
+                if "evidence_digests" not in payload:
+                    reconstructable_legacy_digest = content_identity(
+                        {
+                            "task_cid": tcid,
+                            "revision": revision,
+                            "receipt": receipt,
+                            "evidence_digests": [],
+                        }
+                    )
+                    if evidence_digest != reconstructable_legacy_digest:
+                        raise IntentRepositoryIntegrityError(
+                            "legacy completion event omitted nonempty evidence_digests"
+                        )
+                reconstructed_evidence_digest = content_identity(
+                    {
+                        "task_cid": tcid,
+                        "revision": revision,
+                        "receipt": receipt,
+                        "evidence_digests": list(raw_evidence_digests),
+                    }
+                )
+                reconstructed_receipt_cid = content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": tcid,
+                        "revision": revision,
+                        "evidence_digest": reconstructed_evidence_digest,
+                    }
+                )
+                if (
+                    evidence_digest != reconstructed_evidence_digest
+                    or receipt_cid != reconstructed_receipt_cid
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "completion event evidence identity does not reconstruct"
+                    )
                 connection.execute(
                     "DELETE FROM completion_receipts WHERE receipt_cid = ?",
                     [receipt_cid],
@@ -3932,6 +4020,7 @@ class IntentRepository:
                             {
                                 "schema": COMPLETION_EVIDENCE_SCHEMA,
                                 "receipt": receipt,
+                                "evidence_digests": list(raw_evidence_digests),
                                 "revision": revision,
                             },
                             noun="completion receipt",

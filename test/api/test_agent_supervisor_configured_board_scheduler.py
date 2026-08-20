@@ -411,6 +411,185 @@ def _seed_configured_repo(tmp_path: Path) -> tuple[Path, Path]:
     return repo, config_path
 
 
+def _seed_fresh_recovery_board(
+    tmp_path: Path,
+) -> tuple[Path, scheduler_module.ConfiguredBoard]:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    canonical_config_path = repo / scheduler_module.FRESH_RECOVERY_CONFIG_PATH
+    materializer_path = scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    _write(repo / materializer_path, "raise SystemExit(99)\n")
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["materializer_path"] = materializer_path
+    payload["fresh_generation_recovery"] = {
+        "schema": scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA,
+        "source_generation": "lgcvf-run-v16",
+        "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+    }
+    payload["runtime_paths"] = {
+        "root": "data/lgcvf/run-v17",
+        "state": "data/lgcvf/run-v17/state",
+        "worktrees": "data/lgcvf/run-v17/worktrees",
+        "merge_queue": "data/lgcvf/run-v17/merge-queue",
+        "logs": "data/lgcvf/run-v17/logs",
+    }
+    payload["protected_paths"] = [
+        scheduler_module.FRESH_RECOVERY_CONFIG_PATH
+        if item == "config/scheduler.json"
+        else item
+        for item in payload["protected_paths"]
+    ]
+    payload["protected_paths"].append(materializer_path)
+    _write(
+        canonical_config_path,
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+    )
+    _git(
+        repo,
+        "add",
+        scheduler_module.FRESH_RECOVERY_CONFIG_PATH,
+        materializer_path,
+    )
+    _git(repo, "commit", "-m", "declare initial recovery admission")
+    return repo, load_configured_board(canonical_config_path, repo_root=repo)
+
+
+def _seed_stripped_fresh_recovery_alias_board(
+    tmp_path: Path,
+) -> tuple[Path, scheduler_module.ConfiguredBoard, Path]:
+    """Build a marker-free profile whose paths resolve into protected run-v17."""
+
+    repo, protected_board = _seed_fresh_recovery_board(tmp_path)
+    payload = dict(protected_board.payload)
+    payload.pop("fresh_generation_recovery")
+    payload.pop("materializer_path")
+
+    protected_root = (
+        repo / scheduler_module.FRESH_RECOVERY_TARGET_RELATIVE_ROOT
+    )
+    alias_relative = Path("data/ignored-run-v18-alias")
+    alias_path = repo / alias_relative
+    alias_path.parent.mkdir(parents=True, exist_ok=True)
+    alias_path.symlink_to(os.path.relpath(protected_root, alias_path.parent))
+
+    runtime = dict(payload["runtime_paths"])
+    runtime.update(
+        {
+            "root": alias_relative.as_posix(),
+            "state": (alias_relative / "state").as_posix(),
+            "worktrees": (alias_relative / "worktrees").as_posix(),
+            "merge_queue": (alias_relative / "merge-queue").as_posix(),
+            "logs": (alias_relative / "logs").as_posix(),
+            "evidence": (alias_relative / "evidence").as_posix(),
+        }
+    )
+    payload["runtime_paths"] = runtime
+    program = {
+        "authority_mode": "embedded",
+        "task_source_kind": "duckdb",
+        "store_generation": "lgcvf-run-v18",
+        "export_profile": "lgcvf-run-v18",
+        "schema_revision": "test-operational-v1",
+        "failover_policy": "fail_closed",
+        "store_id": (alias_relative / "control.duckdb").as_posix(),
+        "event_store_path": (alias_relative / "events").as_posix(),
+        "runtime_registry_path": (alias_relative / "registry").as_posix(),
+        "worktree_root": (alias_relative / "worktrees").as_posix(),
+    }
+    payload["database_program"] = program
+
+    alternate_relative = Path("config/ignored-run-v18-scheduler.json")
+    payload["protected_paths"] = [
+        *payload["protected_paths"],
+        alternate_relative.as_posix(),
+    ]
+    alternate_config = repo / alternate_relative
+    _write(alternate_config, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", alias_relative.as_posix(), alternate_relative.as_posix())
+    _git(repo, "commit", "-m", "add stripped resolved-alias exploit fixture")
+    return (
+        repo,
+        load_configured_board(alternate_config, repo_root=repo),
+        protected_root,
+    )
+
+
+def _fresh_recovery_verification_report() -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "schema": scheduler_module.FRESH_RECOVERY_VERIFICATION_SCHEMA,
+        "valid": True,
+        "verification_mode": "read_only",
+        "source_generation": "lgcvf-run-v16",
+        "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+        "manifest_cid": "cid:recovery-manifest",
+        "receipt_cid": "cid:recovery-receipt",
+        "source_evidence_cid": "cid:source-evidence",
+        "completed_task_ids": [
+            "LGCVF-001",
+            "LGCVF-002",
+            "LGCVF-010",
+            "LGCVF-020",
+            "LGCVF-030",
+            "LGCVF-040",
+            "LGCVF-050",
+            "LGCVF-051",
+            "LGCVF-060",
+            "LGCVF-061",
+            "LGCVF-070",
+            "LGCVF-071",
+            "LGCVF-080",
+        ],
+        "todo_task_ids": [
+            "LGCVF-081",
+            "LGCVF-090",
+            "LGCVF-091",
+            "LGCVF-100",
+            "LGCVF-101",
+            "LGCVF-102",
+            "LGCVF-110",
+            "LGCVF-111",
+            "LGCVF-112",
+            "LGCVF-113",
+            "LGCVF-120",
+            "LGCVF-122",
+            "LGCVF-124",
+        ],
+        "blocked_task_ids": ["LGCVF-121", "LGCVF-123"],
+        "completed_count": 13,
+        "todo_count": 13,
+        "blocked_count": 2,
+        "ready_task_ids": ["LGCVF-081"],
+        "validation_qualification_cid": "cid:validation-qualification",
+        "model_provider_route": "none",
+        "network_isolation_enforced": True,
+        "candidate_authored_validation": True,
+        "validation_completion_authoritative": False,
+        "task_implementation_complete": False,
+        "test_qualification_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authorized": False,
+        "source_database_statuses_read": False,
+        "synthetic_source_disposition": "quarantined_not_imported",
+        "operational_verification_root": "cid:operational-verification",
+        "stores_unchanged": True,
+    }
+    report["verification_root"] = scheduler_module._identity(report)
+    return report
+
+
+def _recovery_verifier_result(
+    report: dict[str, Any],
+    *,
+    returncode: int = 0,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        [sys.executable, "materializer.py", "verify"],
+        returncode,
+        json.dumps(report, sort_keys=True),
+        "",
+    )
+
+
 def _commit_v3_route_authorization(
     repo: Path,
     config_path: Path,
@@ -7201,6 +7380,426 @@ def test_v3_coordinator_replans_second_wave_from_new_head_and_revision(
     assert launched[0]["revision_cid"] == launched[1]["revision_cid"]
     assert launched[1]["source_head"] != launched[2]["source_head"]
     assert launched[1]["revision_cid"] != launched[2]["revision_cid"]
+
+
+def test_fresh_recovery_initial_admission_precedes_launch_rendering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = _fresh_recovery_verification_report()
+    calls: list[tuple[Path, Path]] = []
+
+    def admit(
+        observed_board: scheduler_module.ConfiguredBoard,
+        materializer_path: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((observed_board.repo_root, materializer_path))
+        return _recovery_verifier_result(report)
+
+    monkeypatch.setattr(scheduler_module, "_run_fresh_recovery_verifier", admit)
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260819T-initial-recovery",
+    )
+
+    assert calls == [
+        (repo, repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH)
+    ]
+    assert launch["fresh_generation_recovery_admission"] == {
+        "schema": scheduler_module.FRESH_RECOVERY_VERIFICATION_SCHEMA,
+        "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+        "manifest_cid": report["manifest_cid"],
+        "receipt_cid": report["receipt_cid"],
+        "operational_verification_root": report["operational_verification_root"],
+        "verification_root": report["verification_root"],
+        "stores_unchanged": True,
+    }
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_verifier_uses_isolated_python_and_closed_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    report = _fresh_recovery_verification_report()
+    observed: dict[str, Any] = {}
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sanitized_git_environment",
+        lambda: {"PATH": "/usr/bin:/bin", "LANG": "C"},
+    )
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        observed["argv"] = argv
+        observed["kwargs"] = kwargs
+        return _recovery_verifier_result(report)
+
+    monkeypatch.setattr(scheduler_module.subprocess, "run", run)
+
+    completed = scheduler_module._run_fresh_recovery_verifier(
+        board,
+        materializer,
+    )
+
+    assert completed.returncode == 0
+    assert observed["argv"] == [
+        sys.executable,
+        "-I",
+        str(materializer),
+        "verify",
+    ]
+    assert observed["kwargs"]["cwd"] == repo
+    assert observed["kwargs"]["env"] == {
+        "PATH": "/usr/bin:/bin",
+        "LANG": "C",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONNOUSERSITE": "1",
+    }
+    assert observed["kwargs"]["stdin"] is subprocess.DEVNULL
+    assert observed["kwargs"]["capture_output"] is True
+
+
+def test_fresh_recovery_launch_ignores_hostile_user_site_startup_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = _fresh_recovery_verification_report()
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    _write(
+        materializer,
+        "import json\n"
+        f"print(json.dumps({report!r}, sort_keys=True))\n",
+    )
+    _git(repo, "add", scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH)
+    _git(repo, "commit", "-m", "install strict verifier fixture")
+
+    marker = tmp_path / "hostile-user-site-executed"
+    user_site = (
+        tmp_path
+        / "hostile-user-base"
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    _write(
+        user_site / "sitecustomize.py",
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+    )
+    base_environment = scheduler_module._sanitized_git_environment()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sanitized_git_environment",
+        lambda: {
+            **base_environment,
+            "PYTHONUSERBASE": str(user_site.parents[2]),
+        },
+    )
+
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260820T-isolated-recovery-verifier",
+    )
+
+    assert launch["fresh_generation_recovery_admission"]["verification_root"] == (
+        report["verification_root"]
+    )
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    "reason",
+    (
+        "run-v17 target is absent",
+        "fresh recovery manifest is absent",
+        "fresh recovery control content identity differs",
+        "fresh recovery control status partition differs",
+    ),
+)
+def test_fresh_recovery_launch_rejects_absent_canonical_tampered_or_progressed_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    rejected = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/lgcvf-duckdb-materialization@1",
+        "valid": False,
+        "error": reason,
+    }
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(rejected, returncode=2),
+    )
+    rendered = False
+
+    def rendering_tripwire(*_args: Any, **_kwargs: Any) -> tuple[str, ...]:
+        nonlocal rendered
+        rendered = True
+        raise AssertionError("daemon command rendering must remain unreachable")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_common_args",
+        rendering_tripwire,
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="typed live-continuity verifier is required",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-rejected-recovery",
+        )
+
+    assert rendered is False
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+@pytest.mark.parametrize(
+    "policy",
+    (
+        None,
+        {"schema": scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA},
+    ),
+)
+def test_fresh_recovery_launch_rejects_stripped_or_partial_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: dict[str, Any] | None,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    payload = dict(board.payload)
+    if policy is None:
+        payload.pop("fresh_generation_recovery")
+    else:
+        payload["fresh_generation_recovery"] = policy
+    board = replace(board, payload=payload)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("invalid policy reached public verifier"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="fresh-generation recovery initial launch admission failed",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-stripped-recovery-policy",
+        )
+
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_launch_rejects_alternate_config_or_materializer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("foreign recovery authority reached verifier"),
+    )
+
+    alternate_config = repo / "config/alternate-run-v17-scheduler.json"
+    alternate_payload = dict(board.payload)
+    alternate_payload["protected_paths"] = [
+        alternate_config.relative_to(repo).as_posix()
+        if item == scheduler_module.FRESH_RECOVERY_CONFIG_PATH
+        else item
+        for item in board.protected_paths
+    ]
+    _write(
+        alternate_config,
+        json.dumps(alternate_payload, indent=2, sort_keys=True) + "\n",
+    )
+    _git(repo, "add", alternate_config.relative_to(repo).as_posix())
+    _git(repo, "commit", "-m", "add alternate run-v17 config exploit fixture")
+    alternate_board = load_configured_board(alternate_config, repo_root=repo)
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="exact canonical scheduler config",
+    ):
+        configured_board_launch_plan(
+            alternate_board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-alternate-recovery-config",
+        )
+
+    alternate_materializer = "scripts/alternate_recovery_verifier.py"
+    _write(repo / alternate_materializer, "raise SystemExit(0)\n")
+    payload = dict(board.payload)
+    payload["materializer_path"] = alternate_materializer
+    protected = [
+        *board.protected_paths,
+        alternate_materializer,
+    ]
+    foreign_verifier_board = replace(
+        board,
+        payload=payload,
+        protected_paths=tuple(protected),
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="exact canonical recovery verifier",
+    ):
+        configured_board_launch_plan(
+            foreign_verifier_board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-alternate-recovery-verifier",
+        )
+
+    _write(
+        repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH,
+        "raise SystemExit('fabricated admission')\n",
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="not current tracked source",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-dirty-recovery-verifier",
+        )
+
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_preflight_rejects_marker_free_resolved_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board, protected_root = _seed_stripped_fresh_recovery_alias_board(
+        tmp_path
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("stripped alias reached public verifier"),
+    )
+
+    report = preflight_configured_board(board)
+
+    admission = next(
+        item
+        for item in report["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert report["valid"] is False
+    assert admission["passed"] is False
+    assert "lacks its full recovery policy" in admission["detail"]
+    assert not (protected_root / "state").exists()
+
+
+def test_fresh_recovery_launch_rejects_marker_free_resolved_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board, protected_root = _seed_stripped_fresh_recovery_alias_board(
+        tmp_path
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("stripped alias reached public verifier"),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_common_args",
+        lambda *_args, **_kwargs: pytest.fail("stripped alias reached rendering"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="protected run-v17 target lacks its full recovery policy",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-resolved-alias-rejected",
+        )
+
+    assert not (protected_root / "state").exists()
+
+
+def test_fresh_recovery_preflight_requires_closed_content_addressed_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = _fresh_recovery_verification_report()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(report),
+    )
+    admitted = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in admitted["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert admission["passed"] is True
+    assert admission["detail"]["verification_root"] == report["verification_root"]
+
+    forged = dict(report)
+    forged["unexpected_authority"] = True
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(forged),
+    )
+    rejected = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in rejected["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert admission["passed"] is False
+    assert "report shape differs" in admission["detail"]
+
+
+def test_ordinary_board_launch_does_not_invoke_recovery_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=config_path.parents[1])
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("ordinary board invoked recovery verifier"),
+    )
+
+    launch = configured_board_launch_plan(
+        board,
+        implement=False,
+        detach=False,
+        stamp="20260819T-ordinary-board",
+    )
+    assert "fresh_generation_recovery_admission" not in launch
 
 
 def test_preflight_accepts_exact_committed_binding_then_rejects_drift(

@@ -13,6 +13,7 @@ readiness, queue retry, goal reopen, current evidence.
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import
     DeltaEffectClass,
     LifecycleState,
     PlanDeltaOperation,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -47,6 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepository,
     IntentRepositoryBoundsError,
     IntentRepositoryConflictError,
+    IntentRepositoryIntegrityError,
     PlanRevisionRepository,
     open_intent_repository,
     task_authority_spec_cid,
@@ -333,6 +338,54 @@ def test_full_plan_projection_binds_complete_task_specs_and_is_stable(
         )
         assert changed["projection_cid"] != first_projection_cid
         assert changed_task_a["spec_cid"] != first_task_spec_cid
+
+
+def test_plan_projection_rejects_duplicate_json_authority(tmp_path: Path) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            row = connection.execute(
+                "SELECT ordinal, effect_json FROM task_outputs "
+                "WHERE task_cid = ? ORDER BY ordinal LIMIT 1",
+                [ids["task_a"]],
+            ).fetchone()
+            assert row is not None
+            raw = str(row[1])
+            decoded = json.loads(raw)
+            key = next(iter(decoded))
+            evil = "forged" if decoded[key] != "forged" else "other-forged"
+            ambiguous = (
+                "{" + json.dumps(key) + ":" + json.dumps(evil) + "," + raw[1:]
+            )
+            connection.execute(
+                "UPDATE task_outputs SET effect_json = ? "
+                "WHERE task_cid = ? AND ordinal = ?",
+                [ambiguous, ids["task_a"], int(row[0])],
+            )
+
+        with pytest.raises(
+            IntentRepositoryIntegrityError,
+            match="unambiguous JSON",
+        ):
+            repo.plan_projection()
+
+
+def test_plan_projection_rejects_empty_persisted_json_authority(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                "UPDATE tasks SET extension_json = '' WHERE task_cid = ?",
+                [ids["task_a"]],
+            )
+
+        with pytest.raises(
+            IntentRepositoryIntegrityError,
+            match="unambiguous JSON",
+        ):
+            repo.plan_projection()
 
 
 def test_completion_evidence_projection_binds_exact_receipts(tmp_path: Path) -> None:
@@ -686,6 +739,12 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         repo.record_queue_backoff(
             task_cid=ids["task_b"], delay_ms=5_000, reason="retry later"
         )
+        completion_before = repo.completion_evidence_projection(
+            task_cids=[ids["task_a"]]
+        )
+        assert completion_before["completion_receipts"][0]["body"][
+            "evidence_digests"
+        ] == [ids["evidence_digest"]]
 
         before = repo.snapshot()
         assert before.task_count == 2
@@ -707,6 +766,10 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         assert after.goal_count == before.goal_count
         assert after.plan_count == before.plan_count
         assert after.dependency_count == before.dependency_count
+        assert (
+            repo.completion_evidence_projection(task_cids=[ids["task_a"]])
+            == completion_before
+        )
 
         rebuilt_task = repo.get_task(ids["task_a"])
         assert rebuilt_task is not None
@@ -719,6 +782,67 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         # Recovery is a pure database operation (no external files).
         recovery = repo.recover()
         assert recovery.event_type == IntentEventType.RECOVERY_APPLIED.value
+
+
+def test_legacy_completion_replay_accepts_only_reconstructable_empty_evidence(
+    tmp_path: Path,
+) -> None:
+    """An omitted legacy member must not erase a nonempty evidence binding."""
+
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        receipt = {"authority": "legacy-independent"}
+
+        def payload(task_cid: str, evidence_digests: list[str]) -> dict[str, object]:
+            revision = 2
+            evidence_digest = content_identity(
+                {
+                    "task_cid": task_cid,
+                    "revision": revision,
+                    "receipt": receipt,
+                    "evidence_digests": evidence_digests,
+                }
+            )
+            return {
+                "task_cid": task_cid,
+                "task_alias": task_cid,
+                "goal_cid": ids["goal_cid"],
+                "status": "completed",
+                "revision": revision,
+                "receipt": receipt,
+                "completion_receipt_cid": content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": task_cid,
+                        "revision": revision,
+                        "evidence_digest": evidence_digest,
+                    }
+                ),
+                "evidence_digest": evidence_digest,
+                "recorded_at": "2026-01-01T00:00:00+00:00",
+            }
+
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            repo._apply_event_payload(  # noqa: SLF001
+                connection,
+                event_type=IntentEventType.COMPLETION_RECORDED.value,
+                payload=payload(ids["task_a"], []),
+            )
+        projection = repo.completion_evidence_projection(task_cids=[ids["task_a"]])
+        assert projection["completion_receipts"][0]["body"][
+            "evidence_digests"
+        ] == []
+
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            with pytest.raises(
+                IntentRepositoryIntegrityError,
+                match="omitted nonempty evidence_digests",
+            ):
+                repo._apply_event_payload(  # noqa: SLF001
+                    connection,
+                    event_type=IntentEventType.COMPLETION_RECORDED.value,
+                    payload=payload(ids["task_b"], [ids["evidence_digest"]]),
+                )
 
 
 # ---------------------------------------------------------------------------

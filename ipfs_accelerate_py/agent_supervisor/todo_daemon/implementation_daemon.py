@@ -67508,11 +67508,13 @@ class PortalImplementationDaemon:
 # Markdown taskboards and JSON queue/status/events/PID projections are optional
 # non-authoritative projections only.
 
-DATABASE_IMPLEMENTATION_DAEMON_INTERFACE = "DatabaseImplementationDaemon@1"
-DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
-DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/database-implementation-daemon@1"
+from .database_execution_schema import (
+    DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
+    DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
 )
+
+DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
@@ -67551,82 +67553,6 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
-
-_DAEMON_EXECUTION_SQL = """
-CREATE TABLE IF NOT EXISTS daemon_execution_metadata (
-    key VARCHAR PRIMARY KEY,
-    value VARCHAR NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS database_task_attempts (
-    attempt_id VARCHAR PRIMARY KEY,
-    claim_id VARCHAR NOT NULL,
-    task_cid VARCHAR NOT NULL,
-    task_alias VARCHAR NOT NULL DEFAULT '',
-    attempt_number BIGINT NOT NULL,
-    owner_session_id VARCHAR NOT NULL,
-    fencing_token BIGINT NOT NULL,
-    fence_epoch BIGINT NOT NULL,
-    lease_id VARCHAR NOT NULL DEFAULT '',
-    committed_phase VARCHAR NOT NULL,
-    status VARCHAR NOT NULL,
-    started_at_ms BIGINT NOT NULL,
-    finished_at_ms BIGINT,
-    revision BIGINT NOT NULL DEFAULT 1,
-    body_json VARCHAR NOT NULL DEFAULT '{}'
-);
-
-CREATE INDEX IF NOT EXISTS database_task_attempts_task_idx
-    ON database_task_attempts(task_cid, attempt_number);
-CREATE INDEX IF NOT EXISTS database_task_attempts_owner_idx
-    ON database_task_attempts(owner_session_id, status);
-CREATE INDEX IF NOT EXISTS database_task_attempts_claim_idx
-    ON database_task_attempts(claim_id);
-
-CREATE TABLE IF NOT EXISTS attempt_phases (
-    attempt_id VARCHAR NOT NULL,
-    phase VARCHAR NOT NULL,
-    committed_at_ms BIGINT NOT NULL,
-    fencing_token BIGINT NOT NULL,
-    fence_epoch BIGINT NOT NULL,
-    revision BIGINT NOT NULL,
-    body_json VARCHAR NOT NULL DEFAULT '{}',
-    PRIMARY KEY (attempt_id, phase)
-);
-
-CREATE TABLE IF NOT EXISTS provider_invocations (
-    invocation_id VARCHAR PRIMARY KEY,
-    attempt_id VARCHAR NOT NULL,
-    task_cid VARCHAR NOT NULL,
-    idempotency_key VARCHAR NOT NULL,
-    owner_session_id VARCHAR NOT NULL,
-    recorded_at_ms BIGINT NOT NULL,
-    result_json VARCHAR NOT NULL DEFAULT '{}',
-    UNIQUE (attempt_id, idempotency_key)
-);
-
-CREATE TABLE IF NOT EXISTS effect_claims (
-    effect_id VARCHAR PRIMARY KEY,
-    attempt_id VARCHAR NOT NULL,
-    task_cid VARCHAR NOT NULL,
-    effect_key VARCHAR NOT NULL,
-    idempotency_key VARCHAR NOT NULL,
-    owner_session_id VARCHAR NOT NULL,
-    recorded_at_ms BIGINT NOT NULL,
-    result_json VARCHAR NOT NULL DEFAULT '{}',
-    UNIQUE (attempt_id, idempotency_key)
-);
-
-CREATE TABLE IF NOT EXISTS daemon_execution_events (
-    event_id VARCHAR PRIMARY KEY,
-    attempt_id VARCHAR NOT NULL DEFAULT '',
-    task_cid VARCHAR NOT NULL DEFAULT '',
-    event_type VARCHAR NOT NULL,
-    recorded_at_ms BIGINT NOT NULL,
-    body_json VARCHAR NOT NULL DEFAULT '{}'
-);
-"""
-
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""

@@ -14,14 +14,20 @@ from __future__ import annotations
 
 import importlib
 import json
+import subprocess
+import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
+    DatabaseProgramConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -31,11 +37,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_datasets_authoritative_operational_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    connect_duckdb_with_policy,
     open_duckdb_connection,
-)
-from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-    DATABASE_PROGRAM_JSON_ENV,
-    DatabaseProgramConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
@@ -70,6 +73,94 @@ pytestmark = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for database implementation daemon tests",
 )
+
+
+def test_provider_cold_execution_schema_installer_matches_daemon_contract(
+    tmp_path: Path,
+) -> None:
+    """The bootstrap DDL stays provider-cold and is the daemon's exact DDL."""
+
+    database_path = tmp_path / "execution.duckdb"
+    program = """
+import json
+import sys
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_execution_schema import (
+    install_database_execution_schema,
+)
+
+receipt = install_database_execution_schema(
+    Path(sys.argv[1]),
+    metadata={
+        "authority_mode": "embedded",
+        "logical_owner_session_id": "session:test:logical-owner",
+        "process_instance_id": "process:test:bootstrap",
+        "state_schema_revision": "datasets-authoritative-operational-v1",
+        "control_schema_profile_id": "profile:test",
+        "control_schema_fingerprint": "sha256:" + "a" * 64,
+    },
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if name == "urllib.request"
+    or "llm_router" in name
+    or ".providers." in name
+    or name.split(".", 1)[0] in {"anthropic", "openai"}
+)
+print(json.dumps({"forbidden": forbidden, "receipt": receipt}, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", program, str(database_path)],
+        cwd=Path(__file__).resolve().parents[2],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    observed = json.loads(completed.stdout)
+    assert observed["forbidden"] == []
+    assert observed["receipt"]["tables"] == [
+        "daemon_execution_metadata",
+        "database_task_attempts",
+        "attempt_phases",
+        "provider_invocations",
+        "effect_claims",
+        "daemon_execution_events",
+    ]
+
+    schema_module = importlib.import_module(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.database_execution_schema"
+    )
+    daemon_module = importlib.import_module(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    )
+    assert daemon_module._DAEMON_EXECUTION_SQL == schema_module.DAEMON_EXECUTION_SQL
+
+    duckdb = pytest.importorskip("duckdb")
+    connection = connect_duckdb_with_policy(
+        duckdb,
+        database_path,
+        read_only=True,
+    )
+    try:
+        metadata = dict(
+            connection.execute(
+                "SELECT key, value FROM daemon_execution_metadata ORDER BY key"
+            ).fetchall()
+        )
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main'"
+            ).fetchall()
+        }
+    finally:
+        connection.close()
+    assert metadata == observed["receipt"]["metadata"]
+    assert tables == set(observed["receipt"]["tables"])
 
 
 def _population(task_count: int = 4) -> dict[str, object]:

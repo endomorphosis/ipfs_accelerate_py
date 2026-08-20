@@ -12,10 +12,12 @@ creation are one transaction.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    COORDINATION_HISTORY_PROJECTION_SCHEMA,
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
     FENCED_LEASE_INTERFACE,
@@ -38,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     duckdb_available,
     exclusive_scope_key,
     open_database_coordinator,
+    read_coordination_history_projection,
     read_coordination_registry_projection,
 )
 
@@ -1054,6 +1057,115 @@ def test_read_only_projection_preserves_database_bytes_and_exposes_histories(
             "body": {"reason": "foreign"},
         }
     ]
+
+
+def test_coordination_history_projection_is_closed_deterministic_and_read_only(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        lease = coordinator.acquire(
+            lease_kind="merge",
+            scope="history:exact",
+            owner_session_id="session:history",
+            lease_ms=30_000,
+            body={"reason": "history-projection"},
+        )
+        coordinator.release(lease, reason="history-complete")
+    finally:
+        coordinator.close()
+
+    before = (
+        database_path.stat().st_size,
+        database_path.stat().st_mtime_ns,
+        hashlib.sha256(database_path.read_bytes()).hexdigest(),
+    )
+    first = read_coordination_history_projection(database_path)
+    second = read_coordination_history_projection(database_path)
+
+    assert first == second
+    assert first["schema"] == COORDINATION_HISTORY_PROJECTION_SCHEMA
+    assert first["counts"] == {"token_history": 1, "lease_events": 2}
+    assert set(first) == {
+        "schema",
+        "authority_schema",
+        "schema_inventory",
+        "token_history",
+        "lease_events",
+        "counts",
+        "projection_root",
+    }
+    material = dict(first)
+    claimed = material.pop("projection_root")
+    encoded = json.dumps(
+        material, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert claimed == "sha256:" + hashlib.sha256(encoded).hexdigest()
+    assert before == (
+        database_path.stat().st_size,
+        database_path.stat().st_mtime_ns,
+        hashlib.sha256(database_path.read_bytes()).hexdigest(),
+    )
+
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute("CREATE TABLE forged_hidden_authority(value VARCHAR)")
+    finally:
+        connection.close()
+    forged_before = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    with pytest.raises(
+        DatabaseCoordinationStaleFenceError,
+        match="table inventory differs",
+    ):
+        read_coordination_history_projection(database_path)
+    assert hashlib.sha256(database_path.read_bytes()).hexdigest() == forged_before
+
+
+def test_coordination_projection_rejects_duplicate_json_authority(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        coordinator.register_task(
+            task_cid="task:duplicate-json",
+            task_id="DUP-001",
+            body={"task_alias": "DUP-001", "status": "todo"},
+        )
+        coordinator._require().execute(  # noqa: SLF001
+            "UPDATE coordination_tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                '{"task_alias":"EVIL","task_alias":"DUP-001","status":"todo"}',
+                "task:duplicate-json",
+            ],
+        )
+    finally:
+        coordinator.close()
+
+    with pytest.raises(
+        DatabaseCoordinationStaleFenceError,
+        match="unambiguous JSON",
+    ):
+        read_coordination_registry_projection(database_path)
+
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute(
+            "UPDATE coordination_tasks SET body_json = '' WHERE task_cid = ?",
+            ["task:duplicate-json"],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        DatabaseCoordinationStaleFenceError,
+        match="unambiguous JSON",
+    ):
+        read_coordination_registry_projection(database_path)
 
 
 @pytest.mark.parametrize("tamper", ["metadata", "schema"])

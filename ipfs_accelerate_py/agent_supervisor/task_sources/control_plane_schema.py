@@ -929,6 +929,7 @@ def install_datasets_authoritative_operational_schema(
     application_version: str | None = None,
     tool_version: str | None = None,
     owner_id: str | None = None,
+    database_uuid: str | None = None,
 ) -> MigrationRunReport:
     """Install the accelerator-only operational profile using the core runner.
 
@@ -965,6 +966,7 @@ def install_datasets_authoritative_operational_schema(
         application_version=application_version,
         tool_version=tool_version,
         owner_id=owner_id,
+        database_uuid=database_uuid,
     )
     report = runner.apply()
     verified = verify_datasets_authoritative_operational_schema(path)

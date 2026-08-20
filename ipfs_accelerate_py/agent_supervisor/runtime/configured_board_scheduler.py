@@ -152,6 +152,62 @@ ROUTE_SOURCE_TREE_ENV = (
 )
 ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
+FRESH_RECOVERY_POLICY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-fresh-generation-recovery-policy@1"
+)
+FRESH_RECOVERY_VERIFICATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-fresh-generation-recovery-verification@1"
+)
+FRESH_RECOVERY_TARGET_GENERATION = "lgcvf-run-v17"
+FRESH_RECOVERY_TARGET_RELATIVE_ROOT = (
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/"
+    "run-v17"
+)
+FRESH_RECOVERY_CONFIG_PATH = (
+    "config/agent_supervisor_logic_governed_compositional_verification_fabric_"
+    "scheduler.json"
+)
+FRESH_RECOVERY_MATERIALIZER_PATH = (
+    "scripts/materialize_logic_governed_compositional_verification_fabric_"
+    "control_plane.py"
+)
+FRESH_RECOVERY_VERIFICATION_FIELDS = frozenset(
+    {
+        "schema",
+        "valid",
+        "verification_mode",
+        "source_generation",
+        "target_generation",
+        "manifest_cid",
+        "receipt_cid",
+        "source_evidence_cid",
+        "completed_task_ids",
+        "todo_task_ids",
+        "blocked_task_ids",
+        "completed_count",
+        "todo_count",
+        "blocked_count",
+        "ready_task_ids",
+        "validation_qualification_cid",
+        "model_provider_route",
+        "network_isolation_enforced",
+        "candidate_authored_validation",
+        "validation_completion_authoritative",
+        "task_implementation_complete",
+        "test_qualification_complete",
+        "objective_complete",
+        "release_qualified",
+        "production_authorized",
+        "source_database_statuses_read",
+        "synthetic_source_disposition",
+        "operational_verification_root",
+        "stores_unchanged",
+        "verification_root",
+    }
+)
+FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES = 1_048_576
 SCHEDULER_PROVIDER_ENV_NAMES = (
     PROVIDER_ENV,
     FALLBACK_PROVIDER_ENV,
@@ -208,6 +264,96 @@ def _plan_bound_profile(board: "ConfiguredBoard") -> bool:
     """Whether this is the sealed v3 profile, rather than a legacy board."""
 
     return board.board_namespace == "agent-supervisor-prompt-only-self-improvement-v3"
+
+
+def _targets_fresh_recovery_generation(
+    payload: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> bool:
+    """Recognize protected run-v17 through markers or resolved target paths.
+
+    Lexical path checks alone are insufficient because an otherwise ordinary
+    profile can name an in-repository symlink whose resolved target is the
+    protected generation.  Resolve every authority-bearing database/runtime
+    path against the exact checkout root before deciding that recovery
+    admission is unnecessary.
+    """
+
+    if "fresh_generation_recovery" in payload:
+        return True
+    program = payload.get("database_program")
+    runtime = payload.get("runtime_paths")
+    values: list[str] = []
+    path_values: list[str] = []
+    if isinstance(program, Mapping):
+        values.extend(
+            str(program.get(field) or "")
+            for field in (
+                "store_generation",
+                "export_profile",
+                "store_id",
+                "event_store_path",
+                "runtime_registry_path",
+                "worktree_root",
+            )
+        )
+        path_values.extend(
+            str(program.get(field) or "")
+            for field in (
+                "store_id",
+                "event_store_path",
+                "runtime_registry_path",
+                "worktree_root",
+            )
+        )
+    if isinstance(runtime, Mapping):
+        values.extend(str(value or "") for value in runtime.values())
+        path_values.extend(
+            str(runtime.get(field) or "")
+            for field in (
+                "root",
+                "state",
+                "worktrees",
+                "merge_queue",
+                "logs",
+                "evidence",
+            )
+        )
+    for value in values:
+        normalized = value.replace("\\", "/")
+        if normalized in {
+            FRESH_RECOVERY_TARGET_GENERATION,
+            "logic-governed-compositional-verification-fabric-run-v17",
+        }:
+            return True
+        if "run-v17" in PurePosixPath(normalized).parts:
+            return True
+    try:
+        resolved_root = repo_root.resolve(strict=False)
+        protected_lexical = resolved_root / FRESH_RECOVERY_TARGET_RELATIVE_ROOT
+        protected_resolved = protected_lexical.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        # An unresolvable authority path is never grounds for bypassing the
+        # protected recovery gate.
+        return True
+    for text in path_values:
+        if not text:
+            continue
+        raw = Path(text)
+        lexical = raw if raw.is_absolute() else resolved_root / raw
+        try:
+            resolved = lexical.resolve(strict=False)
+        except (OSError, RuntimeError, ValueError):
+            return True
+        if (
+            lexical == protected_lexical
+            or lexical.is_relative_to(protected_lexical)
+            or resolved == protected_resolved
+            or resolved.is_relative_to(protected_resolved)
+        ):
+            return True
+    return False
 
 
 def _sanitized_git_environment() -> dict[str, str]:
@@ -2033,6 +2179,256 @@ def _run(
         )
 
 
+def _run_fresh_recovery_verifier(
+    board: ConfiguredBoard,
+    materializer_path: Path,
+) -> subprocess.CompletedProcess[str]:
+    """Run the protected public verifier without ambient provider authority."""
+
+    command = [sys.executable, "-I", str(materializer_path), "verify"]
+    environment = _sanitized_git_environment()
+    environment.update(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+        }
+    )
+    try:
+        return subprocess.run(
+            command,
+            cwd=board.repo_root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=300.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(
+            command,
+            124,
+            "",
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _fresh_recovery_admission_failure(detail: str) -> ConfiguredBoardError:
+    return ConfiguredBoardError(
+        "fresh-generation recovery initial launch admission failed: "
+        f"{detail}; a typed live-continuity verifier is required after any "
+        "legitimate runtime progress"
+    )
+
+
+def _verify_fresh_recovery_launch_admission(
+    board: ConfiguredBoard,
+) -> dict[str, Any] | None:
+    """Admit only the exact pristine run-v17 recovery before command rendering.
+
+    The scheduler does not interpret DuckDB or recovery artifacts itself.  A
+    protected public materializer owns those semantics and emits one closed,
+    content-addressed read-only verification report.  The current contract is
+    intentionally initial-state-only: a later restart fails closed until a
+    separately reviewed live-continuity verifier exists.
+    """
+
+    if not _targets_fresh_recovery_generation(
+        board.payload,
+        repo_root=board.repo_root,
+    ):
+        return None
+    if "fresh_generation_recovery" not in board.payload:
+        raise _fresh_recovery_admission_failure(
+            "protected run-v17 target lacks its full recovery policy"
+        )
+    policy = board.payload.get("fresh_generation_recovery")
+    if not isinstance(policy, Mapping):
+        raise _fresh_recovery_admission_failure("recovery policy is not an object")
+    if (
+        policy.get("schema") != FRESH_RECOVERY_POLICY_SCHEMA
+        or policy.get("target_generation") != FRESH_RECOVERY_TARGET_GENERATION
+    ):
+        raise _fresh_recovery_admission_failure(
+            "recovery policy schema or target generation differs"
+        )
+    canonical_config, canonical_config_relative = _lexical_repo_artifact(
+        board.repo_root,
+        board.path(FRESH_RECOVERY_CONFIG_PATH),
+    )
+    if (
+        canonical_config_relative != FRESH_RECOVERY_CONFIG_PATH
+        or Path(os.path.abspath(board.config_path)) != canonical_config
+    ):
+        raise _fresh_recovery_admission_failure(
+            "protected run-v17 must use the exact canonical scheduler config"
+        )
+    relative = _safe_relative(
+        board.payload.get("materializer_path"),
+        field="materializer_path",
+    )
+    if relative != FRESH_RECOVERY_MATERIALIZER_PATH:
+        raise _fresh_recovery_admission_failure(
+            "protected run-v17 must use the exact canonical recovery verifier"
+        )
+    if relative not in board.protected_paths:
+        raise _fresh_recovery_admission_failure(
+            "public recovery verifier is not a protected control file"
+        )
+    materializer_path, _ = _lexical_repo_artifact(
+        board.repo_root,
+        board.path(relative),
+    )
+    try:
+        materializer_status = os.lstat(materializer_path)
+    except OSError as exc:
+        raise _fresh_recovery_admission_failure(
+            "public recovery verifier is absent"
+        ) from exc
+    if (
+        stat.S_ISLNK(materializer_status.st_mode)
+        or not stat.S_ISREG(materializer_status.st_mode)
+        or materializer_status.st_nlink != 1
+        or materializer_status.st_uid != os.geteuid()
+    ):
+        raise _fresh_recovery_admission_failure(
+            "public recovery verifier file identity differs"
+        )
+
+    try:
+        source_head, _source_tree = _git_identity(board.repo_root)
+        config_bytes, _config_snapshot = _tracked_head_snapshot(
+            repo_root=board.repo_root,
+            path=canonical_config,
+            source_head=source_head,
+        )
+        _materializer_bytes, _materializer_snapshot = _tracked_head_snapshot(
+            repo_root=board.repo_root,
+            path=materializer_path,
+            source_head=source_head,
+        )
+    except ConfiguredBoardError as exc:
+        raise _fresh_recovery_admission_failure(
+            "canonical recovery config or verifier is not current tracked source"
+        ) from exc
+    config_sha256 = hashlib.sha256(config_bytes).hexdigest()
+    if (
+        board.configuration_root
+        != _identity({"bytes_sha256": config_sha256})
+        or board.configuration_revision
+        != _identity(
+            {
+                "path": FRESH_RECOVERY_CONFIG_PATH,
+                "bytes_sha256": config_sha256,
+            }
+        )
+    ):
+        raise _fresh_recovery_admission_failure(
+            "loaded recovery config differs from its tracked canonical bytes"
+        )
+
+    completed = _run_fresh_recovery_verifier(board, materializer_path)
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    if (
+        len(stdout.encode("utf-8", errors="replace"))
+        > FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES
+        or len(stderr.encode("utf-8", errors="replace"))
+        > FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES
+    ):
+        raise _fresh_recovery_admission_failure("public verifier output exceeded its bound")
+    try:
+        report = json.loads(stdout, object_pairs_hook=_reject_duplicate_keys)
+    except (ConfiguredBoardError, json.JSONDecodeError) as exc:
+        raise _fresh_recovery_admission_failure(
+            "public verifier did not emit exactly one JSON object"
+        ) from exc
+    if not isinstance(report, dict):
+        raise _fresh_recovery_admission_failure(
+            "public verifier did not emit exactly one JSON object"
+        )
+    if completed.returncode != 0:
+        reason = report.get("error") or report.get("errors") or stderr[-2_000:]
+        raise _fresh_recovery_admission_failure(
+            f"public verifier rejected the generation ({reason!r})"
+        )
+    if set(report) != FRESH_RECOVERY_VERIFICATION_FIELDS:
+        raise _fresh_recovery_admission_failure("public verifier report shape differs")
+
+    partitions = (
+        ("completed_task_ids", "completed_count", 13),
+        ("todo_task_ids", "todo_count", 13),
+        ("blocked_task_ids", "blocked_count", 2),
+    )
+    partition_values: list[set[str]] = []
+    for ids_field, count_field, expected_count in partitions:
+        identifiers = report.get(ids_field)
+        if (
+            not isinstance(identifiers, list)
+            or any(not isinstance(item, str) or not item for item in identifiers)
+            or len(identifiers) != expected_count
+            or len(set(identifiers)) != expected_count
+            or report.get(count_field) != expected_count
+        ):
+            raise _fresh_recovery_admission_failure(
+                f"public verifier {ids_field} partition differs"
+            )
+        partition_values.append(set(identifiers))
+    if any(
+        partition_values[left] & partition_values[right]
+        for left in range(len(partition_values))
+        for right in range(left + 1, len(partition_values))
+    ):
+        raise _fresh_recovery_admission_failure(
+            "public verifier task partitions overlap"
+        )
+
+    required_values = {
+        "schema": FRESH_RECOVERY_VERIFICATION_SCHEMA,
+        "valid": True,
+        "verification_mode": "read_only",
+        "target_generation": FRESH_RECOVERY_TARGET_GENERATION,
+        "ready_task_ids": ["LGCVF-081"],
+        "model_provider_route": "none",
+        "network_isolation_enforced": True,
+        "candidate_authored_validation": True,
+        "validation_completion_authoritative": False,
+        "task_implementation_complete": False,
+        "test_qualification_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authorized": False,
+        "source_database_statuses_read": False,
+        "synthetic_source_disposition": "quarantined_not_imported",
+        "stores_unchanged": True,
+    }
+    if any(report.get(key) != value for key, value in required_values.items()):
+        raise _fresh_recovery_admission_failure(
+            "public verifier authority disposition differs"
+        )
+    for field in (
+        "manifest_cid",
+        "receipt_cid",
+        "source_evidence_cid",
+        "validation_qualification_cid",
+        "operational_verification_root",
+        "verification_root",
+    ):
+        if not isinstance(report.get(field), str) or not report[field]:
+            raise _fresh_recovery_admission_failure(
+                f"public verifier {field} is absent"
+            )
+    claimed_root = str(report["verification_root"])
+    root_material = dict(report)
+    root_material.pop("verification_root")
+    if claimed_root != _identity(root_material):
+        raise _fresh_recovery_admission_failure(
+            "public verifier content identity differs"
+        )
+    return report
+
+
 def _git(
     board: ConfiguredBoard,
     *args: str,
@@ -2132,6 +2528,39 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     errors: list[str] = []
     warnings: list[str] = []
+
+    if _targets_fresh_recovery_generation(
+        board.payload,
+        repo_root=board.repo_root,
+    ):
+        try:
+            recovery_admission = _verify_fresh_recovery_launch_admission(board)
+        except ConfiguredBoardError as exc:
+            _append_check(
+                checks,
+                errors,
+                name="fresh_generation_recovery_admission",
+                passed=False,
+                detail=str(exc),
+            )
+        else:
+            assert recovery_admission is not None
+            _append_check(
+                checks,
+                errors,
+                name="fresh_generation_recovery_admission",
+                passed=True,
+                detail={
+                    "schema": recovery_admission["schema"],
+                    "target_generation": recovery_admission["target_generation"],
+                    "receipt_cid": recovery_admission["receipt_cid"],
+                    "operational_verification_root": recovery_admission[
+                        "operational_verification_root"
+                    ],
+                    "verification_root": recovery_admission["verification_root"],
+                    "stores_unchanged": recovery_admission["stores_unchanged"],
+                },
+            )
 
     top = _git(board, "rev-parse", "--show-toplevel")
     _append_check(
@@ -2541,6 +2970,7 @@ def configured_board_launch_plan(
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
+    recovery_admission = _verify_fresh_recovery_launch_admission(board)
     run_stamp = stamp or utc_run_stamp()
     runtime_root = board.path(board.runtime_paths["root"])
     state_dir = board.path(board.runtime_paths["state"])
@@ -2704,7 +3134,7 @@ def configured_board_launch_plan(
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
         environment.update(program.environment())
-    return {
+    plan = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
             "configured-board-launch-plan@1"
@@ -2745,6 +3175,19 @@ def configured_board_launch_plan(
             log_dir / f"configured-board-{run_stamp}.log"
         ),
     }
+    if recovery_admission is not None:
+        plan["fresh_generation_recovery_admission"] = {
+            "schema": recovery_admission["schema"],
+            "target_generation": recovery_admission["target_generation"],
+            "manifest_cid": recovery_admission["manifest_cid"],
+            "receipt_cid": recovery_admission["receipt_cid"],
+            "operational_verification_root": recovery_admission[
+                "operational_verification_root"
+            ],
+            "verification_root": recovery_admission["verification_root"],
+            "stores_unchanged": recovery_admission["stores_unchanged"],
+        }
+    return plan
 
 
 def _build_parser() -> argparse.ArgumentParser:

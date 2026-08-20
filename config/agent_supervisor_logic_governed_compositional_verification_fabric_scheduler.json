@@ -57,6 +57,132 @@
     "goal_count": 14,
     "root_goal_id": "LGCVF-G000"
   },
+  "fresh_generation_recovery": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/lgcvf-fresh-generation-recovery-policy@1",
+    "source_generation": "lgcvf-run-v16",
+    "source_runtime_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16",
+    "target_generation": "lgcvf-run-v17",
+    "target_runtime_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17",
+    "retained_revision_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/evidence/plan-revisions/baguqeerapaf6fqpovv7oagcn7yhlmpqnvywq6dh3wuarq3zcy7x3icty575a.json",
+    "retained_revision_receipt_sha256": "sha256:954f03bbac98cdc591ca3fba2f57921d13a513431ae72ea4133751fd402e2788",
+    "retained_revision_receipt_cid": "baguqeerazbhgzuergcuumvquysfz2kynfivsf7qwinslqffi3ycnqtvombua",
+    "retained_successor_revision_cid": "baguqeerapaf6fqpovv7oagcn7yhlmpqnvywq6dh3wuarq3zcy7x3icty575a",
+    "retained_delta_cid": "baguqeeramxp4o5hq4gb644u7fuhn3c6gfyh4l773wucvitjl4pcx5vkyujpa",
+    "retained_completion_binding_cid": "baguqeerah7btycg5r77zwhamxiultexgh7hypvuh24eojhn7vpvozo53nfvq",
+    "retained_protected_blocker_binding_cid": "baguqeerakalgxtb3jnlxbibfgzethxsc5qwe6efueftk4wafw56ocaoo7xra",
+    "wrong_default_incident_manifest_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/evidence/quarantine/wrong-default-reload/incident-manifest.json",
+    "wrong_default_incident_manifest_sha256": "sha256:ba737686bc6c033dccafa60a59ae58dde45fd9294259cb2c60a9c969726d5005",
+    "wrong_default_incident_manifest_cid": "baguqeera5v4j6qrjkhyygscu5oqav56soi6dtpjphhkiah22t7nehrq3347a",
+    "contaminated_coordination_projection_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/evidence/quarantine/contaminated-coordination-projection.json",
+    "contaminated_coordination_projection_sha256": "sha256:be9d80c365d61feaff26911a22652b2cf47c27b33216670212172467cbfac097",
+    "contaminated_coordination_projection_manifest_cid": "baguqeeraca6l5wnhb24xbwfeii4q3dxlib2ohf5nttfu5smufvbz4lgrkvmq",
+    "contaminated_coordination_rejected_record_set_cid": "baguqeerars4xisya3in6wrlzf2fx6adpqr3wps2wjamn5qeli6wh5hk4ujia",
+    "rejected_contaminated_coordination_projection_root": "sha256:2fb73e72712b72bc5940f192e4996af1218420646a808edda841316a42b32b89",
+    "construction_completed_task_ids": [
+      "LGCVF-001",
+      "LGCVF-002",
+      "LGCVF-010",
+      "LGCVF-020",
+      "LGCVF-030",
+      "LGCVF-040",
+      "LGCVF-050"
+    ],
+    "recovered_completed_task_ids": [
+      "LGCVF-051",
+      "LGCVF-060",
+      "LGCVF-061",
+      "LGCVF-070",
+      "LGCVF-071",
+      "LGCVF-080"
+    ],
+    "rejected_synthetic_task_ids": [
+      "LGCVF-081",
+      "LGCVF-090",
+      "LGCVF-091",
+      "LGCVF-100",
+      "LGCVF-101",
+      "LGCVF-102",
+      "LGCVF-110",
+      "LGCVF-111",
+      "LGCVF-112",
+      "LGCVF-113",
+      "LGCVF-120",
+      "LGCVF-122",
+      "LGCVF-124"
+    ],
+    "preserved_blocked_task_ids": [
+      "LGCVF-121",
+      "LGCVF-123"
+    ],
+    "merge_completions": [
+      {
+        "task_id": "LGCVF-051",
+        "task_cid": "baguqeera5akr2w56xcy6mus4td2ghwaita5k52lnqkh54tgooqq35fai72nq",
+        "request_id": "1787088819756894384-2731911-cd395b62aed7",
+        "completed_record_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/completed/1787088819756894384-2731911-cd395b62aed7.json",
+        "completed_record_sha256": "sha256:7d8c8478b37166516dcf52f33f5c6d59ce9031e2411062b04e0f253b2ddcbfc6",
+        "train_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/train/receipts/db6a6b4cb694fbca7ca3a8f7222eca750fdc881869ac131c2b43917a7f28f05f.json",
+        "train_receipt_sha256": "sha256:158a4896c3369e1c6816e20658fb8e96cb053b4672eb218bca95ca65219a33d0",
+        "candidate_commit": "828d922ae0b155c1dbebcde210b29e294a2b597b",
+        "merge_commit": "62faf5e6a6858147bf27fc0cc09cd97835edf7a0"
+      },
+      {
+        "task_id": "LGCVF-060",
+        "task_cid": "baguqeeratlqqozbenktvzhzzk36ewsti3mzegge2ynft24s3mznewzgswfoq",
+        "request_id": "1787091304457775000-4122462-7f51ba92429c",
+        "completed_record_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/completed/1787091304457775000-4122462-7f51ba92429c.json",
+        "completed_record_sha256": "sha256:d8477e2357147ea179ac1f3ad9e7914e471ac9c19d20a3995a321ab7e2a58895",
+        "train_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/train/receipts/640b8fecba158cfa6d22597178d2881d5e6f0784923dd419d6cf6cad21e525d2.json",
+        "train_receipt_sha256": "sha256:ee7d8756e08d0251682f156c2d5875bfcb99422a5caa83ec783efe229cd2dd9f",
+        "candidate_commit": "8c305395873be1c43ee50e94195ab6dda3532455",
+        "merge_commit": "3692969bcf2c7117b7e946de348e22d9e8be4a14"
+      },
+      {
+        "task_id": "LGCVF-061",
+        "task_cid": "baguqeeraqopotj43fgxcfptvziv3g3kna4wcwhtzarcobv2obvs32njoggjq",
+        "request_id": "1787093057318844018-4122462-f31d350ece3a",
+        "completed_record_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/completed/1787093057318844018-4122462-f31d350ece3a.json",
+        "completed_record_sha256": "sha256:f57345a53aae63e8a565f7be72158f969fdc54473c1c390362d85dadf3f9dbaf",
+        "train_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/train/receipts/7639d81dd194935a4ccc019fbf380f4d70e412f25bf829aeb2f5e52d9e00c56c.json",
+        "train_receipt_sha256": "sha256:ecb5b23b09179234abf2d3336e303ac96e6853ad7aae97af0e5a6b44cd19bbc0",
+        "candidate_commit": "f56ec74b308793905bc3174e7a93196724919f64",
+        "merge_commit": "ed8066633fe84e3140e7885fc0aa9d803f76c6dd"
+      },
+      {
+        "task_id": "LGCVF-070",
+        "task_cid": "baguqeeraej2zz7zlrd2l5p6adjnzinnitzuqmxx4agfhfzekixdqm2mnqyda",
+        "request_id": "1787094133887821628-4122462-19496261695d",
+        "completed_record_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/completed/1787094133887821628-4122462-19496261695d.json",
+        "completed_record_sha256": "sha256:dd82b49003650e1de4f545ef5f51086692707d38e220d56bd6264f15fca34e11",
+        "train_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/train/receipts/76b5430dd5cb4ee825ca75f530533fe86dbb62b39ea001c85c01756764c349f7.json",
+        "train_receipt_sha256": "sha256:4d48329c2df8c0945259f4cad85664c8de78f4511c7c301c1ac980e62ba3beb5",
+        "candidate_commit": "9575ae84ca530fb71e1d096dad59767dfb651a90",
+        "merge_commit": "2a9aebb629e5e8425dfa650ad6e2f0b5278c0b08"
+      },
+      {
+        "task_id": "LGCVF-071",
+        "task_cid": "baguqeerar3vmbqw7f2qk6mjyhsx3hq7gpbnqcydt7cecm6og5xejbd2vz6cq",
+        "request_id": "1787095250056614259-4122462-3dc0de84bf39",
+        "completed_record_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/completed/1787095250056614259-4122462-3dc0de84bf39.json",
+        "completed_record_sha256": "sha256:012e3d586cb90a7743e612273eea992b0496897f248534c60040b255b3ed1834",
+        "train_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/train/receipts/5fdfeb5f0031b6db4b5a2be06ccdab5959b34577b8e3fd83fe53009dace160c2.json",
+        "train_receipt_sha256": "sha256:da5130e40b5df418007088b42caf9b363024145b265da834befc928b276cf034",
+        "candidate_commit": "d6d0eeaf739f079eabddd7226c235fdb67ecf25a",
+        "merge_commit": "9d62f8810e67ebb0739c9f43de809eea22f450b5"
+      },
+      {
+        "task_id": "LGCVF-080",
+        "task_cid": "baguqeera22uu4o4ux6kzp4fgv5gxqupas3nhdjtbrtt73x2kc6mhtxkdbtwq",
+        "request_id": "1787171587459444508-144258-894ed7fe5d54",
+        "completed_record_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/completed/1787171587459444508-144258-894ed7fe5d54.json",
+        "completed_record_sha256": "sha256:a16082cc44433e16406bfb49f2208329be6e6691bd14681888df892f224a5afa",
+        "train_receipt_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue/train/receipts/28ca36cd6e1b05579ba0c52cbbc25f2b21d07dafbd00c30a80fb05e58543966a.json",
+        "train_receipt_sha256": "sha256:c3c3cc2b95f2d06f83acfbd16c7646ea206941065cadfe8ad406a84596a848c1",
+        "candidate_commit": "af16705482f28c981b00afbfef99f237405befa2",
+        "merge_commit": "ee1309dd328ff2872ffa11d95d7fd5bb84a33d44"
+      }
+    ]
+  },
   "max_lanes": 1,
   "strict_task_sharding": true,
   "exit_when_all_tracks_terminal": true,
@@ -147,12 +273,12 @@
     "test/fixtures/agent_supervisor/compositional_verification/tests/test_unselected.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16",
-    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/state",
-    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/worktrees",
-    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/merge-queue",
-    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/logs",
-    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/evidence",
+    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17",
+    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/state",
+    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/logs",
+    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/evidence",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "database_program": {
@@ -160,15 +286,15 @@
     "authoritative_transactional_data_model": true,
     "authoritative_records_schema_cas_and_fencing": true,
     "task_source_kind": "duckdb",
-    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/control.duckdb",
-    "store_generation": "lgcvf-run-v16",
+    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/control.duckdb",
+    "store_generation": "lgcvf-run-v17",
     "schema_revision": "datasets-authoritative-operational-v1",
     "schema_profile": "datasets-authoritative-operational",
     "semantic_relations_permitted": false,
-    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/events",
-    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/registry",
-    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v16/worktrees",
-    "export_profile": "lgcvf-run-v16",
+    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/registry",
+    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v17/worktrees",
+    "export_profile": "lgcvf-run-v17",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
   },
@@ -184,12 +310,9 @@
       "name": "lgcvf-single-writer-lane",
       "strict_shard_remainder": 0,
       "initial_task_ids": [
-        "LGCVF-051",
-        "LGCVF-060",
-        "LGCVF-070",
-        "LGCVF-080"
+        "LGCVF-081"
       ],
-      "initial_focus": "deterministic-compositional-verification-frontier"
+      "initial_focus": "post-recovery-proof-carrying-artifact-frontier"
     }
   ],
   "task_groups": {
