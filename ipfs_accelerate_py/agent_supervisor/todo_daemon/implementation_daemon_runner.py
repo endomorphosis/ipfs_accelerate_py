@@ -1368,6 +1368,10 @@ def build_portal_implementation_daemon_from_args(
                 parsed, "strict_task_sharding", False
             ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            repo_root=repo_root,
+            merge_target_ref=str(
+                getattr(parsed, "merge_target_branch", "") or "HEAD"
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -1516,6 +1520,10 @@ def build_database_implementation_daemon_from_args(
         task_shard_count=getattr(parsed, "task_shard_count", 1),
         task_shard_index=getattr(parsed, "task_shard_index", 0),
         strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
+        repo_root=getattr(parsed, "repo_root", None),
+        merge_target_ref=str(
+            getattr(parsed, "merge_target_branch", "") or "HEAD"
+        ),
     )
 
 

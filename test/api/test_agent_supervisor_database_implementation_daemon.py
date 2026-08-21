@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -173,6 +174,8 @@ def _open_daemon(
     task_shard_index: int = 0,
     strict_task_sharding: bool = False,
     control_path: Path | None = None,
+    repo_root: Path | None = None,
+    merge_target_ref: str = "HEAD",
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"
@@ -215,6 +218,8 @@ def _open_daemon(
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         clock_ms=clock_ms,
+        repo_root=repo_root,
+        merge_target_ref=merge_target_ref,
     )
 
 
@@ -983,6 +988,132 @@ def test_consumed_no_progress_quarantines_and_abstains_after_restart(
         ) == 1
     finally:
         restarted.close()
+
+
+def _git_repo_with_output(tmp_path: Path, relative: str = "landed.py") -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Daemon Test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "daemon-test@example.invalid"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    output = repo / relative
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("landed\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", relative],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "landed output"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return repo
+
+
+def test_landed_quarantined_task_with_outputs_is_completed(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "landed.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt={
+                "operation": "database_portal_neutral_failure_quarantine",
+                "retry_suppressed": True,
+            },
+        )
+        result = daemon.run_once()
+        repaired = result["landed_merge_reconciliations"]
+        assert repaired
+        assert repaired[0]["completed"] is True
+        assert repaired[0]["task_cid"] == "task:cid:001"
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+        assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    daemon = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:landed-outputs",
+        provider_fn=consumed_failure,
+        repo_root=repo,
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "landed.py"}]
+        daemon.materialize_population(population)
+        attempted = daemon.claim_next()
+        assert attempted is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                daemon,
+                attempted,
+                tag="already-landed-outputs",
+            )
+        )
+        result = daemon._resume_attempt_without_process_crash(attempted)
+        assert result["task_quarantined"] is False
+        assert result["landed_outputs_completed"] is True
+        assert result["status"] == "succeeded"
+        task = daemon.task_source.get(attempted.task_cid)
+        assert task is not None
+        assert task.status == "completed"
+    finally:
+        daemon.close()
 
 
 def test_consumed_no_progress_quarantine_replays_after_commit_crash(

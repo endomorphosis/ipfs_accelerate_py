@@ -25883,6 +25883,101 @@ class PortalImplementationDaemon:
             }
         return {}
 
+    def _todo_board_identity(self, todo_path: Path) -> tuple[str, str] | None:
+        """Identify a board as ``(git-common-dir, repo-relative todo path)``."""
+
+        path = Path(todo_path)
+        search_root = path.parent if path.name else path
+        if not search_root.exists():
+            return None
+        common = self._git_common_dir(search_root)
+        if common is None:
+            return None
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=search_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not str(result.stdout or "").strip():
+            return None
+        root = Path(str(result.stdout).strip())
+        try:
+            relative = path.resolve(strict=False).relative_to(root.resolve())
+        except (OSError, ValueError):
+            return None
+        return (str(common), relative.as_posix())
+
+    def _same_board_todo_path(self, request_todo_path: Path) -> bool:
+        """True when two todo paths name the same board in the same git repo."""
+
+        left = Path(request_todo_path).resolve(strict=False)
+        right = Path(self.todo_path).resolve(strict=False)
+        if left == right:
+            return True
+        left_id = self._todo_board_identity(left)
+        right_id = self._todo_board_identity(right)
+        return left_id is not None and left_id == right_id
+
+    def _merge_request_task_source_hit(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool | None:
+        """True when this daemon's task source contains the merge request.
+
+        Returns ``None`` when this daemon has no lookup-capable task source.
+        """
+
+        source = getattr(self, "task_source", None)
+        if source is None:
+            return None
+        getter = getattr(source, "get", None) or getattr(source, "get_task", None)
+        if not callable(getter):
+            return None
+        keys: list[str] = []
+        raw_cids = metadata.get("completion_task_cids")
+        if isinstance(raw_cids, Mapping):
+            keys.extend(
+                str(value).strip()
+                for value in raw_cids.values()
+                if str(value).strip()
+            )
+            keys.extend(
+                str(key).strip() for key in raw_cids.keys() if str(key).strip()
+            )
+        raw_task = metadata.get("task")
+        if isinstance(raw_task, Mapping):
+            for field in ("task_cid", "canonical_task_cid", "task_id"):
+                value = str(raw_task.get(field) or "").strip()
+                if value:
+                    keys.append(value)
+        seen: set[str] = set()
+        for key in keys:
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            try:
+                found = getter(key)
+            except Exception:
+                continue
+            if found is not None:
+                return True
+        return False if seen else None
+
+    def _merge_request_is_cross_board(
+        self,
+        request_todo_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """True only for a different board, not a same-repo worktree copy."""
+
+        if self._same_board_todo_path(request_todo_path):
+            return False
+        if self._merge_request_task_source_hit(metadata) is True:
+            return False
+        return True
+
     def _completion_daemon_for_merge_request(
         self,
         metadata: Mapping[str, Any],
@@ -25890,7 +25985,7 @@ class PortalImplementationDaemon:
         request_todo_path = Path(
             str(metadata.get("todo_path") or self.todo_path)
         )
-        if request_todo_path == self.todo_path:
+        if not self._merge_request_is_cross_board(request_todo_path, metadata):
             return self
         request_state_path = Path(
             str(metadata.get("state_path") or self.state_path)
@@ -27069,7 +27164,10 @@ class PortalImplementationDaemon:
         request_todo_path = Path(
             str(metadata.get("todo_path") or self.todo_path)
         )
-        cross_board_request = request_todo_path != self.todo_path
+        cross_board_request = self._merge_request_is_cross_board(
+            request_todo_path,
+            metadata,
+        )
         authority_metadata_fields = {
             "manual_completion_authority_context_id",
             "manual_completion_authority_task_ids",
@@ -27966,34 +28064,18 @@ class PortalImplementationDaemon:
             )
             result["cleanup_result"] = cleanup_result
             if cleanup_result and not cleanup_result.get("cleaned", False):
-                result["merged"] = False
-                result["reason"] = "merge_cleanup_failed"
-                result["returncode"] = 1
-            else:
-                completion_daemon = self
-                request_todo_path = Path(str(metadata.get("todo_path") or self.todo_path))
-                if request_todo_path != self.todo_path:
-                    request_state_path = Path(str(metadata.get("state_path") or self.state_path))
-                    completion_daemon = PortalImplementationDaemon(
-                        todo_path=request_todo_path,
-                        state_path=request_state_path,
-                        strategy_path=Path(str(metadata.get("strategy_path") or request_state_path.parent / "strategy.json")),
-                        events_path=Path(str(metadata.get("events_path") or request_state_path.parent / "events.jsonl")),
-                        repo_root=self.repo_root,
-                        task_header_prefix=str(metadata.get("task_header_prefix") or self.task_header_prefix),
-                        implement=False,
-                        worktree_root=self.worktree_root,
-                        merge_target_branch=self.resolved_merge_target_branch,
-                        worktree_submodule_paths=self.worktree_submodule_paths,
-                        implementation_protected_paths=(
-                            effective_protected_paths
-                        ),
-                        manual_completion_authority_task_ids=(),
-                        manual_completion_authority_required_task_ids=(),
-                        merge_queue=self.merge_queue,
-                        merge_queue_dir=self.merge_queue_dir,
-                        decision_runtime=self.decision_runtime,
-                    )
+                result["cleanup_failed"] = True
+                result["cleanup_failure_reason"] = str(
+                    cleanup_result.get("reason") or "merge_cleanup_failed"
+                )
+            # Git merge already landed. Worktree cleanup must not un-merge
+            # or skip board completion; leftover checkouts are retried by
+            # already-merged worktree cleanup.
+            if result.get("merged") or result.get("already_merged"):
+                completion_daemon = self._completion_daemon_for_merge_request(
+                    metadata
+                )
+                if completion_daemon is not self:
                     completion_daemon._completion_publications = (
                         self._completion_publications
                     )
@@ -67792,6 +67874,8 @@ class DatabaseImplementationDaemon:
         task_source: Any = None,
         coordinator: Any = None,
         install_schema: bool = True,
+        repo_root: Path | str | None = None,
+        merge_target_ref: str = "HEAD",
     ) -> None:
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
@@ -67917,6 +68001,8 @@ class DatabaseImplementationDaemon:
         )
         self._embedded_writer_lock_handle: Any = None
         self._markdown_status_writes = 0
+        self.repo_root = Path(repo_root).resolve() if repo_root else None
+        self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -71965,6 +72051,25 @@ class DatabaseImplementationDaemon:
                 "neutral Portal quarantine lacks exact shared authority"
             )
 
+        if self._task_outputs_landed_on_target(task):
+            completed = self._complete_landed_running_attempt(current, task)
+            self._record_event(
+                "landed_merge_completed_instead_of_quarantine",
+                attempt_id=completed.attempt_id,
+                task_cid=completed.task_cid,
+                body={"status": completed.status},
+            )
+            return {
+                "resumed": True,
+                "portal_retryable_failure": False,
+                "portal_replay_suppressed": False,
+                "task_quarantined": False,
+                "landed_outputs_completed": True,
+                "attempt_id": completed.attempt_id,
+                "task_alias": completed.task_alias,
+                "status": completed.status,
+            }
+
         receipt, digests = self._neutral_portal_quarantine_material(
             current,
             evidence,
@@ -72169,14 +72274,217 @@ class DatabaseImplementationDaemon:
                 "status": "failed",
             }
 
+    @staticmethod
+    def _task_declared_output_paths(task: Any) -> tuple[str, ...]:
+        """Repo-relative declared outputs; empty means no landed-merge proof."""
+
+        paths: list[str] = []
+        seen: set[str] = set()
+
+        def add(raw: Any) -> None:
+            if isinstance(raw, Mapping):
+                selected = str(
+                    raw.get("path")
+                    or raw.get("output")
+                    or raw.get("fluent_id")
+                    or ""
+                ).strip()
+            else:
+                selected = str(raw or "").strip()
+            if not selected or selected in seen:
+                return
+            posix = selected.replace("\\", "/")
+            if (
+                posix.startswith("/")
+                or posix.startswith("~")
+                or ".." in Path(posix).parts
+            ):
+                return
+            seen.add(posix)
+            paths.append(posix)
+
+        outputs = getattr(task, "outputs", ()) or ()
+        if isinstance(outputs, (str, Mapping)):
+            add(outputs)
+        elif isinstance(outputs, Sequence) and not isinstance(
+            outputs, (bytes, bytearray)
+        ):
+            for item in outputs:
+                add(item)
+        body = getattr(task, "body", None)
+        if isinstance(body, Mapping):
+            for key in (
+                "predicted_files",
+                "predicted_paths",
+                "outputs",
+                "effects",
+            ):
+                raw = body.get(key)
+                if isinstance(raw, (str, Mapping)):
+                    add(raw)
+                elif isinstance(raw, Sequence) and not isinstance(
+                    raw, (bytes, bytearray, str)
+                ):
+                    for item in raw:
+                        add(item)
+        return tuple(paths)
+
+    def _git_tree_contains_path(self, relative: str) -> bool:
+        if self.repo_root is None or not relative:
+            return False
+        result = subprocess.run(
+            [
+                "git",
+                "cat-file",
+                "-e",
+                f"{self.merge_target_ref}:{relative}",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def _task_outputs_landed_on_target(self, task: Any) -> bool:
+        """True when every declared output blob exists on the merge target."""
+
+        if self.repo_root is None:
+            return False
+        paths = self._task_declared_output_paths(task)
+        if not paths:
+            return False
+        return all(self._git_tree_contains_path(path) for path in paths)
+
+    def _landed_merge_repair_proof(
+        self,
+        task: Any,
+        *,
+        attempt_id: str = "",
+    ) -> tuple[dict[str, Any], str]:
+        paths = self._task_declared_output_paths(task)
+        proof = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-landed-merge-repair@1"
+            ),
+            "operation": "database_landed_merge_repair",
+            "task_cid": str(getattr(task, "task_cid", "") or ""),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+            "attempt_id": attempt_id,
+            "merge_target_ref": self.merge_target_ref,
+            "landed_outputs": list(paths),
+        }
+        digest = "sha256:" + hashlib.sha256(
+            canonical_json(proof).encode("utf-8")
+        ).hexdigest()
+        return proof, digest
+
+    def _complete_landed_running_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+    ) -> DatabaseTaskAttempt:
+        proof, digest = self._landed_merge_repair_proof(
+            task,
+            attempt_id=attempt.attempt_id,
+        )
+        return self.complete_attempt(
+            attempt,
+            evidence_digest=digest,
+            validation_result={
+                "outcome": "passed",
+                "evidence_digest": digest,
+                "reason": "declared_outputs_landed_on_target",
+                "argv": ["database-landed-merge-repair"],
+                **proof,
+            },
+        )
+
+    def _complete_landed_quarantined_task(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
+            return None
+        if not self._task_outputs_landed_on_target(task):
+            return None
+        proof, digest = self._landed_merge_repair_proof(task)
+        self.task_source.record_validation_result(
+            task_cid=str(task.task_cid),
+            outcome="passed",
+            evidence_digest=digest,
+            argv=["database-landed-merge-repair"],
+            body=proof,
+        )
+        refreshed = self.task_source.get(task.task_cid)
+        if refreshed is None:
+            raise DatabaseImplementationAuthorityError(
+                "landed merge repair lost the control task"
+            )
+        self._cas_task_status_database(
+            refreshed.task_cid,
+            expected_revision=int(refreshed.revision),
+            new_status="completed",
+            receipt={**proof, "evidence_digest": digest},
+            evidence_digests=[digest],
+        )
+        self._record_event(
+            "landed_merge_repaired",
+            task_cid=str(refreshed.task_cid),
+            body={
+                "evidence_digest": digest,
+                "landed_outputs": list(proof["landed_outputs"]),
+            },
+        )
+        return {
+            "task_cid": str(refreshed.task_cid),
+            "task_alias": str(refreshed.task_alias),
+            "completed": True,
+            "reason": "database_landed_merge_repair",
+            "evidence_digest": digest,
+            "landed_outputs": list(proof["landed_outputs"]),
+        }
+
+    def reconcile_landed_merged_tasks(self) -> list[dict[str, Any]]:
+        """Complete quarantined tasks whose declared outputs already landed.
+
+        Consumed-no-progress work without declared outputs stays quarantined.
+        """
+
+        if self.repo_root is None:
+            return []
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        page = list_tasks(status="quarantined", limit=TASK_SOURCE_QUERY_LIMIT)
+        tasks = tuple(getattr(page, "tasks", ()) or ())
+        outcomes: list[dict[str, Any]] = []
+        for task in tasks:
+            try:
+                outcome = self._complete_landed_quarantined_task(task)
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": str(getattr(task, "task_cid", "") or ""),
+                        "completed": False,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if outcome is not None:
+                outcomes.append(outcome)
+        return outcomes
+
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
         completion_reconciliations = self.reconcile_prepared_task_completions()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+        landed_merge_reconciliations = self.reconcile_landed_merged_tasks()
         reconciliation_write_count = len(completion_reconciliations) + len(
             expired_attempt_reconciliations
-        )
+        ) + len(landed_merge_reconciliations)
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
@@ -72195,6 +72503,7 @@ class DatabaseImplementationDaemon:
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
+                "landed_merge_reconciliations": landed_merge_reconciliations,
             }
 
         attempt = self.claim_next()
@@ -72214,6 +72523,7 @@ class DatabaseImplementationDaemon:
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
+                "landed_merge_reconciliations": landed_merge_reconciliations,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -72229,6 +72539,7 @@ class DatabaseImplementationDaemon:
             "control_schema_evidence": dict(self.control_schema_evidence),
             "completion_reconciliations": completion_reconciliations,
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
+            "landed_merge_reconciliations": landed_merge_reconciliations,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
@@ -72947,6 +73258,10 @@ def main(argv: list[str] | None = None) -> None:
             task_shard_index=args.task_shard_index,
             strict_task_sharding=args.strict_task_sharding,
             require_real_execution=bool(args.implement),
+            repo_root=REPO_ROOT,
+            merge_target_ref=str(
+                getattr(args, "merge_target_branch", "") or "HEAD"
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,
