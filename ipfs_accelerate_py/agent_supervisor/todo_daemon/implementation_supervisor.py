@@ -8334,6 +8334,19 @@ class PortalImplementationSupervisor:
         child_environment = _managed_daemon_child_environment(
             database_program=self.config.database_program,
         )
+        child_environment.update(
+            {
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                    self._managed_daemon_identity_path()
+                ),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    self._managed_daemon_owner_scope(),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            }
+        )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",
@@ -8411,6 +8424,34 @@ class PortalImplementationSupervisor:
             return None
         return dict(payload) if isinstance(payload, Mapping) else None
 
+    @staticmethod
+    def _stable_process_birth_identity(
+        identity: Any,
+    ) -> tuple[int, int, str] | None:
+        """Return PID-reuse-resistant fields, excluding mutable parent PID."""
+
+        if not isinstance(identity, ProcessBirthIdentity):
+            return None
+        if (
+            isinstance(identity.pid, bool)
+            or type(identity.pid) is not int
+            or identity.pid <= 1
+            or isinstance(identity.start_time_ticks, bool)
+            or type(identity.start_time_ticks) is not int
+            or identity.start_time_ticks <= 0
+            or type(identity.boot_id) is not str
+            or not identity.boot_id
+            or isinstance(identity.parent_pid, bool)
+            or type(identity.parent_pid) is not int
+            or identity.parent_pid < 0
+        ):
+            return None
+        return (
+            identity.pid,
+            identity.start_time_ticks,
+            identity.boot_id,
+        )
+
     def _active_managed_database_pool_lease(
         self,
         child: Any,
@@ -8445,15 +8486,14 @@ class PortalImplementationSupervisor:
             return None
         if (
             child_birth is None
-            or child_birth.start_time_ticks <= 0
-            or not child_birth.boot_id
+            or self._stable_process_birth_identity(child_birth) is None
             or owner_liveness(child_birth) is not OwnerLiveness.ALIVE
         ):
             return None
         handle_birth = getattr(child, "identity_process_birth", None)
         if (
-            not isinstance(handle_birth, ProcessBirthIdentity)
-            or handle_birth != child_birth
+            self._stable_process_birth_identity(handle_birth)
+            != self._stable_process_birth_identity(child_birth)
         ):
             return None
 
@@ -8538,7 +8578,8 @@ class PortalImplementationSupervisor:
             if (
                 record is None
                 or not record.is_nonterminal
-                or record.owner != child_birth
+                or self._stable_process_birth_identity(record.owner)
+                != self._stable_process_birth_identity(child_birth)
                 or owner_liveness(record.owner) is not OwnerLiveness.ALIVE
                 or record.record_id != record.compute_record_id()
                 or not record.task_id
@@ -8665,7 +8706,10 @@ class PortalImplementationSupervisor:
                 current_birth = read_process_birth(child_pid)
             except (OSError, RuntimeError):
                 continue
-            if current_birth != child_birth:
+            if (
+                self._stable_process_birth_identity(current_birth)
+                != self._stable_process_birth_identity(child_birth)
+            ):
                 continue
             return {
                 "task_id": record.task_id,
