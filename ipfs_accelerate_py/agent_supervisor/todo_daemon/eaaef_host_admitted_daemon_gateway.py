@@ -395,11 +395,12 @@ class _Coordinator(_Component):
             "claimed_at_ms": now_ms,
             "worktree_id": "",
         }
+        self._gateway._claims[str(claim["claim_id"])] = dict(claim)
         return _Record(claim)
 
     def get_task_claim(self, claim_id: str) -> _Record | None:
-        del claim_id
-        return None
+        stored = self._gateway._claims.get(str(claim_id))
+        return None if stored is None else _Record(stored)
 
     def protect_task_claim(self, claim: Any, **kwargs: Any) -> _Record:
         del kwargs
@@ -589,6 +590,7 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
         self._client = client
         self._mutation_dir = Path(mutation_dir)
         self._attempts: dict[str, dict[str, Any]] = {}
+        self._claims: dict[str, dict[str, Any]] = {}
         self._attached = False
         self._bound_daemon: dict[str, Any] = {}
         self.task_source = _TaskSource(self)
