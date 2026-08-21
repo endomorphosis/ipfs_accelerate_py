@@ -340,6 +340,19 @@ def test_started_server_never_leaks_token_to_surfaces(tmp_path: Path) -> None:
     server.stop()
 
 
+def test_owner_update_pauses_quack_serve(tmp_path: Path) -> None:
+    server = _server(tmp_path)
+    server.start()
+    connection = server._serve_connection  # noqa: SLF001
+    assert isinstance(connection, FakeConnection)
+    before = list(connection.statements)
+    server._connection.execute("UPDATE tasks SET status = status WHERE 1 = 1")  # noqa: SLF001
+    after = connection.statements[len(before) :]
+    assert any(item.upper().startswith("UPDATE ") for item in after)
+    server._connection.execute("SELECT 1")  # noqa: SLF001
+    server.stop()
+
+
 def test_sanitize_for_export_redacts_token_keys() -> None:
     payload = {"auth_token": "super-secret", "server_id": "server:1"}
     out = sanitize_for_export(payload)

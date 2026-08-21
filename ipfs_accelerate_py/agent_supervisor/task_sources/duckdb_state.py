@@ -437,11 +437,32 @@ class DuckDBConnection:
             return DuckDBCursor(self._connection)
         catalog = getattr(self, "_default_catalog", None)
         if catalog and _quack_owner_mutation_required(normalized):
-            return _execute_quack_owner_mutation(
-                statement,
-                parameters,
-                dml=True,
-            )
+            uri = str(getattr(self, "_quack_uri", "") or "")
+            # Drop the ATTACH session before owner-local DML. A live ATTACH
+            # holds quack_serve; waiting on the inbox while attached deadlocks
+            # or poisons later TOKEN auth.
+            self._release_quack_attach_session()
+            mutation_error: Exception | None = None
+            cursor: DuckDBCursor | None = None
+            try:
+                cursor = _execute_quack_owner_mutation(
+                    statement,
+                    parameters,
+                    dml=True,
+                )
+            except Exception as exc:
+                mutation_error = exc
+            if uri:
+                try:
+                    self._restore_quack_attach_session(uri)
+                except Exception:
+                    if mutation_error is not None:
+                        raise mutation_error
+                    raise
+            if mutation_error is not None:
+                raise mutation_error
+            assert cursor is not None
+            return cursor
         if catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
@@ -484,10 +505,40 @@ class DuckDBConnection:
         self._closed = True
         try:
             self.rollback()
-            self._connection.close()
+            if self._connection is not None:
+                self._connection.close()
         finally:
             if self._lock_context is not None:
                 self._lock_context.__exit__(None, None, None)
+
+    def _release_quack_attach_session(self) -> None:
+        raw = self._connection
+        self._connection = None
+        if raw is None:
+            return
+        catalog = getattr(self, "_default_catalog", None)
+        if catalog:
+            try:
+                detached = raw.execute(f"DETACH {catalog}")
+                _consume_duckdb_result(detached)
+            except Exception:
+                pass
+        close = getattr(raw, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+
+    def _restore_quack_attach_session(self, uri: str) -> None:
+        fresh = open_quack_transport_connection(uri)
+        self._connection = fresh._connection
+        self._closed = False
+        self._default_catalog = _QUACK_CONTROL_CATALOG
+        self._quack_uri = uri
+        fresh._connection = None
+        fresh._closed = True
+        fresh._lock_context = None
 
     def __enter__(self) -> DuckDBConnection:
         if (
@@ -784,6 +835,7 @@ def open_quack_transport_connection(
         raise
     wrapped = DuckDBConnection.wrap(connection)
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+    wrapped._quack_uri = text
     return wrapped
 
 

@@ -1000,6 +1000,120 @@ class TokenVault:
 
 
 # ---------------------------------------------------------------------------
+# Owner-DML gate
+# ---------------------------------------------------------------------------
+
+_OWNER_DML_PREFIXES: Final = (
+    "UPDATE ",
+    "DELETE ",
+    "MERGE ",
+    "INSERT OR REPLACE",
+    "INSERT OR IGNORE",
+)
+
+
+class _OwnerDmlResult:
+    """Opaque DML result that never triggers a follow-on fetchall."""
+
+    description = None
+    rowcount = -1
+
+    def fetchall(self) -> list[Any]:
+        return []
+
+    def fetchone(self) -> None:
+        return None
+
+
+class _QuackPausedMutationConnection:
+    """Stop ``quack_serve`` around row-mutating owner DML.
+
+    A live ``quack_serve`` session fatals DuckDB when an in-process UPDATE
+    touches an existing base-table row. Inbox DML is applied on the owner
+    connection, so the serve listener must be paused for that statement.
+    """
+
+    def __init__(
+        self,
+        inner: Any,
+        *,
+        pause: Callable[[], None],
+        resume: Callable[[], None],
+        database_path: Path | None = None,
+        note: Callable[[str], None] | None = None,
+    ) -> None:
+        object.__setattr__(self, "_inner", inner)
+        object.__setattr__(self, "_pause", pause)
+        object.__setattr__(self, "_resume", resume)
+        object.__setattr__(self, "_database_path", database_path)
+        object.__setattr__(self, "_note", note)
+
+    def execute(self, sql: str, parameters: Any = None) -> Any:
+        normalized = " ".join(str(sql or "").strip().upper().split())
+        inner = object.__getattribute__(self, "_inner")
+        if not normalized.startswith(_OWNER_DML_PREFIXES):
+            if parameters is None:
+                return inner.execute(sql)
+            return inner.execute(sql, parameters)
+        pause = object.__getattribute__(self, "_pause")
+        resume = object.__getattribute__(self, "_resume")
+        pause()
+        try:
+            object.__getattribute__(self, "_execute_inner")(sql, parameters)
+            return _OwnerDmlResult()
+        finally:
+            try:
+                resume()
+            except Exception:
+                # DML already ran; a serve-resume failure must not report as
+                # a rejected mutation. The next ready() probe fails closed.
+                pass
+
+    def _execute_inner(self, sql: str, parameters: Any) -> Any:
+        # After quack_stop, apply DML on a fresh in-process file connection.
+        # Reusing the serve connection still fatals on row-touching UPDATE for
+        # the live control-plane schema.
+        note = object.__getattribute__(self, "_note")
+        inner = object.__getattribute__(self, "_inner")
+        path = object.__getattribute__(self, "_database_path")
+        if callable(note):
+            note("dml_start")
+        try:
+            if hasattr(inner, "_connection") and path is not None:
+                import duckdb
+
+                alt = duckdb.connect(str(path))
+                try:
+                    if parameters is None:
+                        alt.execute(sql)
+                    else:
+                        alt.execute(sql, parameters)
+                finally:
+                    alt.close()
+                result = None
+            elif parameters is None:
+                result = inner.execute(sql)
+            else:
+                result = inner.execute(sql, parameters)
+        except Exception as exc:
+            if callable(note):
+                note("dml_error_" + type(exc).__name__)
+            raise
+        if callable(note):
+            note("dml_ok")
+        return result
+
+    def close(self) -> None:
+        inner = object.__getattribute__(self, "_inner")
+        close = getattr(inner, "close", None)
+        if callable(close):
+            close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_inner"), name)
+
+
+# ---------------------------------------------------------------------------
 # Transport adapter
 # ---------------------------------------------------------------------------
 
@@ -1253,6 +1367,7 @@ class QuackStateServer:
     _lifecycle: ServerLifecycle = field(default=ServerLifecycle.CREATED, init=False)
     _identity: StateServerIdentity | None = field(default=None, init=False)
     _connection: Any | None = field(default=None, init=False)
+    _serve_connection: Any | None = field(default=None, init=False)
     _owner: ExclusiveOwnerLease | None = field(default=None, init=False)
     _vault: TokenVault | None = field(default=None, init=False)
     _capability: QuackCapabilityReport | None = field(default=None, init=False)
@@ -1355,6 +1470,99 @@ class QuackStateServer:
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
         return open_duckdb_connection(self.config.database_path)
+
+    def _wrap_owner_mutation_connection(self, connection: Any) -> Any:
+        """Pause ``quack_serve`` around inbox UPDATE/DELETE on the owner conn."""
+
+        transport = self.transport
+        vault = self._vault
+        if transport is None or vault is None:
+            raise QuackStateServerError("mutation gate requires transport and vault")
+        host = self.config.host
+        port = int(self._bound_port or self.config.port)
+        db_path = str(self.config.database_path)
+
+        def _gate_event(event: str) -> None:
+            self._log("owner-dml-gate " + event)
+            try:
+                path = self.config.state_dir / "mutation-gate.jsonl"
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps({"event": event}) + "\n")
+            except Exception:
+                pass
+
+        def pause() -> None:
+            _gate_event("pause")
+            if not hasattr(connection, "_connection"):
+                _gate_event("paused")
+                return
+            identity = self._identity
+            uri = (
+                (identity.listen_uri if identity is not None else "")
+                or listen_uri(host, port)
+            )
+            current = getattr(connection, "_connection", None)
+            try:
+                if current is not None:
+                    stopped = current.execute("SELECT * FROM quack_stop(?)", [uri])
+                    fetchall = getattr(stopped, "fetchall", None)
+                    if callable(fetchall):
+                        fetchall()
+                    close = getattr(current, "close", None)
+                    if callable(close):
+                        close()
+            except Exception as exc:
+                _gate_event("pause_error_" + type(exc).__name__)
+            else:
+                connection._connection = None
+                _gate_event("paused")
+
+        def resume() -> None:
+            identity = self._identity
+            if identity is None:
+                raise QuackStateServerNotRunningError(
+                    "cannot resume quack_serve without identity"
+                )
+            _gate_event("resume")
+            if not hasattr(connection, "_connection"):
+                _gate_event("resumed")
+                return
+            import duckdb
+
+            token = vault.resolve(identity.secret_handle)
+            uri = identity.listen_uri or listen_uri(host, port)
+            new = duckdb.connect(db_path)
+            try:
+                new.execute("LOAD quack")
+                served = new.execute(
+                    "SELECT * FROM quack_serve(?, token := ?, "
+                    "allow_other_hostname := false, disable_ssl := true)",
+                    [uri, token],
+                )
+                fetchall = getattr(served, "fetchall", None)
+                if callable(fetchall):
+                    fetchall()
+                connection._connection = new
+                _gate_event("resumed")
+            except Exception as exc:
+                _gate_event("resume_error_" + type(exc).__name__)
+                close = getattr(new, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
+                raise
+            finally:
+                del token
+
+        return _QuackPausedMutationConnection(
+            connection,
+            pause=pause,
+            resume=resume,
+            database_path=self.config.database_path,
+            note=_gate_event,
+        )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
@@ -1660,6 +1868,8 @@ class QuackStateServer:
                 self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
                 self._identity = identity
+                self._serve_connection = connection
+                self._connection = self._wrap_owner_mutation_connection(connection)
                 self._lifecycle = ServerLifecycle.READY
                 self._write_status()
                 self._log(
@@ -1679,15 +1889,17 @@ class QuackStateServer:
     def _emergency_cleanup(self) -> None:
         try:
             if self.transport is not None:
-                self.transport.stop(self._connection)
+                self.transport.stop(self._serve_connection or self._connection)
         except Exception:
             pass
         try:
-            if self._connection is not None and hasattr(self._connection, "close"):
-                self._connection.close()
+            target = self._serve_connection or self._connection
+            if target is not None and hasattr(target, "close"):
+                target.close()
         except Exception:
             pass
         self._connection = None
+        self._serve_connection = None
         try:
             if self._vault is not None:
                 self._vault.destroy()
@@ -1865,26 +2077,29 @@ class QuackStateServer:
 
             try:
                 if self.transport is not None:
-                    self.transport.stop(self._connection)
+                    self.transport.stop(self._serve_connection or self._connection)
             except Exception as exc:
                 self._log(f"transport stop warning: {type(exc).__name__}")
 
             try:
-                if self._connection is not None and identity is not None:
-                    self._mark_server_stopped(self._connection, identity)
+                bookkeeping = self._serve_connection or self._connection
+                if bookkeeping is not None and identity is not None:
+                    self._mark_server_stopped(bookkeeping, identity)
                     try:
-                        self._connection.execute("CHECKPOINT")
+                        bookkeeping.execute("CHECKPOINT")
                     except Exception:
                         pass
             except Exception as exc:
                 self._log(f"stop bookkeeping warning: {type(exc).__name__}")
 
             try:
-                if self._connection is not None and hasattr(self._connection, "close"):
-                    self._connection.close()
+                target = self._serve_connection or self._connection
+                if target is not None and hasattr(target, "close"):
+                    target.close()
             except Exception:
                 pass
             self._connection = None
+            self._serve_connection = None
 
             if self._vault is not None:
                 self._vault.destroy()
