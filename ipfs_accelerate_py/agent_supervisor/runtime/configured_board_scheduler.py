@@ -5346,6 +5346,43 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
         return False
 
 
+def _repair_authoritative_board_projection_before_launch(
+    *,
+    config_path: Path,
+    repo_root: Path,
+    command: str,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Restore an opted-in immutable board projection before real launch.
+
+    Preflight and dry-run commands remain read-only.  A real launch may repair
+    only the closed, receipt-sealed drift class implemented by the projection
+    repairer; every inconclusive case fails before scheduler validation or
+    process creation.
+    """
+
+    if command != "launch" or dry_run:
+        return {
+            "enabled": False,
+            "repaired": False,
+            "reason_code": "read_only_command",
+        }
+    from .authoritative_board_projection import (
+        BoardProjectionRepairError,
+        repair_authoritative_board_projection,
+    )
+
+    try:
+        return repair_authoritative_board_projection(
+            config_path,
+            repo_root=repo_root,
+        )
+    except BoardProjectionRepairError as exc:
+        raise ConfiguredBoardError(
+            f"authoritative board projection repair: {exc}"
+        ) from exc
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -5353,6 +5390,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
     try:
+        projection_repair = _repair_authoritative_board_projection_before_launch(
+            config_path=args.config,
+            repo_root=args.repo_root,
+            command=str(args.command or ""),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
         board = load_configured_board(
             args.config,
             repo_root=args.repo_root,
@@ -5518,6 +5561,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         detach=detach,
         duration_seconds=float(args.duration_seconds),
     )
+    plan["authoritative_board_projection_repair"] = projection_repair
     print(json.dumps(plan, indent=2, sort_keys=True))
     if args.dry_run:
         return 0
