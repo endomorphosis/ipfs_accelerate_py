@@ -596,6 +596,104 @@ def test_bridge_recovers_external_checkout_only_when_lock_absent(
     assert bridge.recover_external_protected_checkout(attempt) == receipt
 
 
+def test_bridge_defers_inflight_process_skip(tmp_path: Path) -> None:
+    class InflightPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "inflight_process",
+                    "task_id": "LGSWF-004",
+                    "attempt": 1,
+                    "worktree_path": str(tmp_path / "worktrees" / "live"),
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = InflightPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "inflight_process"
+    assert caught.value.backoff_seconds == 20
+    assert caught.value.attempt_consumed is False
+    assert portal.closed is True
+
+
+def test_bridge_keeps_other_skipped_reasons_terminal(tmp_path: Path) -> None:
+    class OtherSkipPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "provider_capacity_backoff",
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: OtherSkipPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "provider_capacity_backoff"
+
+
+def test_bridge_recovers_inflight_process_only_when_runner_absent(
+    tmp_path: Path,
+) -> None:
+    class Detector:
+        def __init__(self, live: object) -> None:
+            self.live = live
+            self.closed = False
+
+        def _find_live_inflight_implementation(self) -> object:
+            return self.live
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    live = Detector({"task_id": "LGSWF-004", "worktree_path": "/tmp/live"})
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: live,
+    )
+    attempt = _attempt()
+    with pytest.raises(DatabasePortalBridgeError) as blocked:
+        bridge.recover_inflight_process(attempt)
+    assert "runner to be absent" in str(blocked.value)
+    assert live.closed is True
+
+    absent = Detector(None)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: absent,
+    )
+    receipt = bridge.recover_inflight_process(attempt)
+    assert receipt["reason"] == "inflight_process_absent"
+    assert receipt["source_reason"] == "inflight_process"
+    assert receipt["live_runner_present"] is False
+    assert bridge.recover_inflight_process(attempt) == receipt
+
+
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     tmp_path: Path,
 ) -> None:

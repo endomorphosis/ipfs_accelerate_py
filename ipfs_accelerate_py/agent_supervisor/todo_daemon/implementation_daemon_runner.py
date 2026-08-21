@@ -1307,6 +1307,7 @@ def bind_database_portal_execution_from_args(
         external_protected_checkout_recovery_fn=(
             bridge.recover_external_protected_checkout
         ),
+        inflight_process_recovery_fn=bridge.recover_inflight_process,
     )
     return bridge
 
@@ -1495,6 +1496,7 @@ def build_database_implementation_daemon_from_args(
     validation_fn: Callable[..., Any] | None = None,
     protected_path_recovery_fn: Callable[..., Any] | None = None,
     external_protected_checkout_recovery_fn: Callable[..., Any] | None = None,
+    inflight_process_recovery_fn: Callable[..., Any] | None = None,
 ) -> object:
     """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
 
@@ -1535,6 +1537,7 @@ def build_database_implementation_daemon_from_args(
         external_protected_checkout_recovery_fn=(
             external_protected_checkout_recovery_fn
         ),
+        inflight_process_recovery_fn=inflight_process_recovery_fn,
         require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,

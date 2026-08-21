@@ -602,6 +602,10 @@ def test_runner_binds_bridge_protected_path_recovery_callback(tmp_path: Path) ->
     assert getattr(external_callback, "__name__", "") == (
         "recover_external_protected_checkout"
     )
+    inflight_callback = captured.get("inflight_process_recovery_fn")
+    assert callable(inflight_callback)
+    assert getattr(inflight_callback, "__self__", None) is bridge
+    assert getattr(inflight_callback, "__name__", "") == "recover_inflight_process"
 
 
 def test_crash_fence_reaches_locked_auto_clear_and_keeps_genuine_mutation(

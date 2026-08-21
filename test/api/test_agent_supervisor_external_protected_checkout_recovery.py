@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA,
     DatabasePortalBridgeError,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -73,6 +74,10 @@ def _open_daemon(
         [DatabaseTaskAttempt], Mapping[str, object]
     ]
     | None = None,
+    inflight_process_recovery_fn: Callable[
+        [DatabaseTaskAttempt], Mapping[str, object]
+    ]
+    | None = None,
     max_task_attempts: int = 3,
     clock_ms: Callable[[], int] | None = None,
 ) -> DatabaseImplementationDaemon:
@@ -118,6 +123,7 @@ def _open_daemon(
         external_protected_checkout_recovery_fn=(
             external_protected_checkout_recovery_fn
         ),
+        inflight_process_recovery_fn=inflight_process_recovery_fn,
         require_real_execution=True,
         clock_ms=clock_ms,
     )
@@ -456,3 +462,112 @@ def test_supervisor_does_not_maintenance_block_on_daemon_protected_recovery(
     assert foreign["blocked"] is True
     assert foreign["reason"] == "external_protected_checkout_recovery_required"
     lock_path.unlink()
+
+
+def _inflight_recovery_receipt(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA,
+        "disposition": "retry",
+        "reason": "inflight_process_absent",
+        "source_reason": "inflight_process",
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "live_runner_present": False,
+        "backoff_seconds": 0,
+        "attempt_consumed": False,
+    }
+    receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
+    return receipt
+
+
+def test_run_once_retries_absent_inflight_process_then_completes(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+
+    def provider(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if len(provider_calls) == 1:
+            raise DatabasePortalBridgeError("inflight_process")
+        return {"status": "succeeded", "accepted": True}
+
+    def recover(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        return _inflight_recovery_receipt(holder["daemon"], attempt)
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        inflight_process_recovery_fn=recover,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source_attempt = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source_attempt is not None
+        blocked = daemon.task_source.get(source_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+
+        completed = daemon.task_source.get(source_attempt.task_cid)
+        assert completed is not None and completed.status == "completed"
+        recovery = repaired["inflight_process_recovery_reconciliations"]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+        assert recovery[0]["control_previous_status"] == "blocked"
+        assert provider_calls == [
+            source_attempt.attempt_id,
+            repaired["attempt_id"],
+        ]
+        assert repaired["attempt_id"] != source_attempt.attempt_id
+        assert daemon.reconcile_blocked_inflight_process_recoveries() == []
+    finally:
+        daemon.close()
+
+
+def test_automatic_inflight_recovery_fails_closed_while_runner_live(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError("inflight_process")
+
+    def recover(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError(
+            "inflight-process recovery requires the implementation "
+            "runner to be absent"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        inflight_process_recovery_fn=recover,
+    )
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source_attempt = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source_attempt is not None
+        blocked = daemon.task_source.get(source_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        outcomes = daemon.reconcile_blocked_inflight_process_recoveries()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == "inflight_process_recovery_not_admitted"
+        assert daemon.task_source.get(source_attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()

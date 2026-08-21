@@ -71,6 +71,10 @@ DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-external-protected-checkout-recovery@1"
 )
+DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-inflight-process-recovery@1"
+)
 _PROTECTED_PATH_RECOVERY_INTENT_FILENAME: Final[str] = (
     "database-portal-protected-path-recovery-intent.json"
 )
@@ -80,10 +84,14 @@ _PROTECTED_PATH_RECOVERY_FILENAME: Final[str] = (
 _EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_FILENAME: Final[str] = (
     "database-portal-external-protected-checkout-recovery.json"
 )
+_INFLIGHT_PROCESS_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-inflight-process-recovery.json"
+)
 _PAIRED_SUPERVISOR_PROTECTED_RECOVERY_OWNER: Final[str] = (
     "implementation_supervisor"
 )
 _EXTERNAL_PROTECTED_CHECKOUT_DEFERRAL_BACKOFF_SECONDS: Final[int] = 20
+_INFLIGHT_PROCESS_DEFERRAL_BACKOFF_SECONDS: Final[int] = 20
 _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME: Final[str] = (
     "implementation-protected-path-active.json"
 )
@@ -1523,6 +1531,28 @@ class DatabasePortalExecutionBridge:
         )
 
     @staticmethod
+    def _inflight_process_deferral(
+        result: Mapping[str, Any],
+    ) -> tuple[str, int] | None:
+        """Defer a live-worker skip instead of turning it into a terminal block.
+
+        Portal ``run_once`` reports ``skipped``/``inflight_process`` when an
+        implementation runner for this attempt still looks live.  That is a
+        stable wait, not a failed provider.  Mapping it through
+        ``_terminal_failure`` burned the task into ``blocked``.
+        """
+
+        implementation = result.get("implementation_result")
+        if not isinstance(implementation, Mapping):
+            return None
+        if implementation.get("skipped") is not True:
+            return None
+        reason = str(implementation.get("reason") or "")
+        if reason != "inflight_process":
+            return None
+        return (reason, _INFLIGHT_PROCESS_DEFERRAL_BACKOFF_SECONDS)
+
+    @staticmethod
     def _looks_like_validation_retry(
         implementation: Mapping[str, Any],
     ) -> bool:
@@ -2671,6 +2701,144 @@ class DatabasePortalExecutionBridge:
             receipt=receipt,
         )
 
+    def _observe_live_inflight_implementation(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+    ) -> Mapping[str, Any] | None:
+        """Ask the attempt-local Portal executor whether a runner is still live.
+
+        This reuses the Portal daemon's own inflight detector rather than
+        inventing a second process schema.  Missing the detector fails closed.
+        """
+
+        alias = str(getattr(attempt, "task_alias", "") or attempt.task_cid)
+        daemon = self.portal_factory(paths, alias)
+        if daemon is None:
+            raise DatabasePortalBridgeError(
+                "inflight-process recovery portal factory returned no executor"
+            )
+        try:
+            inspect = getattr(daemon, "_find_live_inflight_implementation", None)
+            if not callable(inspect):
+                raise DatabasePortalBridgeError(
+                    "Portal executor has no inflight-process detector"
+                )
+            observed = inspect()
+        finally:
+            close = getattr(daemon, "close_event_runtime", None) or getattr(
+                daemon, "close", None
+            )
+            if callable(close):
+                close()
+        if observed is None:
+            return None
+        if not isinstance(observed, Mapping):
+            raise DatabasePortalBridgeError(
+                "inflight-process detector returned a non-object observation"
+            )
+        return observed
+
+    def _finalize_inflight_process_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+    ) -> dict[str, Any]:
+        receipt = {
+            "schema": DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA,
+            "disposition": "retry",
+            "reason": "inflight_process_absent",
+            "source_reason": "inflight_process",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "live_runner_present": False,
+            "backoff_seconds": 0,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _verify_inflight_process_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "live_runner_present",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabasePortalBridgeError(
+                "inflight-process recovery receipt is malformed or foreign"
+            )
+        expected = self._finalize_inflight_process_recovery_receipt(attempt=attempt)
+        if dict(receipt) != expected:
+            raise DatabasePortalBridgeError(
+                "inflight-process recovery receipt changed after finalization"
+            )
+        return expected
+
+    def recover_inflight_process(self, attempt: Any) -> Mapping[str, Any]:
+        """Rearm only after this attempt's implementation runner is gone.
+
+        A live worker stays blocked.  Absence is proved by the same Portal
+        inflight detector that produced the original skip, bound to this
+        attempt's private event stream.
+        """
+
+        self._record_for_attempt(self.task_source, attempt)
+        paths = self._paths(attempt)
+        observed = self._observe_live_inflight_implementation(
+            attempt=attempt,
+            paths=paths,
+        )
+        if observed is not None:
+            raise DatabasePortalBridgeError(
+                "inflight-process recovery requires the implementation "
+                "runner to be absent"
+            )
+        final_path = paths.root / _INFLIGHT_PROCESS_RECOVERY_FILENAME
+        if final_path.is_file():
+            return self._verify_inflight_process_recovery_receipt(
+                attempt=attempt,
+                receipt=self._read_json_object(
+                    final_path,
+                    noun="inflight-process recovery receipt",
+                ),
+            )
+        receipt = self._finalize_inflight_process_recovery_receipt(attempt=attempt)
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return self._verify_inflight_process_recovery_receipt(
+            attempt=attempt,
+            receipt=receipt,
+        )
+
     def _preserved_commit_exists(
         self,
         *,
@@ -3379,6 +3547,13 @@ class DatabasePortalExecutionBridge:
                         reason,
                         backoff_seconds=backoff_seconds,
                     )
+                inflight_deferral = self._inflight_process_deferral(raw_result)
+                if inflight_deferral is not None:
+                    reason, backoff_seconds = inflight_deferral
+                    raise DatabasePortalBridgeDeferred(
+                        reason,
+                        backoff_seconds=backoff_seconds,
+                    )
                 implementation = raw_result.get("implementation_result")
                 if (
                     isinstance(implementation, Mapping)
@@ -3471,6 +3646,7 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA",
+    "DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
