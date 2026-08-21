@@ -93,7 +93,7 @@
   },
   "max_lanes": 3,
   "strict_task_sharding": true,
-  "idle_lane_work_stealing": "virgin-transfer",
+  "idle_lane_work_stealing": "",
   "exit_when_all_tracks_terminal": true,
   "objective_refill_enabled": false,
   "codebase_refill_enabled": false,

@@ -924,8 +924,11 @@ def validate_program(
 
     if config.get("max_lanes") != 3 or config.get("strict_task_sharding") is not True:
         errors.append("config must use three strict conflict-aware lanes")
-    if config.get("idle_lane_work_stealing") != "virgin-transfer":
-        errors.append("idle work stealing must be limited to virgin task slices")
+    if config.get("idle_lane_work_stealing") != "":
+        errors.append(
+            "idle work stealing must remain disabled because the current "
+            "implementation entrypoint does not accept that optional flag"
+        )
     for field in ("objective_refill_enabled", "codebase_refill_enabled", "objective_goal_refinement_enabled"):
         if config.get(field) is not False:
             errors.append(f"config {field} must be false for the sealed program")

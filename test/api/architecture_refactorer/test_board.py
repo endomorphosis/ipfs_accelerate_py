@@ -13,6 +13,8 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+    configured_board_common_args,
+    configured_board_launch_plan,
     load_configured_board,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -103,6 +105,21 @@ def test_provider_route_is_the_current_reviewed_quota_fallback() -> None:
         "secrets_from_environment_only": True,
         "secrets_in_argv_prompts_logs_or_receipts": False,
     }
+
+
+def test_launch_does_not_pass_unsupported_idle_stealing_flag() -> None:
+    configured = load_configured_board(CONFIG, repo_root=REPO_ROOT)
+    common_args = configured_board_common_args(configured, implement=True)
+    plan = configured_board_launch_plan(
+        configured,
+        implement=True,
+        detach=True,
+        stamp="PCAR-TEST",
+    )
+
+    assert configured.idle_lane_work_stealing == ""
+    assert "--idle-lane-work-stealing" not in common_args
+    assert "--implementation-supervisor-idle-lane-work-stealing" not in plan["argv"]
 
 
 def test_production_parsers_preserve_goal_and_task_dags() -> None:
