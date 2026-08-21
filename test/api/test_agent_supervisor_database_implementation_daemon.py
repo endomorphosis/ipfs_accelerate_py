@@ -47,6 +47,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     connect_duckdb_with_policy,
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
+    COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
 )
@@ -64,6 +67,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationConflictError,
+    DatabaseImplementationCoordinationDriftError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     is_database_authority_mode,
@@ -337,6 +341,18 @@ def test_interface_identities() -> None:
     )
 
 
+def test_database_completion_seed_vocabulary_matches_task_source() -> None:
+    daemon_module = importlib.import_module(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    )
+    assert daemon_module._DATABASE_SUCCESSFUL_CONTROL_STATUSES is (
+        TASK_SOURCE_COMPLETED_STATUSES
+    )
+    assert TASK_SOURCE_COMPLETED_STATUSES == frozenset(
+        {"completed", "complete", "done", "skipped"}
+    )
+
+
 def test_direct_selector_never_bypasses_cooldown_when_all_ready_are_cooled() -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
     daemon.merge_queue = SimpleNamespace(
@@ -434,6 +450,139 @@ def test_materialization_projects_completed_prerequisites_into_coordination(
         assert attempt.task_cid == "task:cid:002"
     finally:
         daemon.close()
+
+
+def test_fresh_strict_lane_seeds_completed_dependency_before_claim(
+    tmp_path: Path,
+) -> None:
+    """A lane-private coordinator reconstructs dependency evidence from control."""
+
+    population = _population(4)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0].update(
+        {
+            "task_id": "DQP-COMPLETE",
+            "status": "skipped",
+        }
+    )
+    tasks[1].update(
+        {
+            "task_id": "DQP-DEPENDENT",
+            "dependencies": ["task:cid:001"],
+        }
+    )
+    tasks[2]["task_id"] = "DQP-OTHER-1"
+    tasks[3].update(
+        {
+            "task_id": "DQP-BLOCKED",
+            "status": "blocked",
+        }
+    )
+
+    source = DatabaseTaskSource(tmp_path / "control.duckdb")
+    source.materialize(population, repository_tree_id="tree:dqp-fresh-lane")
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "lane-0" / "coordination.duckdb",
+        execution_path=tmp_path / "lane-0" / "execution.duckdb",
+        owner_session_id="session:fresh-strict-lane",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=source,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+        require_real_execution=True,
+    )
+    try:
+        # The prerequisite and off-shard task hash to lane 1; the dependent
+        # and blocked task hash to lane 0.  Only the ready dependent is exposed
+        # through the lane's Quack-authoritative eligibility sequence.
+        assert daemon._task_home_shard_index("DQP-COMPLETE") == 1
+        assert daemon._task_home_shard_index("DQP-DEPENDENT") == 0
+        assert daemon._task_home_shard_index("DQP-OTHER-1") == 1
+        assert daemon._task_home_shard_index("DQP-BLOCKED") == 0
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert {item["task_cid"] for item in projection["tasks"]} == {
+            "task:cid:001",
+            "task:cid:002",
+        }
+        assert projection["logical_completions"] == [
+            {
+                "task_cid": "task:cid:001",
+                "status": "succeeded",
+                "body": {
+                    "authority": "database_task_source",
+                    "source_status": "skipped",
+                    "task_alias": "DQP-COMPLETE",
+                    "task_revision": 1,
+                },
+            }
+        ]
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+        assert daemon.coordinator.coordination_registry_projection() == projection
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:002"
+        # Neither the same-shard blocked task nor the ready task owned by the
+        # other strict shard may be claimed from this private coordinator.
+        assert daemon.claim_next() is None
+        blocked = source.get_task("task:cid:004")
+        off_shard = source.get_task("task:cid:003")
+        assert blocked is not None and blocked.status == "blocked"
+        assert off_shard is not None and off_shard.status == "ready"
+    finally:
+        daemon.close()
+        source.close()
+
+
+def test_conflicting_local_completion_refuses_coordination_drift(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["status"] = "skipped"
+    tasks[1]["dependencies"] = ["task:cid:001"]
+
+    source = DatabaseTaskSource(tmp_path / "control.duckdb")
+    source.materialize(population, repository_tree_id="tree:dqp-local-drift")
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "lane" / "coordination.duckdb",
+        execution_path=tmp_path / "lane" / "execution.duckdb",
+        owner_session_id="session:local-drift",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=source,
+        require_real_execution=True,
+    )
+    try:
+        daemon.coordinator.register_task(
+            task_cid="task:cid:001",
+            task_id="DQP-T001",
+        )
+        daemon.coordinator.mark_task_complete(
+            "task:cid:001",
+            status="failed",
+            body={"source": "stale-lane-local-evidence"},
+        )
+
+        with pytest.raises(
+            DatabaseImplementationCoordinationDriftError,
+            match="lane-local completion contradicts",
+        ):
+            daemon.claim_next()
+        assert daemon.list_running_attempts() == []
+        dependent = source.get_task("task:cid:002")
+        assert dependent is not None and dependent.status == "ready"
+    finally:
+        daemon.close()
+        source.close()
 
 
 def test_claim_next_preserves_canonical_ready_order_for_late_task(
@@ -2635,6 +2784,55 @@ def test_automatic_run_once_never_claims_manual_or_review_only_task(
             now_ms=daemon._now_ms(),
         )
         assert direct.task_cid == "task:cid:001"
+    finally:
+        daemon.close()
+
+
+def test_current_control_recheck_rejects_task_that_became_manual(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:manual-race")
+    try:
+        daemon.materialize_population(_population(1))
+        source = daemon.task_source
+        original_get = source.get
+        mutated = False
+
+        def become_manual(task_cid: str) -> object:
+            nonlocal mutated
+            current = original_get(task_cid)
+            if current is not None and not mutated:
+                source._intent.upsert_task(
+                    task_cid=current.task_cid,
+                    task_alias=current.task_alias,
+                    goal_cid=current.goal_cid,
+                    ordinal=current.ordinal,
+                    status=current.status,
+                    priority=current.priority,
+                    plan_cid=current.plan_cid,
+                    objective_id=current.objective_id,
+                    body={**dict(current.body), "completion": "manual"},
+                    identity={"task_cid": current.task_cid},
+                    expected_revision=current.revision,
+                    dependencies=current.dependencies,
+                    outputs=current.outputs,
+                    acceptance=current.acceptance,
+                    validations=current.validations,
+                )
+                mutated = True
+            return original_get(task_cid)
+
+        monkeypatch.setattr(source, "get", become_manual)
+        assert daemon.claim_next() is None
+        assert mutated is True
+        assert daemon.list_running_attempts() == []
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert projection["counts"]["active_task_claims"] == 0
+        current = original_get("task:cid:001")
+        assert current is not None
+        assert current.status == "ready"
+        assert current.body["completion"] == "manual"
     finally:
         daemon.close()
 

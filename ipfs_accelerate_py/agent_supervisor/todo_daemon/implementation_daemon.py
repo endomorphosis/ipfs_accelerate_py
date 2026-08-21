@@ -173,6 +173,7 @@ from ..task_sources.task_identity import (
     canonical_task_identity,
 )
 from ..task_sources.task_source import (
+    COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
     ActivePlanBinding,
     ActivePlanRevisionError,
@@ -68738,6 +68739,11 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
+_DATABASE_CLAIMABLE_CONTROL_STATUSES = frozenset(
+    {"todo", "ready", "open", "retrying"}
+)
+_DATABASE_SUCCESSFUL_CONTROL_STATUSES = TASK_SOURCE_COMPLETED_STATUSES
+
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -68745,6 +68751,12 @@ class DatabaseImplementationDaemonError(RuntimeError):
 
 class DatabaseImplementationAuthorityError(DatabaseImplementationDaemonError):
     """Raised when a database-authority path would mutate Markdown or file state."""
+
+
+class DatabaseImplementationCoordinationDriftError(
+    DatabaseImplementationAuthorityError
+):
+    """Raised when lane-local coordination contradicts control authority."""
 
 
 class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
@@ -70053,24 +70065,131 @@ class DatabaseImplementationDaemon:
         return True
 
     def sync_ready_tasks_into_coordination(self) -> list[str]:
-        """Ensure ready tasks from the intent repository are claimable."""
+        """Seed canonical coordination state and return shard-eligible work.
+
+        Coordination databases are lane-private caches, not task authority.
+        A fresh lane therefore needs the bounded canonical population and the
+        successful status of already-completed prerequisites before its local
+        dependency checker can claim a task that Quack reports as ready.  The
+        explicit ready-task sequence returned here remains the claim boundary:
+        blocked, in-progress, off-shard, and out-of-slice records are not
+        seeded as locally ready or made eligible for daemon dispatch.
+        """
+
+        population = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        if str(getattr(population, "next_cursor", "") or ""):
+            raise DatabaseImplementationAuthorityError(
+                "canonical task population exceeds the bounded coordination "
+                "seed limit"
+            )
+        canonical_tasks = tuple(population.tasks)
+        canonical_task_cids = {
+            str(getattr(task, "task_cid", "") or "") for task in canonical_tasks
+        }
+        if "" in canonical_task_cids or len(canonical_task_cids) != len(
+            canonical_tasks
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "canonical task population contains missing or duplicate task CIDs"
+            )
 
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-        registered: list[str] = []
-        for task in ready.tasks:
-            status = str(task.status or "").strip().lower()
-            if status in {"completed", "complete", "done", "skipped", "cancelled"}:
-                continue
-            if not self._database_task_is_eligible(task):
-                continue
+        ready_task_cids = [str(task.task_cid) for task in ready.tasks]
+        if len(set(ready_task_cids)) != len(ready_task_cids) or not set(
+            ready_task_cids
+        ).issubset(canonical_task_cids):
+            raise DatabaseImplementationAuthorityError(
+                "canonical ready projection is inconsistent with its bounded "
+                "task population"
+            )
+
+        eligible_ready_tasks = tuple(
+            task
+            for task in ready.tasks
+            if str(task.status or "").strip().lower()
+            in _DATABASE_CLAIMABLE_CONTROL_STATUSES
+            and self._database_task_is_eligible(task)
+            and not self._automatic_claim_forbidden(task)
+        )
+        successful_tasks = tuple(
+            task
+            for task in canonical_tasks
+            if str(task.status or "").strip().lower()
+            in _DATABASE_SUCCESSFUL_CONTROL_STATUSES
+        )
+        seed_tasks = {
+            str(task.task_cid): task
+            for task in (*successful_tasks, *eligible_ready_tasks)
+        }
+        for task in seed_tasks.values():
             self.coordinator.register_task(
                 task_cid=task.task_cid,
                 task_id=task.task_alias or task.task_cid,
                 dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
                 body={"task_alias": task.task_alias, "status": task.status},
             )
-            registered.append(task.task_cid)
-        return registered
+
+        registry_projection = getattr(
+            self.coordinator,
+            "coordination_registry_projection",
+            None,
+        )
+        if not callable(registry_projection):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot prove its registered task population"
+            )
+        projection = registry_projection()
+        logical_completions = (
+            projection.get("logical_completions")
+            if isinstance(projection, Mapping)
+            else None
+        )
+        if not isinstance(logical_completions, list):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator returned no typed logical completion projection"
+            )
+        local_completion_statuses: dict[str, str] = {}
+        for item in logical_completions:
+            if not isinstance(item, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator logical completion projection is malformed"
+                )
+            task_cid = item.get("task_cid")
+            if type(task_cid) is not str or not task_cid:
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator logical completion contains no exact task CID"
+                )
+            if task_cid in local_completion_statuses:
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator logical completion projection contains a "
+                    "duplicate task CID"
+                )
+            local_completion_statuses[task_cid] = str(
+                item.get("status") or ""
+            ).strip().lower()
+
+        for task in successful_tasks:
+            status = str(task.status or "").strip().lower()
+            local_status = local_completion_statuses.get(task.task_cid)
+            if local_status == "succeeded":
+                continue
+            if local_status is not None:
+                raise DatabaseImplementationCoordinationDriftError(
+                    "lane-local completion contradicts the authoritative "
+                    f"completed task {task.task_cid!r}: {local_status!r}"
+                )
+            self.coordinator.mark_task_complete(
+                task.task_cid,
+                status="succeeded",
+                body={
+                    "authority": "database_task_source",
+                    "source_status": status,
+                    "task_alias": task.task_alias,
+                    "task_revision": int(task.revision),
+                },
+            )
+
+        return [str(task.task_cid) for task in eligible_ready_tasks]
 
     @staticmethod
     def _automatic_claim_forbidden(task: Any) -> bool:
@@ -70217,7 +70336,8 @@ class DatabaseImplementationDaemon:
             if (
                 task is None
                 or not self._database_task_is_eligible(task)
-                or status not in {"todo", "ready", "open", "retrying"}
+                or self._automatic_claim_forbidden(task)
+                or status not in _DATABASE_CLAIMABLE_CONTROL_STATUSES
             ):
                 self._release_unadmitted_local_claim(
                     claim,
