@@ -1684,3 +1684,19 @@ serializes. Sibling repositories are read-only.
 - Outputs: docs/architecture/AGENT_SUPERVISOR_PROOF_CARRYING_ARCHITECTURE_REFACTORER_QUALIFICATION.md, docs/architecture/architecture_refactorer_inventory/final_qualification_report.json, docs/architecture/architecture_refactorer_inventory/architecture_root_manifest.json, test/api/architecture_refactorer/test_qualification_report.py
 - Raw-source requirements: Accepted current-tree receipts and managed artifact manifests only; expand source solely to verify final identity
 - Capability blockers: none
+
+## PCAR-032 Resolve 1 preflight-conflicting backlogged worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 7f59ada57b7196d41af4bdcb8467b5bb5d4201b2
+- Dedupe key: reconciliation_guardrail:preflight_merge_conflict
+- Depends on:
+- Outputs: data/agent_supervisor/proof_carrying_architecture_refactorer/state/discovery, docs/architecture/agent_supervisor_architecture_refactorer.todo.md
+- Validation: test -f /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/state/discovery/2026-08-21-pcar-032-reconciliation-7f59ada57b71.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/state/discovery/2026-08-21-pcar-032-reconciliation-7f59ada57b71.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
