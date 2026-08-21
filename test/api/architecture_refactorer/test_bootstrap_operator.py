@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
 from pathlib import Path
 from types import ModuleType
@@ -105,3 +106,40 @@ def test_state_owner_verifies_the_canonical_full_control_plane(tmp_path: Path) -
     assert report.changed is False
     assert report.schema_fingerprint
     assert report.catalog_fingerprint
+
+
+def test_managed_daemon_receives_source_checkout_environment(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_supervisor as supervisor_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+        SupervisorLoop,
+    )
+
+    todo_path = tmp_path / "tasks.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    args = supervisor_module.parse_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+        ]
+    )
+    supervisor = supervisor_module.PortalImplementationSupervisor(
+        supervisor_module.supervisor_config_from_args(
+            args,
+            repo_root=supervisor_module.REPO_ROOT,
+        )
+    )
+
+    loop_config = supervisor.build_supervisor_loop_config()
+    expected_root = str(supervisor_module.REPO_ROOT)
+
+    assert loop_config.child_env == loop_config.spec.launch_env
+    assert expected_root in loop_config.child_env["PYTHONPATH"].split(os.pathsep)
+    assert SupervisorLoop(loop_config)._child_spec("restart").env == (
+        loop_config.child_env
+    )
