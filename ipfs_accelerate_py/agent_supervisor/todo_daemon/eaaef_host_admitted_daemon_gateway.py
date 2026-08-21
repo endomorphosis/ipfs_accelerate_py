@@ -314,7 +314,12 @@ class _TaskSource(_Component):
                 "list_tasks_page", cursor=cursor, limit=50
             )
             for item in page.items:
-                if str(item.get("status") or "").lower() in {"todo", "ready", "open"}:
+                if str(item.get("status") or "").lower() in {
+                    "todo",
+                    "ready",
+                    "open",
+                    "in_progress",
+                }:
                     ready.append(item)
                     if len(ready) >= wanted:
                         break
