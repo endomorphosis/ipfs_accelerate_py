@@ -594,7 +594,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     report = validate_program()
-    if args.json:
+    # The canonical configured-board scheduler invokes declared validators with
+    # ``--check-all`` and consumes a JSON object from stdout.  Keep the bare
+    # invocation human-readable, while making both machine-oriented flags
+    # satisfy that shared validator contract.
+    if args.json or args.check_all:
         print(json.dumps(report, sort_keys=True, separators=(",", ":")))
     else:
         state = "PASS" if report["valid"] else "FAIL"

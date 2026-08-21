@@ -47,6 +47,25 @@ def test_validator_json_surface_is_machine_readable() -> None:
     assert report["program_id"] == ("agent-supervisor-verified-residual-intelligence-foundry-v1")
 
 
+def test_validator_check_all_surface_matches_scheduler_contract() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR), "--check-all"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    report = json.loads(completed.stdout)
+    assert report["valid"] is True
+    assert report["ready_frontier"] == [
+        "VRIF-009",
+        "VRIF-010",
+        "VRIF-011",
+        "VRIF-012",
+    ]
+
+
 def test_parser_rejects_duplicate_bold_fields() -> None:
     module = _validator_module()
     records, errors = module._parse_records(
