@@ -3315,6 +3315,75 @@ def test_generated_board_same_producer_retry_releases_retained_lease(
     assert supervisor._current_supervisor_checkout_lease() is None
 
 
+def test_generated_board_release_ignores_unrelated_protected_code_history(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    script_path = repo / "scripts" / "run_operator.py"
+    script_path.parent.mkdir()
+    script_path.write_text("print('seed')\n", encoding="utf-8")
+    _git(repo, "add", "tasks.todo.md", "scripts/run_operator.py")
+    _git(repo, "commit", "-m", "initial")
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "tasks.todo.md",
+            "--implementation-protected-path",
+            "scripts/run_operator.py",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+
+    def dirty_producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Retry\n", encoding="utf-8")
+        return ["dirty"]
+
+    with pytest.raises(RuntimeError, match="protected_generated_outputs_dirty"):
+        supervisor._run_generated_board_producer(
+            producer="retry-test",
+            commit_outputs=True,
+            callback=dirty_producer,
+        )
+
+    script_path.write_text("print('later operator fix')\n", encoding="utf-8")
+    _git(repo, "add", "scripts/run_operator.py")
+    _git(repo, "commit", "-m", "untrusted operator script")
+
+    def trusted_retry() -> list[str]:
+        _git(repo, "add", "tasks.todo.md")
+        _git(
+            repo,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            generated_protected_board_commit_subject("retry generated output"),
+        )
+        return ["recovered"]
+
+    assert supervisor._run_generated_board_producer(
+        producer="retry-test",
+        commit_outputs=True,
+        callback=trusted_retry,
+    ) == ["recovered"]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
 def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
     tmp_path: Path,
 ) -> None:

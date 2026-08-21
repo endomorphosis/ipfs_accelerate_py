@@ -28,6 +28,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final
 
+from ..merge.protected_recovery_fence import (
+    FENCE_CONTENTION_BACKOFF_SECONDS,
+    is_protected_recovery_fence_contention,
+)
 from ..runtime.event_log import append_jsonl_event
 from ..validation.validation_commands import validation_command_repository_root
 
@@ -882,7 +886,12 @@ class DatabasePortalExecutionBridge:
     @staticmethod
     def _terminal_failure(result: Mapping[str, Any]) -> str:
         if result.get("blocked") is True:
-            return str(result.get("reason") or "portal_execution_blocked")
+            reason = str(result.get("reason") or "portal_execution_blocked")
+            if is_protected_recovery_fence_contention(reason):
+                # Peer-owner recovery is a wait, not a task defect. The
+                # typed-deferral classifier admits retry; do not CAS blocked.
+                return ""
+            return reason
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return ""
@@ -901,6 +910,27 @@ class DatabasePortalExecutionBridge:
     ) -> tuple[str, int] | None:
         """Return exact Portal deferral data without parsing reason text."""
 
+        if result.get("blocked") is True:
+            reason = str(result.get("reason") or "")
+            if is_protected_recovery_fence_contention(reason):
+                raw_backoff = result.get(
+                    "backoff_seconds",
+                    FENCE_CONTENTION_BACKOFF_SECONDS,
+                )
+                if (
+                    isinstance(raw_backoff, bool)
+                    or not isinstance(raw_backoff, int)
+                    or raw_backoff < 0
+                    or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+                ):
+                    raise DatabasePortalBridgeError(
+                        "Portal fence deferral returned an invalid "
+                        "backoff_seconds value"
+                    )
+                return (
+                    reason or "external_protected_checkout_recovery_required",
+                    int(raw_backoff),
+                )
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None

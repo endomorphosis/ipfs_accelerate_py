@@ -43,6 +43,7 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
+from ..merge.protected_recovery_fence import generated_board_output_paths
 from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
     PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
@@ -9825,15 +9826,53 @@ class PortalImplementationSupervisor:
             if not item.get("trusted_generator")
         ]
         if untrusted_commits:
-            return {
-                **result_base,
-                "release_allowed": False,
-                "reason": "protected_generated_history_untrusted",
-                "before_head": before_head,
-                "after_head": after_head,
-                "commits": commits,
-                "untrusted_commits": untrusted_commits,
-            }
+            board_paths = generated_board_output_paths(paths)
+            if not board_paths:
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_untrusted",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": commits,
+                    "untrusted_commits": untrusted_commits,
+                }
+            board_revision = (
+                f"{before_head}..{after_head}" if before_head else after_head
+            )
+            board_history = self._git_protected_history(
+                git_root,
+                board_revision,
+                board_paths,
+            )
+            if not board_history.get("ok"):
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_query_failed",
+                    "history_query": board_history,
+                }
+            board_untrusted = [
+                str(item.get("commit") or "")
+                for item in board_history.get("commits") or ()
+                if not item.get("trusted_generator")
+            ]
+            if board_untrusted:
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_untrusted",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": commits,
+                    "untrusted_commits": board_untrusted,
+                    "generated_board_paths": list(board_paths),
+                }
+            result_base["unrelated_untrusted_commits"] = untrusted_commits
+            result_base["generated_board_paths"] = list(board_paths)
+            result_base["automatic_fence_resolution"] = (
+                "protected_generated_history_unrelated_protected_code"
+            )
 
         confirmed_head = self._git_head_state(git_root)
         confirmed_status = self._git_scope_dirty_paths(git_root, paths)
@@ -9856,9 +9895,12 @@ class PortalImplementationSupervisor:
             **result_base,
             "release_allowed": True,
             "reason": (
-                "protected_generated_history_trusted"
-                if commits
-                else "protected_outputs_clean_unrelated_history"
+                str(result_base.get("automatic_fence_resolution") or "")
+                or (
+                    "protected_generated_history_trusted"
+                    if commits
+                    else "protected_outputs_clean_history_unchanged"
+                )
             ),
             "before_head": before_head,
             "after_head": after_head,
