@@ -243,7 +243,12 @@ def test_git_worktree_reuses_sibling_with_owned_files(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway.subprocess.run",
         _forbidden_run,
     )
-    found = _git_worktree(tmp_path, attempt_id="sha256:" + ("b" * 64))
+    found = _git_worktree(
+        tmp_path,
+        attempt_id="sha256:" + ("b" * 64),
+        task_id="EAAEF-010",
+        owned=_OWNED_RELATIVE_PATHS,
+    )
     assert found == sibling
 
 
@@ -365,6 +370,7 @@ def test_host_merge_admission_is_reviewed_patch_when_host_lacks_files(
             "patch_artifact_cid": patch,
         },
         repo_root=tmp_path,
+        owned=_OWNED_RELATIVE_PATHS,
     )
     assert admission is not None
     assert admission["decision"] == "accepted"

@@ -345,38 +345,149 @@ def _seal_receipt(body: Mapping[str, Any], field: str = "receipt_cid") -> dict[s
     return payload
 
 
-def _complete_owned_worktrees(worktrees: Path) -> tuple[Path, ...]:
-    """Return existing EAAEF-010 worktrees that already have both owned files."""
+def _task_slug(task_id: str) -> str:
+    raw = str(task_id or "eaaef").strip().lower()
+    slug = "".join(ch if ch.isalnum() else "-" for ch in raw)
+    slug = "-".join(part for part in slug.split("-") if part)
+    return (slug or "eaaef")[:32]
 
-    found: list[Path] = []
-    for candidate in sorted(worktrees.glob("eaaef-010-*")):
-        if candidate.is_dir() and set(_owned_files(candidate)) == set(
-            _OWNED_RELATIVE_PATHS
+
+def _safe_owned_paths(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        value = (value,)
+    if not isinstance(value, (list, tuple)):
+        return ()
+    owned: list[str] = []
+    for item in value:
+        relative = str(item or "").strip().lstrip("/")
+        if (
+            not relative
+            or relative.startswith("/")
+            or ".." in Path(relative).parts
+            or Path(relative).is_absolute()
         ):
+            continue
+        owned.append(relative)
+    return tuple(dict.fromkeys(owned))
+
+
+def _focused_test_paths(body: Mapping[str, Any], *, owned: Sequence[str]) -> tuple[str, ...]:
+    tests = body.get("test_requirements")
+    focused: object = ()
+    if isinstance(tests, Mapping):
+        focused = tests.get("focused") or ()
+    paths: list[str] = []
+    if isinstance(focused, (list, tuple, str)):
+        items = (focused,) if isinstance(focused, str) else focused
+        for item in items:
+            for token in str(item).split():
+                if token.endswith(".py") and not token.startswith("-"):
+                    relative = token.lstrip("/")
+                    if ".." not in Path(relative).parts:
+                        paths.append(relative)
+    if not paths:
+        paths = [
+            relative
+            for relative in owned
+            if relative.endswith(".py")
+            and (
+                relative.startswith("test/")
+                or relative.startswith("tests/")
+                or "/test" in relative
+            )
+        ]
+    return tuple(dict.fromkeys(paths))
+
+
+def _load_task_spec(
+    repo_root: Path, *, task_cid: str, task_id: str
+) -> dict[str, Any]:
+    """Load owned files and focused tests from the live Quack task row."""
+
+    body: Mapping[str, Any] = {}
+    try:
+        duckdb, extension = _import_admitted_duckdb(repo_root)
+        generation = "run-v14"
+        vault = (
+            Path(repo_root)
+            / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+            / generation
+            / "live/state/quack-owner"
+        )
+        token = _resolve_owner_token(_OWNER_HANDLE, vault_dir=vault)
+        connection = _connect_admitted_duckdb(duckdb, extension)
+        try:
+            connection.execute(
+                "ATTACH 'quack:127.0.0.1:19495' AS control_plane (TYPE QUACK, TOKEN ?)",
+                [token],
+            )
+            connection.execute("USE control_plane")
+            row = connection.execute(
+                "SELECT task_alias, body_json FROM tasks WHERE task_cid = ? LIMIT 1",
+                [str(task_cid)],
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is not None:
+            task_id = str(row[0] or task_id)
+            loaded = json.loads(str(row[1] or "{}"))
+            if isinstance(loaded, Mapping):
+                body = loaded
+    except Exception:
+        body = {}
+    owned = _safe_owned_paths(body.get("owned_files") or body.get("write_scope") or ())
+    if not owned:
+        raise QuackDaemonGatewayError(
+            f"{task_id} has no owned files in the control plane"
+        )
+    tests = _focused_test_paths(body, owned=owned)
+    if not tests:
+        raise QuackDaemonGatewayError(f"{task_id} has no focused tests")
+    return {
+        "task_id": str(task_id),
+        "owned": owned,
+        "tests": tests,
+        "objective": str(body.get("objective") or body.get("title") or task_id),
+    }
+
+
+def _complete_owned_worktrees(
+    worktrees: Path, *, task_id: str, owned: Sequence[str]
+) -> tuple[Path, ...]:
+    """Return existing worktrees that already have this task's owned files."""
+
+    slug = _task_slug(task_id)
+    found: list[Path] = []
+    for candidate in sorted(worktrees.glob(f"{slug}-*")):
+        if candidate.is_dir() and set(_owned_files(candidate, owned)) == set(owned):
             found.append(candidate)
     return tuple(found)
 
 
-def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
+def _git_worktree(
+    repo_root: Path,
+    *,
+    attempt_id: str,
+    task_id: str,
+    owned: Sequence[str],
+) -> Path:
     worktrees = (
         repo_root
         / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
         / "run-v14/worktrees"
     )
     worktrees.mkdir(parents=True, exist_ok=True)
-    dest = worktrees / f"eaaef-010-{attempt_id.replace(':', '_')[-16:]}"
-    complete = _complete_owned_worktrees(worktrees)
+    dest = worktrees / f"{_task_slug(task_id)}-{attempt_id.replace(':', '_')[-16:]}"
+    complete = _complete_owned_worktrees(worktrees, task_id=task_id, owned=owned)
     if dest in complete:
-        _ensure_owned_write_dirs(dest)
+        _ensure_owned_write_dirs(dest, owned)
         return dest
     if complete:
-        # Attempt ids include the per-process owner session, so a later claim
-        # must not ignore a sibling worktree that already has passing files.
         chosen = complete[0]
-        _ensure_owned_write_dirs(chosen)
+        _ensure_owned_write_dirs(chosen, owned)
         return chosen
     if dest.exists():
-        _ensure_owned_write_dirs(dest)
+        _ensure_owned_write_dirs(dest, owned)
         return dest
     completed = subprocess.run(
         [
@@ -396,17 +507,17 @@ def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
     )
     if completed.returncode != 0 or not dest.is_dir():
         raise QuackDaemonGatewayError(
-            "could not create an isolated EAAEF-010 worktree: "
+            "could not create an isolated EAAEF worktree: "
             + (completed.stderr or completed.stdout or "unknown")
         )
-    _ensure_owned_write_dirs(dest)
+    _ensure_owned_write_dirs(dest, owned)
     return dest
 
 
-def _ensure_owned_write_dirs(worktree: Path) -> None:
+def _ensure_owned_write_dirs(worktree: Path, owned: Sequence[str]) -> None:
     """Make only the owned output directories writable for the container user."""
 
-    for relative in _OWNED_RELATIVE_PATHS:
+    for relative in owned:
         directory = (worktree / relative).parent
         directory.mkdir(parents=True, exist_ok=True)
         try:
@@ -415,19 +526,21 @@ def _ensure_owned_write_dirs(worktree: Path) -> None:
             continue
 
 
-def _owned_files(worktree: Path) -> dict[str, Path]:
+def _owned_files(worktree: Path, owned: Sequence[str] | None = None) -> dict[str, Path]:
+    relatives = tuple(owned) if owned is not None else _OWNED_RELATIVE_PATHS
     found: dict[str, Path] = {}
-    for relative in _OWNED_RELATIVE_PATHS:
+    for relative in relatives:
         path = worktree / relative
         if path.is_file() and path.stat().st_size > 0:
             found[relative] = path
     return found
 
 
-def _owned_patch_cid(worktree: Path) -> str:
-    files = _owned_files(worktree)
-    if set(files) != set(_OWNED_RELATIVE_PATHS):
-        raise QuackDaemonGatewayError("owned EAAEF-010 files are incomplete")
+def _owned_patch_cid(worktree: Path, owned: Sequence[str] | None = None) -> str:
+    relatives = tuple(owned) if owned is not None else _OWNED_RELATIVE_PATHS
+    files = _owned_files(worktree, relatives)
+    if set(files) != set(relatives):
+        raise QuackDaemonGatewayError("owned task files are incomplete")
     payload = {
         relative: hashlib.sha256(path.read_bytes()).hexdigest()
         for relative, path in sorted(files.items())
@@ -435,8 +548,13 @@ def _owned_patch_cid(worktree: Path) -> str:
     return _cid(payload)
 
 
-def _focused_test_receipt_cid(worktree: Path) -> str:
-    cache_dir = Path(tempfile.gettempdir()) / "eaaef-010-pytest-cache"
+def _focused_test_receipt_cid(
+    worktree: Path, tests: Sequence[str] | None = None
+) -> str:
+    test_paths = tuple(tests) if tests is not None else (
+        "test/api/test_external_agent_handoff_contracts.py",
+    )
+    cache_dir = Path(tempfile.gettempdir()) / "eaaef-pytest-cache"
     completed = subprocess.run(
         [
             "/usr/bin/python3",
@@ -447,7 +565,7 @@ def _focused_test_receipt_cid(worktree: Path) -> str:
             f"cache_dir={cache_dir}",
             "-o",
             "log_cli=false",
-            "test/api/test_external_agent_handoff_contracts.py",
+            *test_paths,
         ],
         check=False,
         capture_output=True,
@@ -462,16 +580,24 @@ def _focused_test_receipt_cid(worktree: Path) -> str:
         },
     )
     summary = str(completed.stdout or "") + str(completed.stderr or "")
-    passed = "29 passed" in summary and completed.returncode == 0
-    if not passed:
+    passed_count = 0
+    for token in summary.replace(",", " ").split():
+        if token.isdigit() and "passed" in summary:
+            # Prefer the "<n> passed" pair.
+            pass
+    if " passed" in summary:
+        parts = summary.split(" passed", 1)[0].split()
+        if parts and parts[-1].isdigit():
+            passed_count = int(parts[-1])
+    if completed.returncode != 0 or passed_count < 1:
         raise QuackDaemonGatewayError(
-            "focused EAAEF-010 tests did not pass: " + summary[-500:]
+            "focused task tests did not pass: " + summary[-500:]
         )
     return _cid(
         {
-            "command": "python3 -m pytest -q test/api/test_external_agent_handoff_contracts.py",
+            "command": "python3 -m pytest -q " + " ".join(test_paths),
             "failed": 0,
-            "passed": 29,
+            "passed": passed_count,
             "skipped": 0,
         }
     )
@@ -493,17 +619,85 @@ def _host_head_commit(repo_root: Path) -> str:
     return head
 
 
+def _install_owned_on_host(
+    worktree: Path, repo_root: Path, owned: Sequence[str]
+) -> None:
+    for relative in owned:
+        source = worktree / relative
+        destination = repo_root / relative
+        if not source.is_file() or source.stat().st_size <= 0:
+            raise QuackDaemonGatewayError(f"worker did not write {relative}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+
+
+def _host_commit_owned(
+    repo_root: Path, *, owned: Sequence[str], task_id: str
+) -> str:
+    added = subprocess.run(
+        ["git", "-C", str(repo_root), "add", "--", *owned],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if added.returncode != 0:
+        raise QuackDaemonGatewayError(
+            "could not stage owned files: " + (added.stderr or added.stdout or "unknown")
+        )
+    dirty = subprocess.run(
+        ["git", "-C", str(repo_root), "diff", "--cached", "--quiet", "--", *owned],
+        check=False,
+        capture_output=True,
+        timeout=20,
+    )
+    if dirty.returncode == 0:
+        return _host_head_commit(repo_root)
+    committed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "-c",
+            "user.name=EAAEF Host Merge",
+            "-c",
+            "user.email=eaaef-host@localhost",
+            "commit",
+            "-m",
+            f"Implement {task_id} owned files from the admitted worker.",
+            "--",
+            *owned,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if committed.returncode != 0:
+        raise QuackDaemonGatewayError(
+            "could not commit owned files: "
+            + (committed.stderr or committed.stdout or "unknown")
+        )
+    return _host_head_commit(repo_root)
+
+
 def _host_merge_admission(
     *,
     packet: ExternalAgentContainerWorkPacket,
     effect: Mapping[str, Any],
     repo_root: Path,
+    owned: Sequence[str],
 ) -> dict[str, Any] | None:
-    """Admit a verified patch when the host already holds the owned files."""
+    """Admit a verified patch only when this task's owned files exist."""
 
-    worktree = _git_worktree(repo_root, attempt_id=packet.attempt_id)
+    worktree = _git_worktree(
+        repo_root,
+        attempt_id=packet.attempt_id,
+        task_id=packet.task_id,
+        owned=owned,
+    )
     try:
-        patch = _owned_patch_cid(worktree)
+        patch = _owned_patch_cid(worktree, owned)
     except QuackDaemonGatewayError:
         return None
     if patch != str(effect.get("patch_artifact_cid") or ""):
@@ -514,7 +708,7 @@ def _host_merge_admission(
     merge_commit = ""
     delivery = "reviewed_patch"
     try:
-        if _owned_patch_cid(repo_root) == patch:
+        if _owned_patch_cid(repo_root, owned) == patch:
             merge_commit = _host_head_commit(repo_root)
             if merge_commit:
                 delivery = "merge_accepted"
@@ -540,14 +734,12 @@ def _host_merge_admission(
     return _seal_receipt(body)
 
 
-def _eaaef_010_prompt() -> str:
+def _task_prompt(spec: Mapping[str, Any]) -> str:
+    owned_lines = "\n".join(f"- {relative}" for relative in spec["owned"])
     return (
-        "Implement EAAEF-010: content-addressed ExternalAgentHandoffRequest, "
-        "Session, event, checkpoint, context, normalization and admission "
-        "schemas with strict versioning and bounds.\n"
+        f"Implement {spec['task_id']}: {spec['objective']}\n"
         "Write only:\n"
-        "- ipfs_accelerate_py/agent_supervisor/handoff/contracts.py\n"
-        "- test/api/test_external_agent_handoff_contracts.py\n"
+        f"{owned_lines}\n"
         "Do not push, do not mount Docker, do not change gitignored run-vN "
         "control-plane files. Keep tests deterministic."
     )
@@ -557,17 +749,27 @@ def _run_admitted_grok_container(
     *,
     packet: ExternalAgentContainerWorkPacket,
     repo_root: Path,
+    spec: Mapping[str, Any],
 ) -> dict[str, Any]:
-    worktree = _git_worktree(repo_root, attempt_id=packet.attempt_id)
-    if set(_owned_files(worktree)) == set(_OWNED_RELATIVE_PATHS):
-        patch = _owned_patch_cid(worktree)
-        tests = _focused_test_receipt_cid(worktree)
+    owned = tuple(spec["owned"])
+    tests = tuple(spec["tests"])
+    worktree = _git_worktree(
+        repo_root,
+        attempt_id=packet.attempt_id,
+        task_id=str(spec["task_id"]),
+        owned=owned,
+    )
+    if set(_owned_files(worktree, owned)) == set(owned):
+        patch = _owned_patch_cid(worktree, owned)
+        test_cid = _focused_test_receipt_cid(worktree, tests)
+        _install_owned_on_host(worktree, repo_root, owned)
+        _host_commit_owned(repo_root, owned=owned, task_id=str(spec["task_id"]))
         return {
             "runtime_container_id": _cid(
                 {"adopted_worktree": worktree.name, "patch_artifact_cid": patch}
             ),
             "patch_artifact_cid": patch,
-            "test_receipt_cid": tests,
+            "test_receipt_cid": test_cid,
             "worktree": str(worktree),
         }
     _require_admitted_grok_image(packet.image_digest)
@@ -575,7 +777,7 @@ def _run_admitted_grok_container(
     auth = grok_home_host / "auth.json"
     if not auth.is_file():
         raise QuackDaemonGatewayError("host grok auth.json is absent")
-    prompt = _eaaef_010_prompt()
+    prompt = _task_prompt(spec)
     with tempfile.TemporaryDirectory(prefix="eaaef-grok-launch-") as raw_tmp:
         tmp = Path(raw_tmp)
         prompt_path = tmp / "prompt.txt"
@@ -588,7 +790,11 @@ def _run_admitted_grok_container(
         session_auth.chmod(0o666)
         docker_config = tmp / "docker-config"
         docker_config.mkdir()
-        name = "eaaef-010-" + hashlib.sha256(packet.attempt_id.encode()).hexdigest()[:12]
+        name = (
+            _task_slug(str(spec["task_id"]))
+            + "-"
+            + hashlib.sha256(packet.attempt_id.encode()).hexdigest()[:12]
+        )
         cidfile = tmp / "cid"
         create = _docker_argv(
             "--config",
@@ -663,7 +869,7 @@ def _run_admitted_grok_container(
                 text=True,
                 timeout=_GROK_LAUNCH_TIMEOUT_SECONDS,
             )
-            owned_ready = set(_owned_files(worktree)) == set(_OWNED_RELATIVE_PATHS)
+            owned_ready = set(_owned_files(worktree, owned)) == set(owned)
             if started.returncode != 0 and not owned_ready:
                 raise QuackDaemonGatewayError(
                     "admitted grok container exited unsuccessfully: "
@@ -678,12 +884,14 @@ def _run_admitted_grok_container(
             )
         if not runtime_id.startswith("sha256:") or len(runtime_id) != 71:
             raise QuackDaemonGatewayError("runtime container id is not a sha256 CID")
-        patch = _owned_patch_cid(worktree)
-        tests = _focused_test_receipt_cid(worktree)
+        patch = _owned_patch_cid(worktree, owned)
+        test_cid = _focused_test_receipt_cid(worktree, tests)
+        _install_owned_on_host(worktree, repo_root, owned)
+        _host_commit_owned(repo_root, owned=owned, task_id=str(spec["task_id"]))
         return {
             "runtime_container_id": runtime_id,
             "patch_artifact_cid": patch,
-            "test_receipt_cid": tests,
+            "test_receipt_cid": test_cid,
             "worktree": str(worktree),
         }
 
@@ -1278,8 +1486,16 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             )
 
         def qualification_guard(packet: ExternalAgentContainerWorkPacket) -> Mapping[str, Any]:
-            worktree = _git_worktree(root, attempt_id=packet.attempt_id)
-            if set(_owned_files(worktree)) != set(_OWNED_RELATIVE_PATHS):
+            spec = _load_task_spec(
+                root, task_cid=packet.task_cid, task_id=packet.task_id
+            )
+            worktree = _git_worktree(
+                root,
+                attempt_id=packet.attempt_id,
+                task_id=str(spec["task_id"]),
+                owned=spec["owned"],
+            )
+            if set(_owned_files(worktree, spec["owned"])) != set(spec["owned"]):
                 _require_admitted_grok_image(packet.image_digest)
             receipt = {
                 "status": "admitted",
@@ -1300,10 +1516,15 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
         ) -> Mapping[str, Any]:
             del reservation
             try:
-                launched = _run_admitted_grok_container(packet=packet, repo_root=root)
+                spec = _load_task_spec(
+                    root, task_cid=packet.task_cid, task_id=packet.task_id
+                )
+                launched = _run_admitted_grok_container(
+                    packet=packet, repo_root=root, spec=spec
+                )
             except Exception as exc:
                 sys.stderr.write(
-                    f"eaaef-010 launcher failed: {type(exc).__name__}: {exc}\n"
+                    f"eaaef launcher failed: {type(exc).__name__}: {exc}\n"
                 )
                 sys.stderr.flush()
                 raise
@@ -1340,9 +1561,17 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             packet: ExternalAgentContainerWorkPacket,
             proposal: Mapping[str, Any],
         ) -> Mapping[str, Any]:
-            worktree = _git_worktree(root, attempt_id=packet.attempt_id)
-            patch = _owned_patch_cid(worktree)
-            tests = _focused_test_receipt_cid(worktree)
+            spec = _load_task_spec(
+                root, task_cid=packet.task_cid, task_id=packet.task_id
+            )
+            worktree = _git_worktree(
+                root,
+                attempt_id=packet.attempt_id,
+                task_id=str(spec["task_id"]),
+                owned=spec["owned"],
+            )
+            patch = _owned_patch_cid(worktree, spec["owned"])
+            tests = _focused_test_receipt_cid(worktree, spec["tests"])
             if (
                 str(proposal.get("image_digest") or "") != packet.image_digest
                 or str(proposal.get("patch_artifact_cid") or "") != patch
@@ -1375,8 +1604,14 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             packet: ExternalAgentContainerWorkPacket,
             effect: Mapping[str, Any],
         ) -> Mapping[str, Any] | None:
+            spec = _load_task_spec(
+                root, task_cid=packet.task_cid, task_id=packet.task_id
+            )
             return _host_merge_admission(
-                packet=packet, effect=effect, repo_root=root
+                packet=packet,
+                effect=effect,
+                repo_root=root,
+                owned=spec["owned"],
             )
 
         def host_source_observer() -> str:
