@@ -1,8 +1,8 @@
 """P0 wire ownership and contract validation for execution trajectories.
 
-This module intentionally does not ingest or normalize historical episodes.
-PCPC-009 owns that later capability.  The helpers here only validate already
-constructed, independently admitted trajectory contracts.
+P0 ships contract validation for already-constructed, independently admitted
+trajectory contracts.  PCPC-009 may add a normalizer in this same module;
+contract helpers must remain available.
 """
 
 from __future__ import annotations

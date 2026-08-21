@@ -366,8 +366,8 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 - Effect class: repository_write_bounded
 - Allow concurrent with: PCPC-011, PCPC-013
 - Conflict policy: Own normalizer and admission policy; source receipt authorities remain unchanged.
-- Preconditions: P0 bindings, world deltas, and trajectory wire contracts pass.
-- Effects: Read admitted receipt references; persist normalized candidate artifacts.
+- Preconditions: P0 bindings, world deltas, and trajectory wire contracts pass. `trajectory.py` already has P0 contract validators; extend it with TrajectoryNormalizer rather than treating the file as complete.
+- Effects: Read admitted receipt references; persist normalized candidate artifacts. Keep existing P0 contract helpers.
 - Evidence subset: admission source, redaction, ordering, cost, validation, terminal outcome
 - Symbolic first: true
 - LLM context budget bytes: 27200

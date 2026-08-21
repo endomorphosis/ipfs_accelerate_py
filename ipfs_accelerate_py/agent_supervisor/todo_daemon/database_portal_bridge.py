@@ -1837,13 +1837,25 @@ class DatabasePortalExecutionBridge:
                 if isinstance(implementation, Mapping):
                     candidate_reason = self._candidate_retry_reason(implementation)
                     portal_attempt = implementation.get("attempt")
-                    if candidate_reason and self.max_task_attempts > 0:
-                        if (
-                            isinstance(portal_attempt, bool)
-                            or not isinstance(portal_attempt, int)
-                            or 1 <= portal_attempt < self.max_task_attempts
-                        ):
-                            raise DatabasePortalCandidateRetry(candidate_reason)
+                    durable_attempt = getattr(attempt, "attempt_number", 0)
+                    local_attempt = (
+                        portal_attempt
+                        if type(portal_attempt) is int
+                        else 0
+                    )
+                    bounded_attempt = max(
+                        durable_attempt if type(durable_attempt) is int else 0,
+                        local_attempt,
+                    )
+                    # Portal-local attempt counters reset on every database
+                    # claim. Bound retries with the durable claim number so
+                    # empty Codex candidates cannot spin forever at attempt 1.
+                    if (
+                        candidate_reason
+                        and self.max_task_attempts > 0
+                        and 1 <= bounded_attempt < self.max_task_attempts
+                    ):
+                        raise DatabasePortalCandidateRetry(candidate_reason)
                 failure = self._terminal_failure(raw_result)
                 if failure:
                     raise DatabasePortalBridgeError(failure)

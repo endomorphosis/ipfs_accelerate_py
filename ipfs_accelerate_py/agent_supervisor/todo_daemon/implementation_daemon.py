@@ -3737,6 +3737,19 @@ def _codex_implementation_command(
         command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
     if codex_max_depth:
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    # gpt-5.6-terra prefers Code Mode. The sealed runtime image ships Codex
+    # 0.148.0 without ``codex-code-mode-host``, and that fail-closed surface
+    # produces empty candidates. Force Direct tools so apply_patch/shell work.
+    command.extend(
+        [
+            "-c",
+            "features.code_mode=false",
+            "-c",
+            "features.code_mode_only=false",
+            "-c",
+            "features.code_mode_host=false",
+        ]
+    )
     command.append("-")
     external_isolation = os.environ.get(
         PROVIDER_EXTERNAL_ISOLATION_ENV,

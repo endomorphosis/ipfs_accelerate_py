@@ -643,6 +643,40 @@ def test_bridge_keeps_exhausted_unusable_candidate_terminal(
     assert str(caught.value) == "portal_provider_failed"
 
 
+def test_bridge_stops_candidate_retry_when_durable_attempt_reaches_cap(
+    tmp_path: Path,
+) -> None:
+    class ResetPortalAttempt:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 78,
+                    "attempt": 1,
+                    "attempt_consumed": True,
+                    "provider_dispatched": True,
+                    "validation_result": {
+                        "attempted": False,
+                        "passed": False,
+                        "reason": "no_change_completion_not_allowed",
+                    },
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: ResetPortalAttempt(),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt(attempt_number=4))
+
+    assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+    assert str(caught.value) == "portal_provider_failed"
+
+
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     tmp_path: Path,
 ) -> None:
