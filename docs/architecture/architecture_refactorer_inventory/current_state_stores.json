@@ -73,9 +73,9 @@
       "kind": "cache namespaces",
       "path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_cache.py",
       "source_span": {
-        "end_line": 78,
+        "end_line": 846,
         "path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_cache.py",
-        "start_line": 78
+        "start_line": 846
       },
       "uncertainty": "cache_directories_are_runtime_layout"
     },

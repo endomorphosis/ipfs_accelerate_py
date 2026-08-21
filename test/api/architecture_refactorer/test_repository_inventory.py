@@ -148,6 +148,9 @@ def test_required_root_coverage() -> None:
 
     overlapping_kinds = {item["kind"] for item in inventory["overlapping_paths"]}
     assert REQUIRED_OVERLAPPING_KINDS <= overlapping_kinds
+    assert {"fixture", "simulation", "test"} <= overlapping_kinds
+    absent_overlapping = [item for item in inventory["overlapping_paths"] if not item["present"]]
+    assert absent_overlapping
     for item in inventory["overlapping_paths"]:
         present = (ROOT / item["path"]).exists()
         assert item["present"] is present
@@ -157,6 +160,23 @@ def test_required_root_coverage() -> None:
         else:
             assert item["source_span"] is None
             assert item["uncertainty"]
+    hardware_paths = {
+        item["path"]
+        for item in inventory["overlapping_paths"]
+        if item["kind"] == "hardware"
+    }
+    if (ROOT / "common/hardware_detection.py").is_file():
+        assert "common/hardware_detection.py" in hardware_paths
+    refactorer = next(
+        item
+        for item in inventory["packages"]
+        if item["path"] == "ipfs_accelerate_py/agent_supervisor/architecture_refactorer"
+    )
+    if (
+        ROOT
+        / "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/entropy.py"
+    ).is_file():
+        assert any(path.endswith("/entropy.py") for path in refactorer["sample_files"])
 
     concerns = {item["concern"] for item in inventory["authority_candidates"]}
     assert INITIAL_CONCERNS <= concerns
@@ -202,6 +222,11 @@ def test_entrypoint_coverage() -> None:
         else:
             assert (ROOT / item["target"]).is_file()
         assert item["reachability"] in REACHABILITY
+    mcp_category = next(
+        item for item in entrypoints["entrypoints"] if item["name"] == "agent_supervisor"
+    )
+    assert mcp_category["kind"] == "mcp_category"
+    assert mcp_category["uncertainty"]
 
 
 def test_store_inventory_and_uncertainty_retained() -> None:
@@ -227,6 +252,7 @@ def test_store_inventory_and_uncertainty_retained() -> None:
         if item["kind"] == "DuckDB tables":
             assert item["disposition"] == "authoritative"
             assert item["uncertainty"]
+            assert item["tables"]
         if item["kind"] == "Markdown task boards":
             assert item["disposition"] == "materialized_projection"
             assert (ROOT / item["path"]).is_file()
