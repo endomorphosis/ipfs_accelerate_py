@@ -682,7 +682,7 @@ class _HostAdmittedCapability:
         self.production_admitted = True
 
 
-class _Record:
+class _Record(Mapping):
     _DEFAULTS: ClassVar[Mapping[str, Any]] = MappingProxyType(
         {
             "dependencies": (),
@@ -698,15 +698,27 @@ class _Record:
     def __init__(self, payload: Mapping[str, Any]) -> None:
         self._payload = dict(payload)
 
-    def __getattr__(self, name: str) -> Any:
-        if name in self._payload:
-            value = self._payload[name]
-            if name == "dependencies" and value is None:
+    def __getitem__(self, key: str) -> Any:
+        if key in self._payload:
+            value = self._payload[key]
+            if key == "dependencies" and value is None:
                 return ()
             return value
-        if name in self._DEFAULTS:
-            return self._DEFAULTS[name]
-        raise AttributeError(name)
+        if key in self._DEFAULTS:
+            return self._DEFAULTS[key]
+        raise KeyError(key)
+
+    def __iter__(self):
+        return iter(self._payload)
+
+    def __len__(self) -> int:
+        return len(self._payload)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self._payload)

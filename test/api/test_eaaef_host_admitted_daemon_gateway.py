@@ -111,6 +111,8 @@ def test_record_defaults_missing_task_dependencies() -> None:
     assert tuple(task.dependencies) == ()
     assert task.body == {}
     assert task.task_cid == "cid:1"
+    assert dict(task)["task_cid"] == "cid:1"
+    assert task["status"] == "todo"
 
 
 def test_owner_mutation_rejects_non_cas_sql(tmp_path: Path) -> None:
