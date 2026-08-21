@@ -859,6 +859,70 @@ def test_terminal_missing_output_repair_quarantine_is_not_revived(
     assert "revivals" not in stored.metadata
 
 
+def test_declared_output_recovery_may_revive_terminal_missing_output_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/missing-outputs",
+        task_id="MISSING-OUTPUTS",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.quarantine(
+        claimed,
+        reason="post_merge_declared_outputs_missing",
+        metadata={
+            "merge_result": {
+                "reason": "post_merge_declared_outputs_missing",
+                "automatic_repair_attempted": True,
+                "automatic_repair_terminal": True,
+                "repair_reason": "declared_output_repair_conflict",
+            }
+        },
+    )
+    train = MergeTrain(repo, queue)
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert train._quarantine_auto_recovery_allowed(quarantined) is False
+    assert (
+        train._quarantine_auto_recovery_allowed(
+            quarantined,
+            allow_post_merge_declared_output_recovery=True,
+        )
+        is True
+    )
+
+    processed: list[str] = []
+
+    def process_claimed(_request: object) -> dict[str, object]:
+        current = queue.get(request.request_id)
+        assert current is not None
+        processed.append(str(current.status))
+        return {"merged": True, "reason": "declared_output_recovery_fixture"}
+
+    monkeypatch.setattr(train, "_process_claimed", process_claimed)
+    result = train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    assert result is not None
+    assert processed
+    assert train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+    ) is None
+
+
 def test_one_conflict_fingerprint_has_one_active_resolver_attempt(tmp_path: Path) -> None:
     registry = MergeResolverRegistry(tmp_path / "resolver", max_attempts=2)
     event = {

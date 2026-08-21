@@ -3139,8 +3139,18 @@ class MergeTrain:
         return proof.get("passed") is True
 
     @staticmethod
-    def _quarantine_auto_recovery_allowed(request: MergeRequest) -> bool:
-        """Reject authority and terminal-repair quarantines before revival."""
+    def _quarantine_auto_recovery_allowed(
+        request: MergeRequest,
+        *,
+        allow_post_merge_declared_output_recovery: bool = False,
+    ) -> bool:
+        """Reject authority and terminal-repair quarantines before revival.
+
+        Generic merge-train revival must not retry a terminal declared-output
+        repair.  The database Portal recovery path may revive the exact
+        ``post_merge_declared_outputs_missing`` row so it can restore the
+        sealed candidate outputs onto the current descendant.
+        """
 
         quarantine_metadata = request.metadata.get("quarantine")
         quarantined_merge_result = (
@@ -3148,15 +3158,20 @@ class MergeTrain:
             if isinstance(quarantine_metadata, Mapping)
             else None
         )
+        terminal_repair = (
+            isinstance(quarantined_merge_result, Mapping)
+            and quarantined_merge_result.get("automatic_repair_terminal")
+            is True
+        )
+        failure_reason = str(request.failure_reason or "")
+        if (
+            allow_post_merge_declared_output_recovery
+            and failure_reason == "post_merge_declared_outputs_missing"
+        ):
+            terminal_repair = False
         return not (
-            (
-                isinstance(quarantined_merge_result, Mapping)
-                and quarantined_merge_result.get(
-                    "automatic_repair_terminal"
-                )
-                is True
-            )
-            or request.failure_reason
+            terminal_repair
+            or failure_reason
             in (
                 AUTHORITY_QUARANTINE_REASONS
                 | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
@@ -3166,6 +3181,8 @@ class MergeTrain:
     @staticmethod
     def _pending_request_is_integrated_quarantine_revival(
         request: MergeRequest,
+        *,
+        allow_post_merge_declared_output_recovery: bool = False,
     ) -> bool:
         revivals = request.metadata.get("revivals")
         if not isinstance(revivals, list) or not revivals:
@@ -3173,7 +3190,12 @@ class MergeTrain:
         latest = revivals[-1]
         return bool(
             isinstance(latest, Mapping)
-            and MergeTrain._quarantine_auto_recovery_allowed(request)
+            and MergeTrain._quarantine_auto_recovery_allowed(
+                request,
+                allow_post_merge_declared_output_recovery=(
+                    allow_post_merge_declared_output_recovery
+                ),
+            )
             and latest.get("previous_failure_reason")
             not in (
                 AUTHORITY_QUARANTINE_REASONS
@@ -3226,6 +3248,7 @@ class MergeTrain:
             [MergeRequest, Mapping[str, Any]], Any
         ]
         | None = None,
+        allow_post_merge_declared_output_recovery: bool = False,
     ) -> dict[str, Any] | None:
         """Recover and process one exact request under the train lease.
 
@@ -3258,6 +3281,9 @@ class MergeTrain:
                 "processor_context requires an exact recovery request_id"
             )
         predicate = request_filter or (lambda _request: True)
+        allow_declared_output_recovery = bool(
+            allow_post_merge_declared_output_recovery and exact_request_id
+        )
         with self._consumer_lease() as acquired:
             if not acquired:
                 return None
@@ -3276,14 +3302,22 @@ class MergeTrain:
                 if request.status == "pending":
                     if (
                         self._pending_request_is_integrated_quarantine_revival(
-                            request
+                            request,
+                            allow_post_merge_declared_output_recovery=(
+                                allow_declared_output_recovery
+                            ),
                         )
                         and self._quarantined_candidate_is_integrated(request)
                     ):
                         selected = request
                 elif request.status == "quarantined":
                     if (
-                        self._quarantine_auto_recovery_allowed(request)
+                        self._quarantine_auto_recovery_allowed(
+                            request,
+                            allow_post_merge_declared_output_recovery=(
+                                allow_declared_output_recovery
+                            ),
+                        )
                         and self._quarantined_candidate_is_integrated(request)
                     ):
                         revived = revive(

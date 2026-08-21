@@ -3718,6 +3718,7 @@ class DatabasePortalExecutionBridge:
                 request_id=selected_request_id,
                 processor_context=configured_processor,
                 after_process=rearm_after_queue_settlement,
+                allow_post_merge_declared_output_recovery=True,
             )
         except Exception as exc:
             if not _is_implementation_conflict(exc):
