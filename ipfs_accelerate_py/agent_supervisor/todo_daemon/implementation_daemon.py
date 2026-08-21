@@ -2953,7 +2953,6 @@ POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS = frozenset(
         "repair_target_worktree_not_clean",
         "repair_staged_path_set_mismatch",
         "repair_staged_declared_outputs_unproven",
-        "repair_validation_failed",
         "repair_validation_changed_staged_paths",
         "repair_validation_changed_worktree",
         "repair_validation_changed_staged_content",
@@ -26805,6 +26804,50 @@ class PortalImplementationDaemon:
         return entries, ""
 
     @staticmethod
+    def _post_merge_repair_validation_rejection_admitted(
+        repair_result: Mapping[str, Any],
+    ) -> bool:
+        """Distinguish a test rejection from unavailable validation.
+
+        Only an actually executed, non-timeout, non-infrastructure command
+        failure is terminal.  Scheduler/resource/capability failures remain
+        eligible for the merge train's bounded retry path.
+        """
+
+        validation_items = repair_result.get("validation")
+        if not isinstance(validation_items, list) or not validation_items:
+            return False
+        saw_command_failure = False
+        for validation_item in validation_items:
+            if not isinstance(validation_item, Mapping):
+                return False
+            validation = validation_item.get("result")
+            if (
+                not isinstance(validation, Mapping)
+                or validation.get("attempted") is not True
+            ):
+                return False
+            command_results = validation.get("results")
+            if not isinstance(command_results, list) or not command_results:
+                return False
+            for command_result in command_results:
+                if not isinstance(command_result, Mapping):
+                    return False
+                try:
+                    returncode = int(command_result.get("returncode", 1))
+                except (TypeError, ValueError):
+                    return False
+                if (
+                    command_result.get("timed_out") is True
+                    or command_result.get("infrastructure_failure") is True
+                    or returncode in {75, 124}
+                ):
+                    return False
+                if returncode != 0:
+                    saw_command_failure = True
+        return saw_command_failure
+
+    @staticmethod
     def _post_merge_repair_commit_shape(
         repository: Path,
         commit: str,
@@ -27213,6 +27256,7 @@ class PortalImplementationDaemon:
         removed_untracked: dict[str, bytes] = {}
         removed_untracked_modes: dict[str, int] = {}
         repair_commit_created = False
+        validation_workspace: Path | None = None
 
         def rollback() -> dict[str, Any]:
             restore = subprocess.run(
@@ -27457,18 +27501,120 @@ class PortalImplementationDaemon:
                     rollback=rollback_result,
                 )
 
+            validation_tree_result = subprocess.run(
+                ["git", "write-tree"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            validation_tree = (
+                validation_tree_result.stdout.strip()
+                if validation_tree_result.returncode == 0
+                else ""
+            )
+            validation_tree_entries, validation_tree_entries_error = (
+                self._post_merge_repair_tree_entries(
+                    workspace,
+                    validation_tree,
+                    declared_outputs,
+                )
+                if validation_tree
+                else ({}, "repair_validation_tree_unavailable")
+            )
+            if (
+                not validation_tree
+                or validation_tree_entries_error
+                or validation_tree_entries != entries
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_tree_identity_mismatch",
+                    validation_tree=validation_tree,
+                    validation_tree_entries_error=(
+                        validation_tree_entries_error
+                    ),
+                    rollback=rollback_result,
+                )
+            validation_commit_result = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Daemon",
+                    "-c",
+                    "user.email=implementation-daemon@example.invalid",
+                    "commit-tree",
+                    validation_tree,
+                    "-p",
+                    target_commit,
+                    "-m",
+                    (
+                        f"{primary_task.task_id}: disposable declared-output "
+                        "repair validation"
+                    ),
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            validation_commit = (
+                validation_commit_result.stdout.strip()
+                if validation_commit_result.returncode == 0
+                else ""
+            )
+            if not validation_commit:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_commit_unavailable",
+                    validation_commit_stderr=(
+                        validation_commit_result.stderr[-2000:]
+                    ),
+                    rollback=rollback_result,
+                )
+            validation_root = self._main_merge_worktree_root()
+            validation_root.mkdir(parents=True, exist_ok=True)
+            validation_workspace = validation_root / (
+                f"repair-validation-"
+                f"{self._safe_ref_path_fragment(primary_task.task_id)}-"
+                f"{os.getpid()}-{time.time_ns()}"
+            )
+            validation_worktree_add = subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "add",
+                    "--detach",
+                    str(validation_workspace),
+                    validation_commit,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if validation_worktree_add.returncode != 0:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_worktree_unavailable",
+                    validation_worktree_stderr=(
+                        validation_worktree_add.stderr[-2000:]
+                    ),
+                    rollback=rollback_result,
+                )
+
             validation_results: list[dict[str, Any]] = []
-            validation_root = (
+            validation_log_root = (
                 self.state_path.parent
                 / "post-merge-declared-output-repair"
             )
-            validation_root.mkdir(parents=True, exist_ok=True)
+            validation_log_root.mkdir(parents=True, exist_ok=True)
             for validation_task in tasks:
-                validation_log = validation_root / (
+                validation_log = validation_log_root / (
                     f"{validation_task.task_id}-attempt-{attempt}.log"
                 )
                 validation = self._run_validation_commands(
-                    workspace,
+                    validation_workspace,
                     validation_task,
                     validation_log,
                     force_uncached=True,
@@ -27488,6 +27634,55 @@ class PortalImplementationDaemon:
                         rollback=rollback_result,
                     )
             result["validation"] = validation_results
+            validation_workspace_head = self._resolved_commit_ref(
+                validation_workspace,
+                "HEAD",
+            )
+            validation_workspace_status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+                cwd=validation_workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            validation_workspace_dirty = sorted(
+                record
+                for record in validation_workspace_status.stdout.split("\0")
+                if record
+            )
+            if (
+                validation_workspace_head != validation_commit
+                or validation_workspace_status.returncode != 0
+                or validation_workspace_dirty
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_mutated_disposable_tree",
+                    validation_workspace_head=validation_workspace_head,
+                    validation_commit=validation_commit,
+                    validation_workspace_dirty=(
+                        validation_workspace_dirty
+                    ),
+                    rollback=rollback_result,
+                )
+            validation_cleanup = self._cleanup_main_merge_workspace(
+                validation_workspace,
+                ephemeral=True,
+            )
+            result["validation_workspace_cleanup"] = validation_cleanup
+            if validation_cleanup.get("cleaned") is not True:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_workspace_cleanup_failed",
+                    rollback=rollback_result,
+                )
+            validation_workspace = None
 
             current_target = self._resolved_commit_ref(
                 self.repo_root,
@@ -27791,6 +27986,14 @@ class PortalImplementationDaemon:
                 integration_occurred=repair_commit_created,
             )
         finally:
+            if validation_workspace is not None:
+                result.setdefault(
+                    "validation_workspace_cleanup",
+                    self._cleanup_main_merge_workspace(
+                        validation_workspace,
+                        ephemeral=True,
+                    ),
+                )
             cleanup = self._cleanup_main_merge_workspace(
                 workspace,
                 ephemeral=ephemeral,
@@ -29309,6 +29512,14 @@ class PortalImplementationDaemon:
                         }
                         else ""
                     )
+                    repair_terminal = repair_reason in (
+                        POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS
+                    ) or (
+                        repair_reason == "repair_validation_failed"
+                        and completion_daemon._post_merge_repair_validation_rejection_admitted(
+                            declared_output_repair
+                        )
+                    )
                     result.update(
                         {
                             "merged": False,
@@ -29325,10 +29536,7 @@ class PortalImplementationDaemon:
                             "automatic_repair_attempted": bool(
                                 declared_output_repair.get("attempted")
                             ),
-                            "automatic_repair_terminal": repair_reason
-                            in (
-                                POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS
-                            ),
+                            "automatic_repair_terminal": repair_terminal,
                             "integration_occurred": True,
                             "completion_skipped": True,
                             "target_commit": target_commit,

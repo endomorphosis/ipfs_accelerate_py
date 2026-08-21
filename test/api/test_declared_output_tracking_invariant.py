@@ -917,7 +917,7 @@ def test_null_merge_recovery_rejects_validation_staged_blob_tampering(
 
     assert result["passed"] is False
     assert result["reason"] == (
-        "repair_validation_changed_staged_content"
+        "repair_validation_mutated_disposable_tree"
     )
     assert result["rollback"]["restored"] is True
     assert _git(repo, "rev-parse", "HEAD") == null_merge
@@ -953,7 +953,15 @@ def test_null_merge_recovery_exception_restores_executable_untracked(
     untracked_output.chmod(0o755)
     daemon = _daemon(repo, task_header_prefix="OUT-")
 
-    def raise_during_validation(*_args, **_kwargs):
+    def raise_during_validation(workspace, *_args, **_kwargs):
+        (workspace / "base.txt").write_text(
+            "validation mutation\n",
+            encoding="utf-8",
+        )
+        (workspace / "validation.tmp").write_text(
+            "validation byproduct\n",
+            encoding="utf-8",
+        )
         raise RuntimeError("synthetic validation infrastructure failure")
 
     monkeypatch.setattr(
@@ -980,6 +988,67 @@ def test_null_merge_recovery_exception_restores_executable_untracked(
     assert _git(repo, "status", "--porcelain=v1") == f"?? {output}"
     assert untracked_output.read_bytes() == candidate_bytes
     assert untracked_output.stat().st_mode & 0o777 == 0o755
+    assert (repo / "base.txt").read_text(encoding="utf-8") == "base\n"
+    assert not (repo / "validation.tmp").exists()
+
+
+def test_repair_validation_terminal_only_for_admitted_command_failure() -> None:
+    admitted_failure = {
+        "validation": [
+            {
+                "result": {
+                    "attempted": True,
+                    "results": [
+                        {
+                            "returncode": 1,
+                            "timed_out": False,
+                            "infrastructure_failure": False,
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+    timed_out = {
+        "validation": [
+            {
+                "result": {
+                    "attempted": True,
+                    "results": [
+                        {
+                            "returncode": 124,
+                            "timed_out": True,
+                            "infrastructure_failure": False,
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+    infrastructure_unavailable = {
+        "validation": [
+            {
+                "result": {
+                    "attempted": True,
+                    "results": [
+                        {
+                            "returncode": 75,
+                            "timed_out": False,
+                            "infrastructure_failure": True,
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+
+    classify = (
+        TodoImplementationDaemon
+        ._post_merge_repair_validation_rejection_admitted
+    )
+    assert classify(admitted_failure) is True
+    assert classify(timed_out) is False
+    assert classify(infrastructure_unavailable) is False
 
 
 def test_commit_llm_resolved_merge_rejects_unchanged_first_parent_tree(
