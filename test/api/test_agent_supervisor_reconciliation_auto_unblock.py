@@ -618,7 +618,7 @@ def test_duckdb_suppresses_every_markdown_guardrail_producer(
     assert event["canonical_blocks_mutated"] is False
 
 
-def test_apply_safe_reconciliation_remediations_resets_matching_submodule_dirt(
+def test_unreadable_completed_rescue_preserves_submodule_data_without_reset_surface(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -626,43 +626,78 @@ def test_apply_safe_reconciliation_remediations_resets_matching_submodule_dirt(
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "base")
-    leftover = tmp_path / "leftover-worktree"
-    leftover.mkdir()
+    branch_name = (
+        "rescue/worktree/implementation-pcar-000-b62604280cfd-"
+        "attempt-1-1787277595-5b3d1f2e245d"
+    )
+    _git(repo, "branch", branch_name)
+    worktree_root = repo / "worktrees"
+    leftover = worktree_root / "unreadable-rescue"
+    _git(repo, "worktree", "add", str(leftover), branch_name)
+    (leftover / "README.md").write_text(
+        "superseded attempt\n",
+        encoding="utf-8",
+    )
+    _git(leftover, "commit", "-am", "superseded attempt")
+    submodule_evidence = leftover / "ipfs_datasets_py" / "untracked-proof.txt"
+    submodule_evidence.parent.mkdir()
+    submodule_evidence.write_text("preserve me\n", encoding="utf-8")
+    expected_head = _git(repo, "rev-parse", branch_name)
     supervisor = _supervisor(
         repo,
-        worktree_root=repo / "worktrees",
+        worktree_root=worktree_root,
         worktree_submodule_paths=("ipfs_datasets_py",),
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "_git_status_short",
-        lambda path: [" m ipfs_datasets_py"] if path == leftover else [],
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "_reset_matching_submodule_working_trees",
-        lambda path, dirty, target_ref: (
-            {"reset": ["ipfs_datasets_py"], "skipped": []}
-            if path == leftover
-            else {"reset": [], "skipped": []}
+        todo_text=(
+            "# Agent Todos\n\n"
+            "## PCAR-000 Canonically completed\n\n"
+            "- Status: todo\n"
         ),
+        database_program=_database_program(),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_canonical_completed_reconciliation_task",
+        lambda **_kwargs: {
+            "applicable": True,
+            "authority_available": True,
+            "verified": True,
+            "reason": "database_completed_task_verified",
+            "task_id": "PCAR-000",
+            "task_cid": "canonical:pcar-000",
+            "status": "completed",
+            "revision": 11,
+        },
     )
 
-    result = supervisor.apply_safe_reconciliation_remediations(
-        cleanup_result={
-            "skipped": [
-                {
-                    "path": str(leftover),
-                    "branch": "rescue/worktree/implementation-portal-113",
-                    "reason": "dirty_worktree",
-                }
-            ]
-        }
+    def unreadable_submodule_status(_path: Path) -> list[str]:
+        raise RuntimeError("nested submodule status is unavailable")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_git_status_short_strict",
+        unreadable_submodule_status,
     )
 
-    assert result["reset_count"] == 1
-    assert result["worktrees"][0]["path"] == str(leftover)
-    assert result["worktrees"][0]["reset"] == ["ipfs_datasets_py"]
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    completed_skip = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "completed_task_leftover"
+    )
+    preservation = completed_skip["prune_result"]
+    assert result["preflight_blocked_count"] == 0
+    assert preservation["removed"] is False
+    assert preservation["preserved_nonblocking"] is True
+    assert preservation["reason"] == (
+        "completed_rescue_worktree_preserved_status_unavailable"
+    )
+    assert preservation["branch_preserved"] is True
+    assert leftover.is_dir()
+    assert submodule_evidence.read_text(encoding="utf-8") == "preserve me\n"
+    assert _git(repo, "rev-parse", branch_name) == expected_head
+    assert not hasattr(supervisor, "apply_safe_reconciliation_remediations")
+    assert not hasattr(supervisor, "_reset_matching_submodule_working_trees")
 
 
 def test_resolved_keys_retire_cleared_preflight_and_unsupported_status() -> None:
