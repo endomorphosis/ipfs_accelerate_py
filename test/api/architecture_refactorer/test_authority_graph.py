@@ -931,3 +931,156 @@ def test_exactly_one_owner_or_blocker_cardinality() -> None:
             assert has_owner ^ has_blocker
             if has_owner:
                 assert record.canonical_owner.disposition is OwnerDisposition.CANONICAL
+                assert record.canonical_owner.node_kind is NodeKind.AUTHORITY
+                assert record.canonical_owner.provenance.confidence not in {
+                    Confidence.HEURISTIC,
+                    Confidence.OPAQUE,
+                }
+
+
+def test_canonical_claim_requires_probative_source_bound_evidence() -> None:
+    binding = _binding_for(ConcernKind.CONTENT_IDENTITY)[0]
+    empty_graph = _graph(
+        (_node("n-a", NodeKind.AUTHORITY, binding.path, binding.start_line),)
+    )
+    empty_record = resolve_authority_ownership(
+        empty_graph,
+        (
+            ConcernClaim(
+                ConcernKind.CONTENT_IDENTITY, "n-a", OwnerDisposition.CANONICAL
+            ),
+        ),
+    ).ownership_for(ConcernKind.CONTENT_IDENTITY)
+    assert empty_record.canonical_owner is None
+    assert empty_record.blocker is not None
+    assert empty_record.blocker.kind is OwnershipBlockerKind.NON_PROBATIVE_OWNERSHIP
+
+    contains_graph = _graph(
+        (
+            _node("n-a", NodeKind.AUTHORITY, binding.path, binding.start_line),
+            _node("n-file", NodeKind.FILE, binding.path, binding.start_line + 1),
+        ),
+        (
+            _edge(
+                "e-contains",
+                EdgeKind.CONTAINS,
+                "n-file",
+                "n-a",
+                binding.path,
+                binding.start_line,
+            ),
+        ),
+    )
+    contains_record = resolve_authority_ownership(
+        contains_graph,
+        (
+            ConcernClaim(
+                ConcernKind.CONTENT_IDENTITY,
+                "n-a",
+                OwnerDisposition.CANONICAL,
+                ("e-contains",),
+            ),
+        ),
+    ).ownership_for(ConcernKind.CONTENT_IDENTITY)
+    assert contains_record.blocker is not None
+    assert contains_record.blocker.kind is OwnershipBlockerKind.NON_PROBATIVE_OWNERSHIP
+
+    import_graph = _graph(
+        (
+            _node("n-a", NodeKind.AUTHORITY, binding.path, binding.start_line),
+            _node("n-mod", NodeKind.MODULE, binding.path, binding.start_line + 1),
+        ),
+        (
+            _edge(
+                "e-import",
+                EdgeKind.IMPORTS,
+                "n-mod",
+                "n-a",
+                binding.path,
+                binding.start_line,
+            ),
+        ),
+    )
+    import_record = resolve_authority_ownership(
+        import_graph,
+        (
+            ConcernClaim(
+                ConcernKind.CONTENT_IDENTITY,
+                "n-a",
+                OwnerDisposition.CANONICAL,
+                ("e-import",),
+            ),
+        ),
+    ).ownership_for(ConcernKind.CONTENT_IDENTITY)
+    assert import_record.blocker is not None
+    assert import_record.blocker.kind is OwnershipBlockerKind.NON_PROBATIVE_OWNERSHIP
+
+    with pytest.raises(AuthorityGraphError, match="cannot prove ownership"):
+        ConcernOwner(
+            node_id="n-h",
+            disposition=OwnerDisposition.CANONICAL,
+            node_kind=NodeKind.AUTHORITY,
+            provenance=_fact(
+                binding.path, binding.start_line, confidence=Confidence.HEURISTIC
+            ),
+        )
+
+
+def test_arbitration_without_matching_edge_is_a_missing_arbitration_blocker() -> None:
+    binding = _binding_for(ConcernKind.CONTENT_IDENTITY)[0]
+    extra = [
+        item
+        for item in INITIAL_CONCERN_SOURCE_BINDINGS
+        if item.concern is ConcernKind.CONTENT_IDENTITY
+        and item.recommended_disposition is OwnerDisposition.ADAPTER
+    ][0]
+    architecture = _graph(
+        (
+            _node("n-a", NodeKind.AUTHORITY, binding.path, binding.start_line),
+            _node("n-b", NodeKind.AUTHORITY, extra.path, extra.start_line),
+            _node("n-subject", NodeKind.SYMBOL, binding.path, binding.start_line + 1),
+        ),
+        (
+            _edge(
+                "e-a",
+                EdgeKind.AUTHORIZES,
+                "n-a",
+                "n-subject",
+                binding.path,
+                binding.start_line,
+            ),
+            _edge(
+                "e-b",
+                EdgeKind.AUTHORIZES,
+                "n-b",
+                "n-subject",
+                extra.path,
+                extra.start_line,
+            ),
+        ),
+    )
+    claims = (
+        ConcernClaim(
+            ConcernKind.CONTENT_IDENTITY, "n-a", OwnerDisposition.CANONICAL, ("e-a",)
+        ),
+        ConcernClaim(
+            ConcernKind.CONTENT_IDENTITY, "n-b", OwnerDisposition.CANONICAL, ("e-b",)
+        ),
+    )
+    arbitration = FormalArbitration(
+        concern=ConcernKind.CONTENT_IDENTITY,
+        canonical_owner_node_id="n-a",
+        loser_classifications=(
+            LoserClassification("n-b", OwnerDisposition.ADAPTER),
+        ),
+        arbitrator_identity="pcar-006-content-identity-arbitration",
+        rationale=ArbitrationRationale.ADAPTS_EDGE,
+        provenance=_fact(extra.path, extra.start_line, confidence=Confidence.EXACT),
+        evidence_node_ids=("n-a", "n-b"),
+    )
+    record = resolve_authority_ownership(
+        architecture, claims, arbitrations=(arbitration,)
+    ).ownership_for(ConcernKind.CONTENT_IDENTITY)
+    assert record.canonical_owner is None
+    assert record.blocker is not None
+    assert record.blocker.kind is OwnershipBlockerKind.MISSING_ARBITRATION

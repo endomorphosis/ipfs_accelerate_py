@@ -546,6 +546,13 @@ class ConcernOwner:
             else SourceFactIdentity.from_mapping(self.provenance)
         )
         object.__setattr__(self, "provenance", provenance)
+        if (
+            self.disposition is OwnerDisposition.CANONICAL
+            and provenance.confidence in NON_PROBATIVE_CONFIDENCE
+        ):
+            raise AuthorityGraphError(
+                "heuristic or opaque facts cannot prove ownership"
+            )
         object.__setattr__(
             self,
             "evidence_edge_ids",
@@ -1100,6 +1107,10 @@ class ConcernOwnership:
             )
         if canonical is not None and canonical.disposition is not OwnerDisposition.CANONICAL:
             raise AuthorityGraphError("canonical owner disposition must be canonical")
+        if canonical is not None and canonical.node_kind is not NodeKind.AUTHORITY:
+            raise AuthorityGraphError(
+                "canonical owners must be ArchitectureIR authority nodes"
+            )
         if blocker is not None and blocker.concern is not concern:
             raise AuthorityGraphError("blocker concern must match ownership concern")
         if arbitration is not None and arbitration.concern is not concern:
@@ -1518,18 +1529,13 @@ def _qualify_canonical(
         return OwnershipBlockerKind.NON_PROBATIVE_OWNERSHIP
     edges = _claim_edges(view, claim)
     kinds = frozenset(edge.kind for edge in edges)
-    if kinds and kinds <= _NON_PROBATIVE_OWNER_EDGE_KINDS:
-        if EdgeKind.REEXPORTS in kinds:
-            return OwnershipBlockerKind.REEXPORT_CLAIMED_AUTHORITY
+    if kinds & _PROBATIVE_OWNER_EDGE_KINDS:
+        return None
+    if EdgeKind.REEXPORTS in kinds:
+        return OwnershipBlockerKind.REEXPORT_CLAIMED_AUTHORITY
+    if kinds <= _NON_PROBATIVE_OWNER_EDGE_KINDS:
         return OwnershipBlockerKind.NON_PROBATIVE_OWNERSHIP
-    reexport_only = bool(edges) and all(
-        edge.kind is EdgeKind.REEXPORTS for edge in edges
-    )
-    if reexport_only:
-        return OwnershipBlockerKind.REEXPORT_CLAIMED_AUTHORITY
-    if kinds and not (kinds & _PROBATIVE_OWNER_EDGE_KINDS) and EdgeKind.REEXPORTS in kinds:
-        return OwnershipBlockerKind.REEXPORT_CLAIMED_AUTHORITY
-    return None
+    return OwnershipBlockerKind.NON_PROBATIVE_OWNERSHIP
 
 
 def _blocker(
