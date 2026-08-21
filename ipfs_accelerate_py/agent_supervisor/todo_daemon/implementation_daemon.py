@@ -67612,6 +67612,9 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
+_CANONICAL_DEPENDENCY_SATISFIED_STATUSES = frozenset(
+    {"completed", "complete", "done", "skipped"}
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -68887,13 +68890,156 @@ class DatabaseImplementationDaemon:
         )
 
     def sync_ready_tasks_into_coordination(self) -> list[str]:
-        """Ensure ready tasks from the intent repository are claimable."""
+        """Reconcile the canonical ready frontier into this lane's sidecar.
+
+        Quack/``DatabaseTaskSource`` is the shared task authority, while each
+        strict lane deliberately keeps lease bookkeeping in a local
+        coordinator.  A task can therefore become ready because another lane
+        completed one of its prerequisites.  Registering only that ready task
+        leaves its local dependency edge unsatisfied forever.  Project the
+        canonical completion of each direct prerequisite before registering
+        the child.  The sidecar completion is scheduling evidence only; it
+        never changes canonical task state.
+
+        Reconciliation is bounded by the ready-task query limit and is
+        idempotent: an already-successful local completion is not rewritten.
+        If canonical state changes between the ready query and dependency
+        reads, the affected child is omitted from this claim frontier and the
+        later pass can retry from a fresh authoritative snapshot.
+        """
 
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        ready_tasks = tuple(ready.tasks)
+        dependency_cids = tuple(
+            sorted(
+                {
+                    str(dependency_cid)
+                    for task in ready_tasks
+                    for dependency_cid in task.dependencies
+                    if str(dependency_cid)
+                }
+            )
+        )
+        if len(dependency_cids) > TASK_SOURCE_QUERY_LIMIT:
+            raise DatabaseImplementationAuthorityError(
+                "canonical ready frontier dependency population exceeds "
+                "the bounded coordination reconciliation limit"
+            )
+
+        invalid_dependency_cids: set[str] = set()
+        local_task_cids: set[str] = set()
+        local_completion_statuses: dict[str, str] = {}
+        if dependency_cids:
+            get_task = getattr(self.task_source, "get", None)
+            projection_fn = getattr(
+                self.coordinator,
+                "coordination_registry_projection",
+                None,
+            )
+            mark_complete = getattr(self.coordinator, "mark_task_complete", None)
+            if not callable(get_task):
+                raise DatabaseImplementationAuthorityError(
+                    "database task authority cannot resolve ready-task dependencies"
+                )
+            if not callable(projection_fn) or not callable(mark_complete):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator cannot reconcile canonical dependency completions"
+                )
+            projection = projection_fn()
+            if not isinstance(projection, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator returned a malformed task registry projection"
+                )
+            projected_tasks = projection.get("tasks")
+            projected_completions = projection.get("logical_completions")
+            if not isinstance(projected_tasks, list) or not isinstance(
+                projected_completions,
+                list,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator returned no typed dependency completion projection"
+                )
+            for item in projected_tasks:
+                if not isinstance(item, Mapping):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator task registry projection is malformed"
+                    )
+                task_cid = item.get("task_cid")
+                if type(task_cid) is not str or not task_cid:
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator task registry contains no exact task CID"
+                    )
+                local_task_cids.add(task_cid)
+            for item in projected_completions:
+                if not isinstance(item, Mapping):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator completion projection is malformed"
+                    )
+                task_cid = item.get("task_cid")
+                status = item.get("status")
+                if (
+                    type(task_cid) is not str
+                    or not task_cid
+                    or type(status) is not str
+                    or not status
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator completion projection lacks exact identity"
+                    )
+                local_completion_statuses[task_cid] = status
+
+            for dependency_cid in dependency_cids:
+                dependency = get_task(dependency_cid)
+                dependency_status = str(
+                    getattr(dependency, "status", "") or ""
+                ).strip().lower()
+                if (
+                    dependency is None
+                    or dependency_status
+                    not in _CANONICAL_DEPENDENCY_SATISFIED_STATUSES
+                ):
+                    # A concurrent plan/status transition invalidated the
+                    # earlier ready read.  Never turn stale readiness into a
+                    # local success projection.
+                    invalid_dependency_cids.add(dependency_cid)
+                    continue
+                if dependency_cid not in local_task_cids:
+                    self.coordinator.register_task(
+                        task_cid=dependency.task_cid,
+                        task_id=dependency.task_alias or dependency.task_cid,
+                        dependency_task_cids=tuple(
+                            str(item) for item in dependency.dependencies
+                        ),
+                        body={
+                            "task_alias": dependency.task_alias,
+                            "status": dependency.status,
+                            "priority": getattr(dependency, "priority", ""),
+                        },
+                    )
+                    local_task_cids.add(dependency_cid)
+                if local_completion_statuses.get(dependency_cid) != "succeeded":
+                    mark_complete(
+                        dependency_cid,
+                        status="succeeded",
+                        body={
+                            "authority": "DatabaseTaskSource@1",
+                            "projection": "canonical_dependency_completion",
+                            "source_status": dependency_status,
+                            "task_alias": dependency.task_alias,
+                            "task_revision": int(dependency.revision),
+                        },
+                    )
+                    local_completion_statuses[dependency_cid] = "succeeded"
+
         registered: list[str] = []
-        for task in ready.tasks:
+        for task in ready_tasks:
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
+                continue
+            if any(
+                str(dependency_cid) in invalid_dependency_cids
+                for dependency_cid in task.dependencies
+            ):
                 continue
             self.coordinator.register_task(
                 task_cid=task.task_cid,
