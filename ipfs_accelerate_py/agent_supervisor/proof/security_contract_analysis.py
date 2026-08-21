@@ -2760,7 +2760,7 @@ def evaluate_fixed_point_security(
                 str(e.get("effect_id") if isinstance(e, Mapping) else e)
                 for e in code_effects
             )
-            if str(e).strip()
+            if str(effect).strip()
         )
 
     # Prefer explicit code_effects; fall back to extracted fact effect ids.
