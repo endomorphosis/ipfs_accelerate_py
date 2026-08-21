@@ -69856,6 +69856,10 @@ DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
 )
+DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-recovery-preauthorization@1"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -73549,6 +73553,209 @@ class DatabaseImplementationDaemon:
                 "post-merge requalification task identities do not match"
             )
         return {**value, "receipt_id": str(receipt_id)}
+
+    def preauthorize_post_merge_declared_output_recovery(
+        self,
+        source: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Read-only authorization for bridge work on one exact failed attempt.
+
+        This check deliberately precedes current-tree validation.  A completed
+        merge-queue row is durable history and may outlive the database attempt
+        that created it; it is not authority to spend validation resources.
+        Retrying is rejected as already rearmed (the mutating recovery endpoint
+        retains its exact idempotent replay verification), while only the exact
+        blocked generation is authorized for repair or requalification work.
+        """
+
+        self._require_execution_authority(
+            "post-merge declared-output recovery preauthorization"
+        )
+        raw = dict(source)
+        expected_fields = {
+            "schema",
+            "request_id",
+            "task_cid",
+            "task_alias",
+            "candidate_commit",
+            "source_attempt_id",
+            "source_claim_id",
+            "source_lease_id",
+            "source_fencing_token",
+            "source_fence_epoch",
+            "source_binding_id",
+            "source_projection_immutable_digest",
+        }
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA
+            or any(
+                not isinstance(raw.get(field), str)
+                or not str(raw.get(field) or "")
+                for field in (
+                    "request_id",
+                    "task_cid",
+                    "task_alias",
+                    "source_attempt_id",
+                    "source_claim_id",
+                    "source_lease_id",
+                )
+            )
+            or re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(raw.get("candidate_commit") or ""),
+            )
+            is None
+            or any(
+                isinstance(raw.get(field), bool)
+                or not isinstance(raw.get(field), int)
+                or int(raw[field]) < 0
+                for field in ("source_fencing_token", "source_fence_epoch")
+            )
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(raw.get(field) or ""),
+                )
+                is None
+                for field in (
+                    "source_binding_id",
+                    "source_projection_immutable_digest",
+                )
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery preauthorization source is invalid"
+            )
+        task_cid = str(raw["task_cid"])
+        task = self.task_source.get(task_cid)
+        if (
+            task is None
+            or str(getattr(task, "task_cid", "") or "") != task_cid
+            or str(getattr(task, "task_alias", "") or "")
+            != str(raw["task_alias"])
+            or self._automatic_claim_forbidden(task)
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization rejected historical task "
+                "identity or automation state"
+            )
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(task_cid)
+        if latest is None:
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization found no failed attempt"
+            )
+        if (
+            raw.get("source_attempt_id") != latest.attempt_id
+            or raw.get("source_claim_id") != latest.claim_id
+            or raw.get("source_lease_id") != latest.lease_id
+            or raw.get("source_fencing_token") != int(latest.fencing_token)
+            or raw.get("source_fence_epoch") != int(latest.fence_epoch)
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization rejected a superseded "
+                "source attempt"
+            )
+        if (
+            self._terminal_portal_failure_reason(latest)
+            != "post_merge_declared_outputs_missing"
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization source no longer matches "
+                "the latest terminal failure"
+            )
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        if status == "retrying":
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery source is already rearmed"
+            )
+        if status != "blocked":
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization requires blocked "
+                f"control state, observed {status!r}"
+            )
+        task_body = getattr(task, "body", None)
+        terminal_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        terminal_fields = {
+            "operation",
+            "attempt_id",
+            "attempt_number",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "retryable",
+            "coordination",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        coordination = (
+            terminal_receipt.get("coordination")
+            if isinstance(terminal_receipt, Mapping)
+            else None
+        )
+        task_revision = getattr(task, "revision", None)
+        if (
+            not isinstance(terminal_receipt, Mapping)
+            or set(terminal_receipt) != terminal_fields
+            or terminal_receipt.get("operation")
+            != "database_portal_terminal_failure"
+            or terminal_receipt.get("attempt_id") != latest.attempt_id
+            or terminal_receipt.get("attempt_number")
+            != int(latest.attempt_number)
+            or terminal_receipt.get("claim_id") != latest.claim_id
+            or terminal_receipt.get("lease_id") != latest.lease_id
+            or terminal_receipt.get("owner_session_id")
+            != latest.owner_session_id
+            or terminal_receipt.get("fencing_token")
+            != int(latest.fencing_token)
+            or terminal_receipt.get("fence_epoch") != int(latest.fence_epoch)
+            or terminal_receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or terminal_receipt.get("execution_revision")
+            != int(latest.revision)
+            or terminal_receipt.get("execution_finished_at_ms")
+            != latest.finished_at_ms
+            or terminal_receipt.get("reason")
+            != "post_merge_declared_outputs_missing"
+            or terminal_receipt.get("retryable") is not False
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != latest.attempt_id
+            or coordination.get("claim_id") != latest.claim_id
+            or coordination.get("attempt_number")
+            != int(latest.attempt_number)
+            or terminal_receipt.get("control_expected_status")
+            != "in_progress"
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or terminal_receipt.get("control_expected_revision")
+            != task_revision - 1
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization found no exact terminal "
+                "failure control projection"
+            )
+        result = {
+            **raw,
+            "authorized": True,
+            "task_status": "blocked",
+        }
+        result["authorization_id"] = self._database_portal_evidence_digest(
+            result
+        )
+        return result
 
     def recover_blocked_post_merge_declared_outputs(
         self,

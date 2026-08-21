@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     PortalImplementationDaemon,
@@ -1797,6 +1798,8 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
 
     class DatabaseAuthority:
         crash_after_queue_completion = True
+        latest_source_attempt_id = str(binding["attempt_id"])
+        preauthorization_sources: list[dict[str, object]] = []
 
         @staticmethod
         def _database_portal_evidence_digest(value: object) -> str:
@@ -1807,6 +1810,30 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
                 default=str,
             ).encode("utf-8")
             return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+        def preauthorize_post_merge_declared_output_recovery(
+            self,
+            source: object,
+        ) -> dict[str, object]:
+            assert isinstance(source, dict)
+            source_dict = dict(source)
+            self.preauthorization_sources.append(source_dict)
+            if (
+                source_dict["source_attempt_id"]
+                != self.latest_source_attempt_id
+            ):
+                raise DatabaseImplementationConflictError(
+                    "fixture superseded source attempt"
+                )
+            result: dict[str, object] = {
+                **source_dict,
+                "authorized": True,
+                "task_status": "blocked",
+            }
+            result["authorization_id"] = (
+                self._database_portal_evidence_digest(result)
+            )
+            return result
 
         def recover_blocked_post_merge_declared_outputs(
             self,
@@ -1890,19 +1917,36 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
         sort_keys=True,
         separators=(",", ":"),
     )
+    stale_decoy_index = 256
+    stale_completed_request_id = (
+        f"{request_clock + stale_decoy_index + 1}-"
+        f"{100000 + stale_decoy_index}-decoy"
+    )
     decoy_rows = [
         (
             f"{request_clock + index + 1}-{100000 + index}-decoy",
             f"implementation/decoy-{index}",
-            f"DECOY-{index}",
+            (
+                str(selected.task_id)
+                if index == stale_decoy_index
+                else f"DECOY-{index}"
+            ),
             "P2",
             "",
             float(index + 2),
             1,
             decoy_metadata,
             candidate,
-            f"task:decoy:{index}",
-            f"task/v1/decoy-{index}",
+            (
+                str(selected.canonical_task_id)
+                if index == stale_decoy_index
+                else f"task:decoy:{index}"
+            ),
+            (
+                str(selected.canonical_task_key)
+                if index == stale_decoy_index
+                else f"task/v1/decoy-{index}"
+            ),
             f"decoy:{index}",
             "completed",
             0.0,
@@ -1925,7 +1969,6 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
             decoy_rows,
         )
         connection.commit()
-
     queue_queries = {
         name: 0
         for name in (
@@ -1956,10 +1999,18 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
         )
 
     before = dict(queue_queries)
+    portal_count_before_stale_page = len(portal_calls)
+    authority.latest_source_attempt_id = "attempt:superseding"
     assert fresh_bridge().recover_post_merge_declared_outputs(authority) is None
     assert_one_page_per_stage(before)
     assert queue_queries["completed_requests"] - before["completed_requests"] == 1
     assert requalification_heads == []
+    assert len(portal_calls) == portal_count_before_stale_page
+    assert any(
+        source["request_id"] == stale_completed_request_id
+        for source in authority.preauthorization_sources
+    )
+    authority.latest_source_attempt_id = str(binding["attempt_id"])
 
     # The second fresh bridge resumes page two, validates once, publishes the
     # immutable requalification receipt, then crashes before the database CAS.

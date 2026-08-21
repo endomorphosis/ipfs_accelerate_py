@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
@@ -2904,6 +2905,34 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         evidence["evidence_id"] = daemon._database_portal_evidence_digest(
             evidence
         )
+        preauthorization = {
+            "schema": DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
+            **{
+                field: evidence[field]
+                for field in (
+                    "request_id",
+                    "task_cid",
+                    "task_alias",
+                    "candidate_commit",
+                    "source_attempt_id",
+                    "source_claim_id",
+                    "source_lease_id",
+                    "source_fencing_token",
+                    "source_fence_epoch",
+                    "source_binding_id",
+                    "source_projection_immutable_digest",
+                )
+            },
+        }
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            preauthorization
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+        authorization_id = authorized.pop("authorization_id")
+        assert authorization_id == daemon._database_portal_evidence_digest(
+            authorized
+        )
 
         foreign = {**evidence, "repair_commit": "c" * 40}
         foreign.pop("evidence_id")
@@ -2930,6 +2959,14 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         )
         with pytest.raises(DatabaseImplementationConflictError):
             daemon.recover_blocked_post_merge_declared_outputs(stale_attempt)
+        stale_preauthorization = {
+            **preauthorization,
+            "source_attempt_id": "attempt:stale",
+        }
+        with pytest.raises(DatabaseImplementationConflictError):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                stale_preauthorization
+            )
         assert daemon.task_source.get(failed.task_cid).status == "blocked"
 
         # Simulate a process failure after the queue authority commits but
@@ -2982,6 +3019,13 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         retrying = daemon.task_source.get(failed.task_cid)
         assert retrying is not None
         assert retrying.status == "retrying"
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="already rearmed",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                preauthorization
+            )
         control_receipt = retrying.body["completion_receipt"]
         assert control_receipt["operation"] == (
             "database_post_merge_declared_outputs_repair_recovery"

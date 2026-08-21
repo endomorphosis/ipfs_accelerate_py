@@ -125,6 +125,10 @@ _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
 )
+_DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-recovery-preauthorization@1"
+)
 _POST_MERGE_RECOVERY_CURSOR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-declared-output-recovery-cursor@1"
@@ -1387,6 +1391,56 @@ class DatabasePortalExecutionBridge:
             binding=binding,
             task_status=task_status,
         )
+
+    def _preauthorize_post_merge_recovery(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        preauthorize: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+        evidence_digest: Callable[[Mapping[str, Any]], str],
+    ) -> None:
+        """Require database authority before repair or current-tree validation."""
+
+        binding = projection.binding
+        source: dict[str, Any] = {
+            "schema": _DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_alias": str(getattr(request, "task_id", "") or ""),
+            "candidate_commit": str(
+                getattr(request, "commit_sha", "") or ""
+            ),
+            "source_attempt_id": str(binding.get("attempt_id") or ""),
+            "source_claim_id": str(binding.get("claim_id") or ""),
+            "source_lease_id": str(binding.get("lease_id") or ""),
+            "source_fencing_token": binding.get("fencing_token"),
+            "source_fence_epoch": binding.get("fence_epoch"),
+            "source_binding_id": str(binding.get("binding_id") or ""),
+            "source_projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+        }
+        result = preauthorize(source)
+        if not isinstance(result, Mapping):
+            raise DatabasePortalBridgeError(
+                "database post-merge preauthorization returned a non-object"
+            )
+        verified = dict(result)
+        authorization_id = str(verified.pop("authorization_id", "") or "")
+        expected = {
+            **source,
+            "authorized": True,
+            "task_status": "blocked",
+        }
+        if (
+            projection.task_status != "blocked"
+            or verified != expected
+            or authorization_id != evidence_digest(expected)
+        ):
+            raise DatabasePortalBridgeError(
+                "database post-merge preauthorization is invalid"
+            )
 
     def _post_merge_recovery_evidence(
         self,
@@ -3269,7 +3323,16 @@ class DatabasePortalExecutionBridge:
             "recover_blocked_post_merge_declared_outputs",
             None,
         )
-        if not callable(digest) or not callable(recover):
+        preauthorize = getattr(
+            database_daemon,
+            "preauthorize_post_merge_declared_output_recovery",
+            None,
+        )
+        if (
+            not callable(digest)
+            or not callable(recover)
+            or not callable(preauthorize)
+        ):
             raise DatabasePortalBridgeError(
                 "database daemon lacks post-merge recovery authority"
             )
@@ -3329,6 +3392,15 @@ class DatabasePortalExecutionBridge:
                 )
                 if projection is None:
                     continue
+                try:
+                    self._preauthorize_post_merge_recovery(
+                        completed,
+                        projection,
+                        preauthorize=preauthorize,
+                        evidence_digest=digest,
+                    )
+                except DatabaseImplementationConflictError:
+                    continue
                 evidence = self._post_merge_recovery_evidence(
                     completed,
                     projection,
@@ -3384,6 +3456,15 @@ class DatabasePortalExecutionBridge:
                     request
                 )
                 if projection is not None:
+                    try:
+                        self._preauthorize_post_merge_recovery(
+                            request,
+                            projection,
+                            preauthorize=preauthorize,
+                            evidence_digest=digest,
+                        )
+                    except DatabaseImplementationConflictError:
+                        continue
                     selected = request
                     selected_projection = projection
                     break
@@ -3403,12 +3484,24 @@ class DatabasePortalExecutionBridge:
         )
 
         def exact_owned_request(request: Any) -> bool:
-            return bool(
+            if (
                 str(getattr(request, "request_id", "") or "")
-                == selected_request_id
-                and self._owned_post_merge_recovery_projection(request)
-                is not None
-            )
+                != selected_request_id
+            ):
+                return False
+            projection = self._owned_post_merge_recovery_projection(request)
+            if projection is None:
+                return False
+            try:
+                self._preauthorize_post_merge_recovery(
+                    request,
+                    projection,
+                    preauthorize=preauthorize,
+                    evidence_digest=digest,
+                )
+            except DatabaseImplementationConflictError:
+                return False
+            return True
 
         @contextmanager
         def configured_processor(recovery_train: Any) -> Any:
@@ -3422,6 +3515,15 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "selected recovery request lost its sealed projection"
                 )
+            # Recheck after the exact row is claimed and while the canonical
+            # consumer lease is held.  No Portal or validation authority is
+            # constructed if database control advanced since discovery.
+            self._preauthorize_post_merge_recovery(
+                current,
+                current_projection,
+                preauthorize=preauthorize,
+                evidence_digest=digest,
+            )
             portal = self.portal_factory(
                 current_projection.paths,
                 str(getattr(current, "task_id", "") or ""),
@@ -3542,6 +3644,16 @@ class DatabasePortalExecutionBridge:
                 if completed is not None
                 else None
             )
+            if completed is not None and projection is not None:
+                try:
+                    self._preauthorize_post_merge_recovery(
+                        completed,
+                        projection,
+                        preauthorize=preauthorize,
+                        evidence_digest=digest,
+                    )
+                except DatabaseImplementationConflictError:
+                    return
             evidence = (
                 self._post_merge_recovery_evidence(
                     completed,
@@ -3563,12 +3675,15 @@ class DatabasePortalExecutionBridge:
                 )
             database_result = dict(result)
 
-        train_result = train.recover_one_integrated_quarantine(
-            request_filter=exact_owned_request,
-            request_id=selected_request_id,
-            processor_context=configured_processor,
-            after_process=rearm_after_queue_settlement,
-        )
+        try:
+            train_result = train.recover_one_integrated_quarantine(
+                request_filter=exact_owned_request,
+                request_id=selected_request_id,
+                processor_context=configured_processor,
+                after_process=rearm_after_queue_settlement,
+            )
+        except DatabaseImplementationConflictError:
+            return None
         if database_result is not None:
             return database_result
         if train_result is None:
