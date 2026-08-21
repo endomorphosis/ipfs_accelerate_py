@@ -1178,12 +1178,15 @@ def test_plan_bound_coordinator_strips_unpaired_python_user_base(
         multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV,
         "/tmp/hostile-python-user-base",
     )
+    for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        monkeypatch.setenv(name, "hostile-ambient-cache-binding")
 
     environment = scheduler_module._plan_bound_coordinator_environment()
 
     assert (
         multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV not in environment
     )
+    assert not set(multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES) & set(environment)
 
 
 def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
@@ -1967,9 +1970,19 @@ def test_launch_config_overrides_ambient_provider_environment(
     controlled_names = scheduler_module.SCHEDULER_PROVIDER_ENV_NAMES
     for name in controlled_names:
         monkeypatch.setenv(name, "ambient-value")
+    for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        monkeypatch.setenv(name, "hostile-ambient-cache-binding")
 
     scheduler_module._apply_configured_board_environment(
-        {"environment": expected_environment}
+        {
+            "environment": {
+                **expected_environment,
+                **{
+                    name: "hostile-plan-cache-binding"
+                    for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES
+                },
+            }
+        }
     )
     observed.update(
         {
@@ -1980,6 +1993,10 @@ def test_launch_config_overrides_ambient_provider_environment(
     assert observed == {
         name: expected_environment.get(name) for name in controlled_names
     }
+    assert not (
+        set(multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES)
+        & set(scheduler_module.os.environ)
+    )
 
 
 def test_sparse_legacy_launch_clears_stale_ordered_route_environment(

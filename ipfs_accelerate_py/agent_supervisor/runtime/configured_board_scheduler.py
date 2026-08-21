@@ -91,6 +91,7 @@ from .multi_supervisor_runner import (
     STATE_STORE_LIVE_GENERATION_ENV,
     TRUSTED_DUCKDB_HOME_ENV,
     TRUSTED_PYTHON_USER_BASE_ENV,
+    TRUSTED_RUNTIME_CACHE_ENV_NAMES,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
@@ -98,7 +99,7 @@ from .multi_supervisor_runner import (
     _read_stable_regular_bytes,
     _read_stable_regular_json,
     _StableArtifactReadError,
-    _validate_trusted_duckdb_home,
+    _trusted_duckdb_runtime_environment,
     accepted_control_plane_pin_json,
     build_configured_multi_supervisor_cli_runner,
     build_sealed_control_plane_module_command,
@@ -2914,10 +2915,14 @@ def _build_parser() -> argparse.ArgumentParser:
 def _apply_configured_board_environment(plan: Mapping[str, Any]) -> None:
     environment = plan.get("environment")
     environment = environment if isinstance(environment, Mapping) else {}
+    for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        os.environ.pop(name, None)
     for name in SCHEDULER_PROVIDER_ENV_NAMES:
         if name not in environment:
             os.environ.pop(name, None)
     for name, value in environment.items():
+        if name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            continue
         os.environ[str(name)] = str(value)
 
 
@@ -3256,25 +3261,20 @@ def _plan_bound_coordinator_environment() -> dict[str, str]:
     trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     if trusted_home:
         try:
-            _validate_trusted_duckdb_home(
-                trusted_home,
-                repository_root=str(Path(__file__).absolute().parents[3]),
-                observed_home=str(os.environ.get("HOME", "") or ""),
+            environment.update(
+                _trusted_duckdb_runtime_environment(
+                    os.environ,
+                    repository_root=Path(__file__).absolute().parents[3],
+                )
             )
         except ValueError as exc:
             raise ConfiguredBoardError(
                 "plan-bound coordinator trusted DuckDB HOME is invalid"
             ) from exc
-        python_user_base = str(
-            environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
-        )
-        if not python_user_base or not Path(python_user_base).is_absolute():
-            raise ConfiguredBoardError(
-                "plan-bound coordinator Python user base is invalid"
-            )
-        environment["HOME"] = trusted_home
     else:
         environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+        for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            environment.pop(name, None)
     environment["PATH"] = "/usr/bin:/bin"
     return environment
 

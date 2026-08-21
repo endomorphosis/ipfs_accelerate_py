@@ -87,8 +87,7 @@ from ..runtime.multi_supervisor_runner import (
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
-    TRUSTED_PYTHON_USER_BASE_ENV,
-    _validate_trusted_duckdb_home,
+    _trusted_duckdb_runtime_environment,
     provider_subprocess_environment,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
@@ -1368,25 +1367,13 @@ def _managed_daemon_child_environment(
             env[name] = value
     trusted_home = str(os.environ.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     if trusted_home:
-        repository_root = str(
-            os.environ.get(REPOSITORY_ROOT_ENV, "") or source_root
-        )
-        _validate_trusted_duckdb_home(
-            trusted_home,
-            repository_root=repository_root,
-            observed_home=str(os.environ.get("HOME", "") or ""),
-        )
-        python_user_base = str(
-            os.environ.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
-        )
-        if not python_user_base or not Path(python_user_base).is_absolute():
-            raise ValueError("trusted Python user base binding is incomplete")
         env.update(
-            {
-                "HOME": trusted_home,
-                TRUSTED_DUCKDB_HOME_ENV: trusted_home,
-                TRUSTED_PYTHON_USER_BASE_ENV: python_user_base,
-            }
+            _trusted_duckdb_runtime_environment(
+                os.environ,
+                repository_root=Path(
+                    os.environ.get(REPOSITORY_ROOT_ENV, "") or source_root
+                ),
+            )
         )
     if database_program is not None:
         env.update(database_program.environment())

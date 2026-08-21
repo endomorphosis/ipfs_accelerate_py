@@ -339,6 +339,10 @@ def test_materialization_verification_uses_isolated_extension_home_and_rejects_e
             "PATH",
             "HOME",
             "PYTHONUSERBASE",
+            "PYTHONDONTWRITEBYTECODE",
+            "CUDA_CACHE_DISABLE",
+            "CUDA_CACHE_PATH",
+            "XDG_CACHE_HOME",
             "LANG",
             "LC_ALL",
             "LC_CTYPE",
@@ -353,8 +357,19 @@ def test_materialization_verification_uses_isolated_extension_home_and_rejects_e
         home = Path(env["HOME"])
         assert env[module.TRUSTED_DUCKDB_HOME_ENV] == str(home)
         assert home != Path.home()
-        assert home.stat().st_mode & 0o777 == 0o700
-        assert {item.name for item in home.iterdir()} == {".duckdb"}
+        assert home.stat().st_mode & 0o777 == 0o500
+        assert {item.name for item in home.iterdir()} == {".cache", ".duckdb"}
+        cache = home / ".cache"
+        assert cache.stat().st_mode & 0o777 == 0o700
+        assert {item.name for item in cache.iterdir()} == {
+            "cuda",
+            "ipfs_accelerate",
+            "xdg",
+        }
+        assert env["CUDA_CACHE_PATH"] == str(cache / "cuda")
+        assert env["XDG_CACHE_HOME"] == str(cache / "xdg")
+        assert env["CUDA_CACHE_DISABLE"] == "1"
+        assert env["PYTHONDONTWRITEBYTECODE"] == "1"
         isolated_extensions = home / ".duckdb/extensions/v1.5.5/linux_arm64"
         assert {
             name: hashlib.sha256((isolated_extensions / name).read_bytes()).hexdigest()
@@ -364,8 +379,16 @@ def test_materialization_verification_uses_isolated_extension_home_and_rejects_e
             (isolated_extensions / name).stat().st_mode & 0o777 == 0o400
             for name in config.extension_hashes
         )
+        (cache / "ipfs_accelerate" / "qualified.txt").write_text(
+            "non-authoritative cache\n", encoding="utf-8"
+        )
+        (cache / "cuda" / "qualified.bin").write_bytes(b"cache")
         if contaminate_home["enabled"]:
-            (home / ".codex").mkdir()
+            home.chmod(0o700)
+            try:
+                (home / ".codex").mkdir()
+            finally:
+                home.chmod(0o500)
         qualification_homes.append(home)
         calls.append(tuple(argv))
         return module.CommandResult(0, json.dumps(valid), "")
@@ -398,7 +421,13 @@ def test_materialization_verification_uses_isolated_extension_home_and_rejects_e
     contaminate_home["enabled"] = False
     recovered = module._qualification_environment(config)
     assert recovered["HOME"] == str(config.qualification_home)
-    assert {item.name for item in config.qualification_home.iterdir()} == {".duckdb"}
+    assert {item.name for item in config.qualification_home.iterdir()} == {
+        ".cache",
+        ".duckdb",
+    }
+    assert not (
+        config.qualification_home / ".cache/ipfs_accelerate/qualified.txt"
+    ).exists()
     quarantines = tuple((config.state_root / "qualification-home-quarantine").iterdir())
     assert len(quarantines) == 1
     assert (quarantines[0] / ".codex").is_dir()

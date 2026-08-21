@@ -84,6 +84,16 @@ MATERIALIZATION_VERIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/procedure-compiler-materialization-verification@1"
 )
 TRUSTED_DUCKDB_HOME_ENV: Final = "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"
+TRUSTED_RUNTIME_PATH_ENV_NAMES: Final = (
+    "CUDA_CACHE_PATH",
+    "XDG_CACHE_HOME",
+)
+TRUSTED_RUNTIME_FLAG_ENV: Final = {
+    "CUDA_CACHE_DISABLE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+}
+TRUSTED_HOME_DIRECTORY_MODE: Final = 0o500
+TRUSTED_CACHE_DIRECTORY_MODE: Final = 0o700
 RUNTIME_LABEL_KEY: Final = "org.ipfs-accelerate.pcpc-runtime"
 RUNTIME_LABELS: Final = {
     "org.ipfs-accelerate.pcpc.role": "quack-owner",
@@ -1190,14 +1200,14 @@ def _copy_exact_extension_file(source: Path, target: Path, *, expected_sha256: s
 
 def _validate_qualification_home(config: ProgramConfig, *, home: Path | None = None) -> Path:
     home = config.qualification_home if home is None else home
-    directories = (
+    extension_directories = (
         home,
         home / ".duckdb",
         home / ".duckdb" / "extensions",
         home / ".duckdb" / "extensions" / "v1.5.5",
         home / ".duckdb" / "extensions" / "v1.5.5" / "linux_arm64",
     )
-    for directory in directories:
+    for directory in extension_directories:
         try:
             observed = os.lstat(directory)
         except OSError as exc:
@@ -1208,17 +1218,41 @@ def _validate_qualification_home(config: ProgramConfig, *, home: Path | None = N
             not stat.S_ISDIR(observed.st_mode)
             or stat.S_ISLNK(observed.st_mode)
             or observed.st_uid != os.geteuid()
-            or stat.S_IMODE(observed.st_mode) != 0o700
+            or stat.S_IMODE(observed.st_mode) != TRUSTED_HOME_DIRECTORY_MODE
         ):
             raise ProgramLaunchError(
                 "qualification_home_invalid", "qualification HOME directory is unsafe"
             )
-    extension_home = directories[-1]
+    extension_home = extension_directories[-1]
+    cache_root = home / ".cache"
+    cache_directories = (
+        cache_root,
+        cache_root / "cuda",
+        cache_root / "ipfs_accelerate",
+        cache_root / "xdg",
+    )
+    for directory in cache_directories:
+        try:
+            observed = os.lstat(directory)
+        except OSError as exc:
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification cache enclave is incomplete"
+            ) from exc
+        if (
+            not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != TRUSTED_CACHE_DIRECTORY_MODE
+        ):
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification cache enclave is unsafe"
+            )
     expected_children = {
-        home: {".duckdb"},
-        directories[1]: {"extensions"},
-        directories[2]: {"v1.5.5"},
-        directories[3]: {"linux_arm64"},
+        home: {".cache", ".duckdb"},
+        cache_root: {"cuda", "ipfs_accelerate", "xdg"},
+        extension_directories[1]: {"extensions"},
+        extension_directories[2]: {"v1.5.5"},
+        extension_directories[3]: {"linux_arm64"},
         extension_home: set(config.extension_hashes),
     }
     for directory, names in expected_children.items():
@@ -1304,9 +1338,13 @@ def _quarantine_qualification_home(config: ProgramConfig) -> None:
         observed = os.lstat(home)
     except OSError:
         return
-    if observed.st_uid != os.geteuid():
+    if (
+        not stat.S_ISDIR(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+    ):
         raise ProgramLaunchError(
-            "qualification_home_invalid", "invalid qualification HOME has a foreign owner"
+            "qualification_home_invalid", "invalid qualification HOME is not an owned directory"
         )
     quarantine_root = config.state_root / "qualification-home-quarantine"
     try:
@@ -1323,12 +1361,35 @@ def _quarantine_qualification_home(config: ProgramConfig) -> None:
             "qualification_home_invalid", "qualification HOME quarantine is at capacity"
         )
     target = quarantine_root / f"{home.name}-{uuid.uuid4().hex}"
+    descriptor: int | None = None
     try:
+        descriptor = os.open(
+            home,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        stable = os.fstat(descriptor)
+        if (
+            stable.st_dev != observed.st_dev
+            or stable.st_ino != observed.st_ino
+            or not stat.S_ISDIR(stable.st_mode)
+            or stable.st_uid != os.geteuid()
+        ):
+            raise OSError("qualification HOME changed during quarantine")
+        # A 0500 directory cannot be moved between parents on every supported
+        # filesystem. The private parent and stable no-follow descriptor admit
+        # this bounded recovery-only permission change.
+        os.fchmod(descriptor, 0o700)
         os.rename(home, target)
     except OSError as exc:
         raise ProgramLaunchError(
             "qualification_home_invalid", "invalid qualification HOME cannot be quarantined"
         ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     _fsync_program_directory(quarantine_root)
     _fsync_program_directory(config.state_root)
 
@@ -1367,6 +1428,22 @@ def _build_qualification_home(config: ProgramConfig) -> Path:
                 extension_home / name,
                 expected_sha256=expected_sha256,
             )
+        cache_root = staging / ".cache"
+        for directory in (
+            cache_root,
+            cache_root / "cuda",
+            cache_root / "ipfs_accelerate",
+            cache_root / "xdg",
+        ):
+            directory.mkdir(mode=TRUSTED_CACHE_DIRECTORY_MODE)
+        for directory in (
+            staging / ".duckdb",
+            staging / ".duckdb" / "extensions",
+            extension_home.parent,
+            extension_home,
+            staging,
+        ):
+            directory.chmod(TRUSTED_HOME_DIRECTORY_MODE)
         _validate_qualification_home(config, home=staging)
         try:
             os.rename(staging, home)
@@ -1415,6 +1492,15 @@ def _qualification_environment(config: ProgramConfig) -> dict[str, str]:
             "active Python user site is unavailable for isolated qualification",
         )
     environment["PYTHONUSERBASE"] = str(user_base)
+    cache_root = home / ".cache"
+    cache_paths = {
+        "CUDA_CACHE_PATH": cache_root / "cuda",
+        "XDG_CACHE_HOME": cache_root / "xdg",
+    }
+    for name in TRUSTED_RUNTIME_PATH_ENV_NAMES:
+        path = cache_paths[name]
+        environment[name] = str(path)
+    environment.update(TRUSTED_RUNTIME_FLAG_ENV)
     return environment
 
 

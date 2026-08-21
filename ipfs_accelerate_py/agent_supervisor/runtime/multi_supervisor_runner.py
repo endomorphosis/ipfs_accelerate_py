@@ -485,6 +485,16 @@ STATE_FAILOVER_POLICY_ENV = "IPFS_ACCELERATE_AGENT_STATE_FAILOVER_POLICY"
 DATABASE_PROGRAM_JSON_ENV = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
 TRUSTED_DUCKDB_HOME_ENV = "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"
 TRUSTED_PYTHON_USER_BASE_ENV = "PYTHONUSERBASE"
+TRUSTED_XDG_CACHE_HOME_ENV = "XDG_CACHE_HOME"
+TRUSTED_CUDA_CACHE_PATH_ENV = "CUDA_CACHE_PATH"
+TRUSTED_CUDA_CACHE_DISABLE_ENV = "CUDA_CACHE_DISABLE"
+TRUSTED_PYTHONDONTWRITEBYTECODE_ENV = "PYTHONDONTWRITEBYTECODE"
+TRUSTED_RUNTIME_CACHE_ENV_NAMES: tuple[str, ...] = (
+    TRUSTED_XDG_CACHE_HOME_ENV,
+    TRUSTED_CUDA_CACHE_PATH_ENV,
+    TRUSTED_CUDA_CACHE_DISABLE_ENV,
+    TRUSTED_PYTHONDONTWRITEBYTECODE_ENV,
+)
 
 DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_AUTHORITY_MODE_ENV,
@@ -548,25 +558,16 @@ def _plan_bound_positive_child_environment(
     trusted_home = str(projected.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     if trusted_home:
         repository_root = str(environment.get(REPOSITORY_ROOT_ENV, "") or "")
-        _validate_trusted_duckdb_home(
-            trusted_home,
-            repository_root=repository_root,
-            observed_home=str(environment.get("HOME", "") or ""),
+        projected.update(
+            _trusted_duckdb_runtime_environment(
+                environment,
+                repository_root=Path(repository_root),
+            )
         )
-        python_user_base = str(
-            environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
-        )
-        if (
-            not python_user_base
-            or "\x00" in python_user_base
-            or len(python_user_base.encode("utf-8")) > 4096
-            or not Path(python_user_base).is_absolute()
-        ):
-            raise ValueError("trusted Python user base binding is incomplete")
-        projected["HOME"] = trusted_home
-        projected[TRUSTED_PYTHON_USER_BASE_ENV] = python_user_base
     else:
         projected.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+        for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            projected.pop(name, None)
     projected["PATH"] = "/usr/bin:/bin"
     return projected
 
@@ -622,10 +623,74 @@ def _validate_trusted_duckdb_home(
         or not stat.S_ISDIR(observed.st_mode)
         or stat.S_ISLNK(observed.st_mode)
         or observed.st_uid != os.geteuid()
-        or stat.S_IMODE(observed.st_mode) != 0o700
+        or stat.S_IMODE(observed.st_mode) != 0o500
     ):
-        raise ValueError("trusted DuckDB HOME is not a private owned directory")
+        raise ValueError("trusted DuckDB HOME is not an immutable owned directory")
     return home
+
+
+def _trusted_duckdb_runtime_environment(
+    environment: Mapping[str, str],
+    *,
+    repository_root: Path,
+) -> dict[str, str]:
+    """Derive closed trusted-runtime bindings; never admit ambient cache paths."""
+
+    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    python_user_base = str(environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or "")
+    if not trusted_home or not python_user_base:
+        raise ValueError("trusted DuckDB HOME and Python user base must be paired")
+    home = _validate_trusted_duckdb_home(
+        trusted_home,
+        repository_root=str(repository_root.resolve()),
+        observed_home=str(environment.get("HOME", "") or ""),
+    )
+    user_base = Path(python_user_base)
+    if (
+        "\x00" in python_user_base
+        or len(python_user_base.encode("utf-8")) > 4096
+        or not user_base.is_absolute()
+    ):
+        raise ValueError("trusted Python user base binding is incomplete")
+    try:
+        user_base_observed = os.lstat(user_base)
+        user_base_resolved = user_base.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("trusted Python user base binding is unavailable") from exc
+    if (
+        user_base_resolved != user_base
+        or not stat.S_ISDIR(user_base_observed.st_mode)
+        or stat.S_ISLNK(user_base_observed.st_mode)
+        or user_base_observed.st_uid != os.geteuid()
+        or stat.S_IMODE(user_base_observed.st_mode) & 0o022
+    ):
+        raise ValueError("trusted Python user base binding is unsafe")
+    cache_root = home / ".cache"
+    xdg_cache = cache_root / "xdg"
+    cuda_cache = cache_root / "cuda"
+    for directory in (cache_root, xdg_cache, cuda_cache):
+        try:
+            observed = os.lstat(directory)
+            resolved = directory.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("trusted runtime cache directory is unavailable") from exc
+        if (
+            resolved != directory
+            or not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != 0o700
+        ):
+            raise ValueError("trusted runtime cache directory is unsafe")
+    return {
+        "HOME": str(home),
+        TRUSTED_DUCKDB_HOME_ENV: str(home),
+        TRUSTED_PYTHON_USER_BASE_ENV: str(user_base),
+        TRUSTED_XDG_CACHE_HOME_ENV: str(xdg_cache),
+        TRUSTED_CUDA_CACHE_PATH_ENV: str(cuda_cache),
+        TRUSTED_CUDA_CACHE_DISABLE_ENV: "1",
+        TRUSTED_PYTHONDONTWRITEBYTECODE_ENV: "1",
+    }
 
 
 def _trusted_duckdb_profile_environment(
@@ -635,31 +700,14 @@ def _trusted_duckdb_profile_environment(
 ) -> tuple[tuple[str, str], ...]:
     """Bind an admitted extension HOME into a lifecycle profile."""
 
-    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
-    if not trusted_home:
+    if not str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or ""):
         return ()
-    _validate_trusted_duckdb_home(
-        trusted_home,
-        repository_root=str(repository_root.resolve()),
-        observed_home=str(environment.get("HOME", "") or ""),
-    )
-    python_user_base = str(
-        environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
-    )
-    if (
-        not python_user_base
-        or "\x00" in python_user_base
-        or len(python_user_base.encode("utf-8")) > 4096
-        or not Path(python_user_base).is_absolute()
-    ):
-        raise ValueError("trusted Python user base binding is incomplete")
     return tuple(
         sorted(
-            {
-                "HOME": trusted_home,
-                TRUSTED_DUCKDB_HOME_ENV: trusted_home,
-                TRUSTED_PYTHON_USER_BASE_ENV: python_user_base,
-            }.items()
+            _trusted_duckdb_runtime_environment(
+                environment,
+                repository_root=repository_root,
+            ).items()
         )
     )
 
@@ -1218,6 +1266,8 @@ def provider_subprocess_environment(
     cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
     trusted_home = str(cleaned.pop(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     cleaned.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+    for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        cleaned.pop(name, None)
     if trusted_home and cleaned.get("HOME") == trusted_home:
         cleaned.pop("HOME", None)
     return cleaned
@@ -5035,7 +5085,16 @@ def start_track(
         # would be too late for LD_PRELOAD.  The sealed native dependency's
         # DT_NEEDED resolution is intentionally bounded to the host's default
         # system ABI, not caller-provided loader/search configuration.
-        route_names = set(_PLAN_BOUND_PROFILE_ENV_NAMES)
+        # HOME, Python user-base, and cache bindings enter this profile only
+        # through _trusted_duckdb_profile_environment, which derives them from
+        # the independently admitted marker. They are not ambient allowlist
+        # members, but they are valid sealed profile fields at this boundary.
+        route_names = {
+            *_PLAN_BOUND_PROFILE_ENV_NAMES,
+            "HOME",
+            TRUSTED_PYTHON_USER_BASE_ENV,
+            *TRUSTED_RUNTIME_CACHE_ENV_NAMES,
+        }
         explicit_profile = dict(profile.environment)
         disallowed_profile_names = set(explicit_profile) - route_names
         if disallowed_profile_names:

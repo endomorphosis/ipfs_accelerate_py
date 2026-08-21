@@ -937,12 +937,22 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
         / ("a" * 64)
     )
     trusted_home.mkdir(parents=True, mode=0o700)
-    trusted_home.chmod(0o700)
-    python_user_base = Path.home() / ".local"
+    xdg_cache = trusted_home / ".cache" / "xdg"
+    cuda_cache = trusted_home / ".cache" / "cuda"
+    xdg_cache.mkdir(parents=True, mode=0o700)
+    cuda_cache.mkdir(mode=0o700)
+    (trusted_home / ".cache").chmod(0o700)
+    trusted_home.chmod(0o500)
+    python_user_base = repository / "python-user-base"
+    python_user_base.mkdir(mode=0o700)
     environment = {
         "HOME": str(trusted_home),
         multi_runner_module.TRUSTED_DUCKDB_HOME_ENV: str(trusted_home),
         multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV: str(python_user_base),
+        multi_runner_module.TRUSTED_XDG_CACHE_HOME_ENV: "/tmp/hostile-xdg",
+        multi_runner_module.TRUSTED_CUDA_CACHE_PATH_ENV: "/tmp/hostile-cuda",
+        multi_runner_module.TRUSTED_CUDA_CACHE_DISABLE_ENV: "0",
+        multi_runner_module.TRUSTED_PYTHONDONTWRITEBYTECODE_ENV: "0",
     }
 
     profile_environment = dict(
@@ -955,6 +965,16 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
     assert profile_environment[
         multi_runner_module.TRUSTED_DUCKDB_HOME_ENV
     ] == str(trusted_home)
+    assert profile_environment[multi_runner_module.TRUSTED_XDG_CACHE_HOME_ENV] == str(
+        xdg_cache
+    )
+    assert profile_environment[multi_runner_module.TRUSTED_CUDA_CACHE_PATH_ENV] == str(
+        cuda_cache
+    )
+    assert profile_environment[multi_runner_module.TRUSTED_CUDA_CACHE_DISABLE_ENV] == "1"
+    assert profile_environment[
+        multi_runner_module.TRUSTED_PYTHONDONTWRITEBYTECODE_ENV
+    ] == "1"
 
     lane_environment = {
         **profile_environment,
@@ -964,6 +984,8 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
         lane_environment
     )
     assert projected["HOME"] == str(trusted_home)
+    assert projected[multi_runner_module.TRUSTED_XDG_CACHE_HOME_ENV] == str(xdg_cache)
+    assert projected[multi_runner_module.TRUSTED_CUDA_CACHE_PATH_ENV] == str(cuda_cache)
 
     previous = {
         name: os.environ.get(name)
@@ -987,6 +1009,8 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
     assert managed[multi_runner_module.TRUSTED_DUCKDB_HOME_ENV] == str(
         trusted_home
     )
+    assert managed[multi_runner_module.TRUSTED_XDG_CACHE_HOME_ENV] == str(xdg_cache)
+    assert managed[multi_runner_module.TRUSTED_CUDA_CACHE_PATH_ENV] == str(cuda_cache)
 
     provider_environment = multi_runner_module.provider_subprocess_environment(
         projected
@@ -997,16 +1021,35 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
         multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV
         not in provider_environment
     )
+    assert not (
+        set(multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES)
+        & set(provider_environment)
+    )
 
     unpaired = multi_runner_module._plan_bound_positive_child_environment(
         {
             multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV: (
                 "/tmp/hostile-python-user-base"
-            )
+            ),
+            multi_runner_module.TRUSTED_XDG_CACHE_HOME_ENV: "/tmp/hostile-xdg",
+            multi_runner_module.TRUSTED_CUDA_CACHE_PATH_ENV: "/tmp/hostile-cuda",
+            multi_runner_module.TRUSTED_CUDA_CACHE_DISABLE_ENV: "0",
+            multi_runner_module.TRUSTED_PYTHONDONTWRITEBYTECODE_ENV: "0",
         }
     )
     assert (
         multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV not in unpaired
+    )
+    assert not set(multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES) & set(unpaired)
+
+    unpaired_provider = multi_runner_module.provider_subprocess_environment(
+        {
+            name: "hostile"
+            for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES
+        }
+    )
+    assert not set(multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES) & set(
+        unpaired_provider
     )
 
     with pytest.raises(ValueError, match="binding is incomplete"):
@@ -1014,6 +1057,31 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
             {**environment, "HOME": str(Path.home())},
             repository_root=repository,
         )
+
+    trusted_home.chmod(0o700)
+    with pytest.raises(ValueError, match="immutable owned directory"):
+        multi_runner_module._trusted_duckdb_profile_environment(
+            environment,
+            repository_root=repository,
+        )
+    trusted_home.chmod(0o500)
+    xdg_cache.chmod(0o755)
+    with pytest.raises(ValueError, match="cache directory is unsafe"):
+        multi_runner_module._trusted_duckdb_profile_environment(
+            environment,
+            repository_root=repository,
+        )
+    xdg_cache.chmod(0o700)
+
+    with pytest.raises(ValueError, match="must be paired"):
+        multi_runner_module._trusted_duckdb_profile_environment(
+            {
+                "HOME": str(trusted_home),
+                multi_runner_module.TRUSTED_DUCKDB_HOME_ENV: str(trusted_home),
+            },
+            repository_root=repository,
+        )
+    trusted_home.chmod(0o700)
 
 
 def test_external_isolation_contract_rejects_unknown_fields(
