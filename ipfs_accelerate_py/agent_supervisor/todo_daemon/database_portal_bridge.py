@@ -167,6 +167,18 @@ _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
 )
 
 
+def _is_implementation_conflict(exc: BaseException) -> bool:
+    """Return whether ``exc`` is a database implementation conflict.
+
+    Running ``python -m ...implementation_daemon`` binds daemon classes to
+    ``__main__``.  Relative imports of ``DatabaseImplementationConflictError``
+    then see a different type, so identity-based ``except`` misses live
+    preauthorization conflicts and fails the maintenance tick.
+    """
+
+    return type(exc).__name__ == "DatabaseImplementationConflictError"
+
+
 class DatabasePortalBridgeError(RuntimeError):
     """A database claim could not obtain trustworthy Portal evidence."""
 
@@ -3339,9 +3351,6 @@ class DatabasePortalExecutionBridge:
         # A completed queue row can outlive the database attempt that created
         # it.  Only an exact latest-attempt conflict is a stale-row signal;
         # malformed authority evidence must still fail the maintenance tick.
-        from .implementation_daemon import (
-            DatabaseImplementationConflictError,
-        )
         from ..merge.merge_train import MergeTrain
 
         train = MergeTrain(
@@ -3399,7 +3408,9 @@ class DatabasePortalExecutionBridge:
                         preauthorize=preauthorize,
                         evidence_digest=digest,
                     )
-                except DatabaseImplementationConflictError:
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
                     continue
                 evidence = self._post_merge_recovery_evidence(
                     completed,
@@ -3410,7 +3421,9 @@ class DatabasePortalExecutionBridge:
                     continue
                 try:
                     result = recover(evidence)
-                except DatabaseImplementationConflictError:
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
                     continue
                 if not isinstance(result, Mapping):
                     raise DatabasePortalBridgeError(
@@ -3463,7 +3476,9 @@ class DatabasePortalExecutionBridge:
                             preauthorize=preauthorize,
                             evidence_digest=digest,
                         )
-                    except DatabaseImplementationConflictError:
+                    except Exception as exc:
+                        if not _is_implementation_conflict(exc):
+                            raise
                         continue
                     selected = request
                     selected_projection = projection
@@ -3499,7 +3514,9 @@ class DatabasePortalExecutionBridge:
                     preauthorize=preauthorize,
                     evidence_digest=digest,
                 )
-            except DatabaseImplementationConflictError:
+            except Exception as exc:
+                if not _is_implementation_conflict(exc):
+                    raise
                 return False
             return True
 
@@ -3518,6 +3535,9 @@ class DatabasePortalExecutionBridge:
             # Recheck after the exact row is claimed and while the canonical
             # consumer lease is held.  No Portal or validation authority is
             # constructed if database control advanced since discovery.
+            # Conflicts may be ``__main__.DatabaseImplementationConflictError``
+            # when the daemon is launched with ``-m``; the caller catches them
+            # by type name.
             self._preauthorize_post_merge_recovery(
                 current,
                 current_projection,
@@ -3652,7 +3672,9 @@ class DatabasePortalExecutionBridge:
                         preauthorize=preauthorize,
                         evidence_digest=digest,
                     )
-                except DatabaseImplementationConflictError:
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
                     return
             evidence = (
                 self._post_merge_recovery_evidence(
@@ -3667,7 +3689,9 @@ class DatabasePortalExecutionBridge:
                 return
             try:
                 result = recover(evidence)
-            except DatabaseImplementationConflictError:
+            except Exception as exc:
+                if not _is_implementation_conflict(exc):
+                    raise
                 return
             if not isinstance(result, Mapping):
                 raise DatabasePortalBridgeError(
@@ -3682,7 +3706,9 @@ class DatabasePortalExecutionBridge:
                 processor_context=configured_processor,
                 after_process=rearm_after_queue_settlement,
             )
-        except DatabaseImplementationConflictError:
+        except Exception as exc:
+            if not _is_implementation_conflict(exc):
+                raise
             return None
         if database_result is not None:
             return database_result

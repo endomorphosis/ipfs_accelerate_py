@@ -3217,7 +3217,7 @@ def test_preauthorize_uses_blocked_receipt_when_phase_omits_portal_flags(
         daemon.close()
 
 
-def test_preauthorize_rejects_later_unrelated_portal_terminal_failure(
+def test_preauthorize_accepts_receipt_despite_later_unrelated_portal_phase(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3264,6 +3264,43 @@ def test_preauthorize_rejects_later_unrelated_portal_terminal_failure(
             ]
 
         monkeypatch.setattr(daemon, "phase_history", history_with_later_terminal)
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, failed)
+        )
+        assert authorized["authorized"] is True
+    finally:
+        daemon.close()
+
+
+def test_preauthorize_rejects_when_receipt_is_not_post_merge_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-foreign-receipt",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "implementation_protected_path_incident_latched",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        daemon._persist_terminal_portal_failure(
+            failed,
+            reason="implementation_protected_path_incident_latched",
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
         with pytest.raises(
             DatabaseImplementationConflictError,
             match="no longer matches the latest terminal failure",

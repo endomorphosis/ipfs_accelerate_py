@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
+    _is_implementation_conflict,
     verify_database_portal_attempt_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -71,6 +72,19 @@ def _attempt(*, attempt_number: int = 1) -> DatabaseTaskAttempt:
         committed_phase="claimed",
         status="running",
         started_at_ms=1,
+    )
+
+
+def test_implementation_conflict_matches_main_module_alias() -> None:
+    class DatabaseImplementationConflictError(RuntimeError):
+        pass
+
+    assert _is_implementation_conflict(
+        DatabaseImplementationConflictError("stale row")
+    )
+    assert not _is_implementation_conflict(RuntimeError("stale row"))
+    assert _is_implementation_conflict(
+        DatabaseImplementationConflictError("no longer matches")
     )
 
 

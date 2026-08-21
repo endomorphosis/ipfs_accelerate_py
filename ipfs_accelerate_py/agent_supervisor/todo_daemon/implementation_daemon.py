@@ -73694,9 +73694,16 @@ class DatabaseImplementationDaemon:
             latest,
             task,
         ):
+            try:
+                observed_phase = self._canonical_portal_failure_reason(
+                    self._terminal_portal_failure_reason(latest)
+                )
+            except DatabaseImplementationAuthorityError as exc:
+                observed_phase = type(exc).__name__
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization source no longer matches "
                 "the latest terminal failure"
+                f" (phase_reason={observed_phase!r})"
             )
         status = str(getattr(task, "status", "") or "").strip().lower()
         if status == "retrying":
@@ -75257,19 +75264,20 @@ class DatabaseImplementationDaemon:
     ) -> bool:
         """Return whether this attempt's durable terminal failure is recoverable.
 
-        Phase history is preferred.  When a later non-portal crash phase, a
-        wrapped exception string, or a missing portal_terminal_failure flag
-        would hide that closed reason, the blocked control receipt bound to
-        the same attempt remains authoritative.
+        A blocked ``database_portal_terminal_failure`` receipt bound to this
+        attempt is the control-plane latest terminal failure.  Phase history
+        can wrap exception text, omit portal flags, or record a later crash
+        after that receipt was sealed; those bodies must not veto recovery.
         """
 
-        phase_reason = self._canonical_portal_failure_reason(
-            self._terminal_portal_failure_reason(attempt)
-        )
+        try:
+            phase_reason = self._canonical_portal_failure_reason(
+                self._terminal_portal_failure_reason(attempt)
+            )
+        except DatabaseImplementationAuthorityError:
+            phase_reason = ""
         if phase_reason == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON:
             return True
-        if phase_reason:
-            return False
         current = task if task is not None else self.task_source.get(
             attempt.task_cid
         )
