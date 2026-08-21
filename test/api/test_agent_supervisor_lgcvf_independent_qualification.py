@@ -688,6 +688,21 @@ def test_recovery_population_is_closed_and_task_spec_bound() -> None:
     ).parameters
 
 
+def test_recovery_080_prebinds_ssl_sqlite_host_objects_and_other_tasks_do_not() -> None:
+    module = _load()
+    assert module._RECOVERY_080_PREBOUND_HOST_SONAMES == (
+        "libcrypto.so.3",
+        "libssl.so.3",
+        "libsqlite3.so.0",
+    )
+    host_sonames = [item[0] for item in module._QUALIFICATION_HOST_OBJECTS]
+    assert list(module._RECOVERY_080_PREBOUND_HOST_SONAMES) == host_sonames[-3:]
+    source = inspect.getsource(module._load_bound_native_host_objects)
+    assert "task_id" in inspect.signature(module._load_bound_native_host_objects).parameters
+    assert "LGCVF-080" in source
+    assert "selected_sonames" in source
+
+
 def test_recovery_provider_import_and_provider_module_process_are_denied() -> None:
     probe = r"""
 import importlib.util

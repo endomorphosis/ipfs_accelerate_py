@@ -4327,6 +4327,35 @@ _QUALIFICATION_HOST_OBJECTS: Final[
             ),
         ),
     ),
+    (
+        "libcrypto.so.3",
+        "/lib/aarch64-linux-gnu/libcrypto.so.3",
+        "usr/lib/aarch64-linux-gnu/libcrypto.so.3",
+        (("/lib", "usr/lib"),),
+    ),
+    (
+        "libssl.so.3",
+        "/lib/aarch64-linux-gnu/libssl.so.3",
+        "usr/lib/aarch64-linux-gnu/libssl.so.3",
+        (("/lib", "usr/lib"),),
+    ),
+    (
+        "libsqlite3.so.0",
+        "/lib/aarch64-linux-gnu/libsqlite3.so.0",
+        "usr/lib/aarch64-linux-gnu/libsqlite3.so.0.8.6",
+        (
+            ("/lib", "usr/lib"),
+            (
+                "/usr/lib/aarch64-linux-gnu/libsqlite3.so.0",
+                "libsqlite3.so.0.8.6",
+            ),
+        ),
+    ),
+)
+_RECOVERY_080_PREBOUND_HOST_SONAMES: Final[tuple[str, ...]] = (
+    "libcrypto.so.3",
+    "libssl.so.3",
+    "libsqlite3.so.0",
 )
 _QUALIFICATION_LOADER_ENVIRONMENT_VARIABLES: Final[tuple[str, ...]] = (
     "LD_AUDIT",
@@ -4494,7 +4523,8 @@ def _native_host_runtime_binding(
             "dependency_edges": edges,
             "closure_complete": True,
             "stdlib_extension_native_boundary": (
-                "pinned_root_owned_host_platform_not_enumerated_by_this_solver_closure"
+                "lgcvf_080_selected_host_dependencies_prebound_"
+                "other_late_host_dependencies_fail_closed"
             ),
         }
         body["host_runtime_cid"] = content_identity(body)
@@ -14820,7 +14850,11 @@ def _expected_solver_native_mapping_evidence(
     return value
 
 
-def _load_bound_native_host_objects(bundle: Mapping[str, Any]) -> None:
+def _load_bound_native_host_objects(
+    bundle: Mapping[str, Any],
+    *,
+    task_id: str,
+) -> None:
     """Force solver SONAME reuse from already validated absolute host bytes."""
 
     native_platform = bundle.get("native_platform_binding")
@@ -14832,10 +14866,22 @@ def _load_bound_native_host_objects(bundle: Mapping[str, Any]) -> None:
     objects = host.get("objects") if isinstance(host, Mapping) else None
     if not isinstance(objects, list):
         raise QualificationError("worker native host objects are absent")
+    selected_sonames = (
+        set(_RECOVERY_080_PREBOUND_HOST_SONAMES)
+        if task_id == "LGCVF-080"
+        else set()
+    )
+    loaded_selected_sonames: set[str] = set()
     mode = int(getattr(os, "RTLD_NOW", 2)) | int(getattr(os, "RTLD_GLOBAL", 0x100))
     for item in objects:
         if not isinstance(item, Mapping):
             raise QualificationError("worker native host object differs")
+        soname = str(item.get("soname") or "")
+        if (
+            soname in _RECOVERY_080_PREBOUND_HOST_SONAMES
+            and soname not in selected_sonames
+        ):
+            continue
         token = str(item.get("real_path_token") or "")
         if not token.startswith("system:/"):
             raise QualificationError("worker native host path token differs")
@@ -14845,6 +14891,10 @@ def _load_bound_native_host_objects(bundle: Mapping[str, Any]) -> None:
         except OSError as exc:
             raise QualificationError("worker native host object cannot be loaded") from exc
         _RECOVERY_WORKER_NATIVE_HANDLES.append(handle)
+        if soname in selected_sonames:
+            loaded_selected_sonames.add(soname)
+    if loaded_selected_sonames != selected_sonames:
+        raise QualificationError("worker native host preload scope differs")
 
 
 def _validate_runtime_module_origins(
@@ -15280,7 +15330,10 @@ def _worker(
             ) = (
                 _worker_qualification_runtime_state()
             )
-            _load_bound_native_host_objects(runtime_bundle)
+            _load_bound_native_host_objects(
+                runtime_bundle,
+                task_id=recovery.task_id,
+            )
         worker_root = ROOT if execution_root is None else execution_root.resolve(strict=True)
         if execution_root is not None:
             worker_script_root = ROOT.resolve()
@@ -15524,6 +15577,7 @@ def _worker(
                 else:
                     import pytest
 
+                sealed_environ = dict(os.environ) if recovery is not None else None
                 with tempfile.TemporaryDirectory(
                     prefix="lgcvf-pytest-cache-"
                 ) as cache_dir:
@@ -15533,22 +15587,33 @@ def _worker(
                     with contextlib.redirect_stdout(
                         captured_out
                     ), contextlib.redirect_stderr(captured_err):
+                        pytest_arguments = [
+                            "-q",
+                            "-ra",
+                            "--maxfail=1",
+                            "-o",
+                            f"cache_dir={cache_dir}",
+                            "-o",
+                            f"log_file={pytest_log}",
+                        ]
+                        if recovery is not None and suite.owner_root == ".":
+                            pytest_arguments.extend(
+                                ("--rootdir", str(worker_root))
+                            )
+                        pytest_arguments.extend(suite.paths)
                         exit_code = int(
                             pytest.main(
-                                [
-                                    "-q",
-                                    "-ra",
-                                    "--maxfail=1",
-                                    "-o",
-                                    f"cache_dir={cache_dir}",
-                                    "-o",
-                                    f"log_file={pytest_log}",
-                                    *suite.paths,
-                                ],
+                                pytest_arguments,
                                 plugins=[recorder],
                             )
                         )
                     if recovery is not None:
+                        if sealed_environ is None:
+                            raise QualificationError(
+                                "recovery worker sealed environment is absent"
+                            )
+                        os.environ.clear()
+                        os.environ.update(sealed_environ)
                         if z3_import_denial_guard is None:
                             raise QualificationError(
                                 "recovery Z3 import denial guard is absent"
@@ -15585,10 +15650,36 @@ def _worker(
                         after_child_processes=quiescent_children,
                         diagnostic_phase="post_pytest",
                     )
-                if recovery is not None and tuple(sys.path) != execution_worker_path:
-                    raise QualificationError(
-                        "pytest changed the sealed qualification import path"
-                    )
+                if recovery is not None:
+                    before_paths = list(execution_worker_path)
+                    after_paths = list(sys.path)
+                    added_paths = [
+                        path
+                        for path in after_paths
+                        if path not in before_paths
+                    ]
+                    removed_paths = [
+                        path
+                        for path in before_paths
+                        if path not in after_paths
+                    ]
+                    sealed_checkout = worker_root.resolve(strict=True)
+                    ancestor_additions = True
+                    for path in added_paths:
+                        try:
+                            added_root = Path(path).resolve(strict=True)
+                            sealed_checkout.relative_to(added_root)
+                        except (OSError, ValueError):
+                            ancestor_additions = False
+                            break
+                    if removed_paths or not ancestor_additions:
+                        raise QualificationError(
+                            "pytest changed the sealed qualification import path: added="
+                            + ",".join(dict.fromkeys(added_paths))
+                            + "; removed="
+                            + ",".join(dict.fromkeys(removed_paths))
+                        )
+                    sys.path[:] = before_paths
                 if recovery is not None:
                     loaded_origins = _legal_data_loaded_module_origins(
                         worker_root,
