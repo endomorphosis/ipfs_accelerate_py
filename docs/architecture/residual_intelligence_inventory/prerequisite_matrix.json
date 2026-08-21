@@ -1,7 +1,7 @@
 {
   "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-prerequisite-matrix@1",
-  "source_revision": "b8a6950a1cae32ca25e007f76984e818fc5d38a2",
-  "source_tree": "9d966a4f8d4763a1877e4d419f9e11c935559871",
+  "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+  "source_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
   "environment": "python-3.12.3/linux-aarch64/origin-main",
   "findings": [
     {

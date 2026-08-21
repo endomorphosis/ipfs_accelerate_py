@@ -3,8 +3,8 @@
 This directory is the immutable, current-source prerequisite and residual-call
 inventory for `agent-supervisor-verified-residual-intelligence-foundry-v1`.
 Findings bind to `origin/main` commit
-`b8a6950a1cae32ca25e007f76984e818fc5d38a2` and tree
-`9d966a4f8d4763a1877e4d419f9e11c935559871`.
+`84a056e41e48a81d4484be43840196578d6c87da` and tree
+`40f0771e77d394ac91d92cc1edb02f7860f6131b`.
 
 The records deliberately distinguish source availability from qualification.
 A task-board status, similarly named class, historical receipt, or importable

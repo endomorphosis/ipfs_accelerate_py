@@ -11,9 +11,9 @@
   "accepted_plan_revision_alias": "VRIF-PLAN-R1",
   "merge_target_branch": "codex/verified-residual-intelligence-foundry-v1",
   "source_binding": {
-    "accelerator_required_ancestor": "b8a6950a1cae32ca25e007f76984e818fc5d38a2",
-    "accelerator_planning_revision": "b8a6950a1cae32ca25e007f76984e818fc5d38a2",
-    "accelerator_planning_tree": "9d966a4f8d4763a1877e4d419f9e11c935559871",
+    "accelerator_required_ancestor": "84a056e41e48a81d4484be43840196578d6c87da",
+    "accelerator_planning_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+    "accelerator_planning_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
     "accelerator_required_branch": "codex/verified-residual-intelligence-foundry-v1",
     "bootstrap_task_source": "duckdb",
     "require_clean_checkout_at_launch": true,
