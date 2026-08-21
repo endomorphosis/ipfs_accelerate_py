@@ -321,6 +321,10 @@ def _seed_configured_repo(tmp_path: Path) -> tuple[Path, Path]:
         str(child),
         "dependency",
     )
+    # The cloned submodule does not inherit repository-local author identity.
+    # Keep nested-commit fixtures hermetic when qualification runs with an
+    # intentionally credential-empty HOME.
+    _configure_git(repo / "dependency")
     _git(repo, "add", "README.md", ".gitmodules", "dependency")
     _git(repo, "commit", "-m", "seed repository")
     ancestor = _git(repo, "rev-parse", "HEAD").stdout.strip()
