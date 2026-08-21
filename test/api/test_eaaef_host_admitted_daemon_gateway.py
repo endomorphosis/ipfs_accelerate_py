@@ -212,3 +212,67 @@ def test_ensure_attempt_returns_the_attempt_record() -> None:
     assert execution.get_attempt("attempt:1")["attempt_id"] == "attempt:1"
     running = execution.list_running_attempts(owner_session_id="owner")
     assert len(running) == 1
+
+
+def test_git_worktree_reuses_sibling_with_owned_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _OWNED_RELATIVE_PATHS,
+        _git_worktree,
+    )
+
+    worktrees = (
+        tmp_path
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "run-v14/worktrees"
+    )
+    sibling = worktrees / "eaaef-010-aaaaaaaaaaaaaaaa"
+    for relative in _OWNED_RELATIVE_PATHS:
+        path = sibling / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("owned\n", encoding="utf-8")
+
+    def _forbidden_run(*args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        raise AssertionError("git worktree add must not run when owned files exist")
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway.subprocess.run",
+        _forbidden_run,
+    )
+    found = _git_worktree(tmp_path, attempt_id="sha256:" + ("b" * 64))
+    assert found == sibling
+
+
+def test_focused_test_receipt_uses_ini_cache_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _focused_test_receipt_cid,
+    )
+
+    captured: dict[str, Any] = {}
+
+    class _Completed:
+        returncode = 0
+        stdout = "29 passed in 0.50s\n"
+        stderr = ""
+
+    def _fake_run(argv: list[str], **kwargs: Any) -> _Completed:
+        captured["argv"] = list(argv)
+        captured["env"] = dict(kwargs.get("env") or {})
+        return _Completed()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway.subprocess.run",
+        _fake_run,
+    )
+    receipt = _focused_test_receipt_cid(tmp_path)
+    assert receipt.startswith("sha256:")
+    assert "--cache-dir" not in captured["argv"]
+    assert captured["argv"].count("-o") >= 1
+    assert any(
+        str(item).startswith("cache_dir=") for item in captured["argv"]
+    )
+    assert captured["env"].get("PYTEST_ADDOPTS") == ""

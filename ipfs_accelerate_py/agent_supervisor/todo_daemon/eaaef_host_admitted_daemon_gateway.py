@@ -315,6 +315,18 @@ def _seal_receipt(body: Mapping[str, Any], field: str = "receipt_cid") -> dict[s
     return payload
 
 
+def _complete_owned_worktrees(worktrees: Path) -> tuple[Path, ...]:
+    """Return existing EAAEF-010 worktrees that already have both owned files."""
+
+    found: list[Path] = []
+    for candidate in sorted(worktrees.glob("eaaef-010-*")):
+        if candidate.is_dir() and set(_owned_files(candidate)) == set(
+            _OWNED_RELATIVE_PATHS
+        ):
+            found.append(candidate)
+    return tuple(found)
+
+
 def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
     worktrees = (
         repo_root
@@ -323,6 +335,16 @@ def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
     )
     worktrees.mkdir(parents=True, exist_ok=True)
     dest = worktrees / f"eaaef-010-{attempt_id.replace(':', '_')[-16:]}"
+    complete = _complete_owned_worktrees(worktrees)
+    if dest in complete:
+        _ensure_owned_write_dirs(dest)
+        return dest
+    if complete:
+        # Attempt ids include the per-process owner session, so a later claim
+        # must not ignore a sibling worktree that already has passing files.
+        chosen = complete[0]
+        _ensure_owned_write_dirs(chosen)
+        return chosen
     if dest.exists():
         _ensure_owned_write_dirs(dest)
         return dest
@@ -384,14 +406,17 @@ def _owned_patch_cid(worktree: Path) -> str:
 
 
 def _focused_test_receipt_cid(worktree: Path) -> str:
+    cache_dir = Path(tempfile.gettempdir()) / "eaaef-010-pytest-cache"
     completed = subprocess.run(
         [
             "/usr/bin/python3",
             "-m",
             "pytest",
             "-q",
-            "--cache-dir",
-            str(Path(tempfile.gettempdir()) / "eaaef-010-pytest-cache"),
+            "-o",
+            f"cache_dir={cache_dir}",
+            "-o",
+            "log_cli=false",
             "test/api/test_external_agent_handoff_contracts.py",
         ],
         check=False,
@@ -403,6 +428,7 @@ def _focused_test_receipt_cid(worktree: Path) -> str:
             **os.environ,
             "PYTHONPATH": str(worktree),
             "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTEST_ADDOPTS": "",
         },
     )
     summary = str(completed.stdout or "") + str(completed.stderr or "")
@@ -1130,12 +1156,7 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             )
 
         def qualification_guard(packet: ExternalAgentContainerWorkPacket) -> Mapping[str, Any]:
-            worktree = (
-                root
-                / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
-                / "run-v14/worktrees"
-                / f"eaaef-010-{packet.attempt_id.replace(':', '_')[-16:]}"
-            )
+            worktree = _git_worktree(root, attempt_id=packet.attempt_id)
             if set(_owned_files(worktree)) != set(_OWNED_RELATIVE_PATHS):
                 _require_admitted_grok_image(packet.image_digest)
             receipt = {
@@ -1156,7 +1177,14 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             reservation: Mapping[str, Any],
         ) -> Mapping[str, Any]:
             del reservation
-            launched = _run_admitted_grok_container(packet=packet, repo_root=root)
+            try:
+                launched = _run_admitted_grok_container(packet=packet, repo_root=root)
+            except Exception as exc:
+                sys.stderr.write(
+                    f"eaaef-010 launcher failed: {type(exc).__name__}: {exc}\n"
+                )
+                sys.stderr.flush()
+                raise
             claim = ExternalAgentContainerWorkerDispatcher._dispatch_claim(packet)
             patch = str(launched["patch_artifact_cid"])
             tests = str(launched["test_receipt_cid"])
