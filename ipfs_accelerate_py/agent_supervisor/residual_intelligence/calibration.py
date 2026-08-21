@@ -126,6 +126,29 @@ def _threshold_candidates(values: Any) -> tuple[int, ...]:
     return result
 
 
+def reject_global_threshold_fields(payload: Mapping[str, Any], *, noun: str) -> None:
+    """Fail closed if a record tries to carry a cross-group threshold."""
+
+    if not isinstance(payload, Mapping):
+        raise ResidualIntelligenceError(f"{noun} must be an object")
+    forbidden = []
+    for key in payload:
+        normalized = str(key).strip().casefold().replace("-", "_")
+        if normalized in {
+            "global_threshold",
+            "global_threshold_ppm",
+            "default_threshold",
+            "default_threshold_ppm",
+            "shared_threshold",
+            "shared_threshold_ppm",
+        }:
+            forbidden.append(str(key))
+    if forbidden:
+        raise UnknownFieldError(
+            f"{noun} contains a global threshold field: {', '.join(sorted(forbidden))}"
+        )
+
+
 @dataclass(frozen=True)
 class CalibrationGroup:
     """Exact nine-axis calibration identity; never a global bucket."""
@@ -196,6 +219,7 @@ class CalibrationGroup:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> CalibrationGroup:
+        reject_global_threshold_fields(payload, noun="calibration group")
         strict_fields(
             payload,
             allowed=cls._FIELDS,
@@ -478,6 +502,7 @@ class CalibrationEvidence:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> CalibrationEvidence:
+        reject_global_threshold_fields(payload, noun="calibration evidence")
         strict_fields(
             payload,
             allowed=cls._FIELDS,
@@ -598,6 +623,7 @@ class CalibrationThresholdBinding:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> CalibrationThresholdBinding:
+        reject_global_threshold_fields(payload, noun="calibration threshold binding")
         strict_fields(
             payload,
             allowed=cls._FIELDS,
@@ -695,29 +721,6 @@ def rollback_threshold_binding(
         previous_binding_id=binding.binding_id,
         rollback_threshold_ppm=binding.accept_threshold_ppm,
     )
-
-
-def reject_global_threshold_fields(payload: Mapping[str, Any], *, noun: str) -> None:
-    """Fail closed if a record tries to carry a cross-group threshold."""
-
-    if not isinstance(payload, Mapping):
-        raise ResidualIntelligenceError(f"{noun} must be an object")
-    forbidden = []
-    for key in payload:
-        normalized = str(key).strip().casefold().replace("-", "_")
-        if normalized in {
-            "global_threshold",
-            "global_threshold_ppm",
-            "default_threshold",
-            "default_threshold_ppm",
-            "shared_threshold",
-            "shared_threshold_ppm",
-        }:
-            forbidden.append(str(key))
-    if forbidden:
-        raise UnknownFieldError(
-            f"{noun} contains a global threshold field: {', '.join(sorted(forbidden))}"
-        )
 
 
 __all__ = (

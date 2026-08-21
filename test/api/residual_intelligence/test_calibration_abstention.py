@@ -290,6 +290,28 @@ def test_no_global_threshold_and_group_isolation() -> None:
     payload["global_threshold_ppm"] = 500_000
     with pytest.raises(UnknownFieldError, match="global threshold"):
         SelectivePredictionPolicy.from_dict(payload)
+    group_payload = first.to_dict()
+    group_payload["global_threshold_ppm"] = 500_000
+    with pytest.raises(UnknownFieldError, match="global threshold"):
+        CalibrationGroup.from_dict(group_payload)
+    evidence_payload = low.to_dict()
+    evidence_payload["default_threshold_ppm"] = 500_000
+    with pytest.raises(UnknownFieldError, match="global threshold"):
+        CalibrationEvidence.from_dict(evidence_payload)
+    binding_payload = current.bindings[0].to_dict()
+    binding_payload["shared_threshold"] = 500_000
+    with pytest.raises(UnknownFieldError, match="global threshold"):
+        CalibrationThresholdBinding.from_dict(binding_payload)
+
+
+def test_binding_must_use_evaluated_group_threshold() -> None:
+    target = group()
+    record = evidence(target, thresholds=(THRESHOLD,))
+    with pytest.raises(ResidualIntelligenceError, match="evaluated candidate"):
+        policy(
+            record,
+            bindings=(binding(target, record=record, accept_threshold_ppm=100_000),),
+        )
 
 
 def test_stale_evidence_cannot_accept() -> None:
