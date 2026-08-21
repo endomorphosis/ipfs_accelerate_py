@@ -1,0 +1,18 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.qualified-test-ledger@1",
+  "repository_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+  "status": "identified_not_yet_run_by_pcar_000",
+  "network_required": false,
+  "commands": [
+    "python3 -m pytest -q test/api/semantic_state/test_harness.py test/api/semantic_state/test_acceptance.py",
+    "python3 -m pytest -q test/api/semantic_governor/test_public_api.py test/api/semantic_governor/test_end_to_end.py",
+    "python3 -m pytest -q test/api/adversarial_assurance",
+    "python3 -m pytest -q test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_incremental_verification_report.py",
+    "python3 -m pytest -q test/api/incremental_sealing/test_public_api.py test/api/incremental_sealing/test_atomic_sealer.py test/api/incremental_sealing/test_seal_lifecycle.py",
+    "python3 -m pytest -q test/api/test_agent_supervisor_adaptive_planner.py test/api/test_agent_supervisor_and_or_planner.py",
+    "python3 -m pytest -q test/api/test_agent_supervisor_context_compiler.py test/api/test_agent_supervisor_context_delta.py test/api/test_agent_supervisor_prefix_context.py test/api/test_agent_supervisor_evidence_value.py",
+    "python3 -m pytest -q test/api/test_agent_supervisor_control_catalog.py test/api/test_agent_supervisor_control_conformance_v2.py test/api/test_agent_supervisor_control_transport_parity.py",
+    "python3 -m pytest -q test/api/test_agent_supervisor_formal_verification_contracts.py test/api/test_agent_supervisor_test_execution_contracts.py"
+  ],
+  "rule": "PCAR-000 records exact argv, tree, environment, collected, passed, failed, skipped, duration, exit code, and receipt identity for every run."
+}

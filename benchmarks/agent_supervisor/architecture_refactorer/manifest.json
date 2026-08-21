@@ -1,0 +1,59 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.frozen-benchmark@1",
+  "benchmark_id": "pcar-frozen-architecture-corpus-v1",
+  "program_id": "agent-supervisor-proof-carrying-architecture-refactorer-v1",
+  "frozen": true,
+  "repository_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+  "repository_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+  "cases_path": "benchmarks/agent_supervisor/architecture_refactorer/cases.json",
+  "fixtures": {
+    "provider": "benchmarks/agent_supervisor/architecture_refactorer/fixtures/provider.json",
+    "tokenizer": "benchmarks/agent_supervisor/architecture_refactorer/fixtures/tokenizer.json",
+    "policy": "benchmarks/agent_supervisor/architecture_refactorer/fixtures/policy.json",
+    "fault_schedules": "benchmarks/agent_supervisor/architecture_refactorer/fixtures/fault_schedules.json"
+  },
+  "required_domains": [
+    "provider capability routing",
+    "execution result handling",
+    "context compilation",
+    "adaptive planning",
+    "proof scheduling",
+    "validation selection",
+    "task-state projection",
+    "control-service operation",
+    "CLI/MCP adapter behavior",
+    "legacy coordinator behavior",
+    "simulation handling",
+    "public API imports",
+    "restart and recovery"
+  ],
+  "required_task_types": [
+    "feature addition",
+    "bug repair",
+    "schema change",
+    "provider change",
+    "proof change",
+    "state migration",
+    "compatibility migration",
+    "simulation quarantine",
+    "module extraction",
+    "public facade use"
+  ],
+  "required_measures": [
+    "files_required",
+    "symbols_required",
+    "interfaces_required",
+    "raw_source_expansions",
+    "dependency_hops",
+    "authority_owners",
+    "context_tokens",
+    "prompt_prefix_reuse",
+    "tests_selected",
+    "proofs_selected",
+    "validation_duration",
+    "remote_model_calls",
+    "human_interventions"
+  ],
+  "result_storage": "Managed artifact bodies addressed by CID; only compact schemas, aggregates, and references may be committed.",
+  "promotion_comparison": "The before and after runs use the identical accepted criteria, required evidence, safety rules, cases, provider fixture, tokenizer fixture, policy fixture, and fault schedule."
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.inventory-manifest@1",
+  "program_id": "agent-supervisor-proof-carrying-architecture-refactorer-v1",
+  "plan_revision": "PCAR-PLAN-R1",
+  "starting_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+  "starting_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+  "generated_at": "2026-08-21T00:00:00Z",
+  "authority": false,
+  "entries": [
+    "bootstrap_baseline.json",
+    "prerequisite_matrix.json",
+    "qualified_tests.json",
+    "authority_baseline.json",
+    "state_store_baseline.json",
+    "legacy_simulation_baseline.json",
+    "cross_repository_contracts.bootstrap.json"
+  ],
+  "large_artifact_policy": "Store graph and benchmark bodies as managed content-addressed artifacts; commit compact manifests, schemas, fixtures, and references only."
+}
