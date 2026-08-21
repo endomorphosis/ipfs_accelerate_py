@@ -8595,10 +8595,13 @@ class PortalImplementationDaemon:
         if not paths:
             return None
         repo_root = self.repo_root.resolve()
-        status = self._run_git(
-            ["status", "--porcelain", "--untracked-files=no", "--", *paths],
-            cwd=repo_root,
-        )
+        try:
+            status = self._run_git(
+                ["status", "--porcelain", "--untracked-files=no", "--", *paths],
+                cwd=repo_root,
+            )
+        except (OSError, RuntimeError):
+            return None
         if status.returncode != 0 or str(status.stdout or "").strip():
             return None
         task_id = str(incident.get("task_id") or "")
