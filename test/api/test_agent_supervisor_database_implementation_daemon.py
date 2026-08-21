@@ -3312,6 +3312,54 @@ def test_preauthorize_rejects_when_receipt_is_not_post_merge_terminal(
         daemon.close()
 
 
+def test_preauthorize_accepts_cross_board_completion_terminal(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-cross-board-terminal",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    "cross_board_manual_completion_authority_metadata_invalid"
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=(
+                "cross_board_manual_completion_authority_metadata_invalid"
+            ),
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, failed)
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+        stale = _post_merge_preauthorization(daemon, failed)
+        stale["source_attempt_id"] = "attempt:prior-repair"
+        authorized_prior = daemon.preauthorize_post_merge_declared_output_recovery(
+            stale
+        )
+        assert authorized_prior["authorized"] is True
+    finally:
+        daemon.close()
+
+
 def test_preauthorize_accepts_binding_changed_resume_receipt_from_later_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

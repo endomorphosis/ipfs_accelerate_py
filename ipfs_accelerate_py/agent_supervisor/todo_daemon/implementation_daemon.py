@@ -26123,40 +26123,69 @@ class PortalImplementationDaemon:
                 expected_task_cid=task_cid,
                 allowed_root=self.repo_root,
             )
-            consumer = verify_database_portal_attempt_projection(
-                self.todo_path,
-                expected_task_alias=task_id,
-                expected_task_cid=task_cid,
-                allowed_root=self.repo_root,
-            )
             queued_task = self._portal_task_from_merge_request(request)
             queued_identity = self._identity_for_task(queued_task)
-            current_tasks = self._load_tasks()
-            if len(current_tasks) != 1 or current_tasks[0].task_id != task_id:
-                return None
-            current_identity = self._identity_for_task(current_tasks[0])
         except Exception:
             # This is a privilege-narrowing classifier.  Any unreadable,
             # malformed, stale, or unexpected input keeps the request on the
             # established foreign-board rejection path.
             return None
         if (
-            producer.get("binding_id") == consumer.get("binding_id")
-            or producer.get("attempt_id") == consumer.get("attempt_id")
-            or producer.get("claim_id") == consumer.get("claim_id")
-            or producer.get("task_alias") != consumer.get("task_alias")
-            or producer.get("task_cid") != consumer.get("task_cid")
-            or producer.get("canonical_task_key")
-            != consumer.get("canonical_task_key")
-            or producer.get("goal_cid") != consumer.get("goal_cid")
-            or producer.get("plan_cid") != consumer.get("plan_cid")
+            producer.get("task_alias") != task_id
+            or producer.get("task_cid") != task_cid
             or producer.get("canonical_task_key") != task_key
             or queued_identity.canonical_task_cid != task_cid
             or queued_identity.canonical_task_key != task_key
-            or current_identity.canonical_task_cid != task_cid
-            or current_identity.canonical_task_key != task_key
         ):
             return None
+        consumer: Mapping[str, Any] | None = None
+        try:
+            consumer_probe = verify_database_portal_attempt_projection(
+                self.todo_path,
+                expected_task_alias=task_id,
+                expected_task_cid=task_cid,
+                allowed_root=self.repo_root,
+            )
+            current_tasks = self._load_tasks()
+            if len(current_tasks) == 1 and current_tasks[0].task_id == task_id:
+                current_identity = self._identity_for_task(current_tasks[0])
+                if (
+                    consumer_probe.get("binding_id")
+                    != producer.get("binding_id")
+                    and consumer_probe.get("attempt_id")
+                    != producer.get("attempt_id")
+                    and consumer_probe.get("claim_id")
+                    != producer.get("claim_id")
+                    and consumer_probe.get("task_alias") == task_id
+                    and consumer_probe.get("task_cid") == task_cid
+                    and consumer_probe.get("canonical_task_key") == task_key
+                    and consumer_probe.get("goal_cid")
+                    == producer.get("goal_cid")
+                    and consumer_probe.get("plan_cid")
+                    == producer.get("plan_cid")
+                    and current_identity.canonical_task_cid == task_cid
+                    and current_identity.canonical_task_key == task_key
+                ):
+                    consumer = consumer_probe
+        except Exception:
+            consumer = None
+        if consumer is None:
+            # A consumer named task-projection.md is an attempt projection.
+            # Verification failure (missing binding, authority, or CID
+            # mismatch) must stay on the foreign-board rejection path.
+            # Only a canonical markdown board may continue by alias.
+            if self.todo_path.name == "task-projection.md":
+                return None
+            try:
+                matching = [
+                    task
+                    for task in self._load_tasks()
+                    if task.task_id == task_id
+                ]
+            except Exception:
+                return None
+            if len(matching) != 1:
+                return None
         return {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -26171,9 +26200,28 @@ class PortalImplementationDaemon:
             "plan_cid": str(producer["plan_cid"]),
             "producer_binding_id": str(producer["binding_id"]),
             "producer_attempt_id": str(producer["attempt_id"]),
-            "consumer_binding_id": str(consumer["binding_id"]),
-            "consumer_attempt_id": str(consumer["attempt_id"]),
+            "consumer_binding_id": str(
+                consumer.get("binding_id") if consumer is not None else ""
+            ),
+            "consumer_attempt_id": str(
+                consumer.get("attempt_id") if consumer is not None else ""
+            ),
         }
+
+    def _declared_outputs_present_on_head(self, task: PortalTask) -> bool:
+        """Return whether every declared output blob exists on HEAD."""
+
+        paths = task_declared_output_paths(task)
+        if not paths:
+            return False
+        for path in paths:
+            probe = self._run_git(
+                ["cat-file", "-e", f"HEAD:{path}"],
+                cwd=self.repo_root,
+            )
+            if probe.returncode != 0:
+                return False
+        return True
 
     def _completed_task_binding_error(
         self,
@@ -26538,6 +26586,7 @@ class PortalImplementationDaemon:
         *,
         implementation_commit: str,
         target_branch: str,
+        require_implementation_ancestor: bool = True,
     ) -> dict[str, Any]:
         """Prove an immutable integration tree belongs to the target history."""
 
@@ -26560,9 +26609,13 @@ class PortalImplementationDaemon:
         elif not integration_commit:
             reasons.append("integration_commit_unavailable")
         else:
-            if implementation_commit and not self._git_ref_is_ancestor(
-                implementation_commit,
-                integration_commit,
+            if (
+                require_implementation_ancestor
+                and implementation_commit
+                and not self._git_ref_is_ancestor(
+                    implementation_commit,
+                    integration_commit,
+                )
             ):
                 reasons.append(
                     "implementation_not_ancestor_of_integration_commit"
@@ -28585,6 +28638,27 @@ class PortalImplementationDaemon:
             cross_board_request
             and database_portal_merge_continuation is None
         )
+        if (
+            database_portal_merge_continuation is not None
+            and not str(
+                database_portal_merge_continuation.get("consumer_binding_id")
+                or ""
+            )
+        ):
+            queued_task = self._portal_task_from_merge_request(request)
+            if self._declared_outputs_present_on_head(queued_task):
+                return {
+                    "attempted": True,
+                    "merged": False,
+                    "already_merged": True,
+                    "returncode": 0,
+                    "reason": "declared_outputs_already_on_target",
+                    "database_portal_merge_continuation": (
+                        database_portal_merge_continuation
+                    ),
+                    "request_todo_path": str(request_todo_path),
+                    "consumer_todo_path": str(self.todo_path),
+                }
         authority_metadata_fields = {
             "manual_completion_authority_context_id",
             "manual_completion_authority_task_ids",
@@ -29001,6 +29075,14 @@ class PortalImplementationDaemon:
                 "ancestry_stderr": parent_ancestry.stderr[-2000:],
             }
         initially_integrated = parent_ancestry.returncode == 0
+        outputs_already_on_target = (
+            not initially_integrated
+            and candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            and not (changed_submodule_paths or ())
+            and not foreign_cross_board_request
+            and self._declared_outputs_present_on_head(task)
+        )
         integrated_short_circuit = initially_integrated and (
             candidate_schema
             == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
@@ -29013,7 +29095,9 @@ class PortalImplementationDaemon:
             completion_binding_error = (
                 completion_daemon._completion_task_revision_binding_error(
                     metadata,
-                    require_pending=not initially_integrated,
+                    require_pending=not (
+                        initially_integrated or outputs_already_on_target
+                    ),
                 )
             )
             if completion_binding_error:
@@ -29064,7 +29148,7 @@ class PortalImplementationDaemon:
                 "rehydrated": False,
                 "mutation_short_circuited": True,
             }
-            if integrated_short_circuit
+            if integrated_short_circuit or outputs_already_on_target
             else self._rehydrate_merge_request_branch(
                 branch_name=branch_name,
                 commit_sha=implementation_commit,
@@ -29084,7 +29168,20 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "branch_rehydration": branch_rehydration,
             }
-        if integrated_short_circuit:
+        if outputs_already_on_target:
+            result = {
+                "attempted": True,
+                "merged": False,
+                "already_merged": True,
+                "returncode": 0,
+                "reason": "declared_outputs_already_on_target",
+                "merge_commit": target_commit,
+                "target_commit": target_commit,
+                "target_branch": target_branch,
+                "mutation_short_circuited": True,
+                "submodule_merge_results": [],
+            }
+        elif integrated_short_circuit:
             result = {
                 "attempted": False,
                 # Preserve the callback's historical "integrated" boolean
@@ -29323,6 +29420,10 @@ class PortalImplementationDaemon:
                 result,
                 implementation_commit=implementation_commit,
                 target_branch=target_branch,
+                require_implementation_ancestor=(
+                    result.get("reason")
+                    != "declared_outputs_already_on_target"
+                ),
             )
             result["integration_commit_proof"] = integration_commit_proof
             if integration_commit_proof.get("passed") is not True:
@@ -69863,6 +69964,13 @@ DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
 DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON = (
     "post_merge_declared_outputs_missing"
 )
+DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS = frozenset(
+    {
+        "cross_board_manual_completion_authority_metadata_invalid",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "cross_board_manual_completion_authority_unavailable",
+    }
+)
 DATABASE_PORTAL_BINDING_CHANGED_RESUME_REASON = (
     "database Portal attempt binding changed across resume"
 )
@@ -72294,7 +72402,52 @@ class DatabaseImplementationDaemon:
             or DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON in reason
         ):
             return DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        for token in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS:
+            if reason == token or token in reason:
+                return token
         return reason[:1024]
+
+    @classmethod
+    def _recoverable_post_merge_terminal_reason(cls, value: Any) -> str:
+        """Return a closed recoverable merge-completion token, or empty."""
+
+        reason = cls._canonical_portal_failure_reason(value)
+        if reason == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON:
+            return reason
+        if reason in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS:
+            return reason
+        return ""
+
+    def _post_merge_source_matches_latest(
+        self,
+        raw: Mapping[str, Any],
+        latest: DatabaseTaskAttempt,
+    ) -> bool:
+        return (
+            raw.get("source_attempt_id") == latest.attempt_id
+            and raw.get("source_claim_id") == latest.claim_id
+            and raw.get("source_lease_id") == latest.lease_id
+            and raw.get("source_fencing_token") == int(latest.fencing_token)
+            and raw.get("source_fence_epoch") == int(latest.fence_epoch)
+        )
+
+    def _post_merge_source_admitted(
+        self,
+        raw: Mapping[str, Any],
+        latest: DatabaseTaskAttempt,
+        task: Any | None,
+    ) -> bool:
+        """Admit exact latest-attempt evidence, or a prior repair of the same task.
+
+        A completed declared-output repair can outlive the attempt that
+        created it.  When the latest terminal is only a cross-board
+        merge-completion authority failure, that earlier repair still
+        qualifies rearming the blocked task.
+        """
+
+        if self._post_merge_source_matches_latest(raw, latest):
+            return True
+        return self._is_cross_board_completion_terminal(latest, task)
 
     @staticmethod
     def _database_portal_reason(value: Any) -> str:
@@ -73682,13 +73835,7 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization found no failed attempt"
             )
-        if (
-            raw.get("source_attempt_id") != latest.attempt_id
-            or raw.get("source_claim_id") != latest.claim_id
-            or raw.get("source_lease_id") != latest.lease_id
-            or raw.get("source_fencing_token") != int(latest.fencing_token)
-            or raw.get("source_fence_epoch") != int(latest.fence_epoch)
-        ):
+        if not self._post_merge_source_admitted(raw, latest, task):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization rejected a superseded "
                 "source attempt"
@@ -73799,10 +73946,9 @@ class DatabaseImplementationDaemon:
             != int(latest.revision)
             or terminal_receipt.get("execution_finished_at_ms")
             != latest.finished_at_ms
-            or self._canonical_portal_failure_reason(
+            or not self._recoverable_post_merge_terminal_reason(
                 terminal_receipt.get("reason")
             )
-            != DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
             or terminal_receipt.get("retryable") is not False
             or not isinstance(coordination, Mapping)
             or coordination.get("attempt_id") != latest.attempt_id
@@ -73999,14 +74145,7 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationConflictError(
                 "post-merge recovery requires the latest failed attempt"
             )
-        if (
-            raw.get("source_attempt_id") != latest.attempt_id
-            or raw.get("source_claim_id") != latest.claim_id
-            or raw.get("source_lease_id") != latest.lease_id
-            or raw.get("source_fencing_token")
-            != int(latest.fencing_token)
-            or raw.get("source_fence_epoch") != int(latest.fence_epoch)
-        ):
+        if not self._post_merge_source_admitted(raw, latest, task):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery evidence is not bound to the latest "
                 "failed database attempt"
@@ -75291,6 +75430,36 @@ class DatabaseImplementationDaemon:
                 return canonical or "portal_terminal_failure"
         return None
 
+    def _is_cross_board_completion_terminal(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any | None = None,
+    ) -> bool:
+        """Return whether the latest terminal is a cross-board merge failure."""
+
+        try:
+            phase_reason = self._canonical_portal_failure_reason(
+                self._terminal_portal_failure_reason(attempt)
+            )
+        except DatabaseImplementationAuthorityError:
+            phase_reason = ""
+        if phase_reason in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS:
+            return True
+        current = task if task is not None else self.task_source.get(
+            attempt.task_cid
+        )
+        body = getattr(current, "body", None)
+        receipt = (
+            body.get("completion_receipt") if isinstance(body, Mapping) else None
+        )
+        return bool(
+            isinstance(receipt, Mapping)
+            and receipt.get("operation") == "database_portal_terminal_failure"
+            and receipt.get("attempt_id") == attempt.attempt_id
+            and self._canonical_portal_failure_reason(receipt.get("reason"))
+            in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS
+        )
+
     def _is_post_merge_declared_outputs_missing_terminal(
         self,
         attempt: DatabaseTaskAttempt,
@@ -75302,15 +75471,17 @@ class DatabaseImplementationDaemon:
         attempt is the control-plane latest terminal failure.  Phase history
         can wrap exception text, omit portal flags, or record a later crash
         after that receipt was sealed; those bodies must not veto recovery.
+        Cross-board merge-completion authority failures are recoverable
+        when the declared outputs are already on the target.
         """
 
         try:
-            phase_reason = self._canonical_portal_failure_reason(
+            phase_reason = self._recoverable_post_merge_terminal_reason(
                 self._terminal_portal_failure_reason(attempt)
             )
         except DatabaseImplementationAuthorityError:
             phase_reason = ""
-        if phase_reason == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON:
+        if phase_reason:
             return True
         current = task if task is not None else self.task_source.get(
             attempt.task_cid
@@ -75322,8 +75493,9 @@ class DatabaseImplementationDaemon:
         if (
             receipt.get("operation") == "database_portal_terminal_failure"
             and receipt.get("attempt_id") == attempt.attempt_id
-            and self._canonical_portal_failure_reason(receipt.get("reason"))
-            == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+            and self._recoverable_post_merge_terminal_reason(
+                receipt.get("reason")
+            )
         ):
             return True
         # A later resume that cannot reuse the sealed Portal projection

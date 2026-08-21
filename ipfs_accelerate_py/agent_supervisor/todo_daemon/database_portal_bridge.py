@@ -74,6 +74,13 @@ _MERGE_TARGET_BINDING_SCHEMA: Final[str] = (
 _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON: Final[str] = (
     "post_merge_declared_outputs_missing"
 )
+_CROSS_BOARD_COMPLETION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "cross_board_manual_completion_authority_metadata_invalid",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "cross_board_manual_completion_authority_unavailable",
+    }
+)
 _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-declared-output-completion@1"
@@ -1226,6 +1233,11 @@ class DatabasePortalExecutionBridge:
             == _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
         ):
             return True
+        if (
+            status == "quarantined"
+            and failure_reason in _CROSS_BOARD_COMPLETION_REASONS
+        ):
+            return True
         if status not in {"pending", "processing", "quarantined", "completed"}:
             return False
         revivals = metadata.get("revivals")
@@ -1235,7 +1247,10 @@ class DatabasePortalExecutionBridge:
             or not revivals
             or not isinstance(revivals[-1], Mapping)
             or revivals[-1].get("previous_failure_reason")
-            != _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+            not in {
+                _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON,
+                *_CROSS_BOARD_COMPLETION_REASONS,
+            }
         ):
             return False
         if status == "processing":

@@ -3169,13 +3169,88 @@ class MergeTrain:
             and failure_reason == "post_merge_declared_outputs_missing"
         ):
             terminal_repair = False
-        return not (
-            terminal_repair
-            or failure_reason
-            in (
-                AUTHORITY_QUARANTINE_REASONS
-                | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
-            )
+        denied_reasons = MergeTrain._quarantine_denial_reasons(request)
+        return not (terminal_repair or failure_reason in denied_reasons)
+
+    @staticmethod
+    def _quarantine_denial_reasons(request: MergeRequest) -> frozenset[str]:
+        denied = (
+            AUTHORITY_QUARANTINE_REASONS
+            | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
+        )
+        if MergeTrain._request_is_database_portal_projection_candidate(
+            request
+        ):
+            return denied - {
+                "cross_board_manual_completion_authority_unavailable",
+                "cross_board_manual_completion_authority_metadata_missing",
+                "cross_board_manual_completion_authority_metadata_invalid",
+            }
+        return denied
+
+    @staticmethod
+    def _request_is_database_portal_projection_candidate(
+        request: MergeRequest,
+    ) -> bool:
+        """Return whether a request is a sealed database-attempt projection."""
+
+        metadata = (
+            request.metadata if isinstance(request.metadata, Mapping) else {}
+        )
+        todo_path = Path(str(metadata.get("todo_path") or ""))
+        completion_task_cids = metadata.get("completion_task_cids")
+        task_id = str(request.task_id or "").strip()
+        task_cid = str(request.canonical_task_id or "").strip()
+        return bool(
+            str(metadata.get("schema") or "")
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            and todo_path.name == "task-projection.md"
+            and task_id
+            and task_cid
+            and isinstance(completion_task_cids, Mapping)
+            and {
+                str(alias): str(cid)
+                for alias, cid in completion_task_cids.items()
+            }
+            == {task_id: task_cid}
+        )
+
+    def _quarantined_portal_outputs_present_on_target(
+        self,
+        request: MergeRequest,
+    ) -> bool:
+        """Return whether every declared output blob exists on the target."""
+
+        metadata = (
+            request.metadata if isinstance(request.metadata, Mapping) else {}
+        )
+        task_payload = metadata.get("task")
+        if not isinstance(task_payload, Mapping):
+            return False
+        outputs = [
+            str(item).strip()
+            for item in (task_payload.get("outputs") or ())
+            if str(item).strip()
+        ]
+        if not outputs:
+            return False
+        target = self._target_commit()
+        if not target:
+            return False
+        for path in outputs:
+            probe = self._git("cat-file", "-e", f"{target}:{path}")
+            if probe.returncode != 0:
+                return False
+        return True
+
+    def _quarantine_may_auto_recover(self, request: MergeRequest, **kwargs: Any) -> bool:
+        if not self._quarantine_auto_recovery_allowed(request, **kwargs):
+            return False
+        if self._quarantined_candidate_is_integrated(request):
+            return True
+        return (
+            self._request_is_database_portal_projection_candidate(request)
+            and self._quarantined_portal_outputs_present_on_target(request)
         )
 
     @staticmethod
@@ -3197,10 +3272,7 @@ class MergeTrain:
                 ),
             )
             and latest.get("previous_failure_reason")
-            not in (
-                AUTHORITY_QUARANTINE_REASONS
-                | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
-            )
+            not in MergeTrain._quarantine_denial_reasons(request)
         )
 
     def _recover_integrated_quarantines(self) -> int:
@@ -3219,9 +3291,7 @@ class MergeTrain:
         for request in snapshot(
             limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
         ):
-            if not self._quarantine_auto_recovery_allowed(request):
-                continue
-            if not self._quarantined_candidate_is_integrated(request):
+            if not self._quarantine_may_auto_recover(request):
                 continue
             revived = revive(
                 request.request_id,
@@ -3307,18 +3377,20 @@ class MergeTrain:
                                 allow_declared_output_recovery
                             ),
                         )
-                        and self._quarantined_candidate_is_integrated(request)
-                    ):
-                        selected = request
-                elif request.status == "quarantined":
-                    if (
-                        self._quarantine_auto_recovery_allowed(
+                        and self._quarantine_may_auto_recover(
                             request,
                             allow_post_merge_declared_output_recovery=(
                                 allow_declared_output_recovery
                             ),
                         )
-                        and self._quarantined_candidate_is_integrated(request)
+                    ):
+                        selected = request
+                elif request.status == "quarantined":
+                    if self._quarantine_may_auto_recover(
+                        request,
+                        allow_post_merge_declared_output_recovery=(
+                            allow_declared_output_recovery
+                        ),
                     ):
                         revived = revive(
                             request.request_id,
@@ -3342,7 +3414,7 @@ class MergeTrain:
                             request
                         )
                         and predicate(request)
-                        and self._quarantined_candidate_is_integrated(request)
+                        and self._quarantine_may_auto_recover(request)
                     ):
                         selected = request
                         break
@@ -3351,11 +3423,8 @@ class MergeTrain:
                         limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
                     ):
                         if (
-                            not self._quarantine_auto_recovery_allowed(request)
+                            not self._quarantine_may_auto_recover(request)
                             or not predicate(request)
-                            or not self._quarantined_candidate_is_integrated(
-                                request
-                            )
                         ):
                             continue
                         revived = revive(
