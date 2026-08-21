@@ -72674,11 +72674,7 @@ class DatabaseImplementationDaemon:
         # cooled task; restart reconciliation will finish the exact CAS.
         queue_entry = get_queue_entry(attempt.task_cid)
         if (
-            (
-                protected_path_recovery_evidence is not None
-                or external_protected_checkout_recovery_evidence is not None
-                or inflight_process_recovery_evidence is not None
-            )
+            protected_path_recovery_evidence is not None
             and queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "")
             != queue_reason
