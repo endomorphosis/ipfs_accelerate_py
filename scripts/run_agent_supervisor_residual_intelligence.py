@@ -51,6 +51,32 @@ DUCKLAKE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "verified-residual-intelligence-foundry-ducklake-projection@1"
 )
+OWNER_RESTART_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verified-residual-intelligence-foundry-owner-restart-admission@1"
+)
+OWNER_RESTART_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verified-residual-intelligence-foundry-owner-restart-receipt@1"
+)
+OWNER_DATABASE_VERIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verified-residual-intelligence-foundry-owner-database-verification@1"
+)
+SUPERVISOR_LAUNCH_ACK_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verified-residual-intelligence-foundry-supervisor-launch-ack@1"
+)
+DATABASE_TASK_SOURCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/database-task-source@1"
+)
+OWNER_RESTART_ALLOWED_SOURCE_FIELDS: Final = frozenset(
+    {
+        "accelerator_required_ancestor",
+        "accelerator_planning_revision",
+        "accelerator_planning_tree",
+    }
+)
 GOAL_RE: Final = re.compile(r"^## (VRIF-G\d{3}) (.+)$", re.MULTILINE)
 QUACK_ENDPOINT_RE: Final = re.compile(
     r"^quack:(?://)?(127(?:\.\d{1,3}){3}|localhost):(\d{1,5})$",
@@ -200,6 +226,569 @@ def _tracked_bytes(path: Path, *, head: str) -> bytes:
     if not isinstance(recorded, bytes) or working != recorded:
         raise OperatorError(f"authority input differs from current HEAD: {relative}")
     return working
+
+
+def _git_commit_tree(commit: Any, *, field: str) -> str:
+    revision = str(commit or "").strip()
+    if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise OperatorError(f"{field} must be an exact Git commit")
+    try:
+        object_type = str(_git("cat-file", "-t", revision)).strip()
+        tree = str(_git("rev-parse", f"{revision}^{{tree}}")).strip()
+    except OperatorError as exc:
+        raise OperatorError(f"{field} is not available in the repository") from exc
+    if object_type != "commit" or re.fullmatch(r"[0-9a-f]{40}", tree) is None:
+        raise OperatorError(f"{field} is not an exact Git commit")
+    return tree
+
+
+def _git_is_ancestor(ancestor: str, descendant: str, *, field: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        return
+    if completed.returncode == 1:
+        raise OperatorError(f"{field} is not monotonic")
+    raise OperatorError(f"cannot verify {field}")
+
+
+def _git_blob_at(*, head: str, path: Path, field: str) -> bytes:
+    try:
+        relative = path.relative_to(ROOT).as_posix()
+    except ValueError as exc:
+        raise OperatorError(f"{field} escapes repository") from exc
+    try:
+        value = _git("show", f"{head}:{relative}", binary=True)
+    except OperatorError as exc:
+        raise OperatorError(f"{field} is absent from the bootstrap source") from exc
+    if not isinstance(value, bytes):
+        raise OperatorError(f"{field} could not be read as bytes")
+    return value
+
+
+def _json_mapping_bytes(value: bytes, *, field: str) -> dict[str, Any]:
+    try:
+        decoded = json.loads(value.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OperatorError(f"{field} must be a JSON object") from exc
+    if not isinstance(decoded, dict):
+        raise OperatorError(f"{field} must be a JSON object")
+    return decoded
+
+
+def _restart_source_binding(
+    config: Mapping[str, Any],
+    *,
+    label: str,
+    source_head: str,
+) -> dict[str, str]:
+    raw = config.get("source_binding")
+    if not isinstance(raw, Mapping):
+        raise OperatorError(f"{label} source_binding must be an object")
+    values = {
+        field: str(raw.get(field) or "").strip()
+        for field in OWNER_RESTART_ALLOWED_SOURCE_FIELDS
+    }
+    planning_revision = values["accelerator_planning_revision"]
+    required_ancestor = values["accelerator_required_ancestor"]
+    planning_tree = values["accelerator_planning_tree"]
+    if required_ancestor != planning_revision:
+        raise OperatorError(
+            f"{label} planning revision and required ancestor must be exact"
+        )
+    observed_tree = _git_commit_tree(
+        planning_revision,
+        field=f"{label}.source_binding.accelerator_planning_revision",
+    )
+    if planning_tree != observed_tree:
+        raise OperatorError(f"{label} planning tree does not match its commit")
+    _git_is_ancestor(
+        planning_revision,
+        source_head,
+        field=f"{label} planning revision ancestry",
+    )
+    return values
+
+
+def _restart_static_config(config: Mapping[str, Any], *, label: str) -> dict[str, Any]:
+    try:
+        normalized = json.loads(_canonical_bytes(config))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise OperatorError(f"{label} config is not canonical JSON") from exc
+    if not isinstance(normalized, dict):
+        raise OperatorError(f"{label} config must be an object")
+    source_binding = normalized.get("source_binding")
+    if not isinstance(source_binding, dict):
+        raise OperatorError(f"{label} source_binding must be an object")
+    for field in OWNER_RESTART_ALLOWED_SOURCE_FIELDS:
+        source_binding.pop(field, None)
+    return normalized
+
+
+def _owner_restart_admission(
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Admit only the sealed bootstrap tree or a bounded descendant restart."""
+
+    current_head, current_tree = _assert_clean_current_tree(config)
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    if bootstrap.get("schema") != BOOTSTRAP_SCHEMA:
+        raise OperatorError("owner restart bootstrap schema is not admitted")
+    bootstrap_receipt_id = str(bootstrap.get("bootstrap_receipt_id") or "").strip()
+    bootstrap_body = dict(bootstrap)
+    bootstrap_body.pop("bootstrap_receipt_id", None)
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None
+        or _identity(bootstrap_body) != bootstrap_receipt_id
+    ):
+        raise OperatorError("owner restart bootstrap receipt identity is invalid")
+
+    bootstrap_head = str(bootstrap.get("source_head") or "").strip()
+    bootstrap_tree = str(bootstrap.get("repository_tree_id") or "").strip()
+    observed_bootstrap_tree = _git_commit_tree(
+        bootstrap_head,
+        field="bootstrap source_head",
+    )
+    if bootstrap_tree != observed_bootstrap_tree:
+        raise OperatorError("bootstrap source tree does not match its commit")
+    _git_is_ancestor(
+        bootstrap_head,
+        current_head,
+        field="bootstrap-to-current source ancestry",
+    )
+
+    plan_root_cid = str(bootstrap.get("plan_root_cid") or "").strip()
+    database_receipt = bootstrap.get("database_task_source_receipt")
+    if not isinstance(database_receipt, Mapping):
+        raise OperatorError("bootstrap database task-source receipt is absent")
+    if str(database_receipt.get("schema") or "") != DATABASE_TASK_SOURCE_SCHEMA:
+        raise OperatorError("bootstrap database task-source schema is not admitted")
+    if (
+        str(database_receipt.get("repository_tree_id") or "") != bootstrap_tree
+        or str(database_receipt.get("plan_root_cid") or "") != plan_root_cid
+    ):
+        raise OperatorError("bootstrap database authority roots are inconsistent")
+    task_cids_raw = database_receipt.get("task_cids")
+    if (
+        not isinstance(task_cids_raw, Sequence)
+        or isinstance(task_cids_raw, (str, bytes, bytearray))
+    ):
+        raise OperatorError("bootstrap database task identities are absent")
+    task_cids = tuple(str(item or "").strip() for item in task_cids_raw)
+    if not task_cids or any(not item for item in task_cids):
+        raise OperatorError("bootstrap database task identities are invalid")
+    if len(set(task_cids)) != len(task_cids):
+        raise OperatorError("bootstrap database task identities are not unique")
+    try:
+        task_count = int(database_receipt.get("task_count"))
+        goal_count = int(database_receipt.get("goal_count"))
+        plan_count = int(database_receipt.get("plan_count"))
+    except (TypeError, ValueError) as exc:
+        raise OperatorError("bootstrap database authority counts are invalid") from exc
+    if task_count != len(task_cids) or goal_count < 1 or plan_count < 1:
+        raise OperatorError("bootstrap database authority counts are inconsistent")
+
+    source_identities = bootstrap.get("source_identities")
+    if not isinstance(source_identities, Mapping):
+        raise OperatorError("bootstrap source identities are absent")
+    source_paths = {
+        "config": board.config_path,
+        "taskboard": board.path(board.taskboard_path),
+        "objectives": board.path(board.objectives_path),
+        "plan": board.path(board.plan_path),
+        "validator": board.path(board.validator_path),
+    }
+    if set(source_identities) != set(source_paths):
+        raise OperatorError("bootstrap source identity key set is not exact")
+    bootstrap_sources: dict[str, bytes] = {}
+    current_sources: dict[str, bytes] = {}
+    for name, path in source_paths.items():
+        expected = str(source_identities.get(name) or "").strip()
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", expected) is None:
+            raise OperatorError(f"bootstrap {name} source identity is invalid")
+        bootstrap_bytes = _git_blob_at(
+            head=bootstrap_head,
+            path=path,
+            field=f"bootstrap {name}",
+        )
+        if _identity(bootstrap_bytes) != expected:
+            raise OperatorError(f"bootstrap {name} bytes differ from their seal")
+        current_bytes = _tracked_bytes(path, head=current_head)
+        if name != "config" and _identity(current_bytes) != expected:
+            raise OperatorError(f"current {name} bytes differ from bootstrap")
+        bootstrap_sources[name] = bootstrap_bytes
+        current_sources[name] = current_bytes
+
+    bootstrap_config = _json_mapping_bytes(
+        bootstrap_sources["config"],
+        field="bootstrap config",
+    )
+    current_config = _json_mapping_bytes(
+        current_sources["config"],
+        field="current config",
+    )
+    if _canonical_bytes(current_config) != _canonical_bytes(config):
+        raise OperatorError("loaded config differs from tracked current config")
+    bootstrap_binding = _restart_source_binding(
+        bootstrap_config,
+        label="bootstrap",
+        source_head=bootstrap_head,
+    )
+    current_binding = _restart_source_binding(
+        current_config,
+        label="current",
+        source_head=current_head,
+    )
+    _git_is_ancestor(
+        bootstrap_binding["accelerator_planning_revision"],
+        current_binding["accelerator_planning_revision"],
+        field="planning revision lineage",
+    )
+    bootstrap_static = _restart_static_config(
+        bootstrap_config,
+        label="bootstrap",
+    )
+    current_static = _restart_static_config(current_config, label="current")
+    if _canonical_bytes(bootstrap_static) != _canonical_bytes(current_static):
+        raise OperatorError(
+            "current config changes fields outside the admitted source-binding lineage"
+        )
+
+    mode = (
+        "exact_bootstrap"
+        if current_head == bootstrap_head and current_tree == bootstrap_tree
+        else "verified_descendant"
+    )
+    admission: dict[str, Any] = {
+        "schema": OWNER_RESTART_ADMISSION_SCHEMA,
+        "mode": mode,
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "bootstrap_source_head": bootstrap_head,
+        "bootstrap_source_tree": bootstrap_tree,
+        "current_source_head": current_head,
+        "current_source_tree": current_tree,
+        "plan_root_cid": plan_root_cid,
+        "bootstrap_config_identity": _identity(bootstrap_sources["config"]),
+        "current_config_identity": _identity(current_sources["config"]),
+        "static_config_identity": _identity(bootstrap_static),
+        "source_identities": {
+            name: str(source_identities[name]) for name in sorted(source_paths)
+        },
+        "planning_lineage": {
+            "bootstrap_revision": bootstrap_binding[
+                "accelerator_planning_revision"
+            ],
+            "bootstrap_tree": bootstrap_binding["accelerator_planning_tree"],
+            "current_revision": current_binding["accelerator_planning_revision"],
+            "current_tree": current_binding["accelerator_planning_tree"],
+        },
+        "authority_config_identity": _identity(
+            {
+                "database_program": current_config.get("database_program"),
+                "runtime_paths": current_config.get("runtime_paths"),
+            }
+        ),
+        "database_authority": {
+            "receipt_identity": _identity(database_receipt),
+            "schema": DATABASE_TASK_SOURCE_SCHEMA,
+            "repository_tree_id": bootstrap_tree,
+            "source_head": bootstrap_head,
+            "plan_root_cid": plan_root_cid,
+            "projection_cid": str(database_receipt.get("projection_cid") or ""),
+            "task_cids": sorted(task_cids),
+            "task_count": task_count,
+            "goal_count": goal_count,
+            "plan_count": plan_count,
+        },
+    }
+    admission["admission_id"] = _identity(admission)
+    return admission
+
+
+def _owner_restart_prior_status(path: Path) -> dict[str, Any]:
+    """Admit only an absent, stopped, or provably dead prior owner."""
+
+    try:
+        observed = path.lstat()
+    except FileNotFoundError:
+        return {
+            "state": "absent",
+            "status_identity": "",
+            "server_id": "",
+            "database_uuid": "",
+            "store_id": "",
+            "schema_revision": 0,
+            "schema_fingerprint": "",
+            "generation": 0,
+            "fence_epoch": 0,
+            "process_birth_id": "",
+        }
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(observed.st_mode)
+        or observed.st_uid != os.getuid()
+        or observed.st_nlink != 1
+        or stat.S_IMODE(observed.st_mode) != 0o600
+    ):
+        raise OperatorError("prior state-owner status is not a private regular file")
+    payload = _json_object(path)
+    if (
+        payload.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
+        or payload.get("interface") != "QuackStateServer@1"
+    ):
+        raise OperatorError("prior state-owner status contract is not admitted")
+    lifecycle = str(payload.get("lifecycle") or "").strip()
+    liveness = _owner_liveness(payload)
+    if lifecycle == "ready" and liveness in {"alive", "unknown"}:
+        raise OperatorError(
+            f"prior ready state owner has {liveness} process-birth liveness"
+        )
+    if lifecycle != "stopped" and liveness != "dead":
+        raise OperatorError("prior state-owner status is neither stopped nor dead")
+    identity = payload.get("identity")
+    if not isinstance(identity, Mapping):
+        if lifecycle != "stopped":
+            raise OperatorError("prior dead state owner has no exact identity")
+        identity = {}
+    try:
+        generation = int(identity.get("generation") or 0)
+        fence_epoch = int(identity.get("fence_epoch") or 0)
+        schema_revision = int(identity.get("schema_revision") or 0)
+    except (TypeError, ValueError) as exc:
+        raise OperatorError("prior state-owner identity counters are invalid") from exc
+    if identity and (
+        not str(identity.get("server_id") or "").strip()
+        or not str(identity.get("database_uuid") or "").strip()
+        or not str(identity.get("store_id") or "").strip()
+        or generation < 1
+        or fence_epoch < 1
+        or schema_revision < 1
+    ):
+        raise OperatorError("prior state-owner identity is incomplete")
+    return {
+        "state": "stopped" if lifecycle == "stopped" else "dead",
+        "lifecycle": lifecycle,
+        "liveness": liveness,
+        "status_identity": _identity(payload),
+        "server_id": str(identity.get("server_id") or ""),
+        "database_uuid": str(identity.get("database_uuid") or ""),
+        "store_id": str(identity.get("store_id") or ""),
+        "schema_revision": schema_revision,
+        "schema_fingerprint": str(identity.get("schema_fingerprint") or ""),
+        "generation": generation,
+        "fence_epoch": fence_epoch,
+        "process_birth_id": str(identity.get("process_birth_id") or ""),
+        "identity": dict(identity),
+    }
+
+
+def _rows(connection: Any, sql: str, parameters: Sequence[Any] = ()) -> list[Any]:
+    try:
+        return list(connection.execute(sql, list(parameters)).fetchall())
+    except Exception as exc:
+        raise OperatorError("cannot verify bound state-owner database authority") from exc
+
+
+def _row_item(row: Any, index: int, key: str) -> Any:
+    if isinstance(row, Mapping):
+        return row.get(key)
+    try:
+        return row[index]
+    except (IndexError, KeyError, TypeError) as exc:
+        raise OperatorError("bound database returned a malformed authority row") from exc
+
+
+def _owner_database_verification(
+    connection: Any,
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reproduce the sealed immutable population through the owner connection."""
+
+    authority = admission.get("database_authority")
+    if not isinstance(authority, Mapping):
+        raise OperatorError("owner restart admission has no database authority")
+    expected_tasks_raw = authority.get("task_cids")
+    if not isinstance(expected_tasks_raw, Sequence) or isinstance(
+        expected_tasks_raw, (str, bytes, bytearray)
+    ):
+        raise OperatorError("owner restart task authority is malformed")
+    expected_tasks = sorted(str(item) for item in expected_tasks_raw)
+    task_rows = _rows(
+        connection,
+        "SELECT task_cid, identity_json FROM tasks ORDER BY task_cid",
+    )
+    actual_tasks: list[str] = []
+    expected_tree = str(authority.get("repository_tree_id") or "")
+    for row in task_rows:
+        task_cid = str(_row_item(row, 0, "task_cid") or "")
+        identity_json = str(_row_item(row, 1, "identity_json") or "")
+        try:
+            task_identity = json.loads(identity_json)
+        except json.JSONDecodeError as exc:
+            raise OperatorError("bound database task identity is not JSON") from exc
+        if (
+            not isinstance(task_identity, Mapping)
+            or str(task_identity.get("task_cid") or "") != task_cid
+            or str(task_identity.get("repository_tree_id") or "") != expected_tree
+        ):
+            raise OperatorError("bound database task identity differs from bootstrap")
+        actual_tasks.append(task_cid)
+    if actual_tasks != expected_tasks or len(actual_tasks) != int(
+        authority.get("task_count") or 0
+    ):
+        raise OperatorError("bound database task population differs from bootstrap")
+
+    goal_rows = _rows(connection, "SELECT goal_cid FROM goals ORDER BY goal_cid")
+    if len(goal_rows) != int(authority.get("goal_count") or 0):
+        raise OperatorError("bound database goal population differs from bootstrap")
+    plan_rows = _rows(connection, "SELECT plan_cid, body_json FROM plans ORDER BY plan_cid")
+    if len(plan_rows) != int(authority.get("plan_count") or 0):
+        raise OperatorError("bound database plan population differs from bootstrap")
+    expected_plan = str(authority.get("plan_root_cid") or "")
+    plan_body: Mapping[str, Any] | None = None
+    for row in plan_rows:
+        if str(_row_item(row, 0, "plan_cid") or "") != expected_plan:
+            continue
+        raw_body = str(_row_item(row, 1, "body_json") or "")
+        try:
+            decoded = json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise OperatorError("bound database plan body is not JSON") from exc
+        if not isinstance(decoded, Mapping):
+            raise OperatorError("bound database plan body is not an object")
+        plan_body = decoded
+        break
+    if plan_body is None:
+        raise OperatorError("bound database plan root differs from bootstrap")
+    if (
+        str(plan_body.get("repository_tree_id") or "") != expected_tree
+        or str(plan_body.get("source_head") or "")
+        != str(authority.get("source_head") or "")
+    ):
+        raise OperatorError("bound database plan lineage differs from bootstrap")
+    projection = {
+        "schema": OWNER_DATABASE_VERIFICATION_SCHEMA,
+        "bootstrap_database_receipt_identity": str(
+            authority.get("receipt_identity") or ""
+        ),
+        "repository_tree_id": expected_tree,
+        "source_head": str(authority.get("source_head") or ""),
+        "plan_root_cid": expected_plan,
+        "task_cids": actual_tasks,
+        "task_count": len(actual_tasks),
+        "goal_count": len(goal_rows),
+        "plan_count": len(plan_rows),
+    }
+    projection["verification_id"] = _identity(projection)
+    return projection
+
+
+def _owner_restart_receipt(
+    admission: Mapping[str, Any],
+    identity: Any,
+    *,
+    expected_store_id: str,
+    prior_owner: Mapping[str, Any],
+    database_verification: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind an admitted source transition to the newly live server identity."""
+
+    store_id = str(getattr(identity, "store_id", "") or "")
+    database_uuid = str(getattr(identity, "database_uuid", "") or "")
+    try:
+        generation = int(getattr(identity, "generation", 0) or 0)
+        fence_epoch = int(getattr(identity, "fence_epoch", 0) or 0)
+        schema_revision = int(getattr(identity, "schema_revision", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise OperatorError("new state-owner identity counters are invalid") from exc
+    if (
+        store_id != expected_store_id
+        or not str(getattr(identity, "server_id", "") or "")
+        or not database_uuid
+        or generation < 1
+        or fence_epoch < 1
+        or schema_revision < 1
+        or not str(getattr(identity, "schema_fingerprint", "") or "")
+        or not str(getattr(identity, "process_birth_id", "") or "")
+    ):
+        raise OperatorError("new state-owner database identity is invalid")
+    verification_id = str(database_verification.get("verification_id") or "")
+    verification_body = dict(database_verification)
+    verification_body.pop("verification_id", None)
+    if (
+        database_verification.get("schema") != OWNER_DATABASE_VERIFICATION_SCHEMA
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", verification_id) is None
+        or _identity(verification_body) != verification_id
+        or str(database_verification.get("plan_root_cid") or "")
+        != str(admission.get("plan_root_cid") or "")
+        or str(database_verification.get("repository_tree_id") or "")
+        != str(admission.get("bootstrap_source_tree") or "")
+    ):
+        raise OperatorError("bound database verification is invalid")
+    prior_generation = int(prior_owner.get("generation") or 0)
+    prior_fence = int(prior_owner.get("fence_epoch") or 0)
+    prior_server_id = str(prior_owner.get("server_id") or "")
+    if prior_generation:
+        if generation <= prior_generation or fence_epoch <= prior_fence:
+            raise OperatorError("new state-owner generation does not advance prior owner")
+        if prior_server_id == str(getattr(identity, "server_id", "") or ""):
+            raise OperatorError("new state-owner server identity was reused")
+        if str(prior_owner.get("store_id") or "") != store_id:
+            raise OperatorError("new state-owner store differs from prior owner")
+        if str(prior_owner.get("database_uuid") or "") != database_uuid:
+            raise OperatorError("new state-owner database differs from prior owner")
+        if int(prior_owner.get("schema_revision") or 0) != schema_revision:
+            raise OperatorError("new state-owner schema differs from prior owner")
+        if str(prior_owner.get("schema_fingerprint") or "") != str(
+            getattr(identity, "schema_fingerprint", "") or ""
+        ):
+            raise OperatorError("new state-owner schema fingerprint differs from prior owner")
+    elif str(admission.get("mode") or "") == "verified_descendant" and generation <= 1:
+        raise OperatorError("descendant owner restart did not advance store generation")
+    receipt: dict[str, Any] = {
+        "schema": OWNER_RESTART_RECEIPT_SCHEMA,
+        "admission_id": str(admission.get("admission_id") or ""),
+        "mode": str(admission.get("mode") or ""),
+        "bootstrap_receipt_id": str(admission.get("bootstrap_receipt_id") or ""),
+        "bootstrap_source_head": str(
+            admission.get("bootstrap_source_head") or ""
+        ),
+        "bootstrap_source_tree": str(
+            admission.get("bootstrap_source_tree") or ""
+        ),
+        "current_source_head": str(admission.get("current_source_head") or ""),
+        "current_source_tree": str(admission.get("current_source_tree") or ""),
+        "plan_root_cid": str(admission.get("plan_root_cid") or ""),
+        "authority_config_identity": str(
+            admission.get("authority_config_identity") or ""
+        ),
+        "prior_state_owner": dict(prior_owner),
+        "database_verification": dict(database_verification),
+        "state_owner": {
+            "server_id": str(getattr(identity, "server_id", "") or ""),
+            "store_id": store_id,
+            "database_uuid": database_uuid,
+            "schema_revision": schema_revision,
+            "schema_fingerprint": str(
+                getattr(identity, "schema_fingerprint", "") or ""
+            ),
+            "generation": generation,
+            "fence_epoch": fence_epoch,
+            "process_birth_id": str(
+                getattr(identity, "process_birth_id", "") or ""
+            ),
+        },
+    }
+    receipt["receipt_id"] = _identity(receipt)
+    return receipt
 
 
 def _source_forest(config: Mapping[str, Any], *, head: str) -> dict[str, Any]:
@@ -1218,13 +1807,10 @@ def state_owner(config_path: Path) -> int:
     paths = _runtime_paths(board)
     if not paths["database"].is_file() or not paths["bootstrap_receipt"].is_file():
         raise OperatorError("materialize the sealed VRIF board before starting Quack")
-    source_head, repository_tree_id = _assert_clean_current_tree(config)
-    bootstrap = _json_object(paths["bootstrap_receipt"])
-    if (
-        bootstrap.get("source_head") != source_head
-        or bootstrap.get("repository_tree_id") != repository_tree_id
-    ):
-        raise OperatorError("Quack authority does not match the clean current tree")
+    prior_owner = _owner_restart_prior_status(
+        paths["owner"] / "quack-state-server.status.json"
+    )
+    restart_admission = _owner_restart_admission(board, config, paths)
     program = board.resolved_database_program()
     endpoint = QUACK_ENDPOINT_RE.fullmatch(program.quack_endpoint)
     if endpoint is None:
@@ -1249,25 +1835,54 @@ def state_owner(config_path: Path) -> int:
         transport=_LiveQuackTransport(),
     )
     identity = server.start()
-    ready = server.ready()
-    owner_token = _read_owner_token(
-        _token_path(paths["owner"], program.endpoint_secret_handle)
-    )
-    # The state owner retains the raw transport/command credential in memory.
-    # Same-UID provider processes must not be able to recover it through procfs.
-    os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = owner_token
-    harden_state_authority_process()
-    owner_connection = getattr(server, "_connection", None)
-    if owner_connection is None:
+    try:
+        ready = server.ready()
+        after_head, after_tree = _assert_clean_current_tree(config)
+        if (
+            after_head != restart_admission["current_source_head"]
+            or after_tree != restart_admission["current_source_tree"]
+        ):
+            raise OperatorError("owner restart source changed during admission")
+        owner_connection = getattr(server, "_connection", None)
+        if owner_connection is None:
+            raise OperatorError("state-owner connection is unavailable")
+        database_verification = _owner_database_verification(
+            owner_connection,
+            restart_admission,
+        )
+        restart_receipt = _owner_restart_receipt(
+            restart_admission,
+            identity,
+            expected_store_id=program.store_id,
+            prior_owner=prior_owner,
+            database_verification=database_verification,
+        )
+        restart_receipt_path = (
+            paths["bootstrap_receipt"].parent
+            / "owner-restarts"
+            / (
+                f"{int(identity.generation):020d}-"
+                f"{restart_receipt['receipt_id'].removeprefix('sha256:')}.json"
+            )
+        )
+        _atomic_json(restart_receipt_path, restart_receipt)
+        owner_token = _read_owner_token(
+            _token_path(paths["owner"], program.endpoint_secret_handle)
+        )
+        # The state owner retains the raw transport/command credential in memory.
+        # Same-UID provider processes must not be able to recover it through procfs.
+        os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = owner_token
+        harden_state_authority_process()
+        owner_repository = IntentRepository(
+            paths["database"],
+            bound_connection=owner_connection,
+            owner_id="vrif-quack-owner",
+            session_id=f"vrif-quack-owner-{os.getpid()}",
+            install_schema=False,
+        )
+    except BaseException:
         server.stop()
-        raise OperatorError("state-owner connection is unavailable")
-    owner_repository = IntentRepository(
-        paths["database"],
-        bound_connection=owner_connection,
-        owner_id="vrif-quack-owner",
-        session_id=f"vrif-quack-owner-{os.getpid()}",
-        install_schema=False,
-    )
+        raise
     print(
         json.dumps(
             {
@@ -1276,6 +1891,10 @@ def state_owner(config_path: Path) -> int:
                 "ready": True,
                 "identity": identity.to_dict(),
                 "live": ready,
+                "owner_restart_receipt": restart_receipt,
+                "owner_restart_receipt_path": str(
+                    restart_receipt_path.relative_to(ROOT)
+                ),
                 "owner_command_dir": str(
                     (paths["owner"] / "mutations").relative_to(ROOT)
                 ),
@@ -1330,6 +1949,20 @@ def _unlink_token_vault(path: Path) -> None:
         os.close(descriptor)
 
 
+def _launch_with_one_use_owner_token(
+    launch: Any,
+    launch_args: Sequence[str],
+    *,
+    token_path: Path,
+) -> int:
+    """Consume the one-use vault only after the trusted launcher succeeds."""
+
+    result = int(launch(list(launch_args)))
+    if result == 0:
+        _unlink_token_vault(token_path)
+    return result
+
+
 def launch_supervisor(
     config_path: Path,
     *,
@@ -1339,9 +1972,10 @@ def launch_supervisor(
     """Launch the configured parallel supervisor without a credential file.
 
     Preflight runs while the owner token is still recoverable.  For a real
-    launch, this process becomes non-dumpable, unlinks the single validated
-    token file, and passes the credential only through trusted control-process
-    memory.  Provider subprocesses use the canonical scrubbed environment.
+    launch, this process becomes non-dumpable, starts the trusted launcher,
+    and unlinks the single validated token file only after that launcher
+    returns success.  Failed launches retain the vault.  Provider subprocesses
+    use the canonical scrubbed environment.
     """
 
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
@@ -1385,8 +2019,11 @@ def launch_supervisor(
             raise OperatorError("supervisor duration must be positive")
         launch_args.extend(["--duration-seconds", str(duration_seconds)])
     harden_state_authority_process()
-    _unlink_token_vault(token_path)
-    return int(configured_board_main(launch_args))
+    return _launch_with_one_use_owner_token(
+        configured_board_main,
+        launch_args,
+        token_path=token_path,
+    )
 
 
 def _owner_liveness(status_payload: Mapping[str, Any]) -> str:

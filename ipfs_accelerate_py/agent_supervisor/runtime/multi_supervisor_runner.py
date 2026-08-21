@@ -116,6 +116,16 @@ CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS = MappingProxyType(
     }
 )
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
+STALE_DETACHED_MASTER_PID_DECISION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "stale-detached-master-pid-quarantine-decision@1"
+)
+STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "stale-detached-master-pid-quarantine@1"
+)
+_LEGACY_MASTER_PID_PAYLOAD = re.compile(rb"[1-9][0-9]*\n")
+_LEGACY_MASTER_PID_MAX_BYTES = 32
 SEALED_CONTROL_PLANE_MODULES = frozenset(
     {
         "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
@@ -3808,6 +3818,315 @@ def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
         return False
 
 
+def _fsync_pid_projection_parent(path: Path) -> None:
+    """Durably publish one PID-projection namespace transition."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        observed = os.fstat(descriptor)
+        if not stat.S_ISDIR(observed.st_mode):
+            raise ValueError("PID projection parent is not a directory")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _publish_private_pid_audit(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically publish one immutable owner-only PID recovery artifact."""
+
+    target = Path(path)
+    encoded = (
+        json.dumps(
+            dict(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+    temporary = target.with_name(
+        f".{target.name}.tmp-{os.getpid()}-{time.time_ns()}"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    temporary_identity: tuple[int, int] | None = None
+    try:
+        descriptor = os.open(temporary, flags, 0o600)
+        os.fchmod(descriptor, 0o600)
+        opened = os.fstat(descriptor)
+        temporary_identity = (int(opened.st_dev), int(opened.st_ino))
+        view = memoryview(encoded)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("PID recovery audit write stalled")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        # A hard-link publication is atomic and refuses an existing target.
+        # The temporary link is removed before the receipt is admitted below.
+        os.link(temporary, target, follow_symlinks=False)
+        temporary.unlink()
+        temporary_identity = None
+        _fsync_pid_projection_parent(target)
+        observed_payload, evidence = _read_stable_regular_bytes(
+            target,
+            max_bytes=max(4096, len(encoded)),
+        )
+        if (
+            observed_payload != encoded
+            or int(evidence.get("uid", -1)) != os.geteuid()
+            or int(evidence.get("link_count", -1)) != 1
+            or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+        ):
+            raise ValueError("PID recovery audit publication is not owner-only")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary_identity is not None:
+            try:
+                observed = os.lstat(temporary)
+            except FileNotFoundError:
+                pass
+            else:
+                if (
+                    (int(observed.st_dev), int(observed.st_ino))
+                    == temporary_identity
+                    and stat.S_ISREG(observed.st_mode)
+                    and int(observed.st_nlink) == 1
+                    and int(observed.st_uid) == os.geteuid()
+                ):
+                    temporary.unlink()
+
+
+def _pid_projection_audit_evidence(
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the stable bounded fields admitted into a recovery receipt."""
+
+    return {
+        field: evidence[field]
+        for field in (
+            "path",
+            "content_sha256",
+            "device",
+            "inode",
+            "mode",
+            "link_count",
+            "uid",
+            "gid",
+            "size",
+            "mtime_ns",
+            "ctime_ns",
+        )
+    }
+
+
+def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, Any]:
+    """Quarantine one exact legacy PID after an ESRCH-only absence proof.
+
+    The caller holds ``serialized_lock_update(pid_path)``.  Signal zero probes
+    process existence without delivering a signal; every result except ESRCH
+    is deliberately treated as live or unknown and therefore non-reclaimable.
+    """
+
+    path = Path(pid_path)
+    try:
+        payload, evidence = _read_stable_regular_bytes(
+            path,
+            max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+        )
+    except _StableArtifactReadError as exc:
+        raise ValueError(f"unsafe detached master PID projection: {exc}") from exc
+    if payload is None:
+        raise ValueError("detached master PID projection disappeared during recovery")
+    if (
+        int(evidence.get("uid", -1)) != os.geteuid()
+        or int(evidence.get("link_count", -1)) != 1
+        or not stat.S_ISREG(int(evidence.get("mode", 0)))
+    ):
+        raise ValueError(
+            "detached master PID projection is not an owned single-link regular file"
+        )
+    if _LEGACY_MASTER_PID_PAYLOAD.fullmatch(payload) is None:
+        raise ValueError("detached master PID projection is not a strict legacy PID")
+    legacy_pid = int(payload[:-1].decode("ascii"))
+    try:
+        os.kill(legacy_pid, 0)
+    except ProcessLookupError as exc:
+        if exc.errno != errno.ESRCH:
+            raise ValueError(
+                "detached master PID liveness is unknown"
+            ) from exc
+    except PermissionError as exc:
+        raise ValueError("detached master PID liveness is unknown") from exc
+    except OSError as exc:
+        raise ValueError("detached master PID liveness is unknown") from exc
+    else:
+        raise ValueError("detached master PID projection names a live process")
+
+    # Bind the absence proof to the still-identical projection before any
+    # pathname mutation.  A non-cooperating replacement fails closed.
+    try:
+        confirmed_payload, confirmed_evidence = _read_stable_regular_bytes(
+            path,
+            max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+        )
+    except _StableArtifactReadError as exc:
+        raise ValueError(
+            f"detached master PID projection changed after liveness proof: {exc}"
+        ) from exc
+    if confirmed_payload != payload or confirmed_evidence != evidence:
+        raise ValueError("detached master PID projection changed after liveness proof")
+
+    observed_at_unix_ns = time.time_ns()
+    quarantine_key = hashlib.sha256(
+        json.dumps(
+            {
+                "legacy_pid": legacy_pid,
+                "projection": _pid_projection_audit_evidence(evidence),
+                "observed_at_unix_ns": observed_at_unix_ns,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    quarantine_path = path.with_name(
+        f".{path.name}.stale-{quarantine_key}.quarantine"
+    )
+    decision_path = path.with_name(
+        f".{path.name}.stale-{quarantine_key}.decision.json"
+    )
+    receipt_path = path.with_name(
+        f".{path.name}.stale-{quarantine_key}.receipt.json"
+    )
+    for target in (quarantine_path, decision_path, receipt_path):
+        try:
+            os.lstat(target)
+        except FileNotFoundError:
+            continue
+        raise ValueError("detached master PID quarantine target already exists")
+
+    liveness_evidence = {
+        "operation": "os.kill",
+        "signal": 0,
+        "result": "dead",
+        "errno": "ESRCH",
+        "errno_number": errno.ESRCH,
+    }
+    decision = {
+        "schema": STALE_DETACHED_MASTER_PID_DECISION_SCHEMA,
+        "producer": "multi-supervisor-runner@1",
+        "model_created": False,
+        "completion_authority": False,
+        "decision": "quarantine_authorized",
+        "legacy_pid": legacy_pid,
+        "source_projection": _pid_projection_audit_evidence(evidence),
+        "quarantine_path": str(quarantine_path),
+        "liveness_evidence": liveness_evidence,
+        "observed_at_unix_ns": observed_at_unix_ns,
+    }
+    decision["decision_receipt_id"] = content_identity(decision)
+    # Publish the decision first: a crash can leave an authorization without
+    # an outcome claim, but can never leave an unaudited quarantine.
+    _publish_private_pid_audit(decision_path, decision)
+
+    latest_payload, latest_evidence = _read_stable_regular_bytes(
+        path,
+        max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+    )
+    if latest_payload != payload or latest_evidence != evidence:
+        raise ValueError("detached master PID projection changed before quarantine")
+    try:
+        os.rename(path, quarantine_path)
+    except OSError as exc:
+        raise ValueError("cannot atomically quarantine stale master PID") from exc
+    _fsync_pid_projection_parent(path)
+
+    quarantined_payload, quarantined_evidence = _read_stable_regular_bytes(
+        quarantine_path,
+        max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+    )
+    stable_fields = (
+        "content_sha256",
+        "device",
+        "inode",
+        "mode",
+        "link_count",
+        "uid",
+        "gid",
+        "size",
+        "mtime_ns",
+    )
+    if (
+        quarantined_payload != payload
+        or any(
+            quarantined_evidence.get(field) != evidence.get(field)
+            for field in stable_fields
+        )
+    ):
+        raise ValueError("quarantined master PID projection identity changed")
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        pass
+    else:
+        raise ValueError("stale master PID pathname remained after quarantine")
+
+    receipt = {
+        "schema": STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA,
+        "producer": "multi-supervisor-runner@1",
+        "model_created": False,
+        "completion_authority": False,
+        "outcome": "quarantined",
+        "legacy_pid": legacy_pid,
+        "decision_receipt_id": decision["decision_receipt_id"],
+        "source_projection": _pid_projection_audit_evidence(evidence),
+        "quarantine_projection": _pid_projection_audit_evidence(
+            quarantined_evidence
+        ),
+        "liveness_evidence": liveness_evidence,
+        "observed_at_unix_ns": observed_at_unix_ns,
+    }
+    receipt["receipt_id"] = content_identity(receipt)
+    _publish_private_pid_audit(receipt_path, receipt)
+    return receipt
+
+
+def _reserve_owned_pid_projection_locked(
+    pid_path: Path,
+) -> tuple[int, tuple[int, int]]:
+    """Reserve one projection while its canonical update lock is held."""
+
+    path = Path(pid_path)
+    _require_absent_pid_projection(path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise ValueError("cannot reserve plan-bound PID projection") from exc
+    os.fchmod(descriptor, 0o600)
+    opened = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or int(opened.st_nlink) != 1
+        or int(opened.st_uid) != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+    ):
+        os.close(descriptor)
+        raise ValueError("plan-bound PID reservation is not owner-only")
+    _fsync_pid_projection_parent(path)
+    return descriptor, (int(opened.st_dev), int(opened.st_ino))
+
+
 def _reserve_owned_pid_projection(
     pid_path: Path,
 ) -> tuple[int, tuple[int, int]]:
@@ -3815,24 +4134,7 @@ def _reserve_owned_pid_projection(
 
     path = Path(pid_path)
     with serialized_lock_update(path):
-        _require_absent_pid_projection(path)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        flags |= getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            descriptor = os.open(path, flags, 0o600)
-        except OSError as exc:
-            raise ValueError("cannot reserve plan-bound PID projection") from exc
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or int(opened.st_nlink) != 1
-            or int(opened.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o600
-        ):
-            os.close(descriptor)
-            raise ValueError("plan-bound PID reservation is not owner-only")
-        return descriptor, (int(opened.st_dev), int(opened.st_ino))
+        return _reserve_owned_pid_projection_locked(path)
 
 
 def _require_absent_pid_projection(pid_path: Path) -> None:
@@ -3893,18 +4195,63 @@ def _discard_reserved_pid_projection(
     """Remove only the pathname that still owns a failed reservation."""
 
     with serialized_lock_update(pid_path):
+        _discard_reserved_pid_projection_locked(pid_path, identity)
+
+
+def _discard_reserved_pid_projection_locked(
+    pid_path: Path,
+    identity: tuple[int, int],
+) -> None:
+    """Discard the still-identical reservation while its lock is held."""
+
+    try:
+        observed = os.lstat(pid_path)
+    except FileNotFoundError:
+        return
+    if (
+        (int(observed.st_dev), int(observed.st_ino)) == identity
+        and stat.S_ISREG(observed.st_mode)
+        and int(observed.st_nlink) == 1
+        and int(observed.st_uid) == os.geteuid()
+        and stat.S_IMODE(observed.st_mode) == 0o600
+    ):
+        pid_path.unlink()
+        _fsync_pid_projection_parent(pid_path)
+
+
+def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
+    """Adopt a detached parent's exact projection or create a foreground one."""
+
+    path = Path(pid_path)
+    expected = f"{os.getpid()}\n".encode("ascii")
+    with serialized_lock_update(path):
         try:
-            observed = os.lstat(pid_path)
-        except FileNotFoundError:
+            payload, evidence = _read_stable_regular_bytes(path, max_bytes=32)
+        except _StableArtifactReadError as exc:
+            raise ValueError(f"unsafe master PID projection: {exc}") from exc
+        if payload is not None:
+            if (
+                payload != expected
+                or int(evidence.get("uid", -1)) != os.geteuid()
+                or int(evidence.get("link_count", -1)) != 1
+                or not stat.S_ISREG(int(evidence.get("mode", 0)))
+                or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+            ):
+                raise ValueError("master PID projection is not owned by this runner")
             return
-        if (
-            (int(observed.st_dev), int(observed.st_ino)) == identity
-            and stat.S_ISREG(observed.st_mode)
-            and int(observed.st_nlink) == 1
-            and int(observed.st_uid) == os.geteuid()
-            and stat.S_IMODE(observed.st_mode) == 0o600
-        ):
-            pid_path.unlink()
+        descriptor, identity = _reserve_owned_pid_projection_locked(path)
+        try:
+            _publish_reserved_pid_projection(
+                path,
+                descriptor,
+                identity,
+                os.getpid(),
+            )
+        except BaseException:
+            _discard_reserved_pid_projection_locked(path, identity)
+            raise
+        finally:
+            os.close(descriptor)
 
 
 def daemon_pid_health_fields(
@@ -6893,8 +7240,8 @@ def run_supervisor_tracks(
             finally:
                 os.close(master_descriptor)
         else:
-            resolved_master_pid.write_text(
-                f"{os.getpid()}\n", encoding="utf-8"
+            _adopt_or_create_current_master_pid_projection(
+                resolved_master_pid
             )
     processes: dict[str, subprocess.Popen[bytes]] = {}
 
@@ -7657,24 +8004,69 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         *_without_detach(argv),
     ]
-    out_handle = master_log.open("ab")
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=args.repo_root,
-            stdin=subprocess.DEVNULL,
-            stdout=out_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+    process: subprocess.Popen[bytes] | None = None
+    descriptor = -1
+    reservation_identity: tuple[int, int] | None = None
+    with serialized_lock_update(master_pid):
+        try:
+            os.lstat(master_pid)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise ValueError("cannot inspect detached master PID projection") from exc
+        else:
+            _quarantine_stale_detached_master_pid_locked(master_pid)
+        descriptor, reservation_identity = _reserve_owned_pid_projection_locked(
+            master_pid
         )
-    finally:
-        out_handle.close()
-    master_pid.write_text(f"{process.pid}\n", encoding="utf-8")
+        try:
+            out_handle = master_log.open("ab")
+            try:
+                process = subprocess.Popen(
+                    command,
+                    cwd=args.repo_root,
+                    stdin=subprocess.DEVNULL,
+                    stdout=out_handle,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+            finally:
+                out_handle.close()
+            _publish_reserved_pid_projection(
+                master_pid,
+                descriptor,
+                reservation_identity,
+                int(process.pid),
+            )
+        except BaseException:
+            if process is not None and process.poll() is None:
+                try:
+                    os.killpg(int(process.pid), signal.SIGTERM)
+                    process.wait(timeout=2.0)
+                except (OSError, subprocess.TimeoutExpired):
+                    try:
+                        os.killpg(int(process.pid), signal.SIGKILL)
+                    except OSError:
+                        pass
+                    try:
+                        process.wait(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+            _discard_reserved_pid_projection_locked(
+                master_pid,
+                reservation_identity,
+            )
+            raise
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+                descriptor = -1
+    assert process is not None
     # The child normally removes its own projection after fencing every
     # track.  Cover the short-run race where it exits before this parent can
     # publish the detached PID.
     if process.poll() is not None or not pid_alive(process.pid):
-        _remove_stale_pid_marker_if_unchanged(master_pid, process.pid)
+        _remove_owned_pid_projection(master_pid, process.pid)
     return {
         "stamp": args.stamp,
         "master_pid": process.pid,
