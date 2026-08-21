@@ -245,6 +245,32 @@ def test_git_worktree_reuses_sibling_with_owned_files(
     assert found == sibling
 
 
+def test_commit_effect_returns_the_accepted_result() -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _Execution,
+    )
+
+    gateway = SimpleNamespace(
+        capability=SimpleNamespace(content_id="sha256:" + "a" * 64),
+    )
+    accepted = {
+        "schema": "accepted",
+        "status": "succeeded",
+        "accepted": True,
+        "task_result_accepted": False,
+        "merge_admitted": False,
+    }
+    committed = _Execution(gateway).commit_effect(
+        kind="external_agent_container_dispatch",
+        record_id="claim:1",
+        claim={"claim_cid": "claim:1"},
+        result=accepted,
+    )
+    assert dict(committed) == accepted
+
+
 def test_focused_test_receipt_uses_ini_cache_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -913,7 +913,10 @@ class _Execution(_Component):
         return {**body, "receipt_cid": _cid(body)}
 
     def commit_effect(self, **kwargs: Any) -> Any:
-        return MappingProxyType(dict(kwargs))
+        result = kwargs.get("result")
+        if not isinstance(result, Mapping):
+            raise QuackDaemonGatewayError("commit_effect requires an accepted result")
+        return MappingProxyType(dict(result))
 
     def record_validation(self, **kwargs: Any) -> Any:
         return MappingProxyType(dict(kwargs))
