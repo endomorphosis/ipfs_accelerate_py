@@ -27,6 +27,10 @@ from ...llm_router import (
     AgentImplementationSealedControlPlane,
     verify_agent_implementation_sealed_control_plane,
 )
+from ..control.manual_completion_seal import (
+    ManualCompletionSealError,
+    verify_manual_completion_seal,
+)
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -275,6 +279,29 @@ SELECTION_DISPOSITION_IDLE_REASON_PREFIX = "disposition_idle:"
 # --- restored PROVIDER_CAPACITY_BACKOFF_IDLE_REASON ---
 
 PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
+
+
+_DISPOSITION_SELECTION_PRIORITY = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+_DISPOSITION_IDLE_CLASSES = frozenset(
+    {"abstain_review", "defer_capability"}
+)
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS = frozenset(
+    {"no_shard_selectable_ready_tasks", "no_tasks_found"}
+)
+_QUIESCENT_POLICY_IDLE_REASONS = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
 
 
 # --- restored IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX ---
@@ -8906,6 +8933,37 @@ class PortalImplementationSupervisor:
     ):
         """Serialize a committed generated-board update with checkout mutations."""
 
+        database_program = self.config.database_program
+        database_projection_producers = {
+            "guardrail-release",
+            "dependency-guardrail",
+            "reconciliation-guardrail",
+            "retry-budget",
+        }
+        if (
+            producer in database_projection_producers
+            and database_program is not None
+            and database_program.authority_mode == "quack"
+            and database_program.task_source_kind == "duckdb"
+        ):
+            payload = {
+                "producer": producer,
+                "authority_mode": database_program.authority_mode,
+                "task_source_kind": database_program.task_source_kind,
+                "todo_path": str(self.config.todo_path),
+                "reason": "immutable_database_authority_projection",
+                "canonical_blocks_mutated": False,
+            }
+            self._record_event(
+                "generated_board_mutation_suppressed",
+                payload,
+            )
+            return (
+                deferred_result(payload)
+                if deferred_result is not None
+                else []
+            )
+
         if not commit_outputs:
             return callback()
         current_lease = self._current_supervisor_checkout_lease()
@@ -11418,6 +11476,75 @@ class PortalImplementationSupervisor:
                     payload=skip,
                 )
                 continue
+
+            # Resolve a database-authoritative completion before inspecting or
+            # rewriting a rescue checkout.  A completed rescue may contain
+            # unreadable nested-submodule metadata or last-moment data; its
+            # exact canonical receipt makes it nonblocking but never licenses
+            # a forced cleanup or a second rescue commit.
+            if branch.startswith("rescue/worktree/"):
+                completion_proof = (
+                    self._canonical_completed_reconciliation_task(
+                        branch=branch,
+                        known_task_ids=known_task_ids,
+                    )
+                )
+                if completion_proof.get("verified") is True:
+                    prune = self._prune_completed_leftover_worktree(
+                        path,
+                        branch,
+                        expected_head=head,
+                    )
+                    skip = {
+                        **detail,
+                        "reason": "completed_task_leftover",
+                        "task_id": str(
+                            completion_proof.get("task_id") or ""
+                        ),
+                        "target_ref": target_ref,
+                        "target_signature": target_signature,
+                        "completion_proof": completion_proof,
+                        "prune_result": prune,
+                    }
+                    skipped.append(skip)
+                    if (
+                        prune.get("removed") is True
+                        or prune.get("preserved_nonblocking") is True
+                    ):
+                        self._store_worktree_scan_cache_entry(
+                            scan_cache,
+                            phase="reconciliation",
+                            path=path_resolved,
+                            branch=branch,
+                            head=head,
+                            target_signature=target_signature,
+                            classification="skip",
+                            payload=skip,
+                        )
+                    continue
+                if (
+                    completion_proof.get("applicable") is True
+                    and completion_proof.get("reason")
+                    != "canonical_task_not_completed"
+                ):
+                    # Quack unavailability, an unknown alias/generation, or a
+                    # completed row without its exact receipt is a typed
+                    # blocker. Preserve the checkout and do not turn
+                    # uncertainty into a speculative preflight conflict or
+                    # Markdown task.
+                    skipped.append(
+                        {
+                            **detail,
+                            "reason": (
+                                "canonical_completion_proof_unavailable"
+                            ),
+                            "target_ref": target_ref,
+                            "target_signature": target_signature,
+                            "completion_proof": completion_proof,
+                        }
+                    )
+                    continue
+
             dirty = self._git_status_short(path) if path.exists() else []
             if dirty:
                 rescue_result = self._rescue_dirty_worktree(
@@ -13587,12 +13714,520 @@ class PortalImplementationSupervisor:
         )
 
     @staticmethod
+    def _database_completion_receipt_proof(
+        task: Any,
+        *,
+        expected_alias: str,
+        branch: str,
+    ) -> dict[str, Any]:
+        """Verify one exact database-complete task/branch binding."""
+
+        task_alias = str(getattr(task, "task_alias", "") or "").strip()
+        task_cid = str(getattr(task, "task_cid", "") or "").strip()
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        revision = getattr(task, "revision", None)
+        body = getattr(task, "body", None)
+        if (
+            task_alias != expected_alias
+            or not task_cid
+            or isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or revision < 1
+            or not isinstance(body, Mapping)
+        ):
+            return {
+                "verified": False,
+                "reason": "canonical_task_identity_mismatch",
+                "task_id": expected_alias,
+                "task_alias": task_alias,
+                "task_cid": task_cid,
+                "status": status,
+            }
+
+        # Database tasks do not have to persist ``task_key``.  Reuse the
+        # database Portal bridge's canonical projection identity instead of
+        # treating that optional projection field as authority.  The bridge
+        # derives ``task/v1/sha256(task_cid)`` when no declared key exists;
+        # Portal's canonical identity then owns the exact branch fingerprint.
+        try:
+            from .database_portal_bridge import (
+                DatabasePortalBridgeError,
+                _canonical_projection_identity,
+            )
+            from ..task_sources.task_identity import canonical_task_identity
+
+            task_key, canonical_task_cid = _canonical_projection_identity(
+                task,
+                body,
+            )
+            identity = canonical_task_identity(
+                {
+                    "task_id": expected_alias,
+                    "canonical task key": task_key,
+                    "canonical task cid": canonical_task_cid,
+                }
+            )
+        except (DatabasePortalBridgeError, ValueError, TypeError) as exc:
+            return {
+                "verified": False,
+                "reason": "canonical_task_projection_identity_invalid",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "status": status,
+                "error_type": type(exc).__name__,
+            }
+        expected_fingerprint = identity.short_id
+        alias_fragment = expected_alias.lower().replace("/", "-")
+        branch_match = re.fullmatch(
+            (
+                r"rescue/worktree/implementation-"
+                + re.escape(alias_fragment)
+                + "-"
+                + re.escape(expected_fingerprint)
+                + r"-attempt-([1-9][0-9]*)-([0-9]+)-([0-9a-f]{12})"
+            ),
+            str(branch or "").removeprefix("refs/heads/").lower(),
+        )
+        if branch_match is None:
+            return {
+                "verified": False,
+                "reason": "branch_task_generation_mismatch",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "expected_fingerprint": expected_fingerprint,
+            }
+        branch_attempt_number = int(branch_match.group(1))
+        if status != "completed":
+            return {
+                "verified": False,
+                "reason": "canonical_task_not_completed",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "revision": revision,
+            }
+
+        receipt = body.get("completion_receipt")
+        required_receipt_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "evidence_digest",
+            "coordination_preparation",
+            "validation",
+        }
+        if (
+            not isinstance(receipt, Mapping)
+            or set(receipt) != required_receipt_fields
+        ):
+            return {
+                "verified": False,
+                "reason": "database_completion_receipt_shape_invalid",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "revision": revision,
+            }
+        validation = receipt.get("validation")
+        evidence_digest = str(receipt.get("evidence_digest") or "").strip()
+        validation_digest = (
+            str(validation.get("evidence_digest") or "").strip()
+            if isinstance(validation, Mapping)
+            else ""
+        )
+        coordination_preparation = receipt.get(
+            "coordination_preparation"
+        )
+        exact_strings = (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+        )
+        if (
+            receipt.get("operation") != "database_complete"
+            or any(
+                not str(receipt.get(field) or "").strip()
+                for field in exact_strings
+            )
+            or isinstance(receipt.get("fencing_token"), bool)
+            or not isinstance(receipt.get("fencing_token"), int)
+            or int(receipt.get("fencing_token") or 0) < 1
+            or isinstance(receipt.get("fence_epoch"), bool)
+            or not isinstance(receipt.get("fence_epoch"), int)
+            or int(receipt.get("fence_epoch") or 0) < 1
+            or not isinstance(coordination_preparation, Mapping)
+            or not isinstance(validation, Mapping)
+            or str(validation.get("outcome") or "").strip().lower()
+            != "passed"
+            or not evidence_digest
+            or evidence_digest != validation_digest
+        ):
+            return {
+                "verified": False,
+                "reason": "database_completion_receipt_unverified",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "revision": revision,
+            }
+
+        # The durable preparation binds the completed row, the database
+        # attempt, and the original Portal branch attempt.  Validate it with
+        # the coordinator's canonical digest function; do not invent a second
+        # preparation schema in reconciliation code.
+        from ..merge.database_coordination import (
+            TASK_COMPLETION_PREPARATION_SCHEMA,
+            DatabaseCoordinator,
+        )
+
+        binding = dict(coordination_preparation)
+        preparation_digest = str(
+            binding.get("preparation_digest") or ""
+        ).strip()
+        binding_string_pairs = (
+            ("task_cid", task_cid),
+            ("attempt_id", str(receipt["attempt_id"])),
+            ("claim_id", str(receipt["claim_id"])),
+            ("lease_id", str(receipt["lease_id"])),
+            ("owner_session_id", str(receipt["owner_session_id"])),
+            ("evidence_digest", evidence_digest),
+        )
+        control_expected_revision = binding.get(
+            "control_expected_revision"
+        )
+        completion_attempt_number = binding.get("attempt_number")
+        if (
+            binding.get("schema")
+            != TASK_COMPLETION_PREPARATION_SCHEMA
+            or any(
+                str(binding.get(field) or "") != expected
+                for field, expected in binding_string_pairs
+            )
+            or isinstance(completion_attempt_number, bool)
+            or not isinstance(completion_attempt_number, int)
+            or completion_attempt_number < 1
+            or binding.get("fencing_token")
+            != receipt.get("fencing_token")
+            or binding.get("fence_epoch") != receipt.get("fence_epoch")
+            or isinstance(control_expected_revision, bool)
+            or not isinstance(control_expected_revision, int)
+            or control_expected_revision + 1 != revision
+            or not preparation_digest
+            or preparation_digest
+            != DatabaseCoordinator._preparation_digest(binding)
+        ):
+            return {
+                "verified": False,
+                "reason": "database_completion_preparation_unverified",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "revision": revision,
+                "branch_attempt_number": branch_attempt_number,
+                "completion_attempt_number": completion_attempt_number,
+            }
+        return {
+            "verified": True,
+            "reason": "database_completed_task_verified",
+            "task_id": expected_alias,
+            "task_cid": task_cid,
+            "task_key": task_key,
+            "status": status,
+            "revision": revision,
+            "attempt_id": str(receipt["attempt_id"]),
+            "branch_attempt_number": branch_attempt_number,
+            "completion_attempt_number": completion_attempt_number,
+            "evidence_digest": evidence_digest,
+        }
+
+    def _canonical_completed_reconciliation_task(
+        self,
+        *,
+        branch: str,
+        known_task_ids: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Query Quack for an exact completed task and its typed receipt."""
+
+        database_program = self.config.database_program
+        if (
+            database_program is None
+            or database_program.authority_mode
+            == AUTHORITY_MODE_LEGACY_MARKDOWN
+        ):
+            return {
+                "applicable": False,
+                "authority_available": False,
+                "verified": False,
+                "reason": "database_task_authority_not_configured",
+            }
+        task_id = self._worktree_branch_source_task_id(
+            branch,
+            known_task_ids=known_task_ids,
+        )
+        endpoint = str(database_program.quack_endpoint or "").strip()
+        if not endpoint or task_id == "WORKTREE-RECONCILE":
+            return {
+                "applicable": True,
+                "authority_available": False,
+                "verified": False,
+                "reason": (
+                    "canonical_task_identity_unresolved"
+                    if task_id == "WORKTREE-RECONCILE"
+                    else "quack_endpoint_unavailable"
+                ),
+                "task_id": task_id,
+            }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+                DatabaseTaskSource,
+            )
+
+            with DatabaseTaskSource(
+                endpoint,
+                owner_id=f"worktree-reconciliation:{os.getpid()}",
+                install_schema=False,
+            ) as task_source:
+                task = task_source.get_task(task_id)
+        except Exception as exc:
+            return {
+                "applicable": True,
+                "authority_available": False,
+                "verified": False,
+                "reason": "canonical_task_authority_unavailable",
+                "task_id": task_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        if task is None:
+            return {
+                "applicable": True,
+                "authority_available": True,
+                "verified": False,
+                "reason": "canonical_task_not_found",
+                "task_id": task_id,
+            }
+        return {
+            "applicable": True,
+            "authority_available": True,
+            **self._database_completion_receipt_proof(
+                task,
+                expected_alias=task_id,
+                branch=branch,
+            ),
+        }
+
+    @staticmethod
     def _worktree_branch_is_reconcilable(branch: str) -> bool:
         return branch.startswith("implementation/") or branch.startswith("rescue/worktree/")
 
     @staticmethod
     def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
         return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
+
+    def _prune_completed_leftover_worktree(
+        self,
+        worktree_path: Path,
+        branch: str,
+        *,
+        expected_head: str = "",
+    ) -> dict[str, Any]:
+        """Prune only a provably clean inactive rescue checkout.
+
+        The completed task is the authority that makes this checkout obsolete.
+        The rescue branch remains an exact, inspectable rollback artifact.
+        Dirty or unreadable checkouts remain byte-for-byte intact and are
+        classified as nonblocking evidence; forced removal is never used.
+        Every Git mutation is serialized and all identity/activity checks are
+        repeated while the checkout lock is held.
+        """
+
+        normalized_branch = str(branch or "").removeprefix("refs/heads/")
+        if not normalized_branch.startswith("rescue/worktree/"):
+            return {
+                "attempted": False,
+                "removed": False,
+                "reason": "not_rescue_worktree",
+                "branch": normalized_branch,
+                "branch_preserved": True,
+            }
+        try:
+            resolved_path = worktree_path.resolve()
+            resolved_path.relative_to(self.config.worktree_root.resolve())
+        except (AttributeError, OSError, ValueError):
+            return {
+                "attempted": False,
+                "removed": False,
+                "reason": "rescue_worktree_outside_managed_root",
+                "branch": normalized_branch,
+                "branch_preserved": True,
+            }
+
+        lock_path = self._repo_merge_lock_path()
+        lock_metadata = self._supervisor_checkout_lock_metadata(
+            operation="prune_completed_rescue_worktree",
+            extra={
+                "branch": normalized_branch,
+                "worktree_path": str(resolved_path),
+            },
+        )
+        lease, lock_reason, existing_lock = (
+            self._acquire_supervisor_checkout_lease(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if lease is None:
+            result: dict[str, Any] = {
+                "attempted": False,
+                "removed": False,
+                "reason": f"checkout_mutation_{lock_reason}",
+                "branch": normalized_branch,
+                "branch_preserved": True,
+                "lock_path": str(lock_path),
+            }
+            if existing_lock:
+                result["lock_owner_pid"] = int(
+                    existing_lock.get("pid") or 0
+                )
+                result["lock_owner_task_id"] = str(
+                    existing_lock.get("task_id") or ""
+                )
+            return result
+
+        try:
+            if not resolved_path.is_dir():
+                return {
+                    "attempted": False,
+                    "removed": False,
+                    "reason": "worktree_missing",
+                    "branch": normalized_branch,
+                    "branch_preserved": True,
+                }
+            actual_branch = self._git_current_branch(resolved_path)
+            actual_head = self._git_ref_commit(resolved_path, "HEAD")
+            branch_head = self._git_ref_commit(
+                self.config.repo_root,
+                normalized_branch,
+            )
+            if (
+                actual_branch != normalized_branch
+                or not actual_head
+                or branch_head != actual_head
+                or (expected_head and actual_head != expected_head)
+            ):
+                return {
+                    "attempted": False,
+                    "removed": False,
+                    "reason": "rescue_worktree_identity_changed",
+                    "branch": normalized_branch,
+                    "actual_branch": actual_branch,
+                    "expected_head": expected_head,
+                    "actual_head": actual_head,
+                    "branch_head": branch_head,
+                    "branch_preserved": True,
+                }
+            if any(
+                str(resolved_path) in command
+                for command in self._list_process_commands()
+            ):
+                return {
+                    "attempted": False,
+                    "removed": False,
+                    "reason": "rescue_worktree_became_active",
+                    "branch": normalized_branch,
+                    "head": actual_head,
+                    "branch_preserved": True,
+                }
+            try:
+                status_short = self._git_status_short_strict(resolved_path)
+            except RuntimeError as exc:
+                result = {
+                    "attempted": False,
+                    "removed": False,
+                    "preserved_nonblocking": True,
+                    "reason": "completed_rescue_worktree_preserved_status_unavailable",
+                    "error": str(exc)[-1000:],
+                    "branch": normalized_branch,
+                    "head": actual_head,
+                    "branch_preserved": True,
+                }
+                self._record_event(
+                    "completed_rescue_worktree_preserved",
+                    result,
+                )
+                return result
+            if status_short:
+                result = {
+                    "attempted": False,
+                    "removed": False,
+                    "preserved_nonblocking": True,
+                    "reason": "completed_rescue_worktree_preserved_not_clean",
+                    "status_short": status_short[:20],
+                    "branch": normalized_branch,
+                    "head": actual_head,
+                    "branch_preserved": True,
+                }
+                self._record_event(
+                    "completed_rescue_worktree_preserved",
+                    result,
+                )
+                return result
+
+            remove = subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "remove",
+                    str(resolved_path),
+                ],
+                cwd=self.config.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            result = {
+                "attempted": True,
+                "removed": remove.returncode == 0,
+                "reason": (
+                    "completed_rescue_worktree_pruned"
+                    if remove.returncode == 0
+                    else "completed_rescue_worktree_prune_failed"
+                ),
+                "returncode": remove.returncode,
+                "stdout": remove.stdout[-2000:],
+                "stderr": remove.stderr[-2000:],
+                "branch": normalized_branch,
+                "head": actual_head,
+                "branch_preserved": True,
+                "preserved_nonblocking": remove.returncode != 0,
+            }
+            if result["removed"]:
+                self._record_event(
+                    "completed_rescue_worktree_pruned",
+                    result,
+                )
+                return result
+            self._record_event(
+                "completed_rescue_worktree_preserved",
+                result,
+            )
+            return result
+        finally:
+            self._release_supervisor_checkout_lease(
+                lease,
+                operation="prune_completed_rescue_worktree",
+            )
 
     def _shared_active_worktree_owners(
         self,
