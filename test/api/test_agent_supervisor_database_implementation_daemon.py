@@ -1186,6 +1186,147 @@ def test_reopened_quarantine_retires_stale_blocked_attempt(
         first.close()
 
 
+def _git_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Daemon Test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "daemon-test@example.invalid"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "README.md"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return repo
+
+
+def _unknown_callback_quarantine_receipt() -> dict[str, object]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-neutral-quarantine@1"
+        ),
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "provider_callback_outcome_unknown",
+        "retry_suppressed": True,
+        "root_cause_required": True,
+        "provider_effect_state": "unknown_may_have_started",
+        "unknown_callback_reopen_count": 0,
+    }
+
+
+def test_unknown_callback_without_landed_outputs_reopens(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        result = daemon.run_once()
+        reopened = result["unknown_callback_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        assert reopened[0]["task_cid"] == "task:cid:001"
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+
+def test_unknown_callback_without_declared_outputs_stays_quarantined(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        result = daemon.run_once()
+        assert result["unknown_callback_reopens"] == []
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status == "quarantined"
+        assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = _unknown_callback_quarantine_receipt()
+        receipt["unknown_callback_reopen_count"] = 4
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        result = daemon.run_once()
+        assert result["unknown_callback_reopens"] == []
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status == "quarantined"
+    finally:
+        daemon.close()
+
+
 def test_consumed_no_progress_quarantine_replays_after_commit_crash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

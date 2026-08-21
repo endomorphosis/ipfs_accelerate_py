@@ -67461,6 +67461,7 @@ _DATABASE_TASK_SOURCE_KINDS = frozenset({"duckdb"})
 _DATABASE_READY_TASK_STATUSES = frozenset(
     {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
 )
+_DATABASE_UNKNOWN_CALLBACK_REOPEN_LIMIT = 4
 _DATABASE_COMPLETED_TASK_STATUSES = frozenset(
     {"completed", "skipped", "complete", "done"}
 )
@@ -71366,6 +71367,7 @@ class DatabaseImplementationDaemon:
             attempt,
             sealed,
             sealed,
+            task=task,
         )
         try:
             self._cas_task_status_database(
@@ -71899,10 +71901,25 @@ class DatabaseImplementationDaemon:
         }
 
     @staticmethod
+    def _unknown_callback_reopen_count(task: Any) -> int:
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return 0
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return 0
+        try:
+            return max(0, int(receipt.get("unknown_callback_reopen_count") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
     def _neutral_portal_quarantine_material(
         attempt: DatabaseTaskAttempt,
         evidence: Mapping[str, Any],
         provider_intent: Mapping[str, Any],
+        *,
+        task: Any = None,
     ) -> tuple[dict[str, Any], tuple[str, ...]]:
         """Build the one canonical control receipt for neutral quarantine."""
 
@@ -71925,6 +71942,11 @@ class DatabaseImplementationDaemon:
             "provider_invocation_receipt_present": True,
             "provider_callback_intent_fingerprint": str(
                 provider_intent.get("failure_fingerprint") or ""
+            ),
+            "unknown_callback_reopen_count": (
+                DatabaseImplementationDaemon._unknown_callback_reopen_count(
+                    task
+                )
             ),
             "retry_suppressed": True,
             "root_cause_required": True,
@@ -72158,6 +72180,7 @@ class DatabaseImplementationDaemon:
             current,
             evidence,
             sealed_provider_intent,
+            task=task,
         )
         try:
             self._cas_task_status_database(
@@ -72560,15 +72583,113 @@ class DatabaseImplementationDaemon:
                 outcomes.append(outcome)
         return outcomes
 
+    def _reopen_unimplemented_unknown_callback_task(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Reopen one unknown-callback quarantine that did not land outputs.
+
+        The exact crashed callback stays unrepatched.  A later pass may claim a
+        fresh attempt.  Consumed-no-progress and output-less tasks stay closed.
+        """
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
+            return None
+        body = getattr(task, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not isinstance(receipt, Mapping):
+            return None
+        if receipt.get("operation") != "database_portal_neutral_failure_quarantine":
+            return None
+        if str(receipt.get("failure_kind") or "") != "provider_callback_outcome_unknown":
+            return None
+        if receipt.get("retry_suppressed") is not True:
+            return None
+        paths = self._task_declared_output_paths(task)
+        if not paths:
+            return None
+        if self._task_outputs_landed_on_target(task):
+            return None
+        reopen_count = self._unknown_callback_reopen_count(task)
+        if reopen_count >= _DATABASE_UNKNOWN_CALLBACK_REOPEN_LIMIT:
+            return None
+        next_count = reopen_count + 1
+        reopen_receipt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-unimplemented-unknown-callback-reopen@1"
+            ),
+            "operation": "reopen_unimplemented_unknown_callback_quarantine",
+            "reason": "declared_outputs_missing_on_merge_target",
+            "previous_failure_kind": "provider_callback_outcome_unknown",
+            "previous_attempt_id": str(receipt.get("attempt_id") or ""),
+            "unknown_callback_reopen_count": next_count,
+            "missing_outputs": list(paths),
+        }
+        self._cas_task_status_database(
+            str(task.task_cid),
+            expected_revision=int(task.revision),
+            new_status="todo",
+            receipt=reopen_receipt,
+        )
+        self._record_event(
+            "unimplemented_unknown_callback_reopened",
+            task_cid=str(task.task_cid),
+            body={
+                "unknown_callback_reopen_count": next_count,
+                "missing_outputs": list(paths),
+            },
+        )
+        return {
+            "task_cid": str(task.task_cid),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+            "reopened": True,
+            "reason": "unimplemented_unknown_callback_reopen",
+            "unknown_callback_reopen_count": next_count,
+            "missing_outputs": list(paths),
+        }
+
+    def reconcile_unimplemented_unknown_callback_quarantines(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Reopen unknown-callback quarantines whose outputs never landed."""
+
+        if self.repo_root is None:
+            return []
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        page = list_tasks(status="quarantined", limit=TASK_SOURCE_QUERY_LIMIT)
+        tasks = tuple(getattr(page, "tasks", ()) or ())
+        outcomes: list[dict[str, Any]] = []
+        for task in tasks:
+            try:
+                outcome = self._reopen_unimplemented_unknown_callback_task(task)
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": str(getattr(task, "task_cid", "") or ""),
+                        "reopened": False,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if outcome is not None:
+                outcomes.append(outcome)
+        return outcomes
+
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
         completion_reconciliations = self.reconcile_prepared_task_completions()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
         landed_merge_reconciliations = self.reconcile_landed_merged_tasks()
+        unknown_callback_reopens = (
+            self.reconcile_unimplemented_unknown_callback_quarantines()
+        )
         reconciliation_write_count = len(completion_reconciliations) + len(
             expired_attempt_reconciliations
-        ) + len(landed_merge_reconciliations)
+        ) + len(landed_merge_reconciliations) + len(unknown_callback_reopens)
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
@@ -72588,6 +72709,7 @@ class DatabaseImplementationDaemon:
                     expired_attempt_reconciliations
                 ),
                 "landed_merge_reconciliations": landed_merge_reconciliations,
+                "unknown_callback_reopens": unknown_callback_reopens,
             }
 
         attempt = self.claim_next()
@@ -72608,6 +72730,7 @@ class DatabaseImplementationDaemon:
                     expired_attempt_reconciliations
                 ),
                 "landed_merge_reconciliations": landed_merge_reconciliations,
+                "unknown_callback_reopens": unknown_callback_reopens,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -72624,6 +72747,7 @@ class DatabaseImplementationDaemon:
             "completion_reconciliations": completion_reconciliations,
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "landed_merge_reconciliations": landed_merge_reconciliations,
+            "unknown_callback_reopens": unknown_callback_reopens,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
