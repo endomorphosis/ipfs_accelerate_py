@@ -59,6 +59,8 @@ _CAS_TASK_STATUS_SQL = (
     "WHERE task_cid = ? AND revision = ?"
 )
 _OWNER_MUTATION_TIMEOUT_SECONDS = 15.0
+_READY_STATUSES = frozenset({"todo", "ready", "open", "in_progress"})
+_DONE_STATUSES = frozenset({"completed", "accepted", "complete", "done"})
 _ADMITTED_DOCKER = Path("/usr/bin/docker")
 _ADMITTED_ENGINE = "unix:///run/user/1000/docker.sock"
 _CONTAINER_GROK = "/opt/eaaef/bin/grok"
@@ -81,6 +83,30 @@ _DUCKDB_RECEIPT = (
     / "host_admission"
     / "duckdb_quack_155.json"
 )
+
+
+def _task_body(item: Mapping[str, Any]) -> Mapping[str, Any]:
+    body = item.get("body")
+    if isinstance(body, Mapping):
+        return body
+    raw = item.get("body_json")
+    if isinstance(raw, str) and raw:
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(loaded, Mapping):
+            return loaded
+    return {}
+
+
+def _dependency_task_cids(item: Mapping[str, Any]) -> tuple[str, ...]:
+    raw = _task_body(item).get("dependency_task_cids") or item.get("dependencies") or ()
+    if isinstance(raw, str):
+        raw = (raw,)
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    return tuple(str(dep) for dep in raw if str(dep))
 
 
 def _cid(value: object) -> str:
@@ -741,25 +767,43 @@ class _TaskSource(_Component):
 
     def ready_tasks(self, *, limit: int) -> Any:
         wanted = max(1, int(limit))
-        ready: list[Mapping[str, Any]] = []
+        catalog: list[Mapping[str, Any]] = []
         cursor = 0
-        while len(ready) < wanted:
+        while True:
             page = self._gateway._client.paginate(
                 "list_tasks_page", cursor=cursor, limit=50
             )
-            for item in page.items:
-                if str(item.get("status") or "").lower() in {
-                    "todo",
-                    "ready",
-                    "open",
-                    "in_progress",
-                }:
-                    ready.append(item)
-                    if len(ready) >= wanted:
-                        break
+            catalog.extend(page.items)
             if page.exhausted or page.next_cursor is None:
                 break
             cursor = int(page.next_cursor)
+        status_by_cid = {
+            str(item.get("task_cid") or ""): str(item.get("status") or "").lower()
+            for item in catalog
+            if item.get("task_cid")
+        }
+        ranked = sorted(
+            catalog,
+            key=lambda item: (
+                str(item.get("task_alias") or ""),
+                str(item.get("task_cid") or ""),
+            ),
+        )
+        ready: list[Mapping[str, Any]] = []
+        for item in ranked:
+            cid = str(item.get("task_cid") or "")
+            if not cid or status_by_cid.get(cid, "") not in _READY_STATUSES:
+                continue
+            detailed = self.get(cid)
+            payload = detailed.to_dict() if detailed is not None else dict(item)
+            deps = _dependency_task_cids(payload)
+            if any(
+                status_by_cid.get(dep, "") not in _DONE_STATUSES for dep in deps
+            ):
+                continue
+            ready.append(payload)
+            if len(ready) >= wanted:
+                break
         return SimpleNamespace(tasks=tuple(_Record(item) for item in ready))
 
     def get(self, task_cid: str) -> _Record | None:
@@ -804,14 +848,10 @@ class _Coordinator(_Component):
         selected = None
         for task in page.tasks:
             task_cid = str(getattr(task, "task_cid", "") or "")
-            alias = str(getattr(task, "task_alias", "") or "")
             if not task_cid or task_cid in exclude:
                 continue
-            if selected is None:
-                selected = task
-            if alias == "EAAEF-010":
-                selected = task
-                break
+            selected = task
+            break
         if selected is None:
             return None
         task_cid = str(getattr(selected, "task_cid", "") or "")

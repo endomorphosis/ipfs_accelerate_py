@@ -372,3 +372,85 @@ def test_host_merge_admission_is_reviewed_patch_when_host_lacks_files(
     assert admission["merge_commit"] == ""
     assert admission["reviewer_principal_did"] == _REVIEWER_DID
     assert admission["patch_artifact_cid"] == patch
+
+
+def test_ready_tasks_skip_unmet_dependencies() -> None:
+    import json
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _TaskSource,
+    )
+
+    done = "sha256:" + ("1" * 64)
+    peer = "sha256:" + ("2" * 64)
+    ready_cid = "sha256:" + ("3" * 64)
+    waiting = "sha256:" + ("4" * 64)
+    catalog = [
+        {
+            "task_cid": done,
+            "task_alias": "EAAEF-010",
+            "status": "completed",
+            "ordinal": 1,
+        },
+        {
+            "task_cid": peer,
+            "task_alias": "EAAEF-012",
+            "status": "todo",
+            "ordinal": 2,
+        },
+        {
+            "task_cid": ready_cid,
+            "task_alias": "EAAEF-011",
+            "status": "todo",
+            "ordinal": 3,
+        },
+        {
+            "task_cid": waiting,
+            "task_alias": "EAAEF-015",
+            "status": "todo",
+            "ordinal": 4,
+        },
+    ]
+    bodies = {
+        done: {
+            "task_cid": done,
+            "task_alias": "EAAEF-010",
+            "status": "completed",
+            "body_json": "{}",
+        },
+        peer: {
+            "task_cid": peer,
+            "task_alias": "EAAEF-012",
+            "status": "todo",
+            "body_json": json.dumps({"dependency_task_cids": [done]}),
+        },
+        ready_cid: {
+            "task_cid": ready_cid,
+            "task_alias": "EAAEF-011",
+            "status": "todo",
+            "body_json": json.dumps({"dependency_task_cids": [done]}),
+        },
+        waiting: {
+            "task_cid": waiting,
+            "task_alias": "EAAEF-015",
+            "status": "todo",
+            "body_json": json.dumps({"dependency_task_cids": [peer]}),
+        },
+    }
+
+    class _Client:
+        def paginate(self, name: str, cursor: int = 0, limit: int = 50) -> Any:
+            del name, cursor, limit
+            return SimpleNamespace(items=catalog, exhausted=True, next_cursor=None)
+
+        def execute(self, name: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+            del name
+            return [bodies[str(params["task_cid"])]]
+
+    gateway = SimpleNamespace(
+        capability=SimpleNamespace(content_id="sha256:" + ("a" * 64)),
+        _client=_Client(),
+    )
+    page = _TaskSource(gateway).ready_tasks(limit=8)
+    assert [task.task_alias for task in page.tasks] == ["EAAEF-011", "EAAEF-012"]

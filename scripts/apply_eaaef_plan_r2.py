@@ -2,12 +2,12 @@
 """Dual-sign and CAS Plan R2 for EAAEF run-v14.
 
 Stops the exclusive Quack owner just long enough to run prepare/apply/observe
-through the in-process Plan-R2 owner gateway, materializes only the current
-conflict-free frontier (tasks whose dependencies are completed and whose
-write/effect scopes do not overlap), preserves completed R1 rows, then leaves
-Quack stopped for the caller to restart. Does not mark unresolved templates
-todo. Does not mount a Docker socket. Operator and security signatures use the
-existing local-dev and lifecycle-root keys.
+through the in-process Plan-R2 owner gateway. Preserves completed rows, CAS
+the remaining catalog to todo, and names a conflict-free frontier of at most
+five write-disjoint tasks whose dependencies are already complete. Claiming
+must still honor the dependency DAG. Leaves Quack stopped for the caller to
+restart. Does not mount a Docker socket. Operator and security signatures use
+the existing local-dev and lifecycle-root keys.
 """
 
 from __future__ import annotations
@@ -246,17 +246,11 @@ def _scope_values(task: dict[str, Any], field: str, *fallback: str) -> set[str]:
 
 
 def _tasks_conflict(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    left_reads = _scope_values(left, "read_scope")
+    """Conflict on owned write paths, not the shared policy effect strings."""
+
     left_writes = _scope_values(left, "write_scope", "owned_files")
-    left_effects = _scope_values(left, "effect_scope", "external_effect_scope")
-    right_reads = _scope_values(right, "read_scope")
     right_writes = _scope_values(right, "write_scope", "owned_files")
-    right_effects = _scope_values(right, "effect_scope", "external_effect_scope")
-    return bool(
-        left_writes & (right_reads | right_writes)
-        or right_writes & left_reads
-        or left_effects & right_effects
-    )
+    return bool(left_writes and right_writes and left_writes & right_writes)
 
 
 def _next_frontier(
@@ -274,7 +268,8 @@ def _next_frontier(
     candidates = [
         task
         for task in rows
-        if str(task["status"]) == "blocked"
+        if str(task["status"]) in {"blocked", "todo"}
+        and _scope_values(task, "write_scope", "owned_files")
         and all(dep in completed for dep in deps_by_task.get(str(task["task_cid"]), ()))
     ]
     candidates.sort(key=lambda task: str(task["task_alias"]))
@@ -312,7 +307,7 @@ def _build_population(
     new_plan_body = {
         "predecessor_plan_cid": snapshot["plan_cid"],
         "predecessor_alias": snapshot["plan_alias"],
-        "transition": "EAAEF-010",
+        "transition": "catalog_todo",
         "frontier_aliases": frontier_aliases,
     }
     plan_root_cid = _cid(
@@ -364,23 +359,24 @@ def _build_population(
         body["source_semantic_state_root"] = SEMANTIC_ROOT
         body["plan_revision"] = "EAAEF-PLAN-R2"
         body["accepted_plan_root_cid"] = plan_root_cid
-        if not isinstance(body.get("effect_scope"), list):
-            body["effect_scope"] = list(body.get("external_effect_scope") or [])
-        if not isinstance(body.get("write_scope"), list):
+        if not isinstance(body.get("write_scope"), list) or not body.get("write_scope"):
             body["write_scope"] = list(body.get("owned_files") or [])
-        if not isinstance(body.get("read_scope"), list):
-            body["read_scope"] = list(body.get("read_scope") or [])
+        if not body["write_scope"]:
+            body["write_scope"] = ["task:" + str(task["task_alias"])]
+        body["effect_scope"] = list(body["write_scope"])
+        if not isinstance(body.get("read_scope"), list) or not body.get("read_scope"):
+            body["read_scope"] = list(body.get("read_scope") or ["declared dependency receipts"])
+        body["dependency_task_cids"] = sorted(
+            dep
+            for task_cid, dep in dependency_pairs
+            if task_cid == task["task_cid"]
+        )
+        body["is_schedulable"] = True
+        body["population_state"] = "materialized"
+        body["blocked_reason"] = ""
+        task["status"] = "todo"
         if task["task_alias"] in frontier_alias_set:
-            body["is_schedulable"] = True
-            body["population_state"] = "materialized"
-            body["blocked_reason"] = ""
-            task["status"] = "todo"
             frontier_cids.append(str(task["task_cid"]))
-        else:
-            body["is_schedulable"] = False
-            body["population_state"] = "template_only_awaiting_predecessor"
-            if body.get("blocked_reason") == "awaiting_EAAEF-009_plan_revision":
-                body["blocked_reason"] = "awaiting_predecessor"
         task["body"] = body
         task["plan_cid"] = plan_cid
         task["revision"] = int(task["revision"]) + 1
