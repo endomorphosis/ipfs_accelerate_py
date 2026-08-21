@@ -1,0 +1,38 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-corpus-construction@1",
+  "source_revision": "b8a6950a1cae32ca25e007f76984e818fc5d38a2",
+  "builders": {
+    "first_party": "ipfs_accelerate_py.agent_supervisor.residual_intelligence.corpus.build_first_party_trajectory_corpus",
+    "synthetic_adversarial": "ipfs_accelerate_py.agent_supervisor.residual_intelligence.corpus.build_synthetic_adversarial_corpus"
+  },
+  "first_party_trajectory_corpus": {
+    "status": "construction_ready_no_admitted_rows",
+    "observed_call_surfaces": 5,
+    "trajectory_rows_materialized": 0,
+    "trajectory_rows_training_admitted": 0,
+    "privacy": "repository_private",
+    "rights": "not_inferred_from_existence",
+    "reason_codes": [
+      "trajectory_join_not_materialized",
+      "training_corpus_admission_absent",
+      "source_rows_must_bind_independent_validation"
+    ]
+  },
+  "synthetic_and_adversarial_corpus": {
+    "status": "small_contract_fixture_available",
+    "fixture": "benchmarks/agent_supervisor/residual_intelligence/tranche1_contract_cases.json",
+    "example_count": 4,
+    "source_right": "synthetic_generated",
+    "transformation_right": "training_and_derivatives_permitted",
+    "privacy": "public",
+    "training_admitted": false,
+    "reason_codes": [
+      "fixture_is_contract_evidence_not_qualified_corpus",
+      "complete_training_corpus_admission_absent",
+      "held_out_and_adversarial_coverage_not_yet_sufficient"
+    ]
+  },
+  "overall_training_availability": "training_unavailable",
+  "weights_created": false,
+  "checkpoint_created": false
+}

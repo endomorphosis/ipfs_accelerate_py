@@ -9,15 +9,18 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
+import hashlib
+import hmac
+import json
 import os
 import re
 import sqlite3
 import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
@@ -292,7 +295,9 @@ def exclusive_file_lock(
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(f"timed out acquiring DuckDB process lock: {lock_path}")
+                    raise TimeoutError(
+                        f"timed out acquiring DuckDB process lock: {lock_path}"
+                    ) from None
                 time.sleep(0.01)
         yield
     finally:
@@ -548,6 +553,9 @@ def is_quack_transport_target(target: object) -> bool:
 
 _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
 _QUACK_CONTROL_CATALOG = "control_plane"
+QUACK_OWNER_MUTATION_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/quack-owner-mutation-request@1"
+)
 _QUACK_OWNER_DML_PREFIXES = (
     "UPDATE ",
     "DELETE ",
@@ -555,6 +563,39 @@ _QUACK_OWNER_DML_PREFIXES = (
     "INSERT OR REPLACE",
     "INSERT OR IGNORE",
 )
+
+
+def quack_owner_mutation_signature(
+    payload: Mapping[str, Any],
+    *,
+    token: str,
+) -> str:
+    """Return the HMAC for one exact owner-mutation envelope.
+
+    The raw Quack token never enters the request file.  The state owner verifies
+    this signature, the request identity, store binding, generation, and
+    freshness before it considers the separately constrained SQL statement.
+    """
+
+    secret = str(token or "").strip()
+    if not _QUACK_TOKEN_RE.fullmatch(secret):
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation requires the admitted opaque transport token"
+        )
+    unsigned = {key: value for key, value in payload.items() if key != "signature"}
+    try:
+        encoded = json.dumps(
+            unsigned,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation envelope is not canonical JSON"
+        ) from exc
+    return hmac.new(secret.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
 
 
 def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
@@ -595,7 +636,6 @@ def _execute_quack_owner_mutation(
     already holds the exclusive file connection.
     """
 
-    import json
     import uuid
 
     target = quack_owner_mutation_dir()
@@ -607,6 +647,7 @@ def _execute_quack_owner_mutation(
             "apply the mutation"
         )
     target.mkdir(parents=True, exist_ok=True)
+    os.chmod(target, 0o700)
     request_id = uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"
@@ -616,11 +657,58 @@ def _execute_quack_owner_mutation(
         bound = dict(parameters)
     else:
         bound = list(parameters)
-    request_path.write_text(
-        json.dumps({"sql": statement, "parameters": bound}, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
+    token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
+    request_payload: dict[str, Any] = {
+        "schema": QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000),
+        "writer_identity": f"supervisor-process:{os.getpid()}",
+        "store_id": str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+        ).strip(),
+        "store_generation": str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
+        ).strip(),
+        "sql": statement,
+        "parameters": bound,
+    }
+    if not request_payload["store_id"] or not request_payload["store_generation"]:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation requires exact store and generation bindings"
+        )
+    request_payload["signature"] = quack_owner_mutation_signature(
+        request_payload,
+        token=token,
     )
+    encoded_request = (
+        json.dumps(
+            request_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    temporary_path = target / f".{request_id}.request.tmp"
+    descriptor = os.open(
+        temporary_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(encoded_request)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, request_path)
+        os.chmod(request_path, 0o600)
+    except BaseException:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     deadline = time.monotonic() + 15.0
     while time.monotonic() < deadline:
         if done_path.is_file():
