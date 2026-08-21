@@ -168,16 +168,13 @@ try:
     prefix=archive+'/'
     root_origin=getattr(accepted_root,'__file__',None)
     if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
-    package_name='ipfs_accelerate_py.agent_supervisor'; package_path=archive+'/ipfs_accelerate_py/agent_supervisor'
+    package_name='ipfs_accelerate_py.agent_supervisor'
     if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
-    package_file=package_path+'/__init__.py'; package_spec=importlib.machinery.ModuleSpec(package_name,loader=None,origin=package_file,is_package=True); package_spec.submodule_search_locations=[package_path]
-    package=types.ModuleType(package_name); package.__file__=package_file; package.__package__=package_name; package.__path__=[package_path]; package.__spec__=package_spec
-    sys.modules[package_name]=package; setattr(accepted_root,'agent_supervisor',package)
-    if module in sys.modules or package.__path__!=[package_path] or package.__spec__.origin!=package_file: raise SystemExit(78)
-    timeout_name=package_name+'.todo_daemon.implementation_timeout'; timeout_alias=package_name+'.implementation_timeout'
-    timeout_module=importlib.import_module(timeout_name); timeout_origin=getattr(timeout_module,'__file__',None)
-    if type(timeout_origin) is not str or not timeout_origin.startswith(prefix): raise SystemExit(78)
-    sys.modules[timeout_alias]=timeout_module; setattr(package,'implementation_timeout',timeout_module)
+    package=importlib.import_module(package_name)
+    package_origin=getattr(package,'__file__',None)
+    if type(package_origin) is not str or not package_origin.startswith(prefix): raise SystemExit(78)
+    setattr(accepted_root,'agent_supervisor',package)
+    if module in sys.modules: raise SystemExit(78)
     namespace=runpy.run_module(module,run_name=module,alter_sys=True)
     if module in sys.modules: raise SystemExit(78)
     target_origin=namespace.get('__file__')
