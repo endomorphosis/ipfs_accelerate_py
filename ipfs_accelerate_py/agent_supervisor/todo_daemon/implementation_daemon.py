@@ -68406,6 +68406,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        external_protected_checkout_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -68544,6 +68548,16 @@ class DatabaseImplementationDaemon:
         ):
             raise TypeError("protected_path_recovery_fn must be callable")
         self._protected_path_recovery_fn = protected_path_recovery_fn
+        if (
+            external_protected_checkout_recovery_fn is not None
+            and not callable(external_protected_checkout_recovery_fn)
+        ):
+            raise TypeError(
+                "external_protected_checkout_recovery_fn must be callable"
+            )
+        self._external_protected_checkout_recovery_fn = (
+            external_protected_checkout_recovery_fn
+        )
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -68822,6 +68836,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        external_protected_checkout_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -68834,6 +68852,13 @@ class DatabaseImplementationDaemon:
             and not callable(protected_path_recovery_fn)
         ):
             raise TypeError("protected path recovery callback must be callable")
+        if (
+            external_protected_checkout_recovery_fn is not None
+            and not callable(external_protected_checkout_recovery_fn)
+        ):
+            raise TypeError(
+                "external checkout recovery callback must be callable"
+            )
         with self._lock:
             if any(
                 callback is not None
@@ -68842,6 +68867,7 @@ class DatabaseImplementationDaemon:
                     self._effect_fn,
                     self._validation_fn,
                     self._protected_path_recovery_fn,
+                    self._external_protected_checkout_recovery_fn,
                 )
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -68854,6 +68880,9 @@ class DatabaseImplementationDaemon:
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
             self._protected_path_recovery_fn = protected_path_recovery_fn
+            self._external_protected_checkout_recovery_fn = (
+                external_protected_checkout_recovery_fn
+            )
 
     def _require_execution_authority(self, operation: str) -> None:
         """Require the explicit real-execution permit for a mutating phase.
@@ -68898,6 +68927,7 @@ class DatabaseImplementationDaemon:
             "terminal_retry_reconciliations": [],
             "terminal_portal_reconciliations": [],
             "protected_path_recovery_reconciliations": [],
+            "external_protected_checkout_recovery_reconciliations": [],
         }
 
     def projections_required(self) -> bool:
@@ -70495,7 +70525,15 @@ class DatabaseImplementationDaemon:
             protected_seed = prior_status_receipt.get(
                 "protected_path_recovery_seed"
             )
-            if seed is not None and protected_seed is not None:
+            external_seed = prior_status_receipt.get(
+                "external_protected_checkout_recovery_seed"
+            )
+            retry_authorities = [
+                seed is not None,
+                protected_seed is not None,
+                external_seed is not None,
+            ]
+            if sum(retry_authorities) > 1:
                 raise DatabaseImplementationAuthorityError(
                     "database claim found multiple retry authorities"
                 )
@@ -70682,6 +70720,100 @@ class DatabaseImplementationDaemon:
                         "protected_path_recovery_budget": dict(
                             verified_state[
                                 "protected_path_recovery_budget"
+                            ]
+                        ),
+                    }
+                )
+            elif external_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != (
+                        "database_portal_external_protected_checkout_"
+                        "retry_recovery"
+                    )
+                    or not isinstance(external_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed external checkout "
+                        "recovery seed"
+                    )
+                source_attempt_id = str(
+                    external_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim external checkout recovery source "
+                        "attempt is unavailable"
+                    )
+                verified_state = (
+                    self._verified_external_protected_checkout_recovery_state(
+                        source_attempt,
+                        task,
+                        expected_recovery_evidence=external_seed,
+                    )
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim external checkout recovery target is "
+                        "unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim external checkout recovery target is "
+                        "not an exact newer attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "external_protected_checkout_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "external_protected_checkout_recovery_seed": dict(
+                            verified_state[
+                                "external_protected_checkout_recovery_evidence"
                             ]
                         ),
                     }
@@ -71167,6 +71299,77 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationAuthorityError(
                 "typed protected-path recovery evidence failed independent "
+                "verification"
+            )
+        return dict(raw)
+
+    def _verified_external_protected_checkout_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one lock-absent checkout recovery receipt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed external checkout recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "lock_path",
+            "lock_present",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed external checkout recovery evidence has unknown or "
+                "missing fields"
+            )
+        lock_path = str(raw.get("lock_path") or "")
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason")
+            != "external_protected_checkout_lock_absent"
+            or raw.get("source_reason")
+            != "external_protected_checkout_recovery_required"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or not lock_path
+            or not Path(lock_path).is_absolute()
+            or raw.get("lock_present") is not False
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed external checkout recovery evidence failed independent "
                 "verification"
             )
         return dict(raw)
@@ -71835,6 +72038,160 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _verified_external_protected_checkout_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the retrying projection superseding one leftover lock block."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "external_protected_checkout_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery control receipt has unknown or "
+                "missing fields"
+            )
+        recovery_seed = self._verified_external_protected_checkout_recovery_receipt(
+            attempt,
+            receipt.get("external_protected_checkout_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task has no exact revision"
+            )
+        reason = "external_protected_checkout_lock_absent"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_external_protected_checkout_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_external_protected_checkout_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery control receipt does not match "
+                "its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify external checkout recovery queue "
+                "state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery queue state does not match its "
+                "receipt"
+            )
+        if (
+            self._terminal_portal_failure_reason(attempt)
+            != "external_protected_checkout_recovery_required"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery does not supersede this terminal "
+                "failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "external_protected_checkout_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _persist_task_retry_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -71846,13 +72203,17 @@ class DatabaseImplementationDaemon:
         validation_retry_evidence: Mapping[str, Any] | None = None,
         protected_path_recovery_evidence: Mapping[str, Any] | None = None,
         protected_path_recovery_budget: Mapping[str, Any] | None = None,
+        external_protected_checkout_recovery_evidence: Mapping[str, Any]
+        | None = None,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
 
-        if (
-            validation_retry_evidence is not None
-            and protected_path_recovery_evidence is not None
-        ):
+        recovery_authorities = [
+            validation_retry_evidence is not None,
+            protected_path_recovery_evidence is not None,
+            external_protected_checkout_recovery_evidence is not None,
+        ]
+        if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
                 "retry transition cannot carry two recovery authorities"
             )
@@ -71903,11 +72264,20 @@ class DatabaseImplementationDaemon:
                     ),
                     expected_recovery_budget=protected_path_recovery_budget,
                 )
+            if external_protected_checkout_recovery_evidence is not None:
+                self._verified_external_protected_checkout_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        external_protected_checkout_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 (
                     validation_retry_evidence is not None
                     or protected_path_recovery_evidence is not None
+                    or external_protected_checkout_recovery_evidence is not None
                 )
                 and existing_entry is not None
                 and str(getattr(existing_entry, "reason", "") or "")
@@ -71952,6 +72322,7 @@ class DatabaseImplementationDaemon:
             and (
                 validation_retry_evidence is not None
                 or protected_path_recovery_evidence is not None
+                or external_protected_checkout_recovery_evidence is not None
             )
         )
         if task_status != "in_progress" and not blocked_recovery:
@@ -71965,13 +72336,16 @@ class DatabaseImplementationDaemon:
         # cooled task; restart reconciliation will finish the exact CAS.
         queue_entry = get_queue_entry(attempt.task_cid)
         if (
-            protected_path_recovery_evidence is not None
+            (
+                protected_path_recovery_evidence is not None
+                or external_protected_checkout_recovery_evidence is not None
+            )
             and queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "")
             != queue_reason
         ):
             raise DatabaseImplementationConflictError(
-                "protected-path recovery found a foreign queue entry"
+                "typed recovery found a foreign queue entry"
             )
         queue_reused = (
             queue_entry is not None
@@ -72007,6 +72381,8 @@ class DatabaseImplementationDaemon:
                 "operation": (
                     "database_portal_protected_path_retry_recovery"
                     if protected_path_recovery_evidence is not None
+                    else "database_portal_external_protected_checkout_retry_recovery"
+                    if external_protected_checkout_recovery_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -72053,6 +72429,15 @@ class DatabaseImplementationDaemon:
                     if protected_path_recovery_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "external_protected_checkout_recovery_seed": dict(
+                            external_protected_checkout_recovery_evidence
+                        ),
+                    }
+                    if external_protected_checkout_recovery_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -72068,6 +72453,14 @@ class DatabaseImplementationDaemon:
                     ),
                 ]
                 if protected_path_recovery_evidence is not None
+                else [
+                    str(
+                        external_protected_checkout_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if external_protected_checkout_recovery_evidence is not None
                 else None
             ),
         )
@@ -72460,6 +72853,174 @@ class DatabaseImplementationDaemon:
                         "status": "blocked",
                         "changed": False,
                         "reason": "protected_path_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def recover_blocked_portal_external_protected_checkout_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one leftover supervisor-lock block after the lock is gone.
+
+        The historical failed phase stays immutable.  The bridge proves only
+        that the shared checkout mutation lock is absent; this layer binds
+        that receipt to the latest failed fence and performs blocked-to-
+        retrying through the canonical queue and task CAS.  It never
+        interprets another owner's signed recovery journal.
+        """
+
+        self._require_execution_authority("external checkout retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery rejected a superseded attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        committed_effect_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }.intersection(
+            str(phase.get("phase") or "") for phase in history
+        )
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason")
+            != "external_protected_checkout_recovery_required"
+            or committed_effect_phases
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery is limited to an uncommitted outer "
+                "provider failure with the exact leftover-lock reason"
+            )
+        verified = self._verified_external_protected_checkout_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery rejected a manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery requires blocked or exact retrying "
+                f"control state, observed {status!r}"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        result = self._persist_task_retry_state(
+            current,
+            reason="external_protected_checkout_lock_absent",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_external_protected_checkout_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            external_protected_checkout_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["external_protected_checkout_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_external_protected_checkout_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover supervisor-lock blocks once cleared."""
+
+        self._require_execution_authority(
+            "external checkout recovery reconciliation"
+        )
+        callback = self._external_protected_checkout_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if (
+                self._terminal_portal_failure_reason(attempt)
+                != "external_protected_checkout_recovery_required"
+            ):
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_external_protected_checkout_recovery_state(
+                    attempt,
+                    task,
+                )
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = (
+                    self.recover_blocked_portal_external_protected_checkout_retry(
+                        attempt,
+                        recovery_evidence=evidence,
+                    )
+                )
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "external_protected_checkout_recovery_not_admitted",
                         "error_type": type(exc).__name__,
                     }
                 )
@@ -73567,6 +74128,14 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
+                elif (
+                    operation
+                    == "database_portal_external_protected_checkout_retry_recovery"
+                ):
+                    self._verified_external_protected_checkout_recovery_state(
+                        attempt,
+                        task,
+                    )
                 else:
                     self._verified_validation_retry_recovery_state(
                         attempt,
@@ -73992,6 +74561,9 @@ class DatabaseImplementationDaemon:
         protected_path_recovery_reconciliations = (
             self.reconcile_blocked_protected_path_recoveries()
         )
+        external_protected_checkout_recovery_reconciliations = (
+            self.reconcile_blocked_external_protected_checkout_recoveries()
+        )
         terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
         reconciliation_write_count = (
             len(completion_reconciliations)
@@ -74001,6 +74573,13 @@ class DatabaseImplementationDaemon:
             + sum(
                 1
                 for item in protected_path_recovery_reconciliations
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in (
+                    external_protected_checkout_recovery_reconciliations
+                )
                 if item.get("changed") is True
             )
         )
@@ -74031,6 +74610,9 @@ class DatabaseImplementationDaemon:
                 "protected_path_recovery_reconciliations": (
                     protected_path_recovery_reconciliations
                 ),
+                "external_protected_checkout_recovery_reconciliations": (
+                    external_protected_checkout_recovery_reconciliations
+                ),
             }
 
         attempt = self.claim_next()
@@ -74059,6 +74641,9 @@ class DatabaseImplementationDaemon:
                 "protected_path_recovery_reconciliations": (
                     protected_path_recovery_reconciliations
                 ),
+                "external_protected_checkout_recovery_reconciliations": (
+                    external_protected_checkout_recovery_reconciliations
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -74078,6 +74663,9 @@ class DatabaseImplementationDaemon:
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
             "protected_path_recovery_reconciliations": (
                 protected_path_recovery_reconciliations
+            ),
+            "external_protected_checkout_recovery_reconciliations": (
+                external_protected_checkout_recovery_reconciliations
             ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,

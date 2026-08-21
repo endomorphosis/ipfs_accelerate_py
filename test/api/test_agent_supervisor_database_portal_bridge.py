@@ -486,6 +486,116 @@ def test_bridge_does_not_infer_retryability_from_generic_failure_text(
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
 
 
+def test_bridge_defers_paired_supervisor_external_checkout_recovery(
+    tmp_path: Path,
+) -> None:
+    class SupervisorOwnedPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "protected_checkout_recovery": {
+                    "required": True,
+                    "adopted": False,
+                    "blocked": True,
+                    "reason": "external_protected_checkout_recovery_required",
+                    "protected_recovery_owner": "implementation_supervisor",
+                    "lock_path": str(tmp_path / "implementation-main-merge.lock"),
+                },
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = SupervisorOwnedPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        repository_root=tmp_path,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "external_protected_checkout_recovery_required"
+    assert caught.value.backoff_seconds == 20
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+    assert portal.closed is True
+
+
+def test_bridge_keeps_foreign_external_checkout_recovery_terminal(
+    tmp_path: Path,
+) -> None:
+    class ForeignOwnedPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "protected_checkout_recovery": {
+                    "required": True,
+                    "adopted": False,
+                    "blocked": True,
+                    "reason": "external_protected_checkout_recovery_required",
+                    "protected_recovery_owner": "foreign_owner",
+                    "lock_path": str(tmp_path / "implementation-main-merge.lock"),
+                },
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: ForeignOwnedPortal(),
+        repository_root=tmp_path,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "external_protected_checkout_recovery_required"
+
+
+def test_bridge_recovers_external_checkout_only_when_lock_absent(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_mutation_lock_path,
+    )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+    )
+    attempt = _attempt()
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(DatabasePortalBridgeError) as blocked:
+        bridge.recover_external_protected_checkout(attempt)
+    assert "lock to be absent" in str(blocked.value)
+
+    lock_path.unlink()
+    receipt = bridge.recover_external_protected_checkout(attempt)
+    assert receipt["reason"] == "external_protected_checkout_lock_absent"
+    assert receipt["source_reason"] == (
+        "external_protected_checkout_recovery_required"
+    )
+    assert receipt["lock_present"] is False
+    assert receipt["lock_path"] == str(lock_path)
+    assert bridge.recover_external_protected_checkout(attempt) == receipt
+
+
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     tmp_path: Path,
 ) -> None:

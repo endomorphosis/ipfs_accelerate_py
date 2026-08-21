@@ -592,10 +592,16 @@ def test_runner_binds_bridge_protected_path_recovery_callback(tmp_path: Path) ->
     )
 
     callback = captured.get("protected_path_recovery_fn")
+    external_callback = captured.get("external_protected_checkout_recovery_fn")
     assert bridge is not None
     assert callable(callback)
     assert getattr(callback, "__self__", None) is bridge
     assert getattr(callback, "__name__", "") == "recover_protected_path_retry"
+    assert callable(external_callback)
+    assert getattr(external_callback, "__self__", None) is bridge
+    assert getattr(external_callback, "__name__", "") == (
+        "recover_external_protected_checkout"
+    )
 
 
 def test_crash_fence_reaches_locked_auto_clear_and_keeps_genuine_mutation(

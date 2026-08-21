@@ -17437,14 +17437,32 @@ class PortalImplementationSupervisor:
             existing.metadata.get("protected_recovery_required") is not True
         ):
             return {"required": False, "adopted": False}
-        if str(
+        recovery_owner = str(
             existing.metadata.get("protected_recovery_owner") or ""
-        ) != "implementation_supervisor":
+        )
+        if recovery_owner != "implementation_supervisor":
+            # Daemon-owned and ownerless (legacy daemon) journals are recovered
+            # by the managed daemon.  Blocking this whole supervisor pass
+            # would stall generated-board maintenance while that owner works.
+            # Truly foreign owners remain fail-closed.
+            if recovery_owner in {"", "implementation_daemon"}:
+                return {
+                    "required": True,
+                    "adopted": False,
+                    "blocked": False,
+                    "pending": True,
+                    "reason": "daemon_protected_checkout_recovery_pending",
+                    "protected_recovery_owner": (
+                        recovery_owner or "implementation_daemon"
+                    ),
+                    "lock_path": str(existing.lock_path),
+                }
             return {
                 "required": True,
                 "adopted": False,
                 "blocked": True,
                 "reason": "external_protected_checkout_recovery_required",
+                "protected_recovery_owner": recovery_owner,
                 "lock_path": str(existing.lock_path),
             }
 
@@ -17544,6 +17562,13 @@ class PortalImplementationSupervisor:
                     "attempted": False,
                     "recovered": False,
                     "retained_lease": True,
+                }
+            if adoption.get("pending") is True:
+                return {
+                    **adoption,
+                    "attempted": False,
+                    "recovered": False,
+                    "retained_lease": False,
                 }
             if not self._retained_generated_checkout_lease():
                 return {

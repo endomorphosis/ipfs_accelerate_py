@@ -67,12 +67,23 @@ DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-path-recovery-guard@1"
 )
+DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-external-protected-checkout-recovery@1"
+)
 _PROTECTED_PATH_RECOVERY_INTENT_FILENAME: Final[str] = (
     "database-portal-protected-path-recovery-intent.json"
 )
 _PROTECTED_PATH_RECOVERY_FILENAME: Final[str] = (
     "database-portal-protected-path-recovery.json"
 )
+_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-external-protected-checkout-recovery.json"
+)
+_PAIRED_SUPERVISOR_PROTECTED_RECOVERY_OWNER: Final[str] = (
+    "implementation_supervisor"
+)
+_EXTERNAL_PROTECTED_CHECKOUT_DEFERRAL_BACKOFF_SECONDS: Final[int] = 20
 _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME: Final[str] = (
     "implementation-protected-path-active.json"
 )
@@ -1479,6 +1490,39 @@ class DatabasePortalExecutionBridge:
         )
 
     @staticmethod
+    def _external_protected_checkout_deferral(
+        result: Mapping[str, Any],
+    ) -> tuple[str, int] | None:
+        """Defer only a paired supervisor recovery journal, never a foreign one.
+
+        The Portal child fail-closes when it sees a checkout-recovery lease
+        it does not own.  That is correct: daemon and supervisor journals
+        carry different guards and must not be interpreted with the other
+        owner's schema.  The database authority may still wait when the
+        owner tag names the paired supervisor, because that process already
+        auto-adopts its own dead-owner journals.  Any other owner remains a
+        terminal block.
+        """
+
+        if result.get("blocked") is not True:
+            return None
+        reason = str(result.get("reason") or "")
+        if reason != "external_protected_checkout_recovery_required":
+            return None
+        recovery = result.get("protected_checkout_recovery")
+        owner = (
+            str(recovery.get("protected_recovery_owner") or "")
+            if isinstance(recovery, Mapping)
+            else str(result.get("protected_recovery_owner") or "")
+        )
+        if owner != _PAIRED_SUPERVISOR_PROTECTED_RECOVERY_OWNER:
+            return None
+        return (
+            reason,
+            _EXTERNAL_PROTECTED_CHECKOUT_DEFERRAL_BACKOFF_SECONDS,
+        )
+
+    @staticmethod
     def _looks_like_validation_retry(
         implementation: Mapping[str, Any],
     ) -> bool:
@@ -2502,6 +2546,131 @@ class DatabasePortalExecutionBridge:
         self._verify_protected_path_attempt_boundary(paths)
         return receipt
 
+    def _checkout_mutation_lock_path(self) -> Path:
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "external checkout recovery has no repository root"
+            )
+        from ..merge.checkout_lock import checkout_mutation_lock_path
+
+        return checkout_mutation_lock_path(self.repository_root)
+
+    def _finalize_external_protected_checkout_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        lock_path: Path,
+    ) -> dict[str, Any]:
+        receipt = {
+            "schema": DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA,
+            "disposition": "retry",
+            "reason": "external_protected_checkout_lock_absent",
+            "source_reason": "external_protected_checkout_recovery_required",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "lock_path": str(lock_path),
+            "lock_present": False,
+            "backoff_seconds": 0,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _verify_external_protected_checkout_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        lock_path: Path,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "lock_path",
+            "lock_present",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabasePortalBridgeError(
+                "external checkout recovery receipt is malformed or foreign"
+            )
+        expected = self._finalize_external_protected_checkout_recovery_receipt(
+            attempt=attempt,
+            lock_path=lock_path,
+        )
+        if dict(receipt) != expected:
+            raise DatabasePortalBridgeError(
+                "external checkout recovery receipt changed after finalization"
+            )
+        return expected
+
+    def recover_external_protected_checkout(self, attempt: Any) -> Mapping[str, Any]:
+        """Rearm only after the shared checkout mutation lock is gone.
+
+        This recovery never reads another owner's signed journal.  The
+        lock path is derived from the configured repository root; absence
+        of that file is the closed proof that the crash-window leftover
+        has cleared.  A still-present lock, including a paired supervisor
+        journal that has not finished, stays blocked.
+        """
+
+        self._record_for_attempt(self.task_source, attempt)
+        lock_path = self._checkout_mutation_lock_path()
+        try:
+            lock_present = lock_path.exists()
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "external checkout recovery could not observe the mutation lock"
+            ) from exc
+        if lock_present:
+            raise DatabasePortalBridgeError(
+                "external checkout recovery requires the checkout mutation "
+                "lock to be absent"
+            )
+        paths = self._paths(attempt)
+        final_path = paths.root / _EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_FILENAME
+        if final_path.is_file():
+            return self._verify_external_protected_checkout_recovery_receipt(
+                attempt=attempt,
+                lock_path=lock_path,
+                receipt=self._read_json_object(
+                    final_path,
+                    noun="external checkout recovery receipt",
+                ),
+            )
+        receipt = self._finalize_external_protected_checkout_recovery_receipt(
+            attempt=attempt,
+            lock_path=lock_path,
+        )
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return self._verify_external_protected_checkout_recovery_receipt(
+            attempt=attempt,
+            lock_path=lock_path,
+            receipt=receipt,
+        )
+
     def _preserved_commit_exists(
         self,
         *,
@@ -3201,6 +3370,15 @@ class DatabasePortalExecutionBridge:
                         reason,
                         backoff_seconds=backoff_seconds,
                     )
+                external_deferral = self._external_protected_checkout_deferral(
+                    raw_result
+                )
+                if external_deferral is not None:
+                    reason, backoff_seconds = external_deferral
+                    raise DatabasePortalBridgeDeferred(
+                        reason,
+                        backoff_seconds=backoff_seconds,
+                    )
                 implementation = raw_result.get("implementation_result")
                 if (
                     isinstance(implementation, Mapping)
@@ -3292,6 +3470,7 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
