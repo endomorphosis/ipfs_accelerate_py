@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
@@ -486,6 +487,64 @@ def test_bridge_does_not_infer_retryability_from_generic_failure_text(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+
+
+def test_bridge_defers_external_protected_checkout_contention(
+    tmp_path: Path,
+) -> None:
+    class CheckoutContentionPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "unchanged": True,
+                "write_count": 0,
+                "implementation_result": None,
+                "reason": "external_protected_checkout_recovery_required",
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: CheckoutContentionPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "external_protected_checkout_recovery_required"
+    assert caught.value.backoff_seconds == (
+        DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+    )
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
+def test_bridge_keeps_invalid_protected_recovery_journal_terminal(
+    tmp_path: Path,
+) -> None:
+    class InvalidJournalPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "unchanged": True,
+                "write_count": 0,
+                "implementation_result": None,
+                "reason": "protected_recovery_journal_invalid",
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: InvalidJournalPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "protected_recovery_journal_invalid"
 
 
 @pytest.mark.parametrize(

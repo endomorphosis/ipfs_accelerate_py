@@ -73326,19 +73326,38 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
-                if (
-                    reason == "portal_provider_failed"
-                    and self.max_task_attempts > 0
+                from .database_portal_bridge import (
+                    DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS,
+                )
+
+                checkout_contention = (
+                    reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS
+                )
+                remaining_budget = (
+                    self.max_task_attempts > 0
                     and int(attempt.attempt_number) < self.max_task_attempts
-                ):
+                )
+                # Checkout contention never dispatched a provider, so it must
+                # rearm even when the misclassified attempt sat at the cap.
+                if (
+                    reason == "portal_provider_failed" and remaining_budget
+                ) or checkout_contention:
                     coordination = self._reconcile_failed_attempt_coordination(
                         attempt
                     )
                     outcome = self._persist_task_retry_state(
                         attempt,
-                        reason="portal_candidate_retry",
+                        reason=(
+                            "portal_checkout_contention_retry"
+                            if checkout_contention
+                            else "portal_candidate_retry"
+                        ),
                         backoff_ms=0,
-                        evidence_source="portal_provider_failed_reclassified",
+                        evidence_source=(
+                            "portal_checkout_contention_reclassified"
+                            if checkout_contention
+                            else "portal_provider_failed_reclassified"
+                        ),
                         coordination_evidence=coordination,
                         allow_blocked_recovery=True,
                     )
@@ -73363,6 +73382,7 @@ class DatabaseImplementationDaemon:
                 if evidence_source not in {
                     "portal_candidate_retry",
                     "portal_provider_failed_reclassified",
+                    "portal_checkout_contention_reclassified",
                 }:
                     self._verified_validation_retry_recovery_state(attempt, task)
                 self._reconcile_failed_attempt_coordination(attempt)

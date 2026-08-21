@@ -1369,6 +1369,40 @@ def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None
         daemon.close()
 
 
+def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError(
+            "external_protected_checkout_recovery_required"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-checkout-contention",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["evidence_source"] == (
+            "portal_checkout_contention_reclassified"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
     tmp_path: Path,
 ) -> None:

@@ -74,6 +74,19 @@ DATABASE_PORTAL_CANDIDATE_RETRY_REASONS: Final[frozenset[str]] = frozenset(
         "no_changes",
     }
 )
+# A sibling supervisor or daemon holds the shared checkout-mutation lock.
+# Markdown Portal treats that as an unchanged deferral; the database path
+# must not consume the claimed task as a terminal Portal failure.
+DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "external_protected_checkout_recovery_required",
+        "protected_recovery_owner_active",
+        "supervisor_protected_recovery_owner_active",
+        "protected_recovery_adoption_raced",
+        "checkout_mutation_lock_exists",
+    }
+)
+DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = 15
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -927,7 +940,10 @@ class DatabasePortalExecutionBridge:
     @staticmethod
     def _terminal_failure(result: Mapping[str, Any]) -> str:
         if result.get("blocked") is True:
-            return str(result.get("reason") or "portal_execution_blocked")
+            reason = str(result.get("reason") or "portal_execution_blocked")
+            if reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS:
+                return ""
+            return reason
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return ""
@@ -946,6 +962,16 @@ class DatabasePortalExecutionBridge:
     ) -> tuple[str, int] | None:
         """Return exact Portal deferral data without parsing reason text."""
 
+        blocked_reason = str(result.get("reason") or "").strip()
+        if (
+            result.get("blocked") is True
+            and result.get("unchanged") is True
+            and blocked_reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS
+        ):
+            return (
+                blocked_reason,
+                DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
+            )
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
@@ -1900,6 +1926,8 @@ __all__ = (
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DATABASE_PORTAL_CANDIDATE_RETRY_REASONS",
+    "DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS",
+    "DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
     "DatabasePortalCandidateRetry",
