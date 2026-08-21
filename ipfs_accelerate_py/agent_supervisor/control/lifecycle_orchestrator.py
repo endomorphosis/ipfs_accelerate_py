@@ -184,9 +184,11 @@ class LifecycleProfile:
             raise ValueError("profile cwd must be inside repository_root")
         if not _under(self.run_root, self.state_root):
             raise ValueError("profile run_root must be inside state_root")
-        argv = tuple(_text(item, "argv item") for item in self.argv)
+        argv = tuple(str(item) for item in self.argv)
         if not argv or len(argv) > 512:
             raise ValueError("argv must contain between 1 and 512 items")
+        if any(not item or "\x00" in item for item in argv):
+            raise ValueError("argv item must be non-empty")
         object.__setattr__(self, "argv", argv)
         environment = tuple(
             sorted(
