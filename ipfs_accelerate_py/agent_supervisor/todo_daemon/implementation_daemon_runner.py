@@ -1265,13 +1265,19 @@ def bind_database_portal_execution_from_args(
             maintenance_interval_seconds=getattr(
                 parsed, "maintenance_interval_seconds", None
             ),
+            dependency_preflight_artifact_store_path=(
+                attempt_root / "dependency-preflight-artifacts"
+            ),
         )
 
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
+        repository_root=repo_root,
+        worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
     )
     binder(
         provider_fn=bridge.run_provider,
@@ -1348,6 +1354,9 @@ def build_portal_implementation_daemon_from_args(
             events_path=optional_events if use_projections else None,
             pid_path=None,
             queue_path=None,
+            max_task_attempts=int(
+                getattr(parsed, "max_task_attempts", 0) or 0
+            ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
         )
         bind_database_portal_execution_from_args(
@@ -1491,6 +1500,7 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
     )
 
 

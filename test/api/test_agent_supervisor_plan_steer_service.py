@@ -408,6 +408,43 @@ def _supersede_unstarted_item() -> PlanDeltaItem:
     )
 
 
+def _amend_unstarted_item() -> PlanDeltaItem:
+    return PlanDeltaItem(
+        item_key="delta:amend-ready",
+        operation=PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+        target_cid=TASK_READY,
+        expected_target_lifecycle=LifecycleState.UNSTARTED,
+        expected_target_spec_revision=_cid("spec-ready"),
+        before_digest=_cid("spec-ready"),
+        after_record_cid=_cid("spec-ready-v2"),
+        effect_class=DeltaEffectClass.MATERIALIZABLE_NOW,
+        rationale="Amend the existing unstarted task under exact spec CAS.",
+        provenance={"source": "test"},
+        expected_effects=("amend-task",),
+        affected_task_cids=(TASK_READY,),
+        affected_paths=(
+            "ipfs_accelerate_py/agent_supervisor/prompt/plan_steer_service.py",
+        ),
+    )
+
+
+def _reprioritize_blocked_item() -> PlanDeltaItem:
+    return PlanDeltaItem(
+        item_key="delta:reprioritize-blocked",
+        operation=PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
+        target_cid=TASK_BLOCKED,
+        expected_target_lifecycle=LifecycleState.BLOCKED,
+        expected_target_spec_revision=_cid("spec-blocked"),
+        before_digest=_cid("spec-blocked"),
+        after_record_cid=_cid("spec-blocked-v2"),
+        effect_class=DeltaEffectClass.MATERIALIZABLE_NOW,
+        rationale="Move a blocked task without changing its lifecycle state.",
+        provenance={"source": "test"},
+        expected_effects=("reprioritize-task",),
+        affected_task_cids=(TASK_BLOCKED,),
+    )
+
+
 def _lifecycle_request_item() -> PlanDeltaItem:
     return PlanDeltaItem(
         item_key="delta:lifecycle-cancel-request",
@@ -530,6 +567,60 @@ def test_preview_steer_admits_successor_without_editing_running_work() -> None:
     restored = PlanSteerPreviewReceipt.from_dict(receipt.to_record())
     assert restored.content_id == receipt.content_id
     assert restored.admitted is True
+
+
+def test_amend_unstarted_task_retains_logical_task_cid() -> None:
+    request = _steer_request(
+        allowed_delta_operations=(
+            PlanDeltaOperation.AMEND_UNSTARTED_TASK.value,
+        )
+    )
+    state = _live_state(request)
+    service = PlanSteerService()
+    partition = service.partition_populations(state)
+    scan_impact = service.bind_scan_and_impact(request, state)
+    delta = service.generate_closed_delta(
+        request,
+        state,
+        partition,
+        scan_impact,
+        (_amend_unstarted_item(),),
+    )
+    candidate = service.apply_delta_in_memory(
+        request, state, partition, delta, scan_impact
+    )
+
+    assert TASK_READY in candidate.task_population.member_cids
+    assert TASK_READY in candidate.retained_population.member_cids
+    assert _cid("spec-ready-v2") not in candidate.task_population.member_cids
+    assert _cid("spec-ready-v2") not in candidate.added_population.member_cids
+
+
+def test_reprioritize_blocked_task_retains_cid_and_blocked_population() -> None:
+    request = _steer_request(
+        allowed_delta_operations=(
+            PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK.value,
+        )
+    )
+    state = _live_state(request)
+    service = PlanSteerService()
+    partition = service.partition_populations(state)
+    scan_impact = service.bind_scan_and_impact(request, state)
+    delta = service.generate_closed_delta(
+        request,
+        state,
+        partition,
+        scan_impact,
+        (_reprioritize_blocked_item(),),
+    )
+    candidate = service.apply_delta_in_memory(
+        request, state, partition, delta, scan_impact
+    )
+
+    assert TASK_BLOCKED in candidate.task_population.member_cids
+    assert TASK_BLOCKED in candidate.blocked_population.member_cids
+    assert _cid("spec-blocked-v2") not in candidate.task_population.member_cids
+    assert _cid("spec-blocked-v2") not in candidate.added_population.member_cids
 
 
 def test_preview_steer_idempotent_for_same_request_cid() -> None:

@@ -38,7 +38,7 @@ def _write_cross_shard_board(path: Path) -> None:
 - Priority: P1
 - Track: ops
 
-## ACCEL-001 Ready task in shard one
+## ACCEL-007 Ready task in shard one
 
 - Status: todo
 - Completion: manual
@@ -91,7 +91,7 @@ def test_strict_task_sharding_disables_cross_lane_ready_fallback(
     strict_state = PortalTaskState.load(strict_dir / "state.json")
 
     assert legacy.strict_task_sharding is False
-    assert legacy_result["active_task_id"] == "ACCEL-001"
+    assert legacy_result["active_task_id"] == "ACCEL-007"
     assert "task_shard_ready_fallback" in (
         legacy_dir / "events.jsonl"
     ).read_text(encoding="utf-8")
@@ -99,7 +99,7 @@ def test_strict_task_sharding_disables_cross_lane_ready_fallback(
     assert strict.strict_task_sharding is True
     assert strict_result["active_task_id"] == ""
     assert strict_result["selection_idle_reason"] == "no_shard_selectable_ready_tasks"
-    assert strict_state.ready_task_ids == ["ACCEL-001"]
+    assert strict_state.ready_task_ids == ["ACCEL-007"]
     assert strict_state.selectable_ready_task_ids == []
     assert "task_shard_ready_fallback" not in (
         strict_dir / "events.jsonl"
@@ -147,7 +147,7 @@ def test_strict_shard_idle_reason_ignores_cross_shard_resource_claim(
         events_path=tmp_path / "borrower" / "events.jsonl",
     )
     task = PortalTask(
-        task_id="ACCEL-001",
+        task_id="ACCEL-007",
         title="Ready task in shard one",
         status="todo",
         completion="manual",
@@ -171,7 +171,7 @@ def test_strict_shard_idle_reason_ignores_cross_shard_resource_claim(
     finally:
         assert holder._release_implementation_resource_claims(claims)
 
-    assert result["resource_reserved_task_ids"] == ["ACCEL-001"]
+    assert result["resource_reserved_task_ids"] == ["ACCEL-007"]
     assert result["active_task_id"] == ""
     assert result["selection_idle_reason"] == (
         "no_shard_selectable_ready_tasks"

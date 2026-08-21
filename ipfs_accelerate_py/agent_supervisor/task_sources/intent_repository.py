@@ -48,10 +48,9 @@ from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
     exclusive_file_lock,
     is_quack_transport_target,
-    quack_transport_uri,
     open_duckdb_connection,
+    quack_transport_uri,
 )
-
 
 # ---------------------------------------------------------------------------
 # Interface / schema identities
@@ -81,6 +80,21 @@ QUEUE_ENTRY_SCHEMA: Final[str] = (
 COMPLETION_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1"
 )
+INTENT_PLAN_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/intent-plan-projection@1"
+)
+INTENT_COMPLETION_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/intent-completion-projection@1"
+)
+TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"
+)
+TASK_AUTHORITY_SPEC_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-authority-spec@1"
+)
+TASK_REVISION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
+)
 PLAN_HEAD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-plan-head@1"
 )
@@ -99,6 +113,10 @@ MAX_VALIDATIONS: Final[int] = 256
 MAX_OUTPUTS: Final[int] = 256
 MAX_DEPENDENCIES: Final[int] = 1_024
 MAX_EVIDENCE: Final[int] = 4_096
+MAX_PROJECTION_RECORDS: Final[int] = 10_000
+MAX_TASK_PROJECTION_BYTES: Final[int] = 1_048_576
+MAX_PLAN_PROJECTION_BYTES: Final[int] = 16_777_216
+MAX_COMPLETION_PROJECTION_BYTES: Final[int] = 16_777_216
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
@@ -340,13 +358,20 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
     if isinstance(value, (dict, list)):
         return value
     text = str(value)
-    if not text:
-        return {}
+
+    def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = item
+        return result
+
     try:
-        return json.loads(text)
+        return json.loads(text, object_pairs_hook=closed_object)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise IntentRepositoryIntegrityError(
-            f"{noun} is not valid JSON"
+            f"{noun} is not valid unambiguous JSON"
         ) from exc
 
 
@@ -381,6 +406,223 @@ def _positive_int(value: Any, *, noun: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise IntentRepositoryBoundsError(f"{noun} must be a positive integer")
     return value
+
+
+def _projection_sequence(
+    value: Any,
+    *,
+    noun: str,
+    maximum: int,
+) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise IntentRepositoryError(f"{noun} must be a sequence")
+    items = list(value)
+    if len(items) > maximum:
+        raise IntentRepositoryBoundsError(f"{noun} count exceeds bound")
+    return items
+
+
+def _projection_task_cids(task_cids: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(task_cids, (str, bytes, bytearray)) or not isinstance(
+        task_cids, Sequence
+    ):
+        raise IntentRepositoryError("task_cids must be a sequence")
+    if len(task_cids) > MAX_PAGE_LIMIT:
+        raise IntentRepositoryBoundsError("projection task count exceeds bound")
+    resolved = tuple(
+        _identifier(task_cid, noun="task_cid") for task_cid in task_cids
+    )
+    if len(set(resolved)) != len(resolved):
+        raise IntentRepositoryIntegrityError(
+            "projection task_cids must not contain duplicates"
+        )
+    return tuple(sorted(resolved))
+
+
+def _task_projection_spec(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize the semantic/operational specification of one task.
+
+    Lifecycle state, revision counters, timestamps, and the containing plan are
+    intentionally absent.  This makes the resulting identity suitable for CAS
+    checks that distinguish a task-specification edit from a mere claim or
+    completion transition.  The containing full plan projection still binds
+    all of those lifecycle fields independently.
+    """
+
+    task = _mapping(record, noun="task projection record")
+    task_cid = _identifier(task.get("task_cid"), noun="task_cid")
+    task_alias = _identifier(
+        task.get("task_alias") or task.get("task_id"), noun="task_alias"
+    )
+    goal_cid = _identifier(task.get("goal_cid"), noun="goal_cid")
+    objective_id = _optional_identifier(
+        task.get("objective_id"), noun="objective_id"
+    )
+
+    dependencies: list[dict[str, str]] = []
+    for raw in _projection_sequence(
+        task.get("dependencies"),
+        noun="task dependencies",
+        maximum=MAX_DEPENDENCIES,
+    ):
+        if isinstance(raw, Mapping):
+            dependency = _mapping(raw, noun="task dependency")
+            dependency_cid = _identifier(
+                dependency.get("dependency_task_cid")
+                or dependency.get("task_cid"),
+                noun="dependency_task_cid",
+            )
+            kind = _identifier(
+                dependency.get("kind") or "depends_on", noun="dependency kind"
+            )
+        else:
+            dependency_cid = _identifier(raw, noun="dependency_task_cid")
+            kind = "depends_on"
+        dependencies.append(
+            {"dependency_task_cid": dependency_cid, "kind": kind}
+        )
+    dependencies.sort(
+        key=lambda item: (item["dependency_task_cid"], item["kind"])
+    )
+
+    outputs: list[dict[str, Any]] = []
+    for index, raw in enumerate(
+        _projection_sequence(
+            task.get("outputs"), noun="task outputs", maximum=MAX_OUTPUTS
+        )
+    ):
+        output = _mapping(raw, noun="task output")
+        outputs.append(
+            {
+                "ordinal": _nonneg_int(
+                    output.get("ordinal", index), noun="output ordinal"
+                ),
+                "path": _identifier(output.get("path"), noun="output path"),
+                "effect": _jsonable(output.get("effect", {})),
+            }
+        )
+    outputs.sort(key=lambda item: (item["ordinal"], item["path"]))
+
+    acceptance: list[dict[str, Any]] = []
+    for index, raw in enumerate(
+        _projection_sequence(
+            task.get("acceptance"),
+            noun="task acceptance",
+            maximum=MAX_ACCEPTANCE,
+        )
+    ):
+        item = _mapping(raw, noun="task acceptance entry")
+        criterion = str(item.get("criterion") or "").strip()
+        if not criterion:
+            raise IntentRepositoryError("acceptance criterion must not be empty")
+        acceptance.append(
+            {
+                "ordinal": _nonneg_int(
+                    item.get("ordinal", index), noun="acceptance ordinal"
+                ),
+                "criterion": criterion,
+                "evidence_policy": _jsonable(item.get("evidence_policy", {})),
+            }
+        )
+    acceptance.sort(key=lambda item: item["ordinal"])
+
+    validations: list[dict[str, Any]] = []
+    for index, raw in enumerate(
+        _projection_sequence(
+            task.get("validations"),
+            noun="task validations",
+            maximum=MAX_VALIDATIONS,
+        )
+    ):
+        item = _mapping(raw, noun="task validation entry")
+        argv = _projection_sequence(
+            item.get("argv"), noun="validation argv", maximum=MAX_BODY_BYTES
+        )
+        validations.append(
+            {
+                "ordinal": _nonneg_int(
+                    item.get("ordinal", index), noun="validation ordinal"
+                ),
+                "argv": [str(part) for part in argv],
+                "policy": _jsonable(item.get("policy", {})),
+            }
+        )
+    validations.sort(key=lambda item: item["ordinal"])
+
+    return {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "goal_cid": goal_cid,
+        "objective_id": objective_id,
+        "ordinal": _nonneg_int(task.get("ordinal", 0), noun="task ordinal"),
+        "priority": str(task.get("priority") or ""),
+        "identity": _jsonable(task.get("identity", {})),
+        "body": _jsonable(task.get("body", {})),
+        "extension_schema": str(task.get("extension_schema") or ""),
+        "extension": _jsonable(task.get("extension", {})),
+        "dependencies": dependencies,
+        "outputs": outputs,
+        "acceptance": acceptance,
+        "validations": validations,
+    }
+
+
+def task_projection_spec_cid(record: Mapping[str, Any]) -> str:
+    """Return the stable CID of a task's complete non-lifecycle specification."""
+
+    material = {
+        "schema": TASK_PROJECTION_SPEC_SCHEMA,
+        "task": _task_projection_spec(record),
+    }
+    encoded = canonical_json_bytes(material)
+    if len(encoded) > MAX_TASK_PROJECTION_BYTES:
+        raise IntentRepositoryBoundsError("task projection spec exceeds byte bound")
+    return content_identity(material)
+
+
+def task_authority_spec_cid(record: Mapping[str, Any]) -> str:
+    """Return the CID of the immutable, authority-bearing task specification.
+
+    ``IntentRepository@1`` historically stores the latest status-transition
+    receipt in ``body.completion_receipt`` so retry workers can recover an
+    exact seed.  That receipt is operational lifecycle evidence: replacing it
+    through an admitted status CAS must not look like a plan amendment.  Every
+    other body field remains authority-bearing.  The legacy
+    :func:`task_projection_spec_cid` is intentionally unchanged because its
+    CIDs are already persisted in plan-revision receipts.
+    """
+
+    normalized = _task_projection_spec(record)
+    body = normalized.get("body")
+    if isinstance(body, dict):
+        body = dict(body)
+        body.pop("completion_receipt", None)
+        normalized["body"] = body
+    material = {
+        "schema": TASK_AUTHORITY_SPEC_SCHEMA,
+        "task": normalized,
+    }
+    encoded = canonical_json_bytes(material)
+    if len(encoded) > MAX_TASK_PROJECTION_BYTES:
+        raise IntentRepositoryBoundsError("task authority spec exceeds byte bound")
+    return content_identity(material)
+
+
+def _content_addressed_projection(
+    material: Mapping[str, Any],
+    *,
+    maximum_bytes: int,
+    noun: str,
+) -> Mapping[str, Any]:
+    normalized = _jsonable(material)
+    encoded = canonical_json_bytes(normalized)
+    if len(encoded) > maximum_bytes:
+        raise IntentRepositoryBoundsError(f"{noun} exceeds byte bound")
+    return MappingProxyType(
+        {**normalized, "projection_cid": content_identity(normalized)}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2643,6 +2885,7 @@ class IntentRepository:
                 )
                 event_body["completion_receipt_cid"] = receipt_cid
                 event_body["evidence_digest"] = evidence_digest
+                event_body["evidence_digests"] = list(evidence_digests or ())
                 return self._append_event(
                     connection,
                     event_type=IntentEventType.COMPLETION_RECORDED,
@@ -3553,6 +3796,24 @@ class IntentRepository:
                     _canonical(body, noun="task body"),
                 ],
             )
+            connection.execute(
+                "DELETE FROM task_revisions WHERE task_cid = ? AND revision = ?",
+                [tcid, revision],
+            )
+            connection.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    tcid,
+                    revision,
+                    str(payload.get("status") or "ready"),
+                    _canonical(body, noun="task revision body"),
+                    now,
+                ],
+            )
             if "dependencies" in payload:
                 deps = payload.get("dependencies") or []
                 if isinstance(deps, Sequence) and not isinstance(deps, (str, bytes)):
@@ -3656,6 +3917,24 @@ class IntentRepository:
                         _canonical(body, noun="task body"),
                     ],
                 )
+            connection.execute(
+                "DELETE FROM task_revisions WHERE task_cid = ? AND revision = ?",
+                [tcid, revision],
+            )
+            connection.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    tcid,
+                    revision,
+                    status,
+                    _canonical(body, noun="task revision body"),
+                    now,
+                ],
+            )
             if event_type == IntentEventType.COMPLETION_RECORDED.value:
                 receipt_cid = str(
                     payload.get("completion_receipt_cid")
@@ -3671,6 +3950,50 @@ class IntentRepository:
                     payload.get("evidence_digest")
                     or content_identity({"task_cid": tcid, "revision": revision})
                 )
+                raw_evidence_digests = payload.get("evidence_digests", [])
+                if not isinstance(raw_evidence_digests, list) or any(
+                    not isinstance(item, str) or not item
+                    for item in raw_evidence_digests
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "completion event evidence_digests are malformed"
+                    )
+                if "evidence_digests" not in payload:
+                    reconstructable_legacy_digest = content_identity(
+                        {
+                            "task_cid": tcid,
+                            "revision": revision,
+                            "receipt": receipt,
+                            "evidence_digests": [],
+                        }
+                    )
+                    if evidence_digest != reconstructable_legacy_digest:
+                        raise IntentRepositoryIntegrityError(
+                            "legacy completion event omitted nonempty evidence_digests"
+                        )
+                reconstructed_evidence_digest = content_identity(
+                    {
+                        "task_cid": tcid,
+                        "revision": revision,
+                        "receipt": receipt,
+                        "evidence_digests": list(raw_evidence_digests),
+                    }
+                )
+                reconstructed_receipt_cid = content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": tcid,
+                        "revision": revision,
+                        "evidence_digest": reconstructed_evidence_digest,
+                    }
+                )
+                if (
+                    evidence_digest != reconstructed_evidence_digest
+                    or receipt_cid != reconstructed_receipt_cid
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "completion event evidence identity does not reconstruct"
+                    )
                 connection.execute(
                     "DELETE FROM completion_receipts WHERE receipt_cid = ?",
                     [receipt_cid],
@@ -3697,6 +4020,7 @@ class IntentRepository:
                             {
                                 "schema": COMPLETION_EVIDENCE_SCHEMA,
                                 "receipt": receipt,
+                                "evidence_digests": list(raw_evidence_digests),
                                 "revision": revision,
                             },
                             noun="completion receipt",
@@ -4075,6 +4399,476 @@ class IntentRepository:
             recorded_at=_utc_iso(),
         )
 
+    def task_revision_history_projection(
+        self, task_cid_or_alias: str
+    ) -> Mapping[str, Any]:
+        """Return bounded task-body revisions for legacy spec-CID replay.
+
+        Task relations are current plan specification and are deliberately not
+        duplicated in this lifecycle history.  Callers combine one historical
+        body with a separately read full plan projection, then require the
+        receipt-bound legacy spec CID before treating that body as a baseline.
+        """
+
+        key = _identifier(task_cid_or_alias, noun="task_cid")
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                "SELECT task_cid FROM tasks "
+                "WHERE task_cid = ? OR task_alias = ? "
+                "ORDER BY task_cid LIMIT 2",
+                [key, key],
+            ).fetchall()
+            if not rows:
+                raise KeyError(key)
+            if len(rows) > 1:
+                raise IntentRepositoryIntegrityError(
+                    "task CID/alias lookup is ambiguous"
+                )
+            task_cid = str(rows[0][0])
+            count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM task_revisions WHERE task_cid = ?",
+                    [task_cid],
+                ).fetchone()[0]
+            )
+            if count > MAX_PROJECTION_RECORDS:
+                raise IntentRepositoryBoundsError(
+                    "task revision history exceeds projection bound"
+                )
+            revision_rows = connection.execute(
+                "SELECT revision, status, body_json FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision",
+                [task_cid],
+            ).fetchall()
+        return _content_addressed_projection(
+            {
+                "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                "task_cid": task_cid,
+                "revisions": [
+                    {
+                        "revision": int(row[0]),
+                        "status": str(row[1]),
+                        "body": _decode_json(row[2], noun="task revision body"),
+                    }
+                    for row in revision_rows
+                ],
+            },
+            maximum_bytes=MAX_PLAN_PROJECTION_BYTES,
+            noun="task revision history projection",
+        )
+
+    def plan_projection(
+        self, *, task_cids: Sequence[str] = ()
+    ) -> Mapping[str, Any]:
+        """Return a bounded, full-fidelity projection of current plan intent.
+
+        Unlike :meth:`snapshot`, this projection is suitable for plan CAS and
+        steering admission: it binds the complete task specification and the
+        dependency kind, output, acceptance, and validation relations.  It is
+        a read-only projection and deliberately excludes wall-clock metadata
+        that does not affect the current plan's meaning.
+        """
+
+        requested = _projection_task_cids(task_cids)
+        with self._connection(write=False) as connection:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                bounded_tables = (
+                    "objectives",
+                    "goals",
+                    "goal_edges",
+                    "plans",
+                )
+                for table in bounded_tables:
+                    count = int(
+                        connection.execute(
+                            f"SELECT COUNT(*) FROM {table}"
+                        ).fetchone()[0]
+                    )
+                    if count > MAX_PROJECTION_RECORDS:
+                        raise IntentRepositoryBoundsError(
+                            f"{table} projection count exceeds bound"
+                        )
+
+                objective_rows = connection.execute(
+                    """
+                    SELECT objective_id, objective_alias, parent_objective_id,
+                           title, status, priority, revision, body_json,
+                           extension_schema, extension_json
+                    FROM objectives ORDER BY objective_id
+                    """
+                ).fetchall()
+                goal_rows = connection.execute(
+                    """
+                    SELECT goal_cid, goal_alias, objective_id, parent_goal_cid,
+                           ordinal, title, status, revision, body_json
+                    FROM goals ORDER BY goal_cid
+                    """
+                ).fetchall()
+                edge_rows = connection.execute(
+                    """
+                    SELECT parent_goal_cid, child_goal_cid, edge_kind
+                    FROM goal_edges
+                    ORDER BY parent_goal_cid, child_goal_cid, edge_kind
+                    """
+                ).fetchall()
+                plan_rows = connection.execute(
+                    """
+                    SELECT plan_cid, goal_cid, plan_alias, status, revision,
+                           body_json
+                    FROM plans ORDER BY plan_cid
+                    """
+                ).fetchall()
+
+                if requested:
+                    placeholders = ", ".join("?" for _ in requested)
+                    task_rows = connection.execute(
+                        f"""
+                        SELECT task_cid, task_alias, goal_cid, plan_cid,
+                               objective_id, ordinal, status, revision, priority,
+                               identity_json, body_json, extension_schema,
+                               extension_json
+                        FROM tasks WHERE task_cid IN ({placeholders})
+                        ORDER BY task_cid
+                        """,
+                        list(requested),
+                    ).fetchall()
+                    found = {str(row[0]) for row in task_rows}
+                    missing = sorted(set(requested) - found)
+                    if missing:
+                        raise KeyError(
+                            "unknown task_cids in plan projection: "
+                            + ", ".join(missing)
+                        )
+                else:
+                    task_count = int(
+                        connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[
+                            0
+                        ]
+                    )
+                    if task_count > MAX_PAGE_LIMIT:
+                        raise IntentRepositoryBoundsError(
+                            "projection task count exceeds bound"
+                        )
+                    task_rows = connection.execute(
+                        """
+                        SELECT task_cid, task_alias, goal_cid, plan_cid,
+                               objective_id, ordinal, status, revision, priority,
+                               identity_json, body_json, extension_schema,
+                               extension_json
+                        FROM tasks ORDER BY task_cid
+                        """
+                    ).fetchall()
+
+                projected_task_cids = tuple(str(row[0]) for row in task_rows)
+                dependencies_by_task: dict[str, list[dict[str, Any]]] = {
+                    task_cid: [] for task_cid in projected_task_cids
+                }
+                outputs_by_task: dict[str, list[dict[str, Any]]] = {
+                    task_cid: [] for task_cid in projected_task_cids
+                }
+                acceptance_by_task: dict[str, list[dict[str, Any]]] = {
+                    task_cid: [] for task_cid in projected_task_cids
+                }
+                validations_by_task: dict[str, list[dict[str, Any]]] = {
+                    task_cid: [] for task_cid in projected_task_cids
+                }
+                if projected_task_cids:
+                    placeholders = ", ".join("?" for _ in projected_task_cids)
+                    relation_queries = {
+                        "task_dependencies": (
+                            "SELECT task_cid, dependency_task_cid, kind "
+                            f"FROM task_dependencies WHERE task_cid IN ({placeholders}) "
+                            "ORDER BY task_cid, dependency_task_cid, kind"
+                        ),
+                        "task_outputs": (
+                            "SELECT task_cid, ordinal, path, effect_json "
+                            f"FROM task_outputs WHERE task_cid IN ({placeholders}) "
+                            "ORDER BY task_cid, ordinal"
+                        ),
+                        "task_acceptance": (
+                            "SELECT task_cid, ordinal, criterion, evidence_policy_json "
+                            f"FROM task_acceptance WHERE task_cid IN ({placeholders}) "
+                            "ORDER BY task_cid, ordinal"
+                        ),
+                        "task_validations": (
+                            "SELECT task_cid, ordinal, argv_json, policy_json "
+                            f"FROM task_validations WHERE task_cid IN ({placeholders}) "
+                            "ORDER BY task_cid, ordinal"
+                        ),
+                    }
+                    relation_rows: dict[str, list[Any]] = {}
+                    for table, query in relation_queries.items():
+                        count = int(
+                            connection.execute(
+                                "SELECT COUNT(*) FROM "
+                                + table
+                                + f" WHERE task_cid IN ({placeholders})",
+                                list(projected_task_cids),
+                            ).fetchone()[0]
+                        )
+                        if count > MAX_PROJECTION_RECORDS:
+                            raise IntentRepositoryBoundsError(
+                                f"{table} projection count exceeds bound"
+                            )
+                        relation_rows[table] = connection.execute(
+                            query, list(projected_task_cids)
+                        ).fetchall()
+
+                    for row in relation_rows["task_dependencies"]:
+                        dependencies_by_task[str(row[0])].append(
+                            {
+                                "dependency_task_cid": str(row[1]),
+                                "kind": str(row[2]),
+                            }
+                        )
+                    for row in relation_rows["task_outputs"]:
+                        outputs_by_task[str(row[0])].append(
+                            {
+                                "ordinal": int(row[1]),
+                                "path": str(row[2]),
+                                "effect": _decode_json(
+                                    row[3], noun="output effect"
+                                ),
+                            }
+                        )
+                    for row in relation_rows["task_acceptance"]:
+                        acceptance_by_task[str(row[0])].append(
+                            {
+                                "ordinal": int(row[1]),
+                                "criterion": str(row[2]),
+                                "evidence_policy": _decode_json(
+                                    row[3], noun="acceptance policy"
+                                ),
+                            }
+                        )
+                    for row in relation_rows["task_validations"]:
+                        validations_by_task[str(row[0])].append(
+                            {
+                                "ordinal": int(row[1]),
+                                "argv": _decode_json(
+                                    row[2], noun="validation argv"
+                                ),
+                                "policy": _decode_json(
+                                    row[3], noun="validation policy"
+                                ),
+                            }
+                        )
+
+                watermark = int(
+                    connection.execute(
+                        "SELECT COALESCE(MAX(global_sequence), 0) "
+                        "FROM domain_events"
+                    ).fetchone()[0]
+                )
+                connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+
+        objectives = [
+            {
+                "objective_id": str(row[0]),
+                "objective_alias": str(row[1]),
+                "parent_objective_id": str(row[2] or ""),
+                "title": str(row[3]),
+                "status": str(row[4]),
+                "priority": str(row[5]),
+                "revision": int(row[6]),
+                "body": _decode_json(row[7], noun="objective body"),
+                "extension_schema": str(row[8] or ""),
+                "extension": _decode_json(row[9], noun="objective extension"),
+            }
+            for row in objective_rows
+        ]
+        goals = [
+            {
+                "goal_cid": str(row[0]),
+                "goal_alias": str(row[1]),
+                "objective_id": str(row[2] or ""),
+                "parent_goal_cid": str(row[3] or ""),
+                "ordinal": int(row[4]),
+                "title": str(row[5]),
+                "status": str(row[6]),
+                "revision": int(row[7]),
+                "body": _decode_json(row[8], noun="goal body"),
+            }
+            for row in goal_rows
+        ]
+        goal_edges = [
+            {
+                "parent_goal_cid": str(row[0]),
+                "child_goal_cid": str(row[1]),
+                "edge_kind": str(row[2]),
+            }
+            for row in edge_rows
+        ]
+        plans = [
+            {
+                "plan_cid": str(row[0]),
+                "goal_cid": str(row[1]),
+                "plan_alias": str(row[2]),
+                "status": str(row[3]),
+                "revision": int(row[4]),
+                "body": _decode_json(row[5], noun="plan body"),
+            }
+            for row in plan_rows
+        ]
+        tasks: list[dict[str, Any]] = []
+        for row in task_rows:
+            task_cid = str(row[0])
+            task: dict[str, Any] = {
+                "task_cid": task_cid,
+                "task_alias": str(row[1]),
+                "goal_cid": str(row[2]),
+                "plan_cid": str(row[3] or ""),
+                "objective_id": str(row[4] or ""),
+                "ordinal": int(row[5]),
+                "status": str(row[6]),
+                "revision": int(row[7]),
+                "priority": str(row[8] or ""),
+                "identity": _decode_json(row[9], noun="task identity"),
+                "body": _decode_json(row[10], noun="task body"),
+                "extension_schema": str(row[11] or ""),
+                "extension": _decode_json(row[12], noun="task extension"),
+                "dependencies": dependencies_by_task[task_cid],
+                "outputs": outputs_by_task[task_cid],
+                "acceptance": acceptance_by_task[task_cid],
+                "validations": validations_by_task[task_cid],
+            }
+            task["spec_cid"] = task_projection_spec_cid(task)
+            tasks.append(task)
+
+        return _content_addressed_projection(
+            {
+                "schema": INTENT_PLAN_PROJECTION_SCHEMA,
+                "event_watermark": watermark,
+                "objectives": objectives,
+                "goals": goals,
+                "goal_edges": goal_edges,
+                "plans": plans,
+                "tasks": tasks,
+            },
+            maximum_bytes=MAX_PLAN_PROJECTION_BYTES,
+            noun="intent plan projection",
+        )
+
+    def completion_evidence_projection(
+        self, *, task_cids: Sequence[str] = ()
+    ) -> Mapping[str, Any]:
+        """Return exact current task states and durable completion receipts."""
+
+        requested = _projection_task_cids(task_cids)
+        with self._connection(write=False) as connection:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                if requested:
+                    placeholders = ", ".join("?" for _ in requested)
+                    task_rows = connection.execute(
+                        "SELECT task_cid, status, revision FROM tasks "
+                        f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid",
+                        list(requested),
+                    ).fetchall()
+                    found = {str(row[0]) for row in task_rows}
+                    missing = sorted(set(requested) - found)
+                    if missing:
+                        raise KeyError(
+                            "unknown task_cids in completion projection: "
+                            + ", ".join(missing)
+                        )
+                else:
+                    task_count = int(
+                        connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[
+                            0
+                        ]
+                    )
+                    if task_count > MAX_PAGE_LIMIT:
+                        raise IntentRepositoryBoundsError(
+                            "completion projection task count exceeds bound"
+                        )
+                    task_rows = connection.execute(
+                        "SELECT task_cid, status, revision FROM tasks "
+                        "ORDER BY task_cid"
+                    ).fetchall()
+
+                projected_task_cids = tuple(str(row[0]) for row in task_rows)
+                if projected_task_cids:
+                    placeholders = ", ".join("?" for _ in projected_task_cids)
+                    receipt_count = int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM completion_receipts "
+                            f"WHERE task_cid IN ({placeholders})",
+                            list(projected_task_cids),
+                        ).fetchone()[0]
+                    )
+                    if receipt_count > MAX_EVIDENCE:
+                        raise IntentRepositoryBoundsError(
+                            "completion receipt projection count exceeds bound"
+                        )
+                    receipt_rows = connection.execute(
+                        """
+                        SELECT receipt_cid, task_cid, goal_cid, attempt_id,
+                               claim_cid, fencing_token, completed_at,
+                               validation_run_id, evidence_digest, body_json
+                        FROM completion_receipts
+                        WHERE task_cid IN ("""
+                        + placeholders
+                        + ") ORDER BY task_cid, completed_at, receipt_cid",
+                        list(projected_task_cids),
+                    ).fetchall()
+                else:
+                    receipt_rows = []
+                watermark = int(
+                    connection.execute(
+                        "SELECT COALESCE(MAX(global_sequence), 0) "
+                        "FROM domain_events"
+                    ).fetchone()[0]
+                )
+                connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+
+        task_states = [
+            {
+                "task_cid": str(row[0]),
+                "status": str(row[1]),
+                "revision": int(row[2]),
+            }
+            for row in task_rows
+        ]
+        completion_receipts = [
+            {
+                "receipt_cid": str(row[0]),
+                "task_cid": str(row[1]),
+                "goal_cid": str(row[2]),
+                "attempt_id": str(row[3] or ""),
+                "claim_cid": str(row[4] or ""),
+                "fencing_token": int(row[5]),
+                "completed_at": str(row[6]),
+                "validation_run_id": str(row[7] or ""),
+                "evidence_digest": str(row[8]),
+                "body": _decode_json(row[9], noun="completion receipt body"),
+            }
+            for row in receipt_rows
+        ]
+        return _content_addressed_projection(
+            {
+                "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
+                "event_watermark": watermark,
+                "task_states": task_states,
+                "completion_receipts": completion_receipts,
+            },
+            maximum_bytes=MAX_COMPLETION_PROJECTION_BYTES,
+            noun="intent completion projection",
+        )
+
     def plan_revisions(self) -> PlanRevisionRepository:
         """Return the plan-revision repository view over this intent store."""
 
@@ -4237,6 +5031,7 @@ def open_intent_repository(
     session_id: str = DEFAULT_SESSION_ID,
     install_schema: bool = True,
     evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_ms: Any | None = None,
 ) -> IntentRepository:
     """Open an intent repository against ``control.duckdb`` (or test path)."""
 
@@ -4246,6 +5041,7 @@ def open_intent_repository(
         session_id=session_id,
         install_schema=install_schema,
         evidence_freshness_seconds=evidence_freshness_seconds,
+        clock_ms=clock_ms,
     )
 
 
@@ -4254,6 +5050,15 @@ __all__ = (
     "PLAN_REVISION_REPOSITORY_INTERFACE",
     "INTENT_REPOSITORY_SCHEMA",
     "PLAN_REVISION_REPOSITORY_SCHEMA",
+    "INTENT_PLAN_PROJECTION_SCHEMA",
+    "INTENT_COMPLETION_PROJECTION_SCHEMA",
+    "TASK_PROJECTION_SPEC_SCHEMA",
+    "TASK_AUTHORITY_SPEC_SCHEMA",
+    "TASK_REVISION_HISTORY_PROJECTION_SCHEMA",
+    "MAX_PROJECTION_RECORDS",
+    "MAX_TASK_PROJECTION_BYTES",
+    "MAX_PLAN_PROJECTION_BYTES",
+    "MAX_COMPLETION_PROJECTION_BYTES",
     "IntentEventType",
     "IntentRepository",
     "IntentRepositoryError",
@@ -4269,6 +5074,8 @@ __all__ = (
     "QueueEntry",
     "PlanHead",
     "PlanRevisionRepository",
+    "task_projection_spec_cid",
+    "task_authority_spec_cid",
     "open_intent_repository",
     "duckdb_available",
 )

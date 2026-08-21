@@ -2256,6 +2256,26 @@ class PlanSteerService:
                         added.add(after)
                         next_unstarted.add(after)
                         retained.add(after)
+            elif op in {
+                PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+                PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
+            }:
+                if not target or partition.lifecycle_of(target) not in {
+                    LifecycleState.PROPOSED,
+                    LifecycleState.ADMITTED,
+                    LifecycleState.READY,
+                    LifecycleState.UNSTARTED,
+                    LifecycleState.BLOCKED,
+                }:
+                    raise PlanSteerLifecycleError(
+                        f"{op.value} requires an existing unstarted "
+                        f"or blocked target: {target}",
+                        code=PlanSteerRejectionCode.RUNNING_EDIT,
+                    )
+                # ``after_record_cid`` identifies the replacement *specification*,
+                # not a new logical task.  The canonical task CID and lifecycle
+                # population therefore remain unchanged across the amendment.
+                retained.add(target)
             elif op is PlanDeltaOperation.BLOCK_UNSTARTED_TASK:
                 if target:
                     if target in prior_claimed or is_history_immutable(
@@ -2285,7 +2305,6 @@ class PlanSteerService:
                 PlanDeltaOperation.SPLIT_UNSTARTED_TASK,
                 PlanDeltaOperation.COALESCE_UNSTARTED_TASKS,
                 PlanDeltaOperation.REWIRE_UNSTARTED_DEPENDENCY,
-                PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
                 PlanDeltaOperation.ASSIGN_PARALLEL_CONTRACT,
                 PlanDeltaOperation.AMEND_UNSTARTED_GOAL,
                 PlanDeltaOperation.SUPERSEDE_GOAL,
@@ -2515,6 +2534,7 @@ class PlanSteerService:
             if state in _RUNNING_FAMILY and item.operation in {
                 PlanDeltaOperation.SUPERSEDE_UNSTARTED_TASK,
                 PlanDeltaOperation.AMEND_UNSTARTED_GOAL,
+                PlanDeltaOperation.AMEND_UNSTARTED_TASK,
                 PlanDeltaOperation.SPLIT_UNSTARTED_TASK,
                 PlanDeltaOperation.COALESCE_UNSTARTED_TASKS,
                 PlanDeltaOperation.REWIRE_UNSTARTED_DEPENDENCY,

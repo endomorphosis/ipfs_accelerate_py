@@ -194,6 +194,120 @@ def test_supervisor_propagates_explicit_merge_queue_namespace(
     assert supervisor._managed_daemon_matches_command_line(" ".join(command))
 
 
+def test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    protected_paths = ("docs/judge.md", "test/acceptance.py")
+    for relative in protected_paths:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("protected\n", encoding="utf-8")
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--max-task-attempts",
+            "3",
+            "--validation-max-workers",
+            "4",
+            "--implementation-protected-path",
+            protected_paths[0],
+            "--implementation-protected-path",
+            protected_paths[1],
+        ]
+    )
+
+    config = supervisor_config_from_args(parsed, repo_root=tmp_path)
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert config.max_task_attempts == 3
+    assert config.validation_max_workers == 4
+    assert config.implementation_protected_paths == protected_paths
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+
+    # Protected paths are an exact set: process argv order has no authority,
+    # but missing, additional, changed, or duplicate entries must reject reuse.
+    first_index = command.index("--implementation-protected-path")
+    second_index = command.index(
+        "--implementation-protected-path", first_index + 1
+    )
+    reordered = list(command)
+    reordered[first_index + 1], reordered[second_index + 1] = (
+        reordered[second_index + 1],
+        reordered[first_index + 1],
+    )
+    assert supervisor._managed_daemon_matches_command_line(" ".join(reordered))
+
+    def replace_option_value(
+        source: list[str], option: str, value: str
+    ) -> list[str]:
+        changed = list(source)
+        changed[changed.index(option) + 1] = value
+        return changed
+
+    def remove_option(source: list[str], option: str) -> list[str]:
+        changed = list(source)
+        index = changed.index(option)
+        del changed[index : index + 2]
+        return changed
+
+    mismatched_commands = [
+        replace_option_value(command, "--max-task-attempts", "2"),
+        remove_option(command, "--max-task-attempts"),
+        [*command, "--max-task-attempts", "3"],
+        replace_option_value(command, "--validation-max-workers", "5"),
+        remove_option(command, "--validation-max-workers"),
+        [*command, "--validation-max-workers", "4"],
+        remove_option(command, "--implementation-protected-path"),
+        [*command, "--implementation-protected-path", "src/unprotected.py"],
+        replace_option_value(
+            command,
+            "--implementation-protected-path",
+            "src/different.py",
+        ),
+        [
+            *command,
+            "--implementation-protected-path",
+            protected_paths[0],
+        ],
+    ]
+    for mismatched in mismatched_commands:
+        assert not supervisor._managed_daemon_matches_command_line(
+            " ".join(mismatched)
+        )
+
+
+def test_supervisor_adoption_rejects_unconfigured_validation_workers(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    config = supervisor_config_from_args(
+        parse_supervisor_args(
+            [
+                "--todo-path",
+                str(board),
+                "--state-dir",
+                str(tmp_path / "state"),
+            ]
+        ),
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert config.validation_max_workers is None
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join([*command, "--validation-max-workers", "1"])
+    )
+
+
 def test_supervisor_propagates_execution_slice_task_ids_to_daemon(tmp_path: Path):
     board = tmp_path / "tasks.todo.md"
     board.write_text("# Tasks\n", encoding="utf-8")

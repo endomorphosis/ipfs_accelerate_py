@@ -12,18 +12,22 @@ creation are one transaction.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    COORDINATION_HISTORY_PROJECTION_SCHEMA,
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
     TASK_CLAIM_INTERFACE,
+    TASK_DEPENDENCY_AMENDMENT_SCHEMA,
     AttemptStatus,
     DatabaseCoordinationConflictError,
+    DatabaseCoordinationError,
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationNotReadyError,
     DatabaseCoordinationStaleFenceError,
@@ -36,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     duckdb_available,
     exclusive_scope_key,
     open_database_coordinator,
+    read_coordination_history_projection,
     read_coordination_registry_projection,
 )
 
@@ -810,6 +815,137 @@ def test_coordination_registry_projection_makes_dependency_tamper_visible(
         coordinator.close()
 
 
+def test_add_unstarted_task_dependency_is_exact_and_identity_preserving(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:old-dep", task_id="OLD-DEP")
+        coordinator.register_task(task_cid="task:new-dep", task_id="NEW-DEP")
+        coordinator.register_task(
+            task_cid="task:future",
+            task_id="FUTURE",
+            worktree_id="worktree:future",
+            dependency_task_cids=("task:old-dep",),
+            body={"logical_task_cid": "task:future", "ordinal": 120},
+        )
+        before = coordinator.coordination_registry_projection()
+        before_task = next(
+            item for item in before["tasks"] if item["task_cid"] == "task:future"
+        )
+
+        receipt = coordinator.add_unstarted_task_dependency(
+            task_cid="task:future",
+            dependency_task_cid="task:new-dep",
+            expected_dependency_task_cids=("task:old-dep",),
+            operation_id="plan-revision:r2:120-requires-113",
+        )
+
+        assert receipt["schema"] == TASK_DEPENDENCY_AMENDMENT_SCHEMA
+        assert receipt["changed"] is True
+        assert receipt["before_dependency_task_cids"] == ["task:old-dep"]
+        assert receipt["after_dependency_task_cids"] == [
+            "task:new-dep",
+            "task:old-dep",
+        ]
+        assert receipt["receipt_cid"].startswith("sha256:")
+        after = coordinator.coordination_registry_projection()
+        assert next(
+            item for item in after["tasks"] if item["task_cid"] == "task:future"
+        ) == before_task
+        assert after["logical_completions"] == before["logical_completions"]
+        assert {
+            (item["task_cid"], item["dependency_task_cid"])
+            for item in after["dependency_edges"]
+        } - {
+            (item["task_cid"], item["dependency_task_cid"])
+            for item in before["dependency_edges"]
+        } == {("task:future", "task:new-dep")}
+
+        replay = coordinator.add_unstarted_task_dependency(
+            task_cid="task:future",
+            dependency_task_cid="task:new-dep",
+            expected_dependency_task_cids=("task:old-dep",),
+            operation_id="plan-revision:r2:120-requires-113",
+        )
+        assert replay["changed"] is False
+        assert coordinator.coordination_registry_projection() == after
+    finally:
+        coordinator.close()
+
+
+def test_add_unstarted_task_dependency_rejects_stale_cas_and_missing_target(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:old-dep", task_id="OLD-DEP")
+        coordinator.register_task(task_cid="task:new-dep", task_id="NEW-DEP")
+        coordinator.register_task(
+            task_cid="task:future",
+            task_id="FUTURE",
+            dependency_task_cids=("task:old-dep",),
+        )
+        before = coordinator.coordination_registry_projection()
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="compare-and-swap failed",
+        ):
+            coordinator.add_unstarted_task_dependency(
+                task_cid="task:future",
+                dependency_task_cid="task:new-dep",
+                expected_dependency_task_cids=(),
+                operation_id="stale-plan-revision",
+            )
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="dependency task is absent",
+        ):
+            coordinator.add_unstarted_task_dependency(
+                task_cid="task:future",
+                dependency_task_cid="task:not-registered",
+                expected_dependency_task_cids=("task:old-dep",),
+                operation_id="missing-dependency",
+            )
+        assert coordinator.coordination_registry_projection() == before
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize("history_kind", ["completion", "claim"])
+def test_add_unstarted_task_dependency_rejects_any_execution_history(
+    tmp_path: Path,
+    history_kind: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path / history_kind)
+    try:
+        coordinator.register_task(task_cid="task:new-dep", task_id="NEW-DEP")
+        coordinator.register_task(task_cid="task:started", task_id="STARTED")
+        if history_kind == "completion":
+            coordinator.mark_task_complete("task:started")
+        else:
+            coordinator.claim_task(
+                task_cid="task:started",
+                owner_session_id="session:worker",
+            )
+        before = coordinator.coordination_registry_projection()
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires an unstarted task",
+        ):
+            coordinator.add_unstarted_task_dependency(
+                task_cid="task:started",
+                dependency_task_cid="task:new-dep",
+                expected_dependency_task_cids=(),
+                operation_id=f"reject-{history_kind}",
+            )
+        assert coordinator.coordination_registry_projection() == before
+    finally:
+        coordinator.close()
+
+
 def test_read_only_projection_preserves_database_bytes_and_exposes_histories(
     tmp_path: Path,
 ) -> None:
@@ -921,6 +1057,115 @@ def test_read_only_projection_preserves_database_bytes_and_exposes_histories(
             "body": {"reason": "foreign"},
         }
     ]
+
+
+def test_coordination_history_projection_is_closed_deterministic_and_read_only(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        lease = coordinator.acquire(
+            lease_kind="merge",
+            scope="history:exact",
+            owner_session_id="session:history",
+            lease_ms=30_000,
+            body={"reason": "history-projection"},
+        )
+        coordinator.release(lease, reason="history-complete")
+    finally:
+        coordinator.close()
+
+    before = (
+        database_path.stat().st_size,
+        database_path.stat().st_mtime_ns,
+        hashlib.sha256(database_path.read_bytes()).hexdigest(),
+    )
+    first = read_coordination_history_projection(database_path)
+    second = read_coordination_history_projection(database_path)
+
+    assert first == second
+    assert first["schema"] == COORDINATION_HISTORY_PROJECTION_SCHEMA
+    assert first["counts"] == {"token_history": 1, "lease_events": 2}
+    assert set(first) == {
+        "schema",
+        "authority_schema",
+        "schema_inventory",
+        "token_history",
+        "lease_events",
+        "counts",
+        "projection_root",
+    }
+    material = dict(first)
+    claimed = material.pop("projection_root")
+    encoded = json.dumps(
+        material, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert claimed == "sha256:" + hashlib.sha256(encoded).hexdigest()
+    assert before == (
+        database_path.stat().st_size,
+        database_path.stat().st_mtime_ns,
+        hashlib.sha256(database_path.read_bytes()).hexdigest(),
+    )
+
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute("CREATE TABLE forged_hidden_authority(value VARCHAR)")
+    finally:
+        connection.close()
+    forged_before = hashlib.sha256(database_path.read_bytes()).hexdigest()
+    with pytest.raises(
+        DatabaseCoordinationStaleFenceError,
+        match="table inventory differs",
+    ):
+        read_coordination_history_projection(database_path)
+    assert hashlib.sha256(database_path.read_bytes()).hexdigest() == forged_before
+
+
+def test_coordination_projection_rejects_duplicate_json_authority(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        coordinator.register_task(
+            task_cid="task:duplicate-json",
+            task_id="DUP-001",
+            body={"task_alias": "DUP-001", "status": "todo"},
+        )
+        coordinator._require().execute(  # noqa: SLF001
+            "UPDATE coordination_tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                '{"task_alias":"EVIL","task_alias":"DUP-001","status":"todo"}',
+                "task:duplicate-json",
+            ],
+        )
+    finally:
+        coordinator.close()
+
+    with pytest.raises(
+        DatabaseCoordinationStaleFenceError,
+        match="unambiguous JSON",
+    ):
+        read_coordination_registry_projection(database_path)
+
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute(
+            "UPDATE coordination_tasks SET body_json = '' WHERE task_cid = ?",
+            ["task:duplicate-json"],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        DatabaseCoordinationStaleFenceError,
+        match="unambiguous JSON",
+    ):
+        read_coordination_registry_projection(database_path)
 
 
 @pytest.mark.parametrize("tamper", ["metadata", "schema"])
@@ -1048,6 +1293,44 @@ def test_fair_claim_ready_selects_oldest_registered_task(tmp_path: Path) -> None
         assert third is not None
         assert third.task_cid == "task:third"
         assert coordinator.claim_ready_task(owner_session_id="session:d") is None
+    finally:
+        coordinator.close()
+
+
+def test_claim_ready_honors_exact_eligible_order_and_boundary(tmp_path: Path) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:oldest", task_id="OLDEST", now_ms=clock.now
+        )
+        coordinator.register_task(
+            task_cid="task:preferred", task_id="PREFERRED", now_ms=clock.now + 10
+        )
+        coordinator.register_task(
+            task_cid="task:excluded-by-boundary",
+            task_id="EXCLUDED",
+            now_ms=clock.now - 10,
+        )
+
+        claim = coordinator.claim_ready_task(
+            owner_session_id="session:ordered",
+            eligible_task_cids=("task:preferred", "task:oldest"),
+        )
+        assert claim is not None
+        assert claim.task_cid == "task:preferred"
+
+        # An explicit empty eligibility projection is authoritative.
+        assert (
+            coordinator.claim_ready_task(
+                owner_session_id="session:empty", eligible_task_cids=()
+            )
+            is None
+        )
+        with pytest.raises(DatabaseCoordinationError, match="absent"):
+            coordinator.claim_ready_task(
+                owner_session_id="session:unknown",
+                eligible_task_cids=("task:not-registered",),
+            )
     finally:
         coordinator.close()
 
