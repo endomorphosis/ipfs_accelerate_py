@@ -697,24 +697,108 @@ def _eaaef_write_task_status_projection(
         return
 
 
+def _eaaef_normalize_status_overlay(
+    rows: Sequence[Any],
+    *,
+    allowed: set[str],
+) -> dict[str, str]:
+    overlay: dict[str, str] = {}
+    for alias, status in rows:
+        task_id = str(alias or "").strip()
+        normalized = str(status or "").strip().lower()
+        if task_id and normalized in allowed:
+            overlay[task_id] = normalized
+    return overlay
+
+
+def _eaaef_live_quack_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
+    """Read task status from the exclusive loopback Quack owner."""
+
+    program = board.database_program
+    if program is None:
+        return {}
+    endpoint = str(program.quack_endpoint or "")
+    handle = str(program.endpoint_secret_handle or "")
+    if (
+        not endpoint.startswith("quack:127.0.0.1:")
+        or "'" in endpoint
+        or "\x00" in endpoint
+        or not handle
+    ):
+        return {}
+    allowed = {
+        "todo",
+        "blocked",
+        "completed",
+        "cancelled",
+        "failed",
+        "quarantined",
+        "in_progress",
+    }
+    try:
+        from ..todo_daemon.eaaef_host_admitted_daemon_gateway import (
+            _connect_admitted_duckdb,
+            _import_admitted_duckdb,
+            _resolve_owner_token,
+        )
+
+        duckdb_module, extension = _import_admitted_duckdb(board.repo_root)
+        generation = str(program.store_generation or "eaaef-run-v14")
+        run_dir = generation.removeprefix("eaaef-")
+        vault = (
+            board.repo_root
+            / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+            / run_dir
+            / "live/state/quack-owner"
+        )
+        token = _resolve_owner_token(handle, vault_dir=vault)
+        connection = _connect_admitted_duckdb(duckdb_module, extension)
+        try:
+            connection.execute(
+                f"ATTACH '{endpoint}' AS control_plane (TYPE QUACK, TOKEN ?)",
+                [token],
+            )
+            connection.execute("USE control_plane")
+            rows = connection.execute(
+                "SELECT task_alias, status FROM tasks"
+            ).fetchall()
+        finally:
+            connection.close()
+    except Exception:
+        return {}
+    return _eaaef_normalize_status_overlay(rows, allowed=allowed)
+
+
 def _eaaef_task_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
-    """Return DuckDB (or cached projection) status keyed by task alias.
+    """Return DuckDB/Quack (or cached projection) status keyed by task alias.
 
     Markdown remains the tracked task specification.  Operational readiness
-    for EAAEF comes from the bootstrap control plane so completed bootstrap
-    work is not re-planned as ``todo``.
+    for EAAEF comes from the live Quack control plane so completed and
+    admitted work is not re-planned from the frozen markdown board.
     """
 
     if not _eaaef_plan_bound_profile(board):
         return {}
-    allowed = {"todo", "blocked", "completed", "cancelled", "failed", "quarantined"}
+    allowed = {
+        "todo",
+        "blocked",
+        "completed",
+        "cancelled",
+        "failed",
+        "quarantined",
+        "in_progress",
+    }
+    overlay = _eaaef_live_quack_status_overlay(board)
+    if overlay:
+        _eaaef_write_task_status_projection(board, overlay)
+        return overlay
     raw_bootstrap = board.payload.get("bootstrap_database_program")
     store_id = (
         str(raw_bootstrap.get("store_id") or "")
         if isinstance(raw_bootstrap, Mapping)
         else ""
     )
-    overlay: dict[str, str] = {}
+    overlay = {}
     if store_id.endswith((".duckdb", ".ddb")):
         db_path = board.path(store_id)
         if db_path.is_file():
@@ -730,11 +814,7 @@ def _eaaef_task_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
                     connection.close()
             except Exception:
                 rows = ()
-            for alias, status in rows:
-                task_id = str(alias or "").strip()
-                normalized = str(status or "").strip().lower()
-                if task_id and normalized in allowed:
-                    overlay[task_id] = normalized
+            overlay = _eaaef_normalize_status_overlay(rows, allowed=allowed)
     if overlay:
         _eaaef_write_task_status_projection(board, overlay)
         return overlay

@@ -454,3 +454,34 @@ def test_ready_tasks_skip_unmet_dependencies() -> None:
     )
     page = _TaskSource(gateway).ready_tasks(limit=8)
     assert [task.task_alias for task in page.tasks] == ["EAAEF-011", "EAAEF-012"]
+
+
+def test_configured_board_overlay_prefers_live_quack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    class _Board:
+        board_namespace = scheduler.EAAEF_BOARD_NAMESPACE
+        payload = {"schema": scheduler.EAAEF_SCHEDULER_SCHEMA}
+        database_program = object()
+        repo_root = Path("/tmp")
+
+        def path(self, relative: str) -> Path:
+            return Path("/tmp") / relative
+
+    monkeypatch.setattr(
+        scheduler,
+        "_eaaef_live_quack_status_overlay",
+        lambda board: {"EAAEF-011": "todo", "EAAEF-010": "completed"},
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_eaaef_write_task_status_projection",
+        lambda board, overlay: None,
+    )
+    overlay = scheduler._eaaef_task_status_overlay(_Board())
+    assert overlay["EAAEF-011"] == "todo"
+    assert overlay["EAAEF-010"] == "completed"
