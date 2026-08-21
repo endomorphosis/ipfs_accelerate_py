@@ -59,9 +59,7 @@ from ipfs_datasets_py.logic.software_contracts.adversarial_assurance import (
     HeldOutResult,
     SignatureVerificationStatus,
 )
-from ipfs_datasets_py.tests.unit.logic.software_contracts.adversarial_assurance import (
-    test_receipt_contracts as receipt_fixtures,
-)
+from test.api.adversarial_assurance.datasets_test_fixtures import receipt_fixtures
 from ipfs_kit_py.adversarial_assurance_store.artifacts import (
     DurableAssuranceArtifactStore,
     cid_for_assurance_artifact,
