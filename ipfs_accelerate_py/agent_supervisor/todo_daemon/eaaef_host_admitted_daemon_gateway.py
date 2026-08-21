@@ -44,6 +44,7 @@ from .external_agent_container_dispatcher import (
     EXTERNAL_AGENT_CONTAINER_PROPOSAL_RECEIPT_SCHEMA,
     EXTERNAL_AGENT_CONTAINER_VERIFICATION_RECEIPT_SCHEMA,
     EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
+    EXTERNAL_AGENT_HOST_MERGE_ADMISSION_SCHEMA,
     ExternalAgentContainerWorkPacket,
     ExternalAgentContainerWorkerDispatcher,
 )
@@ -63,6 +64,9 @@ _ADMITTED_ENGINE = "unix:///run/user/1000/docker.sock"
 _CONTAINER_GROK = "/opt/eaaef/bin/grok"
 _HOST_EVIDENCE_DID = (
     "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin"
+)
+_REVIEWER_DID = (
+    "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7"
 )
 _GROK_LAUNCH_TIMEOUT_SECONDS = 1800
 _OWNED_RELATIVE_PATHS = (
@@ -445,6 +449,69 @@ def _focused_test_receipt_cid(worktree: Path) -> str:
             "skipped": 0,
         }
     )
+
+
+def _host_head_commit(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    head = str(completed.stdout or "").strip().lower()
+    if completed.returncode != 0 or len(head) != 40:
+        return ""
+    if any(character not in "0123456789abcdef" for character in head):
+        return ""
+    return head
+
+
+def _host_merge_admission(
+    *,
+    packet: ExternalAgentContainerWorkPacket,
+    effect: Mapping[str, Any],
+    repo_root: Path,
+) -> dict[str, Any] | None:
+    """Admit a verified patch when the host already holds the owned files."""
+
+    worktree = _git_worktree(repo_root, attempt_id=packet.attempt_id)
+    try:
+        patch = _owned_patch_cid(worktree)
+    except QuackDaemonGatewayError:
+        return None
+    if patch != str(effect.get("patch_artifact_cid") or ""):
+        return None
+    claim = ExternalAgentContainerWorkerDispatcher._dispatch_claim(packet)
+    if str(effect.get("claim_cid") or "") != claim["claim_cid"]:
+        return None
+    merge_commit = ""
+    delivery = "reviewed_patch"
+    try:
+        if _owned_patch_cid(repo_root) == patch:
+            merge_commit = _host_head_commit(repo_root)
+            if merge_commit:
+                delivery = "merge_accepted"
+    except QuackDaemonGatewayError:
+        merge_commit = ""
+        delivery = "reviewed_patch"
+    if _REVIEWER_DID in {packet.worker_principal_did, packet.provider_principal_did}:
+        raise QuackDaemonGatewayError("reviewer DID collided with worker or provider")
+    body = {
+        "schema": EXTERNAL_AGENT_HOST_MERGE_ADMISSION_SCHEMA,
+        "interface": EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
+        "decision": "accepted",
+        "delivery_mode": delivery,
+        "task_cid": packet.task_cid,
+        "attempt_id": packet.attempt_id,
+        "claim_cid": claim["claim_cid"],
+        "accepted_result_receipt_id": str(effect.get("accepted_result_receipt_id") or ""),
+        "patch_artifact_cid": patch,
+        "reviewer_principal_did": _REVIEWER_DID,
+        "effect_authority_cid": packet.gateway_binding_cid,
+        "merge_commit": merge_commit,
+    }
+    return _seal_receipt(body)
 
 
 def _eaaef_010_prompt() -> str:
@@ -1256,8 +1323,9 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             packet: ExternalAgentContainerWorkPacket,
             effect: Mapping[str, Any],
         ) -> Mapping[str, Any] | None:
-            del packet, effect
-            return None
+            return _host_merge_admission(
+                packet=packet, effect=effect, repo_root=root
+            )
 
         def host_source_observer() -> str:
             return source_tree

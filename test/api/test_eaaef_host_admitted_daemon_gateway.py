@@ -302,3 +302,71 @@ def test_focused_test_receipt_uses_ini_cache_dir(
         str(item).startswith("cache_dir=") for item in captured["argv"]
     )
     assert captured["env"].get("PYTEST_ADDOPTS") == ""
+
+
+def test_host_merge_admission_is_reviewed_patch_when_host_lacks_files(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _OWNED_RELATIVE_PATHS,
+        _REVIEWER_DID,
+        _cid,
+        _host_merge_admission,
+        _owned_patch_cid,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.external_agent_container_dispatcher import (
+        ExternalAgentContainerWorkPacket,
+        ExternalAgentContainerWorkerDispatcher,
+    )
+
+    worktrees = (
+        tmp_path
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "run-v14/worktrees"
+    )
+    sibling = worktrees / "eaaef-010-aaaaaaaaaaaaaaaa"
+    for relative in _OWNED_RELATIVE_PATHS:
+        path = sibling / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("owned\n", encoding="utf-8")
+    packet = ExternalAgentContainerWorkPacket(
+        task_id="EAAEF-010",
+        task_cid="sha256:" + ("1" * 64),
+        attempt_id="attempt:eaaef:1",
+        attempt_number=1,
+        plan_revision_cid="sha256:" + ("2" * 64),
+        repository_tree="3" * 40,
+        semantic_state_root="sha256:" + ("4" * 64),
+        worktree_id="sha256:" + ("5" * 64),
+        planned_container_id="sha256:" + ("6" * 64),
+        worker_principal_did="did:key:zworker",
+        provider_principal_did="did:key:zprovider",
+        provider="grok",
+        model_route_cid="sha256:" + ("7" * 64),
+        container_profile_cid="sha256:" + ("8" * 64),
+        image_digest="sha256:" + ("9" * 64),
+        network_authorization_cid="sha256:" + ("a" * 64),
+        lease_id="lease:eaaef:1",
+        fencing_token=1,
+        fence_epoch=1,
+        idempotency_key="eaaef:dispatch:1",
+        effect_scope_cid="sha256:" + ("b" * 64),
+        gateway_binding_cid="sha256:" + ("c" * 64),
+    )
+    claim = ExternalAgentContainerWorkerDispatcher._dispatch_claim(packet)
+    patch = _owned_patch_cid(sibling)
+    admission = _host_merge_admission(
+        packet=packet,
+        effect={
+            "claim_cid": claim["claim_cid"],
+            "accepted_result_receipt_id": _cid({"accepted": True}),
+            "patch_artifact_cid": patch,
+        },
+        repo_root=tmp_path,
+    )
+    assert admission is not None
+    assert admission["decision"] == "accepted"
+    assert admission["delivery_mode"] == "reviewed_patch"
+    assert admission["merge_commit"] == ""
+    assert admission["reviewer_principal_did"] == _REVIEWER_DID
+    assert admission["patch_artifact_cid"] == patch
