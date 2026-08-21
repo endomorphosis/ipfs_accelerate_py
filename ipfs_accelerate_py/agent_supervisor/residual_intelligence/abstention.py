@@ -61,7 +61,7 @@ REASON_CRITICAL_BOUNDARY: Final = "critical_boundary_abstention"
 REASON_CRITICAL_FALSE_ACCEPT: Final = "critical_false_accept"
 REASON_NO_GROUP_THRESHOLD: Final = "no_group_threshold"
 REASON_BELOW_GROUP_THRESHOLD: Final = "below_group_threshold"
-REASON_VALIDATION_REQUIRED: Final = "VALIDATION_REQUIRED"
+REASON_VALIDATION_REQUIRED: Final = "validation_required"
 REASON_R4_R5_PROPOSAL: Final = "r4_r5_proposal_tier"
 REASON_ACCEPT: Final = "group_threshold_met"
 
@@ -318,6 +318,13 @@ class SelectivePredictionPolicy:
             if binding.evidence_id != evidence_by_key[binding.group_key].evidence_id:
                 raise ResidualIntelligenceError(
                     "threshold binding evidence_id does not match group evidence"
+                )
+            if (
+                binding.accept_threshold_ppm
+                not in evidence_by_key[binding.group_key].evaluated_threshold_candidates
+            ):
+                raise ResidualIntelligenceError(
+                    "threshold binding is not an evaluated candidate for its group-key"
                 )
         object.__setattr__(self, "bindings", bindings)
 
