@@ -7,79 +7,153 @@
     {
       "disposition": "authoritative",
       "kind": "DuckDB tables",
-      "path": "data/agent_supervisor",
-      "uncertainty": "exact_files_require_runtime_probe"
+      "nominated_owner": "DuckDB plus Quack exclusive state-owner boundary",
+      "path": "{state_root}/control.duckdb",
+      "source_span": {
+        "end_line": 12,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "start_line": 12
+      },
+      "tables": [
+        "goals",
+        "tasks",
+        "leases",
+        "completion_receipts",
+        "domain_events",
+        "worktrees"
+      ],
+      "uncertainty": "runtime_state_root_binding"
     },
     {
       "disposition": "materialized_projection",
       "kind": "JSON files",
       "path": "docs/architecture/architecture_refactorer_inventory",
-      "uncertainty": null
+      "source_span": {
+        "end_line": 1,
+        "path": "docs/architecture/architecture_refactorer_inventory/state_store_baseline.json",
+        "start_line": 1
+      },
+      "uncertainty": "multiple_json_sinks_exist_this_inventory_nominates_without_migrating"
     },
     {
       "disposition": "materialized_projection",
       "kind": "Markdown task boards",
       "path": "docs/architecture/agent_supervisor_architecture_refactorer.todo.md",
+      "source_span": {
+        "end_line": 108,
+        "path": "docs/architecture/agent_supervisor_architecture_refactorer.todo.md",
+        "start_line": 108
+      },
       "uncertainty": null
     },
     {
       "disposition": "unknown",
       "kind": "in-memory registries",
       "path": "ipfs_accelerate_py/agent_supervisor",
+      "source_span": {
+        "end_line": 84,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+        "start_line": 84
+      },
       "uncertainty": "dynamic_registry_membership"
     },
     {
       "disposition": "historical_event",
       "kind": "event logs",
-      "path": "data/agent_supervisor",
-      "uncertainty": "runtime_layout"
+      "path": "{state_root}/control.duckdb#domain_events",
+      "source_span": {
+        "end_line": 827,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "start_line": 827
+      },
+      "uncertainty": "jsonl_sidecars_remain_legacy_append_streams"
     },
     {
       "disposition": "cache",
       "kind": "cache namespaces",
-      "path": "data/agent_supervisor",
-      "uncertainty": "runtime_layout"
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_cache.py",
+      "source_span": {
+        "end_line": 78,
+        "path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_cache.py",
+        "start_line": 78
+      },
+      "uncertainty": "cache_directories_are_runtime_layout"
     },
     {
-      "disposition": "legacy",
+      "disposition": "authoritative",
       "kind": "worktree metadata",
-      "path": ".git",
-      "uncertainty": null
+      "path": "{state_root}/control.duckdb#worktrees",
+      "source_span": {
+        "end_line": 1632,
+        "path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py",
+        "start_line": 1632
+      },
+      "uncertainty": "git_worktree_directories_are_os_bootstrap_not_task_authority"
     },
     {
       "disposition": "authoritative",
       "kind": "lease records",
-      "path": "data/agent_supervisor",
+      "path": "{state_root}/control.duckdb#leases",
+      "source_span": {
+        "end_line": 339,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "start_line": 339
+      },
       "uncertainty": "duckdb_table_binding"
     },
     {
       "disposition": "unknown",
       "kind": "provider state",
-      "path": "ipfs_accelerate_py/agent_supervisor",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "source_span": {
+        "end_line": 376,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+        "start_line": 376
+      },
       "uncertainty": "provider_runtime"
     },
     {
       "disposition": "authoritative",
       "kind": "goal state",
-      "path": "data/agent_supervisor",
+      "path": "{state_root}/control.duckdb#goals",
+      "source_span": {
+        "end_line": 407,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "start_line": 407
+      },
       "uncertainty": "duckdb_table_binding"
     },
     {
       "disposition": "authoritative",
       "kind": "task state",
-      "path": "data/agent_supervisor",
+      "path": "{state_root}/control.duckdb#tasks",
+      "source_span": {
+        "end_line": 470,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "start_line": 470
+      },
       "uncertainty": "duckdb_table_binding"
     },
     {
       "disposition": "authoritative",
       "kind": "completion state",
-      "path": "data/agent_supervisor",
+      "path": "{state_root}/control.duckdb#completion_receipts",
+      "source_span": {
+        "end_line": 809,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "start_line": 809
+      },
       "uncertainty": "duckdb_table_binding"
     },
     {
       "disposition": "authoritative",
       "kind": "receipt state",
-      "path": "data/agent_supervisor",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py",
+      "source_span": {
+        "end_line": 178,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py",
+        "start_line": 178
+      },
       "uncertainty": "duckdb_table_binding"
     }
   ],
