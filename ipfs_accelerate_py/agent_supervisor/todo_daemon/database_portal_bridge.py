@@ -3464,26 +3464,29 @@ class DatabasePortalExecutionBridge:
                 limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
                 after_request_id=cursors[snapshot_name],
             )
+            owned_conflict = False
             for request in page:
                 projection = self._owned_post_merge_recovery_projection(
                     request
                 )
-                if projection is not None:
-                    try:
-                        self._preauthorize_post_merge_recovery(
-                            request,
-                            projection,
-                            preauthorize=preauthorize,
-                            evidence_digest=digest,
-                        )
-                    except Exception as exc:
-                        if not _is_implementation_conflict(exc):
-                            raise
-                        continue
-                    selected = request
-                    selected_projection = projection
-                    break
-            if selected is None:
+                if projection is None:
+                    continue
+                try:
+                    self._preauthorize_post_merge_recovery(
+                        request,
+                        projection,
+                        preauthorize=preauthorize,
+                        evidence_digest=digest,
+                    )
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
+                    owned_conflict = True
+                    continue
+                selected = request
+                selected_projection = projection
+                break
+            if selected is None and not owned_conflict:
                 self._advance_post_merge_recovery_cursor(
                     cursors,
                     snapshot_name,
