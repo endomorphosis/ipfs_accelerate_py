@@ -114,6 +114,8 @@
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "scripts/validate_agent_supervisor_residual_intelligence_board.py",
     "scripts/run_agent_supervisor_residual_intelligence.py",
     "test/api/residual_intelligence/test_board.py",

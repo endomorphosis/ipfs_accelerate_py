@@ -46180,6 +46180,7 @@ class PortalImplementationDaemon:
                             ),
                             check=False,
                             env=launcher_environment,
+                            pass_fds=launcher_receipt.inherited_fds,
                         )
                     except (OSError, subprocess.TimeoutExpired) as exc:
                         return {
@@ -46239,6 +46240,7 @@ class PortalImplementationDaemon:
                         timeout=timeout_seconds,
                         check=False,
                         env=launcher_environment,
+                        pass_fds=launcher_receipt.inherited_fds,
                     )
             except ValidationRuntimeError as exc:
                 return {

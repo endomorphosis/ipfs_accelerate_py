@@ -3065,6 +3065,7 @@ def _run_bounded_probe_process(
     *,
     input_payload: bytes,
     environment: Mapping[str, str],
+    inherited_fds: Sequence[int] = (),
 ) -> tuple[int | None, bytes, dict[str, Any]]:
     """Capture child output incrementally and kill it at the byte/time bound."""
 
@@ -3077,6 +3078,7 @@ def _run_bounded_probe_process(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=dict(environment),
+            pass_fds=tuple(int(fd) for fd in inherited_fds),
         )
         if process.stdout is None:  # pragma: no cover - Popen contract guard
             process.kill()
@@ -3191,6 +3193,7 @@ def _run_dependency_probe(
                 ],
                 input_payload=_canonical_json(payload).encode("utf-8"),
                 environment=launcher_environment,
+                inherited_fds=launcher_receipt.inherited_fds,
             )
         except OSError as exc:
             return {

@@ -115,8 +115,9 @@ _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "nested-validation-python-launcher@2;"
+    "nested-validation-python-launcher@3;"
     "seals=write,grow,shrink,seal;"
+    "handoff=explicit-self-fd;"
     "shell-startup=privileged-no-bash-env;"
     "user-site=interpreter-s-flag;"
     "pythonpath=task-local-then-approved;"
@@ -205,6 +206,7 @@ class ValidationPythonLauncherReceipt:
     mode: str
     policy_sha256: str
     sealed: bool
+    inherited_fds: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2104,7 +2106,13 @@ def _validation_python_launcher_source(
         "#!/bin/bash -p\n"
         f"readonly executable={shlex.quote(executable)}\n"
         f"readonly approved={shlex.quote(approved_pythonpath)}\n"
-        'readonly launcher_path="$0"\n'
+        'readonly original_launcher_path="$0"\n'
+        'if ! exec {sealed_launcher_fd}<"$original_launcher_path"; then\n'
+        "    exit 75\n"
+        "fi\n"
+        "readonly sealed_launcher_fd\n"
+        'readonly launcher_path="/proc/${BASHPID}/fd/${sealed_launcher_fd}"\n'
+        'export PYTHON="$launcher_path"\n'
         f"readonly ruff_sha256={shlex.quote(ruff_sha256)}\n"
         f"readonly ruff_broker={shlex.quote(ruff_broker)}\n"
         "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP "
@@ -2148,7 +2156,7 @@ def _validation_python_launcher_source(
         "        exit 75\n"
         "    fi\n"
         '    exec "$executable" -I -c "$ruff_broker" '
-        '"$launcher_path" "$ruff_sha256" "$@"\n'
+        '"$original_launcher_path" "$ruff_sha256" "$@"\n'
         "fi\n"
         'requested="${PYTHONPATH-}"\n'
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then\n'
@@ -2217,7 +2225,11 @@ def _sealed_executable_memfd(
             raise ValidationRuntimeError(
                 f"sealed {name} content mismatch"
             )
-        executable_path = f"/proc/{os.getpid()}/fd/{fd}"
+        # The credential-bearing supervisor is deliberately non-dumpable.
+        # Its children therefore cannot reopen /proc/<parent>/fd/<fd>.  Address
+        # the immutable descriptor through the eventual child's own fd table
+        # and require every first-hop spawn to pass only the named sealed fds.
+        executable_path = f"/proc/self/fd/{fd}"
         if not os.access(executable_path, os.R_OK | os.X_OK):
             raise ValidationRuntimeError(
                 f"sealed {name} is not executable"
@@ -2342,6 +2354,7 @@ def validation_python_launcher_environment(
             mode=expected_mode,
             policy_sha256=recorded_policy_sha256,
             sealed=False,
+            inherited_fds=(),
         )
         return
 
@@ -2443,6 +2456,7 @@ def validation_python_launcher_environment(
             mode=expected_mode,
             policy_sha256=recorded_policy_sha256,
             sealed=True,
+            inherited_fds=tuple(sorted(open_fds)),
         )
     except ValidationRuntimeError:
         raise
