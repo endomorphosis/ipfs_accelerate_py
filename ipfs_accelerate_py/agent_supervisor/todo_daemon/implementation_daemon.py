@@ -71830,6 +71830,7 @@ class DatabaseImplementationDaemon:
         evidence_source: str,
         coordination_evidence: Mapping[str, Any] | None = None,
         validation_retry_evidence: Mapping[str, Any] | None = None,
+        allow_blocked_recovery: bool = False,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
 
@@ -71905,9 +71906,8 @@ class DatabaseImplementationDaemon:
                 "evidence_source": evidence_source,
                 "queue_receipt": queue_receipt_dict,
             }
-        blocked_recovery = (
-            task_status == "blocked"
-            and validation_retry_evidence is not None
+        blocked_recovery = task_status == "blocked" and (
+            validation_retry_evidence is not None or allow_blocked_recovery
         )
         if task_status != "in_progress" and not blocked_recovery:
             raise DatabaseImplementationConflictError(
@@ -73326,12 +73326,45 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
+                if (
+                    reason == "portal_provider_failed"
+                    and self.max_task_attempts > 0
+                    and int(attempt.attempt_number) < self.max_task_attempts
+                ):
+                    coordination = self._reconcile_failed_attempt_coordination(
+                        attempt
+                    )
+                    outcome = self._persist_task_retry_state(
+                        attempt,
+                        reason="portal_candidate_retry",
+                        backoff_ms=0,
+                        evidence_source="portal_provider_failed_reclassified",
+                        coordination_evidence=coordination,
+                        allow_blocked_recovery=True,
+                    )
+                    outcome["coordination"] = coordination
+                    outcomes.append(outcome)
                 continue
             if status == "retrying":
                 # The immutable legacy attempt still says terminal failure.
                 # Suppress that old projection only when the exact typed
                 # blocked-to-retrying recovery and its latest fence reproduce.
-                self._verified_validation_retry_recovery_state(attempt, task)
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                evidence_source = (
+                    str(receipt.get("evidence_source") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
+                if evidence_source not in {
+                    "portal_candidate_retry",
+                    "portal_provider_failed_reclassified",
+                }:
+                    self._verified_validation_retry_recovery_state(attempt, task)
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "in_progress":
@@ -73527,6 +73560,7 @@ class DatabaseImplementationDaemon:
             from .database_portal_bridge import (
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
+                DatabasePortalCandidateRetry,
                 DatabasePortalValidationRetry,
             )
 
@@ -73537,7 +73571,8 @@ class DatabaseImplementationDaemon:
                 exc,
                 DatabasePortalValidationRetry,
             )
-            retryable = deferred or validation_retry
+            candidate_retry = isinstance(exc, DatabasePortalCandidateRetry)
+            retryable = deferred or validation_retry or candidate_retry
             backoff_seconds = (
                 self._database_portal_backoff_seconds(
                     getattr(
@@ -73599,7 +73634,7 @@ class DatabaseImplementationDaemon:
                                 True
                                 if deferred
                                 else False
-                                if validation_retry
+                                if validation_retry or candidate_retry
                                 else "unknown"
                             ),
                             "backoff_seconds": backoff_seconds,
@@ -73662,6 +73697,13 @@ class DatabaseImplementationDaemon:
                             verified_validation_retry
                         ),
                     )
+                elif candidate_retry:
+                    control_state = self._persist_task_retry_state(
+                        terminal,
+                        reason=reason,
+                        backoff_ms=backoff_seconds * 1000,
+                        evidence_source="portal_candidate_retry",
+                    )
                 else:
                     control_state = self._persist_terminal_portal_failure(
                         terminal,
@@ -73687,7 +73729,7 @@ class DatabaseImplementationDaemon:
                         True
                         if deferred
                         else False
-                        if validation_retry
+                        if validation_retry or candidate_retry
                         else "unknown"
                     ),
                     "backoff_seconds": backoff_seconds,
@@ -73720,7 +73762,7 @@ class DatabaseImplementationDaemon:
                     True
                     if deferred
                     else False
-                    if validation_retry
+                    if validation_retry or candidate_retry
                     else "unknown"
                 ),
                 "backoff_seconds": backoff_seconds,

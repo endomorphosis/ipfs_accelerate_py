@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalCandidateRetry,
     DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -1304,6 +1305,66 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         assert claim_receipt["fencing_token"] == successor.fencing_token
         assert claim_receipt["fence_epoch"] == successor.fence_epoch
         assert claim_receipt["lease_id"] == successor.lease_id
+    finally:
+        daemon.close()
+
+
+def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalCandidateRetry("no_change_completion_not_allowed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:candidate-retry",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["attempt_consumed"] is True
+        assert implementation["provider_dispatched"] is True
+        assert implementation["retry_state"]["status"] == "retrying"
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        failed = daemon.phase_history(attempt.attempt_id)[-1]["body"]
+        assert failed["reason"] == "no_change_completion_not_allowed"
+        assert failed["portal_retryable_failure"] is True
+    finally:
+        daemon.close()
+
+
+def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-portal-provider-failed",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()
 

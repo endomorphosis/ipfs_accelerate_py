@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalCandidateRetry,
     DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
 )
@@ -484,6 +485,103 @@ def test_bridge_does_not_infer_retryability_from_generic_failure_text(
         bridge.run_provider(_attempt())
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {
+            "returncode": 78,
+            "attempt": 1,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "reason": "no_change_completion_not_allowed",
+            },
+        },
+        {
+            "returncode": 78,
+            "attempt": 1,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+            },
+            "commit_result": {"reason": "expected_output_ignored_or_unstaged"},
+        },
+        {
+            "returncode": 1,
+            "attempt": 2,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "reason": "incomplete_expected_outputs",
+        },
+    ),
+)
+def test_bridge_retries_unusable_dispatched_candidates(
+    tmp_path: Path,
+    payload: dict[str, object],
+) -> None:
+    class CandidatePortal:
+        def run_once(self) -> dict[str, object]:
+            return {"implementation_result": dict(payload)}
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: CandidatePortal(),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalCandidateRetry) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.attempt_consumed is True
+    assert caught.value.provider_dispatched is True
+    assert caught.value.reason in {
+        "no_change_completion_not_allowed",
+        "proposal_gate_failed",
+        "incomplete_expected_outputs",
+    }
+
+
+def test_bridge_keeps_exhausted_unusable_candidate_terminal(
+    tmp_path: Path,
+) -> None:
+    class ExhaustedPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 78,
+                    "attempt": 4,
+                    "attempt_consumed": True,
+                    "provider_dispatched": True,
+                    "validation_result": {
+                        "reason": "no_change_completion_not_allowed"
+                    },
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: ExhaustedPortal(),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+    assert str(caught.value) == "portal_provider_failed"
 
 
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(
