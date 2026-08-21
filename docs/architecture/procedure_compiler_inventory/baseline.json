@@ -28,7 +28,7 @@
     "duckdb": "1.5.5",
     "pytest": "9.1.1",
     "python": "3.12.3",
-    "test_mode": "fresh_archive_of_baseline_commit_with_exact_gitlinks_materialized"
+    "test_mode": "current_tree_requalification_with_sealed_baseline_and_current_source_blobs"
   },
   "repository": {
     "branch_created": "codex/proof-carrying-procedure-compiler-v1",
@@ -37,7 +37,7 @@
     "remote": "endomorphosis/ipfs_accelerate_py",
     "tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58"
   },
-  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-baseline@3",
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-baseline@4",
   "sibling_gitlinks": {
     "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
     "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
@@ -73,12 +73,21 @@
       "scope": "incremental proof sealer leaf APIs with exact pinned siblings"
     },
     {
+      "collected": 0,
+      "errors": 1,
+      "failed": 0,
+      "scope": "adaptive planner focused collection",
+      "typed_errors": {
+        "adaptive_planner_import_undefined_hammer_trace_schema": 1
+      }
+    },
+    {
       "collected": 26,
       "failed": 1,
       "scope": "value-of-information and delta-retry core plus daemon integration"
     },
     {
-      "collected": 254,
+      "collected": 256,
       "failed": 30,
       "scope": "provider route, worktree, lease, fencing, registry, and merge producers",
       "typed_failures": {
@@ -137,14 +146,14 @@
     },
     {
       "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_adaptive_planner.py"],
-      "evidence_class": "fresh_baseline_archive_expected_failure",
+      "evidence_class": "current_tree_requalification_expected_failure",
       "expected": {"collected": 0, "errors": 1, "failed": 0, "passed": 0, "returncode": 2},
       "expected_failure": {
-        "reason_code": "adaptive_planner_import_missing_committed_mcp_contract_catalog",
+        "reason_code": "adaptive_planner_import_undefined_hammer_trace_schema",
         "required_output_fragments": [
-          "ModuleNotFoundError: No module named 'ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_catalog'"
+          "NameError: name 'HAMMER_TRACE_SCHEMA' is not defined"
         ],
-        "signature": "ModuleNotFoundError: No module named 'ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_catalog'"
+        "signature": "NameError: name 'HAMMER_TRACE_SCHEMA' is not defined"
       },
       "producer_id": "TP-ADAPTIVE-PLANNER-IMPORT",
       "simulated": false,
@@ -232,8 +241,8 @@
     },
     {
       "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_worktree_lifecycle.py"],
-      "evidence_class": "fresh_baseline_archive_expected_failure",
-      "expected": {"collected": 49, "errors": 0, "failed": 2, "passed": 47, "returncode": 1},
+      "evidence_class": "current_tree_requalification_expected_failure",
+      "expected": {"collected": 51, "errors": 0, "failed": 2, "passed": 49, "returncode": 1},
       "expected_failure": {
         "reason_code": "worktree_test_missing_imports",
         "required_output_fragments": [
@@ -244,7 +253,13 @@
       },
       "producer_id": "TP-WORKTREE-LIFECYCLE",
       "simulated": false,
-      "source_bindings": [{"blob_id": "4cf5c39ff1e9dfc97f533e1d036e1b9256d15e52", "path": "test/api/test_agent_supervisor_worktree_lifecycle.py"}]
+      "source_bindings": [
+        {
+          "blob_id": "4cf5c39ff1e9dfc97f533e1d036e1b9256d15e52",
+          "current_blob_id": "472daae1adaf2d41bdb09df087dbf410bef8420c",
+          "path": "test/api/test_agent_supervisor_worktree_lifecycle.py"
+        }
+      ]
     },
     {
       "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_lease_coordination.py"],

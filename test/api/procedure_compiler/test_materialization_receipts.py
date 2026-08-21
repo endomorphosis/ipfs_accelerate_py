@@ -181,7 +181,13 @@ def _producer_fixture(module: ModuleType) -> tuple[dict[str, object], dict[str, 
                     "errors": 0,
                     "returncode": 0,
                 },
-                "source_bindings": [{"path": "pass.py", "blob_id": "1" * 40}],
+                "source_bindings": [
+                    {
+                        "path": "pass.py",
+                        "blob_id": "1" * 40,
+                        "current_blob_id": "3" * 40,
+                    }
+                ],
             },
             {
                 "producer_id": "TP-FAIL",
@@ -262,6 +268,8 @@ def test_current_prerequisite_execution_binds_exact_counts_and_authorities(
     assert execution["typed_expected_failure_count"] == 1
     assert execution["authority_count"] == 2
     assert execution["all_declared_outcomes_matched"] is True
+    by_producer = {item["producer_id"]: item for item in execution["producer_receipts"]}
+    assert by_producer["TP-PASS"]["source_blob_ids"] == ["3" * 40]
     by_authority = {item["authority"]: item for item in execution["authority_receipts"]}
     assert by_authority["AvailableAuthority"]["producer_ids"] == ["TP-FAIL", "TP-PASS"]
     assert (

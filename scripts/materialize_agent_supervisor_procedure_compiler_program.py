@@ -202,30 +202,64 @@ def _object_id(revision: str, path: str) -> str:
     return _git("rev-parse", f"{revision}:{path}")
 
 
-def _verify_bound_blob(*, path: str, blob_id: str, baseline_commit: str) -> None:
-    if (
-        not isinstance(blob_id, str)
-        or len(blob_id) != 40
-        or any(character not in "0123456789abcdef" for character in blob_id)
-    ):
-        raise MaterializationError(f"invalid blob binding for {path!r}")
-    baseline_blob = _object_id(baseline_commit, path)
-    head_blob = _object_id("HEAD", path)
-    if baseline_blob != blob_id:
+def _valid_blob_id(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _current_bound_blob_id(binding: Mapping[str, Any]) -> str:
+    value = binding.get("current_blob_id", binding.get("blob_id"))
+    if not _valid_blob_id(value):
         raise MaterializationError(
-            f"baseline source drift for {path}: expected {blob_id}, observed {baseline_blob}"
+            f"invalid current blob binding for {binding.get('path')!r}"
         )
-    if head_blob != blob_id:
+    return value
+
+
+def _verify_bound_blob(
+    *,
+    path: str,
+    blob_id: object,
+    baseline_commit: str,
+    current_blob_id: object | None = None,
+    baseline_absent: object = False,
+) -> None:
+    if type(baseline_absent) is not bool:
+        raise MaterializationError(f"invalid baseline presence binding for {path!r}")
+    if baseline_absent:
+        if blob_id is not None or _git_path_exists(baseline_commit, path):
+            raise MaterializationError(
+                f"baseline-absent source binding no longer holds for {path!r}"
+            )
+    else:
+        if not _valid_blob_id(blob_id):
+            raise MaterializationError(f"invalid baseline blob binding for {path!r}")
+        baseline_blob = _object_id(baseline_commit, path)
+        if baseline_blob != blob_id:
+            raise MaterializationError(
+                f"baseline source drift for {path}: expected {blob_id}, "
+                f"observed {baseline_blob}"
+            )
+    expected_current = blob_id if current_blob_id is None else current_blob_id
+    if not _valid_blob_id(expected_current):
+        raise MaterializationError(f"invalid current blob binding for {path!r}")
+    head_blob = _object_id("HEAD", path)
+    if head_blob != expected_current:
         raise MaterializationError(
-            f"current-tree source drift for {path}: expected {blob_id}, observed {head_blob}"
+            f"current-tree source drift for {path}: expected {expected_current}, "
+            f"observed {head_blob}"
         )
     working_path = REPO_ROOT / path
     if not working_path.is_file():
         raise MaterializationError(f"bound source is absent from checkout: {path}")
     working_blob = _git("hash-object", path)
-    if working_blob != blob_id:
+    if working_blob != expected_current:
         raise MaterializationError(
-            f"working-tree source drift for {path}: expected {blob_id}, observed {working_blob}"
+            f"working-tree source drift for {path}: expected {expected_current}, "
+            f"observed {working_blob}"
         )
 
 
@@ -314,12 +348,12 @@ def _validate_prerequisite_payloads(
 ) -> list[dict[str, Any]]:
     if (
         baseline.get("schema")
-        != "ipfs_accelerate_py/agent-supervisor/procedure-compiler-baseline@3"
+        != "ipfs_accelerate_py/agent-supervisor/procedure-compiler-baseline@4"
     ):
         raise MaterializationError("unsupported prerequisite baseline schema")
     if (
         inventory.get("schema")
-        != "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@2"
+        != "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@3"
     ):
         raise MaterializationError("unsupported prerequisite inventory schema")
     repository = baseline.get("repository")
@@ -473,6 +507,8 @@ def _validate_prerequisite_payloads(
                 path=path,
                 blob_id=source.get("blob_id"),
                 baseline_commit=BASE_COMMIT,
+                current_blob_id=source.get("current_blob_id"),
+                baseline_absent=source.get("baseline_absent", False),
             )
         producers[producer_id] = row
     if set(producers) != REQUIRED_PREREQUISITE_PRODUCER_IDS:
@@ -551,9 +587,15 @@ def _validate_prerequisite_payloads(
         for source in source_rows:
             path = _relative_repository_path(source.get("path"), field="source path")
             blob_id = source.get("blob_id")
-            _verify_bound_blob(path=path, blob_id=blob_id, baseline_commit=BASE_COMMIT)
+            _verify_bound_blob(
+                path=path,
+                blob_id=blob_id,
+                baseline_commit=BASE_COMMIT,
+                current_blob_id=source.get("current_blob_id"),
+                baseline_absent=source.get("baseline_absent", False),
+            )
             bound_paths.add(path)
-            source_blob_ids.append(blob_id)
+            source_blob_ids.append(_current_bound_blob_id(source))
         for binding in symbol_rows:
             path = _relative_repository_path(binding.get("path"), field="symbol path")
             kind = binding.get("kind")
@@ -603,7 +645,13 @@ def _validate_prerequisite_payloads(
         for binding in related_rows:
             path = _relative_repository_path(binding.get("path"), field="related path")
             blob_id = binding.get("blob_id")
-            _verify_bound_blob(path=path, blob_id=blob_id, baseline_commit=BASE_COMMIT)
+            _verify_bound_blob(
+                path=path,
+                blob_id=blob_id,
+                baseline_commit=BASE_COMMIT,
+                current_blob_id=binding.get("current_blob_id"),
+                baseline_absent=binding.get("baseline_absent", False),
+            )
             kind = binding.get("kind")
             symbol = binding.get("symbol")
             declarations, _ = _python_declarations(path, python_cache)
@@ -852,7 +900,9 @@ def _execute_prerequisite_test_producers(
             disposition = "matched_typed_expected_failure"
         else:
             disposition = "matched_pass"
-        source_blob_ids = sorted(str(source["blob_id"]) for source in row["source_bindings"])
+        source_blob_ids = sorted(
+            _current_bound_blob_id(source) for source in row["source_bindings"]
+        )
         receipt = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-test-receipt@1"
@@ -1173,7 +1223,9 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
             if isinstance(expected_failure, Mapping)
             else []
         )
-        source_blob_ids = sorted(str(source["blob_id"]) for source in row["source_bindings"])
+        source_blob_ids = sorted(
+            _current_bound_blob_id(source) for source in row["source_bindings"]
+        )
         if (
             set(receipt)
             != {

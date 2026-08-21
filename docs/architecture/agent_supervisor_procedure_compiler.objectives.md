@@ -108,7 +108,7 @@ deterministic human-readable export. Status never establishes completion.
 - Interfaces: ProcedureRegistry@1, ProcedurePlannerAdapter@1, HoleResolver@1, DeterministicToolDsl@1, ProcedureTransferGate@1
 - Validation: python -m pytest -q test/api/procedure_compiler -k 'registry or planner or hole or distillation or tool or experiment or transfer or drift or repair or recovery'
 - Acceptance: Planner order and composition rules are exact; typed holes remain candidates; unsafe transfer and generated tools are refused; repair stays in declared scope and cannot merge above policy ceiling.
-- Gap task: Resolve the committed AdaptivePlanner import incompatibility through a separately reviewed narrow port before PCPC-019 can be admitted.
+- Gap task: Resolve the committed AdaptivePlanner import incompatibility (`HAMMER_TRACE_SCHEMA` is undefined in `multi_prover_router.py`) through a separately reviewed narrow port before PCPC-019 can be admitted.
 - Refinement: Until planner compatibility qualifies, registry/hole/tool/transfer work continues independently and planner integration remains typed unavailable.
 - Embedding query: procedure registry hierarchical planner typed holes distillation generated tools transfer repair recovery
 - AST query: AdaptivePlanner AutonomousRepairEngine WorktreeLifecycleStore LeaseCoordinator MergeTrain

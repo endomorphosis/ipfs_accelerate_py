@@ -49,7 +49,7 @@ def test_baseline_binds_exact_committed_tree_and_releases() -> None:
     assert repository["tree"] == START_TREE
     assert repository["origin_main_commit"] == START_COMMIT
     assert baseline["package"] == {"name": "ipfs_accelerate_py", "version": "0.0.45"}
-    assert baseline["schema"].endswith("procedure-compiler-baseline@3")
+    assert baseline["schema"].endswith("procedure-compiler-baseline@4")
     assert baseline["package_bindings"] == [
         {
             "binding_id": "package:ipfs_accelerate_py@0.0.45",
@@ -101,7 +101,13 @@ def test_baseline_binds_every_exact_test_producer_and_expected_failure() -> None
         assert producer["simulated"] is False
         assert producer["source_bindings"]
         for source in producer["source_bindings"]:
-            assert len(source["blob_id"]) == 40
+            if source.get("baseline_absent") is True:
+                assert "blob_id" not in source
+                assert len(source["current_blob_id"]) == 40
+            else:
+                assert len(source["blob_id"]) == 40
+                if "current_blob_id" in source:
+                    assert len(source["current_blob_id"]) == 40
             assert source["path"] in producer["command"]
         expected = producer["expected"]
         assert expected["collected"] == expected["passed"] + expected["failed"]
@@ -115,8 +121,29 @@ def test_baseline_binds_every_exact_test_producer_and_expected_failure() -> None
         "passed": 0,
         "returncode": 2,
     }
+    assert by_id["TP-ADAPTIVE-PLANNER-IMPORT"]["expected_failure"] == {
+        "reason_code": "adaptive_planner_import_undefined_hammer_trace_schema",
+        "required_output_fragments": [
+            "NameError: name 'HAMMER_TRACE_SCHEMA' is not defined"
+        ],
+        "signature": "NameError: name 'HAMMER_TRACE_SCHEMA' is not defined",
+    }
     assert by_id["TP-DELTA-RETRY"]["expected"]["failed"] == 1
     assert by_id["TP-DEFAULT-PROVIDER-ROUTE"]["expected"]["failed"] == 21
+    assert by_id["TP-WORKTREE-LIFECYCLE"]["expected"] == {
+        "collected": 51,
+        "errors": 0,
+        "failed": 2,
+        "passed": 49,
+        "returncode": 1,
+    }
+    assert by_id["TP-WORKTREE-LIFECYCLE"]["source_bindings"] == [
+        {
+            "blob_id": "4cf5c39ff1e9dfc97f533e1d036e1b9256d15e52",
+            "current_blob_id": "472daae1adaf2d41bdb09df087dbf410bef8420c",
+            "path": "test/api/test_agent_supervisor_worktree_lifecycle.py",
+        }
+    ]
     assert by_id["TP-FENCE-REGISTRY-QUEUE"]["expected"]["failed"] == 7
 
 
@@ -129,7 +156,7 @@ def test_prerequisites_have_one_closed_honest_disposition() -> None:
     assert {str(row["status"]) for row in rows} <= ALLOWED
     assert inventory["baseline_commit"] == START_COMMIT
     assert inventory["baseline_tree"] == START_TREE
-    assert inventory["schema"].endswith("procedure-compiler-prerequisite-inventory@2")
+    assert inventory["schema"].endswith("procedure-compiler-prerequisite-inventory@3")
     for row in rows:
         assert REQUIRED_BINDINGS <= set(row)
         assert row["package_bindings"] == ["package:ipfs_accelerate_py@0.0.45"]
@@ -147,12 +174,29 @@ def test_prerequisites_have_one_closed_honest_disposition() -> None:
             assert row["interface_bindings"]
             assert row["schema_bindings"]
             assert row["test_producer_bindings"]
-            assert all(len(binding["blob_id"]) == 40 for binding in row["source_bindings"])
+            for binding in row["source_bindings"]:
+                if binding.get("baseline_absent") is True:
+                    assert "blob_id" not in binding
+                    assert len(binding["current_blob_id"]) == 40
+                else:
+                    assert len(binding["blob_id"]) == 40
+                    if "current_blob_id" in binding:
+                        assert len(binding["current_blob_id"]) == 40
     assert by_name["AdaptivePlanner"]["status"] == "incompatible"
     assert (
         by_name["AdaptivePlanner"]["blocker"]
-        == "adaptive_planner_import_missing_committed_mcp_contract_catalog"
+        == "adaptive_planner_import_undefined_hammer_trace_schema"
     )
+    catalog_binding = next(
+        binding
+        for binding in by_name["AdaptivePlanner"]["source_bindings"]
+        if binding["path"].endswith("mcp_contract_catalog.py")
+    )
+    assert catalog_binding == {
+        "baseline_absent": True,
+        "current_blob_id": "986656ec49b66cf2a7abbbbedb3151f33bc817ec",
+        "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
+    }
     assert by_name["AutonomousMetaController"]["status"] == "missing"
     assert by_name["AdversarialAssuranceEngine"]["status"] == "available_with_caveats"
     assert by_name["IncrementalProofSealer"]["status"] == "available_with_caveats"

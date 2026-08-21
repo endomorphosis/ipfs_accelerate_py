@@ -115,26 +115,28 @@
     },
     {
       "authority": "AdaptivePlanner",
-      "blocker": "adaptive_planner_import_missing_committed_mcp_contract_catalog",
-      "caveat": "The class exists, but a clean committed import traverses mcp_contract_analysis.py into a missing committed mcp_contract_catalog.py. An unrelated untracked overlay is excluded.",
+      "blocker": "adaptive_planner_import_undefined_hammer_trace_schema",
+      "caveat": "The class and MCP contract catalog now exist in the committed tree, but a clean import advances into multi_prover_router.py where HAMMER_TRACE_SCHEMA is referenced without a definition. Focused collection fails closed with that exact NameError.",
       "interface_bindings": [
-        {"path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "ADAPTIVE_PLANNER_VERSION", "value": 2}
-      ],
-      "negative_probes": [
-        {"kind": "git_path_absent", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py"}
+        {"path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "ADAPTIVE_PLANNER_VERSION", "value": 2},
+        {"path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py", "symbol": "MCP_CONTRACT_CATALOG_INTERFACE", "value": "McpContractCatalog@1"}
       ],
       "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
       "schema_bindings": [
-        {"path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "ADAPTIVE_PLAN_SELECTION_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/adaptive-plan-selection@2"}
+        {"path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "ADAPTIVE_PLAN_SELECTION_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/adaptive-plan-selection@2"},
+        {"path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py", "symbol": "MCP_CONTRACT_CATALOG_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/mcp-contract-catalog@1"}
       ],
       "source_bindings": [
         {"blob_id": "aebfc5bccd9b821f454c522e58f819c96259fc19", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py"},
-        {"blob_id": "f8c8f059d637259b0e68aae27e753be5d256a670", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_analysis.py"}
+        {"blob_id": "f8c8f059d637259b0e68aae27e753be5d256a670", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_analysis.py"},
+        {"baseline_absent": true, "current_blob_id": "986656ec49b66cf2a7abbbbedb3151f33bc817ec", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py"},
+        {"blob_id": "a64492b520902e9952ce7ce4cd3a0a56a5bc9df0", "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py"}
       ],
       "status": "incompatible",
       "submodule_bindings": [],
       "symbol_bindings": [
-        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "AdaptivePlanner"}
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py", "symbol": "AdaptivePlanner"},
+        {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py", "symbol": "McpContractCatalog"}
       ],
       "test_producer_bindings": ["TP-ADAPTIVE-PLANNER-IMPORT"]
     },
@@ -256,7 +258,7 @@
     },
     {
       "authority": "Worktree lease fencing and merge controls",
-      "caveat": "Core lifecycle, registry, lease, queue, fence, and merge-train authorities are committed. The baseline has two worktree test-import failures, two process-fencing stub-contract failures, and five legacy merge-queue semantic failures; unrelated working-tree overlays remain excluded.",
+      "caveat": "Core lifecycle, registry, lease, queue, fence, and merge-train authorities are committed. The current tree retains two worktree test-import failures, two process-fencing stub-contract failures, and five legacy merge-queue semantic failures; the two newly admitted worktree recovery tests pass.",
       "interface_bindings": [
         {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py", "symbol": "DATABASE_WORKTREE_REGISTRY_INTERFACE", "value": "DatabaseWorktreeRegistry@1"},
         {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py", "symbol": "DATABASE_MERGE_QUEUE_INTERFACE", "value": "DatabaseMergeQueue@1"}
@@ -382,5 +384,5 @@
     }
   ],
   "package_version": "0.0.45",
-  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@2"
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-inventory@3"
 }

@@ -71,7 +71,7 @@ The gate currently classifies the required authorities as follows:
 | Adversarial assurance | available_with_caveats | Adapt `AssuranceCampaignApi`; do not invent a second engine. |
 | IncrementalVerificationPlanner | available | Reuse current-tree proof/test planning. |
 | IncrementalProofSealer | available_with_caveats | Use leaf APIs through a narrow import adapter until the facade exports them. |
-| AdaptivePlanner | incompatible | Typed blocker: committed import references a missing committed MCP catalog module. |
+| AdaptivePlanner | incompatible | The former missing-catalog blocker is resolved; current import fails closed because `HAMMER_TRACE_SCHEMA` is undefined in `multi_prover_router.py`. |
 | SupervisorControlService | available | Extend its typed service and operation catalog in tranche 4. |
 | ContextCompiler | available | Reuse content references, prefix reuse, budget evidence, and compilation receipts. |
 | Value-of-information selection | available | Reuse `ContextCompiler` policy and evidence types. |
@@ -771,7 +771,9 @@ operator work.
 
 Current known limitations are explicit:
 
-- Adaptive planner import is incompatible on the clean committed tree.
+- Adaptive planner import remains incompatible on the qualified current tree:
+  the committed MCP catalog is present, but `HAMMER_TRACE_SCHEMA` is undefined
+  in `multi_prover_router.py`.
 - The autonomous-meta-controller/cognitive/experience/policy-distillation
   authorities and qualified comparison baseline are absent.
 - Default ordered provider-route integration has stale failing tests; launch
