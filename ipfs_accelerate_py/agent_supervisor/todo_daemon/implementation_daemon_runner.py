@@ -1140,6 +1140,8 @@ def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
 
 def resolve_database_implementation_paths(
     parsed: argparse.Namespace,
+    *,
+    authority_mode: str = "",
 ) -> dict[str, Path | None]:
     """Resolve control-plane database paths for database-authoritative execution.
 
@@ -1147,11 +1149,21 @@ def resolve_database_implementation_paths(
     be absent under database authority.
     """
 
-    database_path = getattr(parsed, "database_path", None)
+    mode = str(authority_mode or getattr(parsed, "authority_mode", "") or "")
+    mode = mode.strip().lower().replace("-", "_")
+    if mode == "quack":
+        # Quack owns the shared task-state boundary.  Each execution lane still
+        # needs a private embedded database for its local claim/attempt journal;
+        # deriving that sidecar from the shared store ID makes every lane open
+        # the same DuckDB file as a writer and prevents parallel startup.
+        state_dir = Path(getattr(parsed, "state_dir", Path("state")))
+        database_path: Path | None = state_dir / "quack-lane-control.duckdb"
+    else:
+        database_path = getattr(parsed, "database_path", None)
     if database_path is not None:
         database_path = Path(database_path)
     todo_path = getattr(parsed, "todo_path", None)
-    if database_path is None and todo_path is not None:
+    if mode != "quack" and database_path is None and todo_path is not None:
         candidate = Path(todo_path)
         if candidate.suffix.lower() in {".duckdb", ".ddb"}:
             database_path = candidate
@@ -1309,7 +1321,10 @@ def build_portal_implementation_daemon_from_args(
     apply_merge_resolver_environment(parsed)
     state_paths = implementation_state_paths(parsed)
     program = database_program_from_daemon_namespace(parsed)
-    db_paths = resolve_database_implementation_paths(parsed)
+    db_paths = resolve_database_implementation_paths(
+        parsed,
+        authority_mode=program.authority_mode if program is not None else "",
+    )
     database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
         candidate = Path(program.store_id)
@@ -1356,6 +1371,11 @@ def build_portal_implementation_daemon_from_args(
             queue_path=None,
             max_task_attempts=int(
                 getattr(parsed, "max_task_attempts", 0) or 0
+            ),
+            task_shard_count=getattr(parsed, "task_shard_count", 1),
+            task_shard_index=getattr(parsed, "task_shard_index", 0),
+            strict_task_sharding=getattr(
+                parsed, "strict_task_sharding", False
             ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
         )
@@ -1470,7 +1490,10 @@ def build_database_implementation_daemon_from_args(
     )
 
     program = database_program_from_daemon_namespace(parsed)
-    db_paths = resolve_database_implementation_paths(parsed)
+    db_paths = resolve_database_implementation_paths(
+        parsed,
+        authority_mode=program.authority_mode if program is not None else "",
+    )
     resolved_db = Path(database_path) if database_path is not None else db_paths["database_path"]
     if resolved_db is None:
         raise ValueError(
@@ -1501,6 +1524,9 @@ def build_database_implementation_daemon_from_args(
         pid_path=None,
         queue_path=None,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
+        task_shard_count=getattr(parsed, "task_shard_count", 1),
+        task_shard_index=getattr(parsed, "task_shard_index", 0),
+        strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
     )
 
 

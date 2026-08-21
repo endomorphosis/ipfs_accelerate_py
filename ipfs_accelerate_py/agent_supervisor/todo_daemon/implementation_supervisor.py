@@ -18624,12 +18624,25 @@ class PortalImplementationSupervisor:
             return False
         tokens = command_line.split()
 
+        has_strict_task_sharding = "--strict-task-sharding" in tokens
+        if self.config.strict_task_sharding != has_strict_task_sharding:
+            return False
+
         def option_values(option: str) -> set[str]:
             return {
                 tokens[index + 1]
                 for index, token in enumerate(tokens[:-1])
                 if token == option
             }
+
+        if option_values("--task-shard-count") != {
+            str(self.config.task_shard_count)
+        }:
+            return False
+        if option_values("--task-shard-index") != {
+            str(self.config.task_shard_index)
+        }:
+            return False
 
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids

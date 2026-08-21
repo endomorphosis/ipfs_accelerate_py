@@ -166,6 +166,9 @@ from ..merge.merge_conflict_repair import (
     resolve_reconciliation_guardrail_todo_conflicts,
 )
 from ..core.submodule_degradation import DegradationState
+from ..task_sources.database_task_source import (
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
 from ..task_sources.task_identity import (
     TaskIdentity,
@@ -206,6 +209,7 @@ from .implementation_daemon_runner import (
     bounded_daemon_wait_timeout,
     daemon_pass_is_idle,
     log_daemon_pass_result,
+    resolve_database_implementation_paths,
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
@@ -4689,6 +4693,15 @@ def transitive_task_dependents(
             break
         affected_task_ids.update(newly_affected)
     return affected_task_ids - roots
+
+
+def _task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
+    """Return the shared deterministic alias-hash home lane."""
+
+    if shard_count <= 1:
+        return 0
+    digest = hashlib.sha256(str(task_alias).encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % shard_count
 
 
 class PortalImplementationDaemon:
@@ -11855,10 +11868,7 @@ class PortalImplementationDaemon:
     def _task_home_shard_index(self, task_id: str) -> int:
         """Return the deterministic hash-home lane for ``task_id``."""
 
-        if self.task_shard_count <= 1:
-            return 0
-        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
-        return int(digest[:8], 16) % self.task_shard_count
+        return _task_alias_home_shard_index(task_id, self.task_shard_count)
 
     def _task_belongs_to_shard(self, task_id: str) -> bool:
         """Return whether this daemon lane should implement ``task_id``.
@@ -67765,6 +67775,9 @@ class DatabaseImplementationDaemon:
         queue_path: Path | str | None = None,
         lease_ms: int = 60_000,
         max_task_attempts: int = 0,
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        strict_task_sharding: bool = False,
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
@@ -67877,6 +67890,26 @@ class DatabaseImplementationDaemon:
         # budget.  Those deferrals do not consume a provider/model attempt,
         # but an exact task generation may not reconstruct them forever.
         self.max_task_attempts = int(max_task_attempts)
+        if (
+            isinstance(task_shard_count, bool)
+            or not isinstance(task_shard_count, int)
+            or task_shard_count < 1
+        ):
+            raise ValueError("task_shard_count must be a positive integer")
+        if (
+            isinstance(task_shard_index, bool)
+            or not isinstance(task_shard_index, int)
+            or task_shard_index < 0
+            or task_shard_index >= task_shard_count
+        ):
+            raise ValueError(
+                "task_shard_index must be in range [0, task_shard_count)"
+            )
+        if type(strict_task_sharding) is not bool:  # noqa: E721
+            raise ValueError("strict_task_sharding must be a boolean")
+        self.task_shard_count = task_shard_count
+        self.task_shard_index = task_shard_index
+        self.strict_task_sharding = strict_task_sharding
         self._provider_fn = provider_fn
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
@@ -68896,9 +68929,73 @@ class DatabaseImplementationDaemon:
             str(task.task_cid)
             for task in ready.tasks
             if self._automatic_claim_forbidden(task)
+            or not self._task_belongs_to_strict_shard(task)
         }
 
+    def _task_home_shard_index(self, task_alias: str) -> int:
+        """Return the deterministic alias-hash home for a canonical task."""
+
+        return _task_alias_home_shard_index(task_alias, self.task_shard_count)
+
+    def _task_belongs_to_strict_shard(self, task: Any) -> bool:
+        """Return whether ``task`` is admitted to this strict database lane.
+
+        Routing uses the authoritative display alias.  A missing alias fails
+        closed instead of treating content identity as scheduling authority.
+        """
+
+        if not self.strict_task_sharding:
+            return True
+        task_alias = str(getattr(task, "task_alias", "") or "").strip()
+        if not task_alias:
+            return False
+        return self._task_home_shard_index(task_alias) == self.task_shard_index
+
     # -- claim / attempt ----------------------------------------------------
+
+    def _release_unadmitted_claim(self, claim: Any, *, reason: str) -> None:
+        """Release an exact local claim that did not win shared-board CAS."""
+
+        get_lease = getattr(self.coordinator, "get_lease", None)
+        release = getattr(self.coordinator, "release", None)
+        if not callable(get_lease) or not callable(release):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot release an unadmitted task claim"
+            )
+        lease = get_lease(str(claim.lease_id))
+        if lease is None:
+            raise DatabaseImplementationAuthorityError(
+                f"unadmitted claim {claim.claim_id} has no fenced lease"
+            )
+        release(
+            lease,
+            reason=str(reason or "shared_board_claim_conflict"),
+            expected_fencing_token=int(claim.fencing_token),
+            expected_fence_epoch=int(claim.fence_epoch),
+            now_ms=self._now_ms(),
+        )
+
+    def _shared_claim_belongs_to_this_owner(self, task: Any) -> bool:
+        """Bind an in-progress retry to this lane's durable shared claim."""
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return False
+        return (
+            str(receipt.get("operation") or "") == "database_claim"
+            and str(receipt.get("owner_session_id") or "")
+            == self.owner_session_id
+            and bool(str(receipt.get("claim_id") or ""))
+            and bool(str(receipt.get("attempt_id") or ""))
+            and bool(str(receipt.get("lease_id") or ""))
+            and isinstance(receipt.get("fencing_token"), int)
+            and not isinstance(receipt.get("fencing_token"), bool)
+            and isinstance(receipt.get("fence_epoch"), int)
+            and not isinstance(receipt.get("fence_epoch"), bool)
+        )
 
     def claim_next(
         self,
@@ -68906,7 +69003,7 @@ class DatabaseImplementationDaemon:
         exclude_task_cids: Iterable[str] = (),
         lease_ms: int | None = None,
     ) -> DatabaseTaskAttempt | None:
-        """Claim one ready task for this session; four sessions never share work."""
+        """Claim one task, resolving lane-local races through shared-board CAS."""
 
         self._require_execution_authority("task claim")
         canonical_ready_task_cids = tuple(
@@ -68950,48 +69047,98 @@ class DatabaseImplementationDaemon:
                 )
             if task_cid not in canonical_ready_task_cid_set:
                 excluded.add(task_cid)
-        claim = self.coordinator.claim_ready_task(
-            owner_session_id=self.owner_session_id,
-            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
-            exclude_task_cids=excluded,
-            eligible_task_cids=canonical_ready_task_cids,
-            now_ms=self._now_ms(),
-        )
-        if claim is None:
-            return None
-        task = self.task_source.get(claim.task_cid)
-        task_alias = (
-            str(task.task_alias)
-            if task is not None and getattr(task, "task_alias", None)
-            else claim.task_cid
-        )
-        # Move durable task status through the database only (never Markdown).
-        if task is not None and str(task.status).lower() in {
-            "todo",
-            "ready",
-            "open",
-            "retrying",
-        }:
-            self._protect_new_claim(claim)
-            self._cas_task_status_database(
-                task.task_cid,
-                expected_revision=int(task.revision),
-                new_status="in_progress",
-                receipt={
-                    "operation": "database_claim",
-                    "claim_id": claim.claim_id,
-                    "attempt_id": claim.attempt_id,
-                    "owner_session_id": self.owner_session_id,
-                },
+        for _claim_attempt in range(TASK_SOURCE_QUERY_LIMIT):
+            claim = self.coordinator.claim_ready_task(
+                owner_session_id=self.owner_session_id,
+                lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+                exclude_task_cids=excluded,
+                eligible_task_cids=canonical_ready_task_cids,
+                now_ms=self._now_ms(),
             )
-        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
-        self._record_event(
-            "task_claimed",
-            attempt_id=attempt.attempt_id,
-            task_cid=attempt.task_cid,
-            body=attempt.to_dict(),
+            if claim is None:
+                return None
+
+            # The local coordination snapshot can race the shared owner.  Read
+            # both the task and dependency-aware ready frontier again after
+            # obtaining the local lease and before attempting the shared CAS.
+            task = self.task_source.get(claim.task_cid)
+            fresh_ready = self.task_source.ready_tasks(
+                limit=TASK_SOURCE_QUERY_LIMIT
+            )
+            fresh_ready_cids = {
+                str(item.task_cid) for item in fresh_ready.tasks
+            }
+            task_status = str(getattr(task, "status", "") or "").lower()
+            shard_admitted = bool(
+                task is not None and self._task_belongs_to_strict_shard(task)
+            )
+            ready = bool(
+                task is not None
+                and shard_admitted
+                and task_status in {"todo", "ready", "open", "retrying"}
+                and str(claim.task_cid) in fresh_ready_cids
+            )
+            fenced_retry = bool(
+                task is not None
+                and shard_admitted
+                and task_status == "in_progress"
+                and int(claim.attempt_number) > 1
+                and self._shared_claim_belongs_to_this_owner(task)
+            )
+            if not ready and not fenced_retry:
+                self._release_unadmitted_claim(
+                    claim,
+                    reason=(
+                        "shared_board_task_out_of_strict_shard"
+                        if task is not None and not shard_admitted
+                        else "shared_board_task_not_ready"
+                    ),
+                )
+                excluded.add(str(claim.task_cid))
+                continue
+
+            task_alias = str(task.task_alias or claim.task_cid)
+            self._protect_new_claim(claim)
+            try:
+                # This owner-side status CAS is the exclusion point shared by
+                # daemons whose fenced coordination stores are lane-local.
+                if ready:
+                    self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="in_progress",
+                        receipt={
+                            "operation": "database_claim",
+                            "claim_id": claim.claim_id,
+                            "attempt_id": claim.attempt_id,
+                            "owner_session_id": self.owner_session_id,
+                            "lease_id": claim.lease_id,
+                            "fencing_token": int(claim.fencing_token),
+                            "fence_epoch": int(claim.fence_epoch),
+                        },
+                    )
+            except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                self._release_unadmitted_claim(
+                    claim,
+                    reason="shared_board_claim_conflict",
+                )
+                excluded.add(str(claim.task_cid))
+                continue
+
+            attempt = self._insert_attempt_from_claim(
+                claim,
+                task_alias=task_alias,
+            )
+            self._record_event(
+                "task_claimed",
+                attempt_id=attempt.attempt_id,
+                task_cid=attempt.task_cid,
+                body=attempt.to_dict(),
+            )
+            return attempt
+        raise DatabaseImplementationConflictError(
+            "shared task-board claim retry bound exhausted"
         )
-        return attempt
 
     def _insert_attempt_from_claim(
         self,
@@ -72962,7 +73109,11 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
 
     program = database_program_from_daemon_namespace(args)
-    database_path = getattr(args, "database_path", None)
+    db_paths = resolve_database_implementation_paths(
+        args,
+        authority_mode=program.authority_mode if program is not None else "",
+    )
+    database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
         candidate = Path(program.store_id)
         if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
@@ -73000,7 +73151,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         daemon: Any = DatabaseImplementationDaemon(
             database_path=Path(database_path),
-            coordination_path=getattr(args, "coordination_path", None),
+            coordination_path=db_paths["coordination_path"],
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -73014,6 +73165,9 @@ def main(argv: list[str] | None = None) -> None:
             pid_path=None,
             queue_path=None,
             max_task_attempts=int(getattr(args, "max_task_attempts", 0) or 0),
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
             require_real_execution=bool(args.implement),
         )
         bind_database_portal_execution_from_args(
