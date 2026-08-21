@@ -1092,12 +1092,14 @@ class DatabaseProgramConfig:
         return env
 
     def daemon_cli_args(self) -> list[str]:
-        """Return daemon CLI options currently understood by the managed daemon.
+        """Return explicit non-secret authority options for a managed daemon.
 
-        Broader authority fields travel via environment / supervisor config
-        until the daemon cutover (DQP-018) consumes them natively. Task-source
-        kind is always explicit so the daemon never falls back to its deprecated
-        implicit legacy-Markdown default.
+        The environment carries the same immutable program as a defense in
+        depth, but store selection must remain inspectable in the process
+        command and must not depend on ambient environment propagation.  The
+        endpoint secret *handle* remains environment-only; it is an opaque
+        reference, but keeping it out of argv also satisfies configurations
+        that prohibit all credential references in process listings.
         """
 
         args = [
@@ -1105,9 +1107,25 @@ class DatabaseProgramConfig:
             self.task_source_kind,
             "--authority-mode",
             self.authority_mode,
+            "--state-failover-policy",
+            self.failover_policy,
         ]
         if self.quack_endpoint:
             args.extend(["--quack-endpoint", self.quack_endpoint])
+        if self.store_id:
+            args.extend(["--state-store-id", self.store_id])
+        if self.store_generation:
+            args.extend(["--state-store-generation", self.store_generation])
+        if self.schema_revision:
+            args.extend(["--state-schema-revision", self.schema_revision])
+        if self.event_store_path:
+            args.extend(["--event-store-path", self.event_store_path])
+        if self.runtime_registry_path:
+            args.extend(["--runtime-registry-path", self.runtime_registry_path])
+        if self.export_profile:
+            args.extend(["--export-profile", self.export_profile])
+        if self.explicit_legacy:
+            args.append("--explicit-legacy-task-source")
         return args
 
     def assert_quack_not_demoted(self, *, candidate_mode: str) -> None:

@@ -209,6 +209,7 @@ class PlanDeltaOperation(str, Enum):
     SUPERSEDE_GOAL = "supersede_goal"
     AMEND_UNSTARTED_GOAL = "amend_unstarted_goal"
     ADD_TASK = "add_task"
+    AMEND_UNSTARTED_TASK = "amend_unstarted_task"
     SUPERSEDE_UNSTARTED_TASK = "supersede_unstarted_task"
     SPLIT_UNSTARTED_TASK = "split_unstarted_task"
     COALESCE_UNSTARTED_TASKS = "coalesce_unstarted_tasks"
@@ -293,6 +294,7 @@ _MUTATING_TARGET_OPERATIONS: Final[frozenset[PlanDeltaOperation]] = frozenset(
     {
         PlanDeltaOperation.SUPERSEDE_GOAL,
         PlanDeltaOperation.AMEND_UNSTARTED_GOAL,
+        PlanDeltaOperation.AMEND_UNSTARTED_TASK,
         PlanDeltaOperation.SUPERSEDE_UNSTARTED_TASK,
         PlanDeltaOperation.SPLIT_UNSTARTED_TASK,
         PlanDeltaOperation.COALESCE_UNSTARTED_TASKS,
@@ -2246,6 +2248,29 @@ class PlanDeltaItem(CanonicalContract):
     def _assert_lifecycle_safe(self) -> None:
         state = self.expected_target_lifecycle
         op = self.operation
+        if op in {
+            PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+            PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
+        }:
+            if state not in {
+                LifecycleState.PROPOSED,
+                LifecycleState.ADMITTED,
+                LifecycleState.READY,
+                LifecycleState.UNSTARTED,
+                LifecycleState.BLOCKED,
+            }:
+                raise PlanRevisionLifecycleError(
+                    f"{op.value} requires an unstarted or blocked target"
+                )
+            if (
+                not self.target_cid
+                or not self.expected_target_spec_revision
+                or not self.after_record_cid
+            ):
+                raise PlanRevisionContractError(
+                    f"{op.value} requires target, expected spec revision, and "
+                    "replacement record identity"
+                )
         if state in _IMMUTABLE_HISTORY_STATES:
             if op in _MUTATING_TARGET_OPERATIONS:
                 raise PlanRevisionLifecycleError(

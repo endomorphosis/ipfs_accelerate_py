@@ -1109,6 +1109,97 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
 
 
+def test_same_lane_dead_owner_cleanup_is_reclaimed_before_expiry(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    peer_state = tmp_path / "state" / "lane-2"
+    workspace = tmp_path / "worktrees" / "dead-same-lane"
+    record = store.begin_preparing(
+        task_id="DEAD-SAME-LANE",
+        canonical_task_cid="cid:dead-same-lane",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/dead-same-lane",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 15,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+
+    peer = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=peer_state,
+    )
+    assert not peer.allowed
+    assert peer.reason == "owner_dead_lease_unexpired"
+
+    same_lane = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=lane_state,
+        caller_lease_id="lane-reclaimer",
+    )
+    assert same_lane.allowed
+    assert same_lane.reason == "reclaimed_dead_same_lane_owner"
+    assert same_lane.record is not None
+    assert same_lane.record.state is WorkspaceLifecycleState.TERMINAL
+    assert same_lane.record.fence == record.fence + 1
+
+
+def test_controlled_restart_bulk_reclaims_only_exact_dead_lane(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path, lease_seconds=21_600.0, startup_grace_seconds=0.0)
+    lane_state = tmp_path / "state" / "lane-1"
+    peer_state = tmp_path / "state" / "lane-2"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 17,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    same_workspace = tmp_path / "worktrees" / "same"
+    peer_workspace = tmp_path / "worktrees" / "peer"
+    store.begin_preparing(
+        task_id="BULK-SAME",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=same_workspace,
+        branch="implementation/bulk-same",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=dead_owner,
+    )
+    store.begin_preparing(
+        task_id="BULK-PEER",
+        attempt=1,
+        lane_id="lane-2",
+        workspace_path=peer_workspace,
+        branch="implementation/bulk-peer",
+        merge_target="main",
+        state_dir=str(peer_state),
+        owner=dead_owner,
+    )
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(
+        expected_state_dir=lane_state,
+        reason="restart-test",
+    )
+    assert [item.task_id for item in recovered] == ["BULK-SAME"]
+    assert store.load_workspace(same_workspace).is_terminal
+    assert store.load_workspace(peer_workspace).is_nonterminal
+
+
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
     store = _store(tmp_path)
     workspace = tmp_path / "cad"

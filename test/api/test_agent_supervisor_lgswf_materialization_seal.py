@@ -610,6 +610,7 @@ def test_unsealed_plane_exposes_only_manual_seal_and_daemon_skips_it(
         authority_mode="embedded",
         task_source_kind="duckdb",
         install_schema=False,
+        require_real_execution=True,
     )
     try:
         assert daemon._automatic_claim_exclusions() == {"task:LGSWF-006"}
@@ -1719,6 +1720,23 @@ def test_live_verifier_allows_real_task_progress_claim_provider_and_effect_histo
             authority_mode="embedded",
             task_source_kind="duckdb",
             install_schema=False,
+            provider_fn=lambda attempt: {
+                "status": "succeeded",
+                "accepted": True,
+                "task_cid": attempt.task_cid,
+            },
+            effect_fn=lambda attempt, provider_result: {
+                "status": "applied",
+                "task_cid": attempt.task_cid,
+                "provider_result": dict(provider_result),
+            },
+            validation_fn=lambda attempt, effect_result: {
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "a" * 64,
+                "task_cid": attempt.task_cid,
+                "effect_result": dict(effect_result),
+            },
+            require_real_execution=True,
         )
         attempt = daemon.claim_next()
         assert attempt is not None and attempt.task_alias == "LGSWF-001"
@@ -1825,6 +1843,7 @@ def test_live_verifier_rejects_impossible_claim_history_identity(
         authority_mode="embedded",
         task_source_kind="duckdb",
         install_schema=False,
+        require_real_execution=True,
     )
     try:
         attempt = daemon.claim_next()

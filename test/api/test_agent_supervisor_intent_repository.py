@@ -13,9 +13,20 @@ readiness, queue retry, goal reopen, current evidence.
 
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import (
+    DeltaEffectClass,
+    LifecycleState,
+    PlanDeltaOperation,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
@@ -29,14 +40,22 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceConflictError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    INTENT_COMPLETION_PROJECTION_SCHEMA,
+    INTENT_PLAN_PROJECTION_SCHEMA,
     INTENT_REPOSITORY_INTERFACE,
     PLAN_REVISION_REPOSITORY_INTERFACE,
+    TASK_AUTHORITY_SPEC_SCHEMA,
+    TASK_PROJECTION_SPEC_SCHEMA,
     IntentCompletionError,
     IntentEventType,
     IntentRepository,
+    IntentRepositoryBoundsError,
     IntentRepositoryConflictError,
+    IntentRepositoryIntegrityError,
     PlanRevisionRepository,
     open_intent_repository,
+    task_authority_spec_cid,
+    task_projection_spec_cid,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -186,6 +205,248 @@ def test_objectives_goals_plans_tasks_retain_canonical_ids(tmp_path: Path) -> No
         dependent = repo.get_task(ids["task_b"])
         assert dependent is not None
         assert dependent["dependencies"] == ("task:cid:001",)
+
+
+def test_full_plan_projection_binds_complete_task_specs_and_is_stable(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "control.duckdb"
+    with open_intent_repository(database_path, owner_id="owner:test") as repo:
+        ids = _seed_graph(repo)
+        projection = repo.plan_projection()
+
+        assert projection["schema"] == INTENT_PLAN_PROJECTION_SCHEMA
+        assert TASK_PROJECTION_SPEC_SCHEMA.endswith("/task-projection-spec@1")
+        assert projection["projection_cid"].startswith("b")
+        assert len(projection["objectives"]) == 1
+        assert len(projection["goals"]) == 2
+        assert len(projection["goal_edges"]) == 1
+        assert len(projection["plans"]) == 1
+        assert len(projection["tasks"]) == 2
+
+        task_a = next(
+            item for item in projection["tasks"] if item["task_cid"] == ids["task_a"]
+        )
+        task_b = next(
+            item for item in projection["tasks"] if item["task_cid"] == ids["task_b"]
+        )
+        assert task_b["dependencies"] == [
+            {"dependency_task_cid": ids["task_a"], "kind": "depends_on"}
+        ]
+        assert task_a["outputs"] == [
+            {
+                "ordinal": 0,
+                "path": "intent_repository.py",
+                "effect": {
+                    "path": "intent_repository.py",
+                    "effect": "create",
+                },
+            }
+        ]
+        assert task_a["acceptance"][0]["criterion"] == "tests pass"
+        assert task_a["validations"][0]["argv"] == [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+        ]
+        assert task_a["spec_cid"] == task_projection_spec_cid(task_a)
+        assert task_b["spec_cid"] == task_projection_spec_cid(task_b)
+        authority_spec = task_authority_spec_cid(task_a)
+        assert TASK_AUTHORITY_SPEC_SCHEMA.endswith("/task-authority-spec@1")
+
+        # Status/CAS evidence is lifecycle state, not plan authority.
+        operational = deepcopy(dict(task_a))
+        operational["status"] = "retrying"
+        operational["revision"] = 7
+        operational["body"] = {
+            **dict(operational["body"]),
+            "completion_receipt": {
+                "operation": "typed_validation_retry",
+                "receipt_id": "sha256:" + ("42" * 32),
+            },
+        }
+        assert task_projection_spec_cid(operational) != task_a["spec_cid"]
+        assert task_authority_spec_cid(operational) == authority_spec
+
+        # Actual plan authority remains bound even when a receipt is present.
+        for key in ("title", "authority"):
+            drifted = deepcopy(operational)
+            drifted["body"][key] = "forged"
+            assert task_authority_spec_cid(drifted) != authority_spec
+
+        # Each relational part is specification identity, not advisory text.
+        task_a_spec = task_a["spec_cid"]
+        variant = deepcopy(dict(task_a))
+        variant["body"] = {"changed": True}
+        assert task_projection_spec_cid(variant) != task_a_spec
+        variant = deepcopy(dict(task_a))
+        variant["outputs"][0]["effect"] = {"effect": "modify"}
+        assert task_projection_spec_cid(variant) != task_a_spec
+        variant = deepcopy(dict(task_a))
+        variant["acceptance"][0]["evidence_policy"] = {"required": "kernel"}
+        assert task_projection_spec_cid(variant) != task_a_spec
+        variant = deepcopy(dict(task_a))
+        variant["validations"][0]["argv"] = ["python", "-m", "pytest", "-x"]
+        assert task_projection_spec_cid(variant) != task_a_spec
+
+        task_b_spec = task_b["spec_cid"]
+        variant = deepcopy(dict(task_b))
+        variant["dependencies"][0]["kind"] = "orders_after"
+        assert task_projection_spec_cid(variant) != task_b_spec
+
+        selected = repo.plan_projection(task_cids=[ids["task_b"]])
+        assert [item["task_cid"] for item in selected["tasks"]] == [ids["task_b"]]
+        first_projection_cid = projection["projection_cid"]
+        first_task_spec_cid = task_a_spec
+
+        with pytest.raises(KeyError):
+            repo.plan_projection(task_cids=["task:cid:unknown"])
+        with pytest.raises(IntentRepositoryBoundsError):
+            repo.plan_projection(
+                task_cids=[f"task:cid:bounded-{index}" for index in range(1_001)]
+            )
+
+    # Content identities do not depend on connection/session timestamps.
+    with open_intent_repository(database_path, owner_id="owner:reopen") as reopened:
+        stable = reopened.plan_projection()
+        assert stable["projection_cid"] == first_projection_cid
+        stable_task_a = next(
+            item for item in stable["tasks"] if item["task_cid"] == ids["task_a"]
+        )
+        assert stable_task_a["spec_cid"] == first_task_spec_cid
+
+        live_task = reopened.get_task(ids["task_a"])
+        assert live_task is not None
+        reopened.upsert_task(
+            task_cid=ids["task_a"],
+            task_alias=str(live_task["task_alias"]),
+            goal_cid=str(live_task["goal_cid"]),
+            plan_cid=str(live_task["plan_cid"]),
+            objective_id=str(live_task["objective_id"]),
+            ordinal=int(live_task["ordinal"]),
+            status=str(live_task["status"]),
+            priority=str(live_task["priority"]),
+            body=live_task["body"],
+            identity=live_task["identity"],
+            expected_revision=int(live_task["revision"]),
+            validations=[["python", "-m", "pytest", "-q", "--strict"]],
+        )
+        changed = reopened.plan_projection()
+        changed_task_a = next(
+            item for item in changed["tasks"] if item["task_cid"] == ids["task_a"]
+        )
+        assert changed["projection_cid"] != first_projection_cid
+        assert changed_task_a["spec_cid"] != first_task_spec_cid
+
+
+def test_plan_projection_rejects_duplicate_json_authority(tmp_path: Path) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            row = connection.execute(
+                "SELECT ordinal, effect_json FROM task_outputs "
+                "WHERE task_cid = ? ORDER BY ordinal LIMIT 1",
+                [ids["task_a"]],
+            ).fetchone()
+            assert row is not None
+            raw = str(row[1])
+            decoded = json.loads(raw)
+            key = next(iter(decoded))
+            evil = "forged" if decoded[key] != "forged" else "other-forged"
+            ambiguous = (
+                "{" + json.dumps(key) + ":" + json.dumps(evil) + "," + raw[1:]
+            )
+            connection.execute(
+                "UPDATE task_outputs SET effect_json = ? "
+                "WHERE task_cid = ? AND ordinal = ?",
+                [ambiguous, ids["task_a"], int(row[0])],
+            )
+
+        with pytest.raises(
+            IntentRepositoryIntegrityError,
+            match="unambiguous JSON",
+        ):
+            repo.plan_projection()
+
+
+def test_plan_projection_rejects_empty_persisted_json_authority(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                "UPDATE tasks SET extension_json = '' WHERE task_cid = ?",
+                [ids["task_a"]],
+            )
+
+        with pytest.raises(
+            IntentRepositoryIntegrityError,
+            match="unambiguous JSON",
+        ):
+            repo.plan_projection()
+
+
+def test_completion_evidence_projection_binds_exact_receipts(tmp_path: Path) -> None:
+    database_path = tmp_path / "control.duckdb"
+    with open_intent_repository(database_path, owner_id="owner:test") as repo:
+        ids = _seed_graph(repo)
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        repo.record_validation_result(
+            task_cid=ids["task_a"],
+            outcome="passed",
+            evidence_digest=ids["evidence_digest"],
+            argv=["python", "-m", "pytest", "-q"],
+        )
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=int(task["revision"]),
+            new_status="completed",
+            receipt={"validation": "passed", "authority": "independent"},
+            evidence_digests=[ids["evidence_digest"]],
+        )
+
+        projection = repo.completion_evidence_projection(
+            task_cids=[ids["task_a"]]
+        )
+        assert projection["schema"] == INTENT_COMPLETION_PROJECTION_SCHEMA
+        assert projection["task_states"] == [
+            {"task_cid": ids["task_a"], "status": "completed", "revision": 2}
+        ]
+        assert len(projection["completion_receipts"]) == 1
+        receipt = projection["completion_receipts"][0]
+        assert receipt["receipt_cid"].startswith("b")
+        assert receipt["task_cid"] == ids["task_a"]
+        assert receipt["goal_cid"] == ids["goal_cid"]
+        assert receipt["evidence_digest"].startswith("b")
+        assert receipt["completed_at"]
+        assert receipt["body"]["schema"] == (
+            "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1"
+        )
+        assert receipt["body"]["receipt"] == {
+            "validation": "passed",
+            "authority": "independent",
+        }
+        history = repo.task_revision_history_projection(ids["task_a"])
+        assert history["task_cid"] == ids["task_a"]
+        assert [item["revision"] for item in history["revisions"]] == [1, 2]
+        assert history["revisions"][-1]["body"]["completion_receipt"] == {
+            "validation": "passed",
+            "authority": "independent",
+        }
+        projection_cid = projection["projection_cid"]
+
+        empty = repo.completion_evidence_projection(task_cids=[ids["task_b"]])
+        assert empty["completion_receipts"] == []
+        with pytest.raises(KeyError):
+            repo.completion_evidence_projection(task_cids=["task:cid:unknown"])
+
+    with open_intent_repository(database_path, owner_id="owner:reopen") as reopened:
+        stable = reopened.completion_evidence_projection(task_cids=[ids["task_a"]])
+        assert stable["projection_cid"] == projection_cid
+        assert stable["completion_receipts"][0] == receipt
 
 
 def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:
@@ -478,6 +739,12 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         repo.record_queue_backoff(
             task_cid=ids["task_b"], delay_ms=5_000, reason="retry later"
         )
+        completion_before = repo.completion_evidence_projection(
+            task_cids=[ids["task_a"]]
+        )
+        assert completion_before["completion_receipts"][0]["body"][
+            "evidence_digests"
+        ] == [ids["evidence_digest"]]
 
         before = repo.snapshot()
         assert before.task_count == 2
@@ -499,6 +766,10 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         assert after.goal_count == before.goal_count
         assert after.plan_count == before.plan_count
         assert after.dependency_count == before.dependency_count
+        assert (
+            repo.completion_evidence_projection(task_cids=[ids["task_a"]])
+            == completion_before
+        )
 
         rebuilt_task = repo.get_task(ids["task_a"])
         assert rebuilt_task is not None
@@ -511,6 +782,67 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         # Recovery is a pure database operation (no external files).
         recovery = repo.recover()
         assert recovery.event_type == IntentEventType.RECOVERY_APPLIED.value
+
+
+def test_legacy_completion_replay_accepts_only_reconstructable_empty_evidence(
+    tmp_path: Path,
+) -> None:
+    """An omitted legacy member must not erase a nonempty evidence binding."""
+
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        receipt = {"authority": "legacy-independent"}
+
+        def payload(task_cid: str, evidence_digests: list[str]) -> dict[str, object]:
+            revision = 2
+            evidence_digest = content_identity(
+                {
+                    "task_cid": task_cid,
+                    "revision": revision,
+                    "receipt": receipt,
+                    "evidence_digests": evidence_digests,
+                }
+            )
+            return {
+                "task_cid": task_cid,
+                "task_alias": task_cid,
+                "goal_cid": ids["goal_cid"],
+                "status": "completed",
+                "revision": revision,
+                "receipt": receipt,
+                "completion_receipt_cid": content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": task_cid,
+                        "revision": revision,
+                        "evidence_digest": evidence_digest,
+                    }
+                ),
+                "evidence_digest": evidence_digest,
+                "recorded_at": "2026-01-01T00:00:00+00:00",
+            }
+
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            repo._apply_event_payload(  # noqa: SLF001
+                connection,
+                event_type=IntentEventType.COMPLETION_RECORDED.value,
+                payload=payload(ids["task_a"], []),
+            )
+        projection = repo.completion_evidence_projection(task_cids=[ids["task_a"]])
+        assert projection["completion_receipts"][0]["body"][
+            "evidence_digests"
+        ] == []
+
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            with pytest.raises(
+                IntentRepositoryIntegrityError,
+                match="omitted nonempty evidence_digests",
+            ):
+                repo._apply_event_payload(  # noqa: SLF001
+                    connection,
+                    event_type=IntentEventType.COMPLETION_RECORDED.value,
+                    payload=payload(ids["task_b"], [ids["evidence_digest"]]),
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -784,6 +1116,174 @@ def test_database_task_source_stale_cursor_and_cas_conflict(tmp_path: Path) -> N
         source.compare_and_set_status(task.task_cid, task.revision, "in_progress")
         with pytest.raises(TaskSourceConflictError):
             source.compare_and_set_status(task.task_cid, task.revision, "blocked")
+
+
+def test_database_task_source_applies_add_and_exact_unstarted_amend(
+    tmp_path: Path,
+) -> None:
+    base_population = {
+        "repository_tree_id": "tree:steer",
+        "objectives": [
+            {
+                "goal_cid": "goal:steer",
+                "goal_id": "G-STEER",
+                "title": "Steer safely",
+            }
+        ],
+        "tasks": [
+            {
+                "task_cid": "task:retained",
+                "task_id": "STEER-001",
+                "goal_cid": "goal:steer",
+                "ordinal": 10,
+                "status": "ready",
+                "title": "Original task",
+                "acceptance_criteria": ["original accepted"],
+                "validation_commands": ["true"],
+            },
+            {
+                "task_cid": "task:blocked",
+                "task_id": "STEER-BLOCKED",
+                "goal_cid": "goal:steer",
+                "ordinal": 20,
+                "status": "blocked",
+                "title": "External authority remains blocked",
+                "acceptance_criteria": ["operator authorization"],
+                "validation_commands": ["true"],
+            },
+        ],
+    }
+    candidate_population = deepcopy(base_population)
+    candidate_tasks = candidate_population["tasks"]
+    assert isinstance(candidate_tasks, list)
+    candidate_tasks[0]["title"] = "Amended before claim"
+    candidate_tasks[0]["validation_commands"] = ["python -m pytest -q"]
+    candidate_tasks[1]["ordinal"] = 30
+    candidate_tasks.append(
+        {
+            "task_cid": "task:qualification",
+            "task_id": "STEER-002",
+            "goal_cid": "goal:steer",
+            "ordinal": 1,
+            "status": "ready",
+            "title": "Independent qualification",
+            "depends_on": [],
+            "acceptance_criteria": ["qualification passes"],
+            "validation_commands": ["true"],
+        }
+    )
+
+    with DatabaseTaskSource(tmp_path / "candidate.duckdb") as candidate:
+        candidate.materialize(
+            candidate_population,
+            repository_tree_id="tree:steer",
+            plan_root_cid="plan:steer:v2",
+        )
+        projected_candidate = candidate.plan_projection()
+        candidate_by_cid = {
+            str(item["task_cid"]): item for item in projected_candidate["tasks"]
+        }
+        amended_spec_cid = task_projection_spec_cid(
+            candidate_by_cid["task:retained"]
+        )
+        reprioritized_spec_cid = task_projection_spec_cid(
+            candidate_by_cid["task:blocked"]
+        )
+
+    with DatabaseTaskSource(tmp_path / "control-steer.duckdb") as source:
+        materialized = source.materialize(base_population)
+        predecessor_root = str(materialized["plan_root_cid"])
+        current_projection = source.plan_projection()
+        current_by_cid = {
+            str(item["task_cid"]): item for item in current_projection["tasks"]
+        }
+        current_spec_cid = task_projection_spec_cid(
+            current_by_cid["task:retained"]
+        )
+        current_blocked_spec_cid = task_projection_spec_cid(
+            current_by_cid["task:blocked"]
+        )
+        delta = SimpleNamespace(
+            delta_cid="delta:steer:v2",
+            items=(
+                SimpleNamespace(
+                    operation=PlanDeltaOperation.AMEND_UNSTARTED_TASK,
+                    target_cid="task:retained",
+                    expected_target_lifecycle=LifecycleState.UNSTARTED,
+                    expected_target_spec_revision=current_spec_cid,
+                    after_record_cid=amended_spec_cid,
+                    effect_class=DeltaEffectClass.MATERIALIZABLE_NOW,
+                ),
+                SimpleNamespace(
+                    operation=PlanDeltaOperation.REPRIORITIZE_UNSTARTED_TASK,
+                    target_cid="task:blocked",
+                    expected_target_lifecycle=LifecycleState.BLOCKED,
+                    expected_target_spec_revision=current_blocked_spec_cid,
+                    after_record_cid=reprioritized_spec_cid,
+                    effect_class=DeltaEffectClass.MATERIALIZABLE_NOW,
+                ),
+                SimpleNamespace(
+                    operation=PlanDeltaOperation.ADD_TASK,
+                    target_cid="",
+                    expected_target_lifecycle=LifecycleState.PROPOSED,
+                    expected_target_spec_revision="",
+                    after_record_cid="task:qualification",
+                    effect_class=DeltaEffectClass.MATERIALIZABLE_NOW,
+                ),
+            ),
+        )
+        revision = SimpleNamespace(
+            plan_root_cid="plan:steer:v2",
+            revision_cid="revision:steer:v2",
+        )
+        delta.items[0].expected_target_spec_revision = "cid:stale-spec"
+        with pytest.raises(TaskSourceConflictError, match="specification CAS"):
+            source.apply_plan_revision(
+                revision=revision,
+                goal_graph=candidate_population,
+                repository_tree_id="tree:steer",
+                retained_task_cids=("task:retained", "task:blocked"),
+                claimed_task_cids=(),
+                origin="steer",
+                delta=delta,
+                store_continuation=object(),
+                idempotency_key="steer:stale",
+                fencing_token=1,
+            )
+        assert source.get_task("task:qualification") is None
+        delta.items[0].expected_target_spec_revision = current_spec_cid
+        receipt = source.apply_plan_revision(
+            revision=revision,
+            goal_graph=candidate_population,
+            repository_tree_id="tree:steer",
+            retained_task_cids=("task:retained", "task:blocked"),
+            claimed_task_cids=(),
+            origin="steer",
+            delta=delta,
+            store_continuation=object(),
+            idempotency_key="steer:v2",
+            fencing_token=1,
+        )
+
+        assert receipt["amended_task_cids"] == ["task:blocked", "task:retained"]
+        assert receipt["added_task_cids"] == ["task:qualification"]
+        assert receipt["projection_cid"] == source.plan_revision_projection_cid()
+        retained = source.get_task("task:retained")
+        assert retained is not None
+        assert retained.status == "ready"
+        assert retained.task_cid == "task:retained"
+        assert retained.body["title"] == "Amended before claim"
+        assert source.get_task("task:qualification") is not None
+        blocked = source.get_task("task:blocked")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert blocked.ordinal == 30
+        assert source.get_plan(predecessor_root)["status"] == "continued"  # type: ignore[index]
+        assert source.get_plan("plan:steer:v2")["status"] == "active"  # type: ignore[index]
+        completion = source.completion_evidence_projection(
+            task_cids=("task:retained",)
+        )
+        assert completion["completion_receipts"] == []
 
 
 def test_single_transaction_emits_events_without_external_files(

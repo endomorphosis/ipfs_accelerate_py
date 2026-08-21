@@ -89,6 +89,7 @@ MAX_CAS_BYTES: Final[int] = 1_048_576
 MAX_INDEX_ENTRIES: Final[int] = 65_536
 MAX_EVENTS: Final[int] = 100_000
 MAX_CONTINUATION_BYTES: Final[int] = 1_048_576
+MAX_PROJECTION_BACKEND_PATHS: Final[int] = 16
 
 _CID_RE_PREFIX = "b"
 
@@ -1070,6 +1071,7 @@ class PlanRevisionStore:
                 } and item.operation in {
                     PlanDeltaOperation.SUPERSEDE_UNSTARTED_TASK,
                     PlanDeltaOperation.AMEND_UNSTARTED_GOAL,
+                    PlanDeltaOperation.AMEND_UNSTARTED_TASK,
                     PlanDeltaOperation.SPLIT_UNSTARTED_TASK,
                     PlanDeltaOperation.COALESCE_UNSTARTED_TASKS,
                     PlanDeltaOperation.REWIRE_UNSTARTED_DEPENDENCY,
@@ -1256,6 +1258,66 @@ class PlanRevisionStore:
         if request.duckdb_source is not None:
             duckdb_path = str(Path(request.duckdb_source.database_path).resolve())
         return markdown_path, duckdb_path
+
+    def _duckdb_projection_paths(
+        self, request: PlanRevisionApplyRequest
+    ) -> tuple[Path, ...]:
+        """Return every local file a composite DuckDB apply may mutate.
+
+        The primary ``database_path`` remains mandatory for compatibility.
+        Composite adapters may expose additional owned stores through
+        ``plan_revision_projection_paths()``.  The bounded, de-duplicated path
+        set is captured before any projection write so compensation can restore
+        all databases, not merely the control-plane primary.
+        """
+
+        source = request.duckdb_source
+        if source is None:
+            return ()
+        primary = getattr(source, "database_path", None)
+        if primary is None:
+            raise PlanRevisionStoreError(
+                "duckdb_source must expose its primary database_path"
+            )
+        raw_paths: list[Any] = [primary]
+        projection_paths = getattr(source, "plan_revision_projection_paths", None)
+        if callable(projection_paths):
+            declared = projection_paths()
+            if isinstance(declared, Mapping):
+                raw_paths.extend(declared.values())
+            elif isinstance(declared, Sequence) and not isinstance(
+                declared, (str, bytes, bytearray)
+            ):
+                raw_paths.extend(declared)
+            else:
+                raise PlanRevisionStoreIntegrityError(
+                    "plan_revision_projection_paths must return a mapping or sequence"
+                )
+        if len(raw_paths) > MAX_PROJECTION_BACKEND_PATHS:
+            raise PlanRevisionStoreIntegrityError(
+                "DuckDB projection path population exceeds its bound"
+            )
+        paths: list[Path] = []
+        seen: set[str] = set()
+        for raw_path in raw_paths:
+            path = Path(raw_path).resolve()
+            if path == Path(path.anchor):
+                raise PlanRevisionStoreIntegrityError(
+                    "DuckDB projection path must not be a filesystem root"
+                )
+            identity = str(path)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            paths.append(path)
+        return tuple(paths)
+
+    def _restore_duckdb_projection_backups(
+        self,
+        backups: Sequence[tuple[Path, Path | None]],
+    ) -> None:
+        for target, backup in reversed(tuple(backups)):
+            self._restore_projection_file(backup, target)
 
     def _backup_projection(
         self, intent_cid: str, kind: str, path: Path
@@ -1611,7 +1673,7 @@ class PlanRevisionStore:
         prior_active_cid = prior_active.active_cid if prior_active else ""
 
         md_backup = None
-        db_backup = None
+        db_backups: list[tuple[Path, Path | None]] = []
         if request.markdown_source is not None:
             md_backup = self._backup_projection(
                 intent.intent_cid,
@@ -1619,11 +1681,15 @@ class PlanRevisionStore:
                 Path(request.markdown_source.path),
             )
         if request.duckdb_source is not None:
-            db_backup = self._backup_projection(
-                intent.intent_cid,
-                "duckdb",
-                Path(request.duckdb_source.database_path),
-            )
+            for index, target in enumerate(self._duckdb_projection_paths(request)):
+                kind = "duckdb" if index == 0 else f"duckdb-{index}"
+                db_backups.append(
+                    (
+                        target,
+                        self._backup_projection(intent.intent_cid, kind, target),
+                    )
+                )
+        db_backup = db_backups[0][1] if db_backups else None
 
         intent = self._update_intent_state(
             intent, PlanRevisionApplyState.PREPARED
@@ -1638,6 +1704,13 @@ class PlanRevisionStore:
                 "delta_cid": delta_cid,
                 "markdown_backup": str(md_backup) if md_backup else "",
                 "duckdb_backup": str(db_backup) if db_backup else "",
+                "duckdb_backups": [
+                    {
+                        "target": str(target),
+                        "backup": str(backup) if backup else "",
+                    }
+                    for target, backup in db_backups
+                ],
             },
         )
 
@@ -1677,9 +1750,7 @@ class PlanRevisionStore:
                     md_backup, Path(request.markdown_source.path)
                 )
             if request.duckdb_source is not None:
-                self._restore_projection_file(
-                    db_backup, Path(request.duckdb_source.database_path)
-                )
+                self._restore_duckdb_projection_backups(db_backups)
             restored = self._restore_prior_active()
             reason = str(exc) or type(exc).__name__
             # Only quarantine true dual-backend split-brain / parity failures.
@@ -2076,6 +2147,7 @@ class PlanRevisionStore:
                         payload = dict(record.get("payload") or {})
                         md_backup = payload.get("markdown_backup") or ""
                         db_backup = payload.get("duckdb_backup") or ""
+                        raw_db_backups = payload.get("duckdb_backups")
                         active = self.get_active()
                         intent = None
                         if intent_cid:
@@ -2088,7 +2160,46 @@ class PlanRevisionStore:
                             self._restore_projection_file(
                                 Path(md_backup), Path(intent.markdown_path)
                             )
-                        if intent is not None and intent.duckdb_path and db_backup:
+                        restored_composite = False
+                        if isinstance(raw_db_backups, list):
+                            if len(raw_db_backups) > MAX_PROJECTION_BACKEND_PATHS:
+                                raise PlanRevisionStoreIntegrityError(
+                                    "recovery DuckDB backup population exceeds bound"
+                                )
+                            parsed_backups: list[tuple[Path, Path | None]] = []
+                            for item in raw_db_backups:
+                                if not isinstance(item, Mapping):
+                                    raise PlanRevisionStoreIntegrityError(
+                                        "recovery DuckDB backup entry is malformed"
+                                    )
+                                target_text = str(item.get("target") or "")
+                                if not target_text:
+                                    raise PlanRevisionStoreIntegrityError(
+                                        "recovery DuckDB backup target is missing"
+                                    )
+                                target = Path(target_text).resolve()
+                                if target == Path(target.anchor):
+                                    raise PlanRevisionStoreIntegrityError(
+                                        "recovery DuckDB target must not be a root"
+                                    )
+                                backup_text = str(item.get("backup") or "")
+                                backup = Path(backup_text).resolve() if backup_text else None
+                                if backup is not None:
+                                    try:
+                                        backup.relative_to(self.backups_dir.resolve())
+                                    except ValueError as exc:
+                                        raise PlanRevisionStoreIntegrityError(
+                                            "recovery backup is outside the revision store"
+                                        ) from exc
+                                parsed_backups.append((target, backup))
+                            self._restore_duckdb_projection_backups(parsed_backups)
+                            restored_composite = True
+                        if (
+                            not restored_composite
+                            and intent is not None
+                            and intent.duckdb_path
+                            and db_backup
+                        ):
                             self._restore_projection_file(
                                 Path(db_backup), Path(intent.duckdb_path)
                             )

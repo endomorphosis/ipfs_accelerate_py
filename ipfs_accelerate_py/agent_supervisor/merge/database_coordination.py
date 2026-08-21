@@ -73,6 +73,9 @@ DATABASE_COORDINATION_SCHEMA: Final[str] = (
 COORDINATION_REGISTRY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/coordination-registry-projection@1"
 )
+COORDINATION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/coordination-history-projection@1"
+)
 FENCED_LEASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/fenced-lease@1"
 )
@@ -100,6 +103,9 @@ MAX_PREPARED_COMPLETION_QUERY: Final[int] = 1_000
 PREPARED_COMPLETION_STATUS: Final[str] = "prepared"
 TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-preparation@1"
+)
+TASK_DEPENDENCY_AMENDMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-dependency-amendment@1"
 )
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
@@ -1270,11 +1276,23 @@ def _decode_coordination_body(
     table: str,
     identity: str,
 ) -> dict[str, Any]:
-    try:
-        decoded = json.loads(str(value or "{}"))
-    except json.JSONDecodeError as exc:
+    def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = item
+        return result
+
+    if value is None or not str(value):
         raise DatabaseCoordinationStaleFenceError(
-            f"{table} body for {identity} is not valid JSON"
+            f"{table} body for {identity} is not valid unambiguous JSON"
+        )
+    try:
+        decoded = json.loads(str(value), object_pairs_hook=closed_object)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            f"{table} body for {identity} is not valid unambiguous JSON"
         ) from exc
     if not isinstance(decoded, Mapping):
         raise DatabaseCoordinationStaleFenceError(
@@ -1303,6 +1321,10 @@ def _validate_coordination_authority(connection: Any) -> None:
                 str(_coordination_row_value(row, 2, "data_type") or "").upper(),
             )
         )
+    if set(actual) != set(_COORDINATION_REQUIRED_COLUMNS):
+        raise DatabaseCoordinationStaleFenceError(
+            "coordination authority table inventory differs"
+        )
     for table, expected_columns in _COORDINATION_REQUIRED_COLUMNS.items():
         if tuple(actual.get(table, ())) != expected_columns:
             raise DatabaseCoordinationStaleFenceError(
@@ -1321,11 +1343,9 @@ def _validate_coordination_authority(connection: Any) -> None:
         str(_coordination_row_value(row, 0, "index_name") or "")
         for row in index_rows
     }
-    missing_indexes = _COORDINATION_REQUIRED_INDEXES - index_names
-    if missing_indexes:
+    if index_names != _COORDINATION_REQUIRED_INDEXES:
         raise DatabaseCoordinationStaleFenceError(
-            "coordination authority is missing required indexes: "
-            + ", ".join(sorted(missing_indexes))
+            "coordination authority index inventory differs"
         )
 
     metadata_rows = connection.execute(
@@ -1341,8 +1361,11 @@ def _validate_coordination_authority(connection: Any) -> None:
         "interface": DATABASE_COORDINATOR_INTERFACE,
         "schema": DATABASE_COORDINATION_SCHEMA,
     }
-    for key, expected in expected_metadata.items():
-        if metadata.get(key) != expected:
+    if metadata != expected_metadata:
+        differing = sorted(set(metadata) ^ set(expected_metadata))
+        if not differing:
+            differing = sorted(expected_metadata)
+        for key in differing[:1]:
             raise DatabaseCoordinationStaleFenceError(
                 f"coordination authority metadata mismatch for {key}"
             )
@@ -1839,6 +1862,141 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+    def add_unstarted_task_dependency(
+        self,
+        *,
+        task_cid: str,
+        dependency_task_cid: str,
+        expected_dependency_task_cids: Sequence[str],
+        operation_id: str,
+    ) -> dict[str, Any]:
+        """Add one dependency edge to an exactly matched, unstarted task.
+
+        This is the deliberately narrow coordination counterpart of an
+        ``AMEND_UNSTARTED_TASK`` plan revision.  It never rewrites the task
+        row, task identity, completion evidence, or execution history.  The
+        caller must provide the complete dependency set it observed; a stale
+        set fails closed.  Retrying after response loss is idempotent only
+        when the current set is exactly that expected set plus this one edge.
+
+        A task with any completion, claim, or attempt history is no longer
+        amendable, including when that history has reached a terminal state.
+        This prevents a plan amendment from changing the prerequisites under
+        evidence already produced for the task.
+        """
+
+        cid = _text(task_cid, "task_cid")
+        dependency_cid = _text(dependency_task_cid, "dependency_task_cid")
+        operation = _text(operation_id, "operation_id")
+        if cid == dependency_cid:
+            raise DatabaseCoordinationConflictError(
+                "a task cannot depend on itself"
+            )
+        expected = tuple(
+            sorted(
+                {
+                    _text(item, "expected_dependency_task_cid")
+                    for item in expected_dependency_task_cids
+                }
+            )
+        )
+        if len(expected) != len(expected_dependency_task_cids):
+            raise DatabaseCoordinationConflictError(
+                "expected_dependency_task_cids must be unique"
+            )
+        if dependency_cid in expected:
+            raise DatabaseCoordinationConflictError(
+                "new dependency is already present in the expected set"
+            )
+        after = tuple(sorted((*expected, dependency_cid)))
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                task = connection.execute(
+                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if task is None:
+                    raise DatabaseCoordinationConflictError(
+                        f"task is absent from the coordination registry: {cid}"
+                    )
+                dependency_task = connection.execute(
+                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    [dependency_cid],
+                ).fetchone()
+                if dependency_task is None:
+                    raise DatabaseCoordinationConflictError(
+                        "dependency task is absent from the coordination registry: "
+                        f"{dependency_cid}"
+                    )
+
+                for table in ("task_completions", "task_claims", "task_attempts"):
+                    history = connection.execute(
+                        f"SELECT 1 FROM {table} WHERE task_cid = ? LIMIT 1",
+                        [cid],
+                    ).fetchone()
+                    if history is not None:
+                        raise DatabaseCoordinationConflictError(
+                            "dependency amendment requires an unstarted task; "
+                            f"{table} history exists for {cid}"
+                        )
+
+                rows = connection.execute(
+                    """
+                    SELECT dependency_task_cid FROM task_dependencies
+                    WHERE task_cid = ? ORDER BY dependency_task_cid
+                    """,
+                    [cid],
+                ).fetchall()
+                current = tuple(
+                    str(
+                        _row_get(
+                            _row_mapping(row),
+                            "dependency_task_cid",
+                            "0",
+                        )
+                    )
+                    for row in rows
+                )
+                if current == expected:
+                    connection.execute(
+                        """
+                        INSERT INTO task_dependencies(task_cid, dependency_task_cid)
+                        VALUES (?, ?)
+                        """,
+                        [cid, dependency_cid],
+                    )
+                    changed = True
+                elif current == after:
+                    changed = False
+                else:
+                    raise DatabaseCoordinationConflictError(
+                        "dependency amendment compare-and-swap failed: "
+                        f"expected {list(expected)!r}, observed {list(current)!r}"
+                    )
+
+                body = {
+                    "schema": TASK_DEPENDENCY_AMENDMENT_SCHEMA,
+                    "operation_id": operation,
+                    "task_cid": cid,
+                    "dependency_task_cid": dependency_cid,
+                    "before_dependency_task_cids": list(expected),
+                    "after_dependency_task_cids": list(after),
+                    "changed": changed,
+                    "task_identity_preserved": True,
+                    "execution_history_preserved": True,
+                }
+                body["receipt_cid"] = _sha256_hex(
+                    _canonical_json(body).encode("utf-8")
+                )
+                self._commit_if_idle(connection)
+                return body
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
     def mark_task_complete(
         self,
         task_cid: str,
@@ -2159,10 +2317,11 @@ class DatabaseCoordinator:
     def _lease_from_row(self, row: Mapping[str, Any] | Any) -> FencedLease:
         mapping = _row_mapping(row)
         body_raw = _row_get(mapping, "body_json", default="{}")
-        try:
-            body = json.loads(str(body_raw or "{}"))
-        except json.JSONDecodeError:
-            body = {}
+        body = _decode_coordination_body(
+            body_raw,
+            table="fenced_leases",
+            identity=str(_row_get(mapping, "lease_id", default="")),
+        )
         return FencedLease(
             lease_id=str(_row_get(mapping, "lease_id", default="")),
             lease_kind=LeaseKind(str(_row_get(mapping, "lease_kind", default="task"))),
@@ -3368,16 +3527,11 @@ class DatabaseCoordinator:
             "2",
             default="{}",
         )
-        try:
-            completion_body = json.loads(str(completion_body_raw or "{}"))
-        except json.JSONDecodeError as exc:
-            raise DatabaseCoordinationStaleFenceError(
-                "logical completion body is not valid JSON"
-            ) from exc
-        if not isinstance(completion_body, Mapping):
-            raise DatabaseCoordinationStaleFenceError(
-                "logical completion body is not a mapping"
-            )
+        completion_body = _decode_coordination_body(
+            completion_body_raw,
+            table="task_completions",
+            identity=task_cid,
+        )
         expected_completion = {
             "attempt_id": str(identity["attempt_id"]),
             "attempt_number": int(identity["attempt_number"]),
@@ -3496,16 +3650,11 @@ class DatabaseCoordinator:
                 )
             return None
         body_raw = _row_get(mapping, "body_json", "2", default="{}")
-        try:
-            body = json.loads(str(body_raw or "{}"))
-        except json.JSONDecodeError as exc:
-            raise DatabaseCoordinationStaleFenceError(
-                "prepared completion body is not valid JSON"
-            ) from exc
-        if not isinstance(body, Mapping):
-            raise DatabaseCoordinationStaleFenceError(
-                "prepared completion body is not a mapping"
-            )
+        body = _decode_coordination_body(
+            body_raw,
+            table="task_completions",
+            identity=task_cid,
+        )
         prepared = self._validate_preparation_mapping(body, task_cid=task_cid)
         identity = self._task_claim_identity(prepared)
         self._task_completion_for_identity_unlocked(
@@ -5614,12 +5763,16 @@ class DatabaseCoordinator:
         owner_session_id: str,
         lease_ms: int | None = None,
         exclude_task_cids: Iterable[str] = (),
+        eligible_task_cids: Sequence[str] | None = None,
         now_ms: int | None = None,
     ) -> TaskClaim | None:
-        """Fair-schedule: claim the oldest ready unclaimed task.
+        """Claim a ready task in the caller's canonical eligibility order.
 
         Selection and acceptance share one transaction (LeaseCoordinator
-        ``claim_ready`` algorithm).
+        ``claim_ready`` algorithm).  ``None`` preserves legacy registration-
+        time fairness.  An explicit sequence is an authority boundary: only
+        those tasks are considered, in exactly that order, and an empty
+        sequence claims nothing.
         """
 
         owner = _text(owner_session_id, "owner_session_id")
@@ -5630,6 +5783,23 @@ class DatabaseCoordinator:
         )
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         excluded = {str(item) for item in exclude_task_cids}
+        eligible: tuple[str, ...] | None = None
+        if eligible_task_cids is not None:
+            if len(eligible_task_cids) > MAX_PREPARED_COMPLETION_QUERY:
+                raise DatabaseCoordinationBoundsError(
+                    "eligible task population exceeds the bounded claim query"
+                )
+            ordered: list[str] = []
+            seen: set[str] = set()
+            for raw_task_cid in eligible_task_cids:
+                task_cid = _text(raw_task_cid, "eligible_task_cid")
+                if task_cid in seen:
+                    raise DatabaseCoordinationError(
+                        "eligible_task_cids must be unique"
+                    )
+                seen.add(task_cid)
+                ordered.append(task_cid)
+            eligible = tuple(ordered)
         with self._lock:
             connection = self._require()
             self._begin(connection)
@@ -5648,12 +5818,28 @@ class DatabaseCoordinator:
                         str(_row_get(_row_mapping(row), "scope_key", "0")),
                         now,
                     )
-                candidates = connection.execute(
-                    """
-                    SELECT * FROM coordination_tasks WHERE ready = TRUE
-                    ORDER BY registered_at_ms, task_cid
-                    """
-                ).fetchall()
+                if eligible is None:
+                    candidates = connection.execute(
+                        """
+                        SELECT * FROM coordination_tasks WHERE ready = TRUE
+                        ORDER BY registered_at_ms, task_cid
+                        """
+                    ).fetchall()
+                else:
+                    candidates = []
+                    for task_cid in eligible:
+                        row = connection.execute(
+                            "SELECT * FROM coordination_tasks WHERE task_cid = ?",
+                            [task_cid],
+                        ).fetchone()
+                        if row is None:
+                            raise DatabaseCoordinationError(
+                                "eligible task is absent from the coordination "
+                                f"registry: {task_cid}"
+                            )
+                        mapping = _row_mapping(row)
+                        if bool(_row_get(mapping, "ready", default=False)):
+                            candidates.append(row)
                 for task in candidates:
                     mapping = _row_mapping(task)
                     cid = str(_row_get(mapping, "task_cid", default=""))
@@ -5937,10 +6123,11 @@ class DatabaseCoordinator:
     def _task_claim_from_row(self, row: Any) -> TaskClaim:
         mapping = _row_mapping(row)
         body_raw = _row_get(mapping, "body_json", default="{}")
-        try:
-            body = json.loads(str(body_raw or "{}"))
-        except json.JSONDecodeError:
-            body = {}
+        body = _decode_coordination_body(
+            body_raw,
+            table="task_claims",
+            identity=str(_row_get(mapping, "claim_id", default="")),
+        )
         return TaskClaim(
             claim_id=str(_row_get(mapping, "claim_id", default="")),
             task_cid=str(_row_get(mapping, "task_cid", default="")),
@@ -6208,10 +6395,11 @@ class DatabaseCoordinator:
                 return None
             mapping = _row_mapping(row)
             body_raw = _row_get(mapping, "body_json", default="{}")
-            try:
-                body = json.loads(str(body_raw or "{}"))
-            except json.JSONDecodeError:
-                body = {}
+            body = _decode_coordination_body(
+                body_raw,
+                table="maintenance_leases",
+                identity=lid,
+            )
             return MaintenanceLease(
                 lease_id=str(_row_get(mapping, "lease_id", default="")),
                 scope=str(_row_get(mapping, "scope", default="")),
@@ -6263,10 +6451,11 @@ class DatabaseCoordinator:
             for row in rows:
                 mapping = _row_mapping(row)
                 body_raw = _row_get(mapping, "body_json", default="{}")
-                try:
-                    body = json.loads(str(body_raw or "{}"))
-                except json.JSONDecodeError:
-                    body = {}
+                body = _decode_coordination_body(
+                    body_raw,
+                    table="lease_events",
+                    identity=str(_row_get(mapping, "event_id", default="")),
+                )
                 events.append(
                     {
                         "schema": LEASE_EVENT_SCHEMA,
@@ -6357,6 +6546,149 @@ def read_coordination_registry_projection(
         connection.close()
 
 
+def read_coordination_history_projection(
+    database_path: Path | str,
+) -> dict[str, Any]:
+    """Read the complete fencing-token and lease-event history without writes.
+
+    This is deliberately a separate, versioned projection rather than a shape
+    change to ``coordination-registry-projection@1``.  Recovery admission uses
+    it to prove that a fresh generation contains no inherited fencing history.
+    Timestamps are excluded from the content identity, as in the registry
+    projection, while every semantic event field and body remains exact.
+    """
+
+    path = Path(database_path)
+    if not path.is_file():
+        raise DatabaseCoordinationStaleFenceError(
+            f"coordination authority does not exist: {path}"
+        )
+    if not duckdb_available():
+        raise DuckDBUnavailableError(
+            "DuckDB is required for coordination projection; install the optional "
+            "duckdb dependency"
+        )
+    import duckdb  # type: ignore
+
+    try:
+        connection = connect_duckdb_with_policy(
+            duckdb,
+            path,
+            read_only=True,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+    except DatabaseCoordinationError:
+        raise
+    except Exception as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            f"could not open coordination authority read-only: {path}"
+        ) from exc
+    try:
+        _validate_coordination_authority(connection)
+        token_rows = connection.execute(
+            """
+            SELECT scope_key, fencing_token, fence_epoch
+            FROM token_history
+            ORDER BY scope_key, fencing_token, fence_epoch
+            """
+        ).fetchall()
+        event_rows = connection.execute(
+            """
+            SELECT event_id, lease_id, scope_key, event_type,
+                   fencing_token, fence_epoch, body_json
+            FROM lease_events
+            ORDER BY event_id
+            """
+        ).fetchall()
+        table_rows = connection.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'main' ORDER BY table_name"
+        ).fetchall()
+        column_rows = connection.execute(
+            """
+            SELECT table_name, column_name, data_type, is_nullable,
+                   COALESCE(column_default, ''), ordinal_position
+            FROM information_schema.columns
+            WHERE table_schema = 'main'
+            ORDER BY table_name, ordinal_position
+            """
+        ).fetchall()
+        index_rows = connection.execute(
+            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+            "WHERE schema_name = 'main' ORDER BY index_name"
+        ).fetchall()
+        metadata_rows = connection.execute(
+            "SELECT key, value FROM coordination_metadata ORDER BY key"
+        ).fetchall()
+        projection: dict[str, Any] = {
+            "schema": COORDINATION_HISTORY_PROJECTION_SCHEMA,
+            "authority_schema": DATABASE_COORDINATION_SCHEMA,
+            "schema_inventory": {
+                "tables": [str(row[0]) for row in table_rows],
+                "columns": [
+                    {
+                        "table": str(row[0]),
+                        "column": str(row[1]),
+                        "type": str(row[2]),
+                        "nullable": str(row[3]),
+                        "default": str(row[4] or ""),
+                        "ordinal": int(row[5]),
+                    }
+                    for row in column_rows
+                ],
+                "indexes": [
+                    {
+                        "index": str(row[0]),
+                        "table": str(row[1]),
+                        "sql": str(row[2]),
+                    }
+                    for row in index_rows
+                ],
+                "metadata": {
+                    str(row[0]): str(row[1]) for row in metadata_rows
+                },
+            },
+            "token_history": [
+                {
+                    "scope_key": str(row[0] or ""),
+                    "fencing_token": int(row[1] or 0),
+                    "fence_epoch": int(row[2] or 0),
+                }
+                for row in token_rows
+            ],
+            "lease_events": [
+                {
+                    "event_id": str(row[0] or ""),
+                    "lease_id": str(row[1] or ""),
+                    "scope_key": str(row[2] or ""),
+                    "event_type": str(row[3] or ""),
+                    "fencing_token": int(row[4] or 0),
+                    "fence_epoch": int(row[5] or 0),
+                    "body": _decode_coordination_body(
+                        row[6], table="lease_events", identity=str(row[0] or "")
+                    ),
+                }
+                for row in event_rows
+            ],
+            "counts": {
+                "token_history": len(token_rows),
+                "lease_events": len(event_rows),
+            },
+        }
+        projection["projection_root"] = _sha256_hex(
+            _canonical_json(projection).encode("utf-8")
+        )
+        return projection
+    except DatabaseCoordinationError:
+        raise
+    except Exception as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            "coordination history could not be projected read-only"
+        ) from exc
+    finally:
+        connection.close()
+
+
 __all__ = [
     "DATABASE_COORDINATOR_INTERFACE",
     "FENCED_LEASE_INTERFACE",
@@ -6365,6 +6697,8 @@ __all__ = [
     "MAINTENANCE_LEASE_INTERFACE",
     "DATABASE_COORDINATION_SCHEMA",
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
+    "COORDINATION_HISTORY_PROJECTION_SCHEMA",
+    "TASK_DEPENDENCY_AMENDMENT_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",
@@ -6398,4 +6732,5 @@ __all__ = [
     "exclusive_scope_key",
     "open_database_coordinator",
     "read_coordination_registry_projection",
+    "read_coordination_history_projection",
 ]

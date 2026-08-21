@@ -13,13 +13,22 @@ not duplicate provider/effect work.
 from __future__ import annotations
 
 import hashlib
+import importlib
+import json
+import subprocess
+import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
+    DatabaseProgramConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -35,10 +44,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    connect_duckdb_with_policy,
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon_runner as daemon_runner,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+    DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
@@ -47,6 +63,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     is_database_authority_mode,
@@ -63,6 +80,94 @@ pytestmark = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for database implementation daemon tests",
 )
+
+
+def test_provider_cold_execution_schema_installer_matches_daemon_contract(
+    tmp_path: Path,
+) -> None:
+    """The bootstrap DDL stays provider-cold and is the daemon's exact DDL."""
+
+    database_path = tmp_path / "execution.duckdb"
+    program = """
+import json
+import sys
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_execution_schema import (
+    install_database_execution_schema,
+)
+
+receipt = install_database_execution_schema(
+    Path(sys.argv[1]),
+    metadata={
+        "authority_mode": "embedded",
+        "logical_owner_session_id": "session:test:logical-owner",
+        "process_instance_id": "process:test:bootstrap",
+        "state_schema_revision": "datasets-authoritative-operational-v1",
+        "control_schema_profile_id": "profile:test",
+        "control_schema_fingerprint": "sha256:" + "a" * 64,
+    },
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if name == "urllib.request"
+    or "llm_router" in name
+    or ".providers." in name
+    or name.split(".", 1)[0] in {"anthropic", "openai"}
+)
+print(json.dumps({"forbidden": forbidden, "receipt": receipt}, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", program, str(database_path)],
+        cwd=Path(__file__).resolve().parents[2],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    observed = json.loads(completed.stdout)
+    assert observed["forbidden"] == []
+    assert observed["receipt"]["tables"] == [
+        "daemon_execution_metadata",
+        "database_task_attempts",
+        "attempt_phases",
+        "provider_invocations",
+        "effect_claims",
+        "daemon_execution_events",
+    ]
+
+    schema_module = importlib.import_module(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.database_execution_schema"
+    )
+    daemon_module = importlib.import_module(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    )
+    assert daemon_module._DAEMON_EXECUTION_SQL == schema_module.DAEMON_EXECUTION_SQL
+
+    duckdb = pytest.importorskip("duckdb")
+    connection = connect_duckdb_with_policy(
+        duckdb,
+        database_path,
+        read_only=True,
+    )
+    try:
+        metadata = dict(
+            connection.execute(
+                "SELECT key, value FROM daemon_execution_metadata ORDER BY key"
+            ).fetchall()
+        )
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main'"
+            ).fetchall()
+        }
+    finally:
+        connection.close()
+    assert metadata == observed["receipt"]["metadata"]
+    assert tables == set(observed["receipt"]["tables"])
 
 
 def _population(task_count: int = 4) -> dict[str, object]:
@@ -104,6 +209,7 @@ def _open_daemon(
     markdown_path: Path | None = None,
     provider_fn: Callable[[DatabaseTaskAttempt], dict[str, object]] | None = None,
     lease_ms: int = 60_000,
+    max_task_attempts: int = 0,
     clock_ms: Callable[[], int] | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
@@ -113,7 +219,11 @@ def _open_daemon(
     def default_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         if provider_calls is not None:
             provider_calls.append(attempt.task_cid)
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     def effect(
         attempt: DatabaseTaskAttempt, provider_result: dict[str, object]
@@ -124,6 +234,16 @@ def _open_daemon(
             "status": "applied",
             "task_cid": attempt.task_cid,
             "provider_result": dict(provider_result),
+        }
+
+    def validation(
+        attempt: DatabaseTaskAttempt, effect_result: dict[str, object]
+    ) -> dict[str, object]:
+        return {
+            "outcome": "passed",
+            "evidence_digest": "sha256:" + "a" * 64,
+            "argv": ["focused-database-validation", attempt.task_cid],
+            "effect_result": dict(effect_result),
         }
 
     return DatabaseImplementationDaemon(
@@ -141,10 +261,64 @@ def _open_daemon(
         pid_path=None,
         queue_path=None,
         lease_ms=lease_ms,
+        max_task_attempts=max_task_attempts,
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
+        validation_fn=validation,
+        require_real_execution=True,
         clock_ms=clock_ms,
     )
+
+
+def _validation_retry_receipt(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+        "disposition": "retry",
+        "reason": "declared_validation_failed",
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "portal_attempt": 1,
+        "typed_retry_generation": 1,
+        "retry_budget_basis": "portal_attempt",
+        "legacy_database_attempts_excluded": True,
+        "max_task_attempts": daemon.max_task_attempts,
+        "remaining_task_attempts": (
+            daemon.max_task_attempts - 1
+        ),
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "backoff_seconds": 0,
+        "implementation_commit": "a" * 40,
+        "rescue_branch": "rescue/dqp-t001-attempt-1-failed-validation",
+        "binding_id": "sha256:" + "2" * 64,
+        "events_digest": "sha256:" + "3" * 64,
+        "event_stream_id": "event-log:validation-retry",
+        "expected_output_event_id": "sha256:" + "1" * 64,
+        "proposal_event_id": "sha256:" + "4" * 64,
+        "preservation_event_id": "sha256:" + "5" * 64,
+        "implementation_event_id": "sha256:" + "6" * 64,
+        "proposal_id": "proposal:validation-retry",
+        "proposal_receipt_id": "proposal-receipt:validation-retry",
+        "proposal_policy_id": "proposal-policy:validation-retry",
+        "validation_receipt_id": "validation-dag:validation-retry",
+        "failure_review_receipt_id": "failure-review:validation-retry",
+        "changed_paths": ["implementation.py", "test_implementation.py"],
+        "authoritative_validation_executed": True,
+        "proposal_policy_accepted": True,
+        "output_policy_passed": True,
+        "denial_findings": [],
+    }
+    receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
+    return receipt
 
 
 def test_interface_identities() -> None:
@@ -161,6 +335,41 @@ def test_interface_identities() -> None:
     assert not is_database_authority_mode(
         authority_mode="legacy_markdown", task_source_kind="legacy-markdown"
     )
+
+
+def test_direct_selector_never_bypasses_cooldown_when_all_ready_are_cooled() -> None:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon.merge_queue = SimpleNamespace(
+        has_pending_for_task=lambda _task_cid: False
+    )
+    daemon.degradation_state = SimpleNamespace(
+        degraded_submodules=lambda: []
+    )
+    daemon.task_queue = SimpleNamespace(
+        is_cooled_down=lambda _task_cid: True,
+        record_selection=lambda _task_cid: pytest.fail(
+            "cooled task was selected"
+        ),
+    )
+    daemon._canonical_ref = lambda task: f"task:cid:{task.task_id}"
+    daemon._inflight_submodule_paths = lambda: set()
+    task = SimpleNamespace(
+        task_id="COOLED-001",
+        priority="P0",
+        track="implementation",
+        depends_on=[],
+        metadata={},
+    )
+
+    selected = daemon._select_next_task(
+        [task],
+        {task.task_id: "ready"},
+        {},
+        {},
+        {},
+    )
+
+    assert selected is None
 
 
 def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
@@ -203,6 +412,65 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         assert markdown.read_text(encoding="utf-8") == original_markdown
     finally:
         idle.close()
+
+
+def test_materialization_projects_completed_prerequisites_into_coordination(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["status"] = "completed"
+    tasks[1]["dependencies"] = ["task:cid:001"]
+    daemon = _open_daemon(tmp_path, session="session:bootstrap")
+    try:
+        receipt = daemon.materialize_population(population)
+        assert receipt["bootstrap_completed_task_cids"] == ["task:cid:001"]
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert projection["counts"]["logical_completions"] == 1
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:002"
+    finally:
+        daemon.close()
+
+
+def test_claim_next_preserves_canonical_ready_order_for_late_task(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:ordered")
+    try:
+        population = _population(1)
+        first = population["tasks"]
+        assert isinstance(first, list)
+        first[0]["ordinal"] = 20
+        daemon.materialize_population(population)
+
+        # The successor task enters the coordination registry later, but its
+        # canonical plan ordinal places it first.  Registration time must not
+        # override the intent repository's ready-order authority.
+        daemon.task_source._intent.upsert_task(
+            task_cid="task:cid:late-preferred",
+            task_alias="DQP-LATE-PREFERRED",
+            goal_cid="goal:cid:root",
+            ordinal=1,
+            status="ready",
+            priority="P0",
+            body={"title": "Late but plan-preferred"},
+            identity={"task_cid": "task:cid:late-preferred"},
+            dependencies=(),
+            outputs=(),
+            acceptance=(),
+            validations=(),
+            expected_revision=0,
+        )
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:late-preferred"
+    finally:
+        daemon.close()
 
 
 def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> None:
@@ -257,13 +525,165 @@ def test_json_projections_can_be_absent(tmp_path: Path) -> None:
         assert daemon.queue_path is None
         # No projection files created by open/materialize/run.
         daemon.materialize_population(_population(1))
-        daemon.run_once()
+        result = daemon.run_once()
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        assert task.status == "ready"
+        assert daemon.list_running_attempts() == []
         assert not (tmp_path / "task_state.json").exists()
         assert not (tmp_path / "events.jsonl").exists()
         assert not (tmp_path / "task_queue.json").exists()
         assert not list(tmp_path.glob("*.pid"))
     finally:
         daemon.close()
+
+
+def test_database_observer_without_real_execution_never_resumes_or_claims(
+    tmp_path: Path,
+) -> None:
+    """Inherited store authority cannot replace the explicit execution permit."""
+
+    seed = _open_daemon(tmp_path)
+    try:
+        seed.materialize_population(_population(2))
+        running = seed.claim_next()
+        assert running is not None
+        running = seed.commit_phase(
+            running,
+            "context",
+            body={"source": "pre-reload-real-execution"},
+        )
+        running_attempt_id = running.attempt_id
+    finally:
+        seed.close()
+
+    observer = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        # Exact failed-reload shape: the database environment survives but
+        # programmatic argv lost --implement, so no callbacks or execution
+        # permit are present.
+        require_real_execution=False,
+    )
+    try:
+        before_tasks = {
+            task_cid: observer.task_source.get(task_cid).to_dict()
+            for task_cid in ("task:cid:001", "task:cid:002")
+        }
+        before_attempt = observer.get_attempt(running_attempt_id)
+        assert before_attempt is not None
+        before_count_row = observer._require_connection().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM database_task_attempts),
+                (SELECT COUNT(*) FROM provider_invocations),
+                (SELECT COUNT(*) FROM effect_claims)
+            """
+        ).fetchone()
+        before_counts = tuple(
+            int(before_count_row[index]) for index in range(3)
+        )
+
+        result = observer.run_once()
+
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["execution_authorized"] is False
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        assert result["implementation_result"] is None
+        assert result["completion_reconciliations"] == []
+        assert result["expired_attempt_reconciliations"] == []
+        assert result["terminal_retry_reconciliations"] == []
+        assert result["terminal_portal_reconciliations"] == []
+
+        after_tasks = {
+            task_cid: observer.task_source.get(task_cid).to_dict()
+            for task_cid in ("task:cid:001", "task:cid:002")
+        }
+        after_attempt = observer.get_attempt(running_attempt_id)
+        after_count_row = observer._require_connection().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM database_task_attempts),
+                (SELECT COUNT(*) FROM provider_invocations),
+                (SELECT COUNT(*) FROM effect_claims)
+            """
+        ).fetchone()
+        after_counts = tuple(
+            int(after_count_row[index]) for index in range(3)
+        )
+        assert after_tasks == before_tasks
+        assert after_attempt == before_attempt
+        assert after_counts == before_counts == (1, 0, 0)
+        assert after_tasks["task:cid:001"]["status"] == "in_progress"
+        assert after_tasks["task:cid:002"]["status"] == "ready"
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="explicit real-execution authority",
+        ):
+            observer.claim_next()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="explicit real-execution authority",
+        ):
+            observer.resume_attempt(running_attempt_id)
+        guarded_mutations = (
+            (
+                "attempt phase commit",
+                lambda: observer.commit_phase(running_attempt_id, "provider"),
+            ),
+            (
+                "provider phase",
+                lambda: observer.run_provider(before_attempt),
+            ),
+            (
+                "effect phase",
+                lambda: observer.run_effect(before_attempt, {}),
+            ),
+            (
+                "task completion",
+                lambda: observer.complete_attempt(before_attempt),
+            ),
+            (
+                "prepared completion reconciliation",
+                observer.reconcile_prepared_task_completions,
+            ),
+            (
+                "expired attempt reconciliation",
+                observer.reconcile_expired_running_attempts,
+            ),
+            (
+                "terminal retry reconciliation",
+                observer.reconcile_terminal_retry_states,
+            ),
+            (
+                "terminal failure reconciliation",
+                observer.reconcile_terminal_portal_failures,
+            ),
+        )
+        for operation, mutation in guarded_mutations:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match=operation,
+            ):
+                mutation()
+        final_count = observer._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts"
+        ).fetchone()
+        assert int(final_count[0]) == 1
+    finally:
+        observer.close()
 
 
 def test_datasets_authoritative_open_requires_preinstalled_operational_profile(
@@ -574,7 +994,11 @@ def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
                 break
             time.sleep(0.005)
         assert len(observed_revisions) == 2, "background lease renewal did not run"
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     daemon = _open_daemon(
         tmp_path,
@@ -597,6 +1021,1048 @@ def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_portal_failure_terminal_cas_refetches_advanced_attempt(
+    tmp_path: Path,
+) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    provider_revisions: list[int] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        daemon = holder["daemon"]
+        provider_revisions.append(attempt.revision)
+        daemon._record_event(
+            "portal_progress_before_failure",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body={"provider_revision": attempt.revision},
+        )
+        raise DatabasePortalBridgeError("portal validation failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-failure-cas",
+        provider_fn=provider,
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is False
+        assert implementation["portal_terminal_failure"] is True
+        assert implementation["status"] == "failed"
+        assert implementation["deferred"] is False
+        assert implementation["attempt_consumed"] == "unknown"
+        assert implementation["provider_dispatched"] == "unknown"
+        assert implementation["backoff_seconds"] == 0
+        assert "fail_error" not in implementation
+        assert provider_revisions == [2]
+
+        stored = daemon.get_attempt(result["attempt_id"])
+        assert stored is not None
+        assert stored.status == "failed"
+        assert stored.committed_phase == "failed"
+        assert stored.revision == 3
+        assert [
+            (phase["phase"], phase["revision"])
+            for phase in daemon.phase_history(stored.attempt_id)
+        ] == [("claimed", 1), ("context", 2), ("failed", 3)]
+
+        event_count = daemon._require_connection().execute(
+            """
+            SELECT COUNT(*) FROM daemon_execution_events
+            WHERE attempt_id = ? AND event_type = ?
+            """,
+            [stored.attempt_id, "portal_progress_before_failure"],
+        ).fetchone()
+        assert event_count is not None
+        assert int(event_count[0]) == 1
+        task = daemon.task_source.get(stored.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+        queue_entry = daemon.task_source.get_queue_entry(stored.task_cid)
+        assert queue_entry is None
+        assert implementation["terminal_state"]["status"] == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
+    tmp_path: Path,
+) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        receipt = _validation_retry_receipt(holder["daemon"], attempt)
+        raise DatabasePortalValidationRetry(receipt)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-validation-retry",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["deferred"] is False
+        assert implementation["attempt_consumed"] is True
+        assert implementation["provider_dispatched"] is True
+        assert implementation["typed_deferral_slot_consumed"] is False
+        assert implementation["retry_budget_exhausted"] is False
+        assert implementation["retry_state"]["status"] == "retrying"
+
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+        failed = daemon.phase_history(attempt.attempt_id)[-1]["body"]
+        assert failed["typed_validation_retry"]["remaining_task_attempts"] == 2
+        evidence = daemon._terminal_retry_evidence(attempt)
+        assert evidence is not None
+        assert evidence["typed_deferral_budget"] is None
+        assert evidence["typed_validation_retry"]["attempt_consumed"] is True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        retry_seed = task.body["completion_receipt"]["validation_retry_seed"]
+        assert retry_seed["receipt_id"] == failed["typed_validation_retry"][
+            "receipt_id"
+        ]
+
+        # The retrying->in_progress claim CAS carries the verified seed into
+        # the exact successor record consumed by the fresh Portal bridge.
+        now["ms"] = 7_000
+        successor = daemon.claim_next()
+        assert successor is not None
+        assert successor.attempt_number == 2
+        claimed = daemon.task_source.get(attempt.task_cid)
+        assert claimed is not None
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["operation"] == "database_claim"
+        assert claim_receipt["validation_retry_seed"] == retry_seed
+        assert claim_receipt["validation_retry_source_attempt_id"] == (
+            attempt.attempt_id
+        )
+        assert claim_receipt["attempt_number"] == successor.attempt_number
+        assert claim_receipt["fencing_token"] == successor.fencing_token
+        assert claim_receipt["fence_epoch"] == successor.fence_epoch
+        assert claim_receipt["lease_id"] == successor.lease_id
+    finally:
+        daemon.close()
+
+
+def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        receipt = _validation_retry_receipt(daemon, attempt)
+        tampered = dict(receipt)
+        tampered["denial_findings"] = ["denied_effect"]
+        tampered.pop("receipt_id")
+        tampered["receipt_id"] = daemon._database_portal_evidence_digest(
+            tampered
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            daemon.recover_blocked_portal_validation_retry(
+                attempt,
+                retry_evidence=tampered,
+            )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        recovered = daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=receipt,
+        )
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        assert recovered["validation_retry_evidence"] == receipt
+        assert recovered["coordination"]["attempt_id"] == attempt.attempt_id
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+
+        repeated = daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=receipt,
+        )
+        assert repeated["changed"] is False
+        assert repeated["status"] == "retrying"
+        assert repeated["validation_retry_evidence"] == receipt
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_type"),
+    [
+        ("foreign_operation", DatabaseImplementationConflictError),
+        ("missing_seed", DatabaseImplementationAuthorityError),
+        ("wrong_seed_receipt", DatabaseImplementationAuthorityError),
+    ],
+)
+def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    error_type: type[Exception],
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-forgery",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        retry_evidence = _validation_retry_receipt(daemon, attempt)
+        daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=retry_evidence,
+        )
+        persisted = daemon.task_source.get(attempt.task_cid)
+        assert persisted is not None
+        receipt = dict(persisted.body["completion_receipt"])
+        if mutation == "foreign_operation":
+            receipt["operation"] = "database_portal_retry"
+        elif mutation == "missing_seed":
+            receipt.pop("validation_retry_seed")
+        else:
+            seed = dict(receipt["validation_retry_seed"])
+            seed["receipt_id"] = "sha256:" + "0" * 64
+            receipt["validation_retry_seed"] = seed
+
+        original_get = daemon.task_source.get
+
+        def projected_get(task_cid: str) -> object:
+            task = original_get(task_cid)
+            if task_cid != attempt.task_cid or task is None:
+                return task
+            return SimpleNamespace(
+                status=task.status,
+                revision=task.revision,
+                body={**dict(task.body), "completion_receipt": receipt},
+            )
+
+        monkeypatch.setattr(daemon.task_source, "get", projected_get)
+        with pytest.raises(error_type):
+            daemon.reconcile_terminal_portal_failures()
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_recovery_projection_rejects_newer_fence(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-newer-fence",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        daemon.recover_blocked_portal_validation_retry(
+            attempt,
+            retry_evidence=_validation_retry_receipt(daemon, attempt),
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+
+        source_claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert source_claim is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(source_claim, now_ms=now["ms"])
+        newer = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:newer-validation-retry-fence",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert newer is not None
+        assert newer.fencing_token > attempt.fencing_token
+
+        with pytest.raises(DatabaseCoordinationError):
+            daemon.reconcile_terminal_portal_failures()
+        unchanged = daemon.task_source.get(attempt.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_restart_accepts_exact_validation_retry_recovery_projection(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-before-restart",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        failed_result = first.run_once()
+        source = first.get_attempt(failed_result["attempt_id"])
+        assert source is not None
+        first.recover_blocked_portal_validation_retry(
+            source,
+            retry_evidence=_validation_retry_receipt(first, source),
+        )
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        tmp_path,
+        session="session:validation-retry-recovery-after-restart",
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        result = restarted.run_once()
+        assert result["terminal_portal_reconciliations"] == []
+        assert result["implementation_result"] is not None
+        assert result["implementation_result"]["status"] == "succeeded"
+        successor = restarted.get_attempt(result["attempt_id"])
+        assert successor is not None
+        assert successor.attempt_number > source.attempt_number
+    finally:
+        restarted.close()
+
+
+def test_restart_finishes_terminal_portal_failure_control_cas(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-portal-recovery",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "untyped_portal_integrity_failure",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+
+        result = daemon.run_once()
+
+        assert result["implementation_result"] is None
+        assert len(result["terminal_portal_reconciliations"]) == 1
+        blocked = daemon.task_source.get(failed_attempt.task_cid)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+    finally:
+        daemon.close()
+
+
+def test_typed_portal_deferral_honors_canonical_cooldown_after_lease_expiry(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_attempts: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-portal-deferral",
+        provider_fn=provider,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+
+        assert len(provider_attempts) == 1
+        assert first["implementation_result"]["deferred"] is True
+        assert first["implementation_result"]["attempt_consumed"] is False
+        assert first["implementation_result"]["provider_dispatched"] is False
+        assert first["implementation_result"]["backoff_seconds"] == 300
+        task_cid = str(first["claimed_task_cid"])
+        queue_entry = daemon.task_source.get_queue_entry(task_cid)
+        assert queue_entry is not None
+        assert queue_entry.retry_not_before_ms == 301_000
+        task = daemon.task_source.get(task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert task.revision == 3
+
+        # The coordination lease is expired, but the canonical queue deadline
+        # remains authoritative and no replacement attempt is constructed.
+        now["ms"] = 7_000
+        cooled = daemon.run_once()
+        assert cooled["selection_idle_reason"] == "no_ready_tasks"
+        assert cooled["implementation_result"] is None
+        assert len(provider_attempts) == 1
+        assert daemon.task_source.get_queue_entry(
+            task_cid
+        ).retry_not_before_ms == 301_000
+
+        now["ms"] = 301_001
+        retried = daemon.run_once()
+        assert len(provider_attempts) == 2
+        assert retried["attempt_id"] != first["attempt_id"]
+        assert retried["implementation_result"]["deferred"] is True
+        retried_task = daemon.task_source.get(task_cid)
+        assert retried_task is not None
+        assert retried_task.status == "retrying"
+        assert retried_task.revision == 5
+    finally:
+        daemon.close()
+
+
+def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_attempts: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-deferral-budget",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        assert first["implementation_result"]["retry_budget_exhausted"] is False
+
+        now["ms"] = 301_001
+        second = daemon.run_once()
+        assert second["implementation_result"]["retry_budget_exhausted"] is False
+
+        now["ms"] = 601_002
+        third = daemon.run_once()
+        implementation = third["implementation_result"]
+        assert implementation["retry_budget_exhausted"] is True
+        assert implementation["attempt_consumed"] is False
+        assert implementation["typed_deferral_slot_consumed"] is True
+        assert implementation["retry_state"] is None
+        terminal = implementation["terminal_state"]
+        assert terminal["status"] == "blocked"
+        assert terminal["reason"] == "typed_portal_deferral_budget_exhausted"
+        budget = terminal["retry_budget"]
+        assert budget["typed_deferral_count"] == 3
+        assert budget["max_task_attempts"] == 3
+        assert budget["exhausted"] is True
+        assert len(budget["matching_attempts"]) == 3
+
+        task = daemon.task_source.get(task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+        assert len(provider_attempts) == 3
+
+        # Even after every prior cooldown and lease deadline, the blocked
+        # control task cannot construct or dispatch attempt four.
+        now["ms"] = 1_000_000
+        idle = daemon.run_once()
+        assert idle["implementation_result"] is None
+        assert idle["selection_idle_reason"] == "no_ready_tasks"
+        assert len(provider_attempts) == 3
+    finally:
+        daemon.close()
+
+
+def test_legacy_failed_claim_does_not_consume_typed_deferral_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_attempts: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:legacy-deferral-migration",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=1,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        legacy = daemon.claim_next()
+        assert legacy is not None
+        legacy = daemon.commit_phase(legacy, "context")
+        legacy = daemon.commit_phase(
+            legacy,
+            "failed",
+            body={
+                "reason": "validation_project_dependency_preflight_failed",
+                "portal_retryable_failure": True,
+                # Deliberately pre-fix: no explicit deferred disposition or
+                # identity-bound typed-deferral receipt.
+            },
+        )
+
+        recovered = daemon.reconcile_terminal_retry_states()
+        assert len(recovered) == 1
+        assert recovered[0]["status"] == "retrying"
+        assert daemon.task_source.get(legacy.task_cid).status == "retrying"
+
+        # The first patch-era closed typed deferral consumes slot one and
+        # blocks.  The legacy claim did not pre-exhaust the migration budget.
+        now["ms"] = 301_001
+        typed = daemon.run_once()
+        assert len(provider_attempts) == 1
+        assert typed["implementation_result"]["retry_budget_exhausted"] is True
+        assert typed["implementation_result"]["terminal_state"][
+            "retry_budget"
+        ]["typed_deferral_count"] == 1
+    finally:
+        daemon.close()
+
+
+def test_restart_reconciles_exhausted_typed_deferral_without_new_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    provider_attempts: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-restart",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        initial = first.run_once()
+        task_cid = str(initial["claimed_task_cid"])
+        now["ms"] = 301_001
+
+        def crash_before_block(*_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("simulated crash before exhausted control CAS")
+
+        monkeypatch.setattr(
+            first,
+            "_persist_typed_deferral_budget_exhausted",
+            crash_before_block,
+        )
+        interrupted = first.run_once()
+        assert "simulated crash" in interrupted["implementation_result"][
+            "fail_error"
+        ]
+        control = first.task_source.get(task_cid)
+        assert control is not None
+        assert control.status == "in_progress"
+        assert len(provider_attempts) == 2
+    finally:
+        first.close()
+
+    monkeypatch.undo()
+    now["ms"] = 307_000
+    replacement = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-restart",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        reconciled = replacement.run_once()
+        assert reconciled["implementation_result"] is None
+        assert len(reconciled["terminal_retry_reconciliations"]) == 1
+        terminal = reconciled["terminal_retry_reconciliations"][0]
+        assert terminal["status"] == "blocked"
+        assert terminal["retry_budget"]["typed_deferral_count"] == 2
+        assert replacement.task_source.get(task_cid).status == "blocked"
+        assert len(provider_attempts) == 2
+    finally:
+        replacement.close()
+
+
+def test_exhaustion_blocks_already_retrying_task_and_bounds_evidence_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:retrying-budget-reconciliation",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        now["ms"] = 301_001
+
+        # Model a pre-budget writer that durably persisted the second typed
+        # deferral and queue/CAS but crashed before checking exhaustion.
+        original_observation = daemon._typed_deferral_budget_observation
+        monkeypatch.setattr(
+            daemon,
+            "_typed_deferral_budget_observation",
+            lambda _attempt: None,
+        )
+        second = daemon.run_once()
+        assert second["implementation_result"]["retry_state"][
+            "status"
+        ] == "retrying"
+        assert daemon.task_source.get(task_cid).status == "retrying"
+        assert daemon.task_source.get_queue_entry(task_cid) is not None
+
+        monkeypatch.setattr(
+            daemon,
+            "_typed_deferral_budget_observation",
+            original_observation,
+        )
+        implementation_daemon_module = importlib.import_module(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+        )
+        monkeypatch.setattr(
+            implementation_daemon_module,
+            "_MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW",
+            1,
+        )
+        reconciled = daemon.reconcile_terminal_retry_states()
+
+        assert len(reconciled) == 1
+        terminal = reconciled[0]
+        assert terminal["status"] == "blocked"
+        assert terminal["control_previous_status"] == "retrying"
+        assert terminal["prior_queue_entry_preserved_inactive"] is True
+        budget = terminal["retry_budget"]
+        assert budget["typed_deferral_count"] == 2
+        assert budget["verified_typed_deferral_count"] == 2
+        assert budget["verified_count_complete"] is True
+        assert len(budget["matching_attempts"]) == 1
+        assert budget["matching_attempts_truncated"] is True
+        assert budget["omitted_matching_attempt_count"] == 1
+        assert budget["matching_attempts_digest"].startswith("sha256:")
+        assert daemon.task_source.get(task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_typed_deferral_from_old_state_schema_does_not_consume_current_budget(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-schema-generation",
+        max_task_attempts=1,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        daemon.state_schema_revision = "state-schema-old"
+        typed = daemon._typed_deferral_receipt(
+            attempt,
+            reason="typed_schema_migration_deferral",
+        )
+        attempt = daemon.commit_phase(
+            attempt,
+            "failed",
+            body={
+                "reason": "typed_schema_migration_deferral",
+                "portal_retryable_failure": True,
+                "portal_terminal_failure": False,
+                "deferred": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "typed_deferral_slot_consumed": True,
+                "backoff_seconds": 300,
+                "typed_deferral": typed,
+            },
+        )
+
+        daemon.state_schema_revision = "state-schema-new"
+        evidence = daemon._terminal_retry_evidence(attempt)
+        assert evidence is not None
+        assert evidence["typed_deferral_budget"] is None
+    finally:
+        daemon.close()
+
+
+def test_restart_reconciles_failed_execution_and_expired_coordination_claim(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    first = _open_daemon(
+        tmp_path,
+        session="session:terminal-retry-recovery",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        failed_attempt = first.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = first.commit_phase(failed_attempt, "context")
+        failed_attempt = first.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "validation_project_dependency_preflight_failed",
+                "portal_retryable_failure": True,
+                # Pre-fix receipt: no typed backoff_seconds field.
+            },
+        )
+        task_before = first.task_source.get(failed_attempt.task_cid)
+        assert task_before is not None
+        assert task_before.status == "in_progress"
+        assert first.task_source.get_queue_entry(failed_attempt.task_cid) is None
+    finally:
+        first.close()
+
+    # The legacy 300-second window elapsed while the supervisor was down.
+    now["ms"] = 401_000
+    replacement = _open_daemon(
+        tmp_path,
+        session="session:terminal-retry-recovery",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        reconciliations = replacement.reconcile_terminal_retry_states()
+        assert len(reconciliations) == 1
+        reconciliation = reconciliations[0]
+        assert reconciliation["backoff_ms"] == 0
+        assert reconciliation["retry_not_before_ms"] == 401_000
+        assert reconciliation["control_previous_status"] == "in_progress"
+        assert reconciliation["control_previous_revision"] == 2
+        assert reconciliation["control_new_status"] == "retrying"
+        assert reconciliation["control_new_revision"] == 3
+        assert reconciliation["coordination"]["expired_now"] is True
+        assert reconciliation["coordination"]["claim_state"] == "expired"
+        assert reconciliation["coordination"][
+            "coordination_attempt_status"
+        ] == "expired"
+
+        recovered = replacement.task_source.get(failed_attempt.task_cid)
+        assert recovered is not None
+        assert recovered.status == "retrying"
+        queue_entry = replacement.task_source.get_queue_entry(
+            failed_attempt.task_cid
+        )
+        assert queue_entry is not None
+        queue_attempt = queue_entry.attempt
+
+        # Reconciliation is idempotent after both durable writes landed.
+        assert replacement.reconcile_terminal_retry_states() == []
+        repeated_entry = replacement.task_source.get_queue_entry(
+            failed_attempt.task_cid
+        )
+        assert repeated_entry is not None
+        assert repeated_entry.attempt == queue_attempt
+        assert repeated_entry.retry_not_before_ms == 401_000
+
+        replacement_attempt = replacement.claim_next()
+        assert replacement_attempt is not None
+        assert replacement_attempt.attempt_id != failed_attempt.attempt_id
+        reclaimed = replacement.task_source.get(failed_attempt.task_cid)
+        assert reclaimed is not None
+        assert reclaimed.status == "in_progress"
+        assert reclaimed.revision == 4
+    finally:
+        replacement.close()
+
+
+def test_retry_reconciliation_reuses_attempt_bound_queue_after_cas_crash(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:queue-cas-crash",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            },
+        )
+        queue_reason = (
+            f"database_portal_retry:{failed_attempt.attempt_id}:typed_deferral"
+        )
+        daemon.task_source.record_queue_backoff(
+            task_cid=failed_attempt.task_cid,
+            delay_ms=300_000,
+            reason=queue_reason,
+        )
+        before = daemon.task_source.get_queue_entry(failed_attempt.task_cid)
+        assert before is not None
+
+        # Simulate restart after queue commit but before control CAS.
+        now["ms"] = 2_000
+        reconciliations = daemon.reconcile_terminal_retry_states()
+        assert len(reconciliations) == 1
+        assert reconciliations[0]["queue_reused"] is True
+        after = daemon.task_source.get_queue_entry(failed_attempt.task_cid)
+        assert after is not None
+        assert after.attempt == before.attempt
+        assert after.retry_not_before_ms == before.retry_not_before_ms
+        task = daemon.task_source.get(failed_attempt.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert task.revision == 3
+    finally:
+        daemon.close()
+
+
+def test_retry_reconciliation_repairs_retrying_without_queue(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:retrying-without-queue",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            },
+        )
+        control = daemon.task_source.get(failed_attempt.task_cid)
+        assert control is not None
+        daemon._cas_task_status_database(
+            failed_attempt.task_cid,
+            expected_revision=int(control.revision),
+            new_status="retrying",
+            receipt={"operation": "simulated_cas_before_queue_crash"},
+        )
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+
+        repaired = daemon.reconcile_terminal_retry_states()
+
+        assert len(repaired) == 1
+        assert repaired[0]["status"] == "retrying"
+        assert repaired[0]["changed"] is False
+        entry = daemon.task_source.get_queue_entry(failed_attempt.task_cid)
+        assert entry is not None
+        assert entry.retry_not_before_ms == 301_000
+    finally:
+        daemon.close()
+
+
+def test_retry_reconciliation_rejects_superseded_coordination_fence(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:superseded-retry-fence",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            },
+        )
+        old_claim = daemon.coordinator.get_task_claim(failed_attempt.claim_id)
+        assert old_claim is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(old_claim, now_ms=now["ms"])
+        replacement = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:newer-fence",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert replacement is not None
+        assert replacement.fencing_token > failed_attempt.fencing_token
+
+        with pytest.raises(DatabaseCoordinationError):
+            daemon.reconcile_terminal_retry_states()
+
+        control = daemon.task_source.get(failed_attempt.task_cid)
+        assert control is not None
+        assert control.status == "in_progress"
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+    finally:
+        daemon.close()
+
+
+def test_retry_reconciliation_rejects_manual_task(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:manual-retry-rejection",
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["completion"] = "manual"
+        daemon.materialize_population(population)
+        control = daemon.task_source.get("task:cid:001")
+        assert control is not None
+        claim = daemon.coordinator.claim_ready_task(
+            owner_session_id=daemon.owner_session_id,
+            lease_ms=daemon.lease_ms,
+            now_ms=daemon._now_ms(),
+        )
+        assert claim is not None
+        daemon._protect_new_claim(claim)
+        daemon._cas_task_status_database(
+            control.task_cid,
+            expected_revision=int(control.revision),
+            new_status="in_progress",
+            receipt={"operation": "simulated_legacy_manual_claim"},
+        )
+        failed_attempt = daemon._insert_attempt_from_claim(
+            claim,
+            task_alias=control.task_alias,
+        )
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            },
+        )
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="manual/review-only",
+        ):
+            daemon.reconcile_terminal_retry_states()
+
+        unchanged = daemon.task_source.get(failed_attempt.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "in_progress"
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+    finally:
+        daemon.close()
+
+
 def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> None:
     now = {"ms": 1_000}
     holder: dict[str, DatabaseImplementationDaemon] = {}
@@ -615,7 +2081,11 @@ def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> No
         assert replacement is not None
         assert replacement.task_cid == attempt.task_cid
         replacement_claim_ids.append(replacement.claim_id)
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     daemon = _open_daemon(
         tmp_path,
@@ -1209,6 +2679,8 @@ def test_runner_builds_database_daemon_without_json_projections(
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--max-task-attempts",
+            "3",
             "--once",
         ]
     )
@@ -1220,11 +2692,104 @@ def test_runner_builds_database_daemon_without_json_projections(
         assert isinstance(daemon, DatabaseImplementationDaemon)
         assert daemon.state_path is None
         assert daemon.events_path is None
+        assert daemon.max_task_attempts == 3
         assert daemon.projections_required() is False
         daemon.materialize_population(_population(1))
         result = daemon.run_once()
         assert result["authority_mode"] == "embedded"
         assert result["markdown_status_writes"] == 0
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["execution_authorized"] is False
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        assert task.status == "ready"
+        assert daemon.list_running_attempts() == []
+    finally:
+        daemon.close()
+
+
+def test_portal_builder_with_inherited_database_program_without_implement_is_observer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replacement child must not infer execution authority from its DB env."""
+
+    monkeypatch.chdir(tmp_path)
+    program = DatabaseProgramConfig(
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        store_id="control.duckdb",
+        store_generation="generation-reload-regression",
+        schema_revision="reload-regression-v1",
+    )
+    monkeypatch.setenv(
+        DATABASE_PROGRAM_JSON_ENV,
+        json.dumps(program.to_dict(), separators=(",", ":"), sort_keys=True),
+    )
+    args = parse_args(
+        [
+            *program.daemon_cli_args(),
+            "--todo-path",
+            str(tmp_path / "wrong-default-board.md"),
+            "--state-dir",
+            str(tmp_path / "wrong-default-state"),
+            "--state-prefix",
+            "wrong-default",
+            "--once",
+            # Deliberately no --implement: this is the failed reload shape.
+        ]
+    )
+    bind_results: list[object | None] = []
+    real_bind = daemon_runner.bind_database_portal_execution_from_args
+
+    def record_bind(*bind_args: object, **bind_kwargs: object) -> object | None:
+        result = real_bind(*bind_args, **bind_kwargs)
+        bind_results.append(result)
+        return result
+
+    monkeypatch.setattr(
+        daemon_runner,
+        "bind_database_portal_execution_from_args",
+        record_bind,
+    )
+    daemon, _context = daemon_runner.build_portal_implementation_daemon_from_args(
+        args,
+        repo_root=tmp_path,
+    )
+    try:
+        assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.require_real_execution is False
+        assert daemon.execution_callbacks_bound is False
+        assert bind_results == [None]
+        daemon.materialize_population(_population(1))
+        before = daemon.task_source.get("task:cid:001")
+        assert before is not None
+
+        result = daemon.run_once()
+
+        after = daemon.task_source.get("task:cid:001")
+        assert after is not None
+        assert result["execution_authorized"] is False
+        assert result["write_count"] == 0
+        assert result["selection_idle_reason"] == (
+            "database_execution_not_authorized"
+        )
+        assert after.to_dict() == before.to_dict()
+        assert after.status == "ready"
+        assert daemon.list_running_attempts() == []
+        counts = daemon._require_connection().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM database_task_attempts),
+                (SELECT COUNT(*) FROM provider_invocations),
+                (SELECT COUNT(*) FROM effect_claims)
+            """
+        ).fetchone()
+        assert tuple(int(counts[index]) for index in range(3)) == (0, 0, 0)
     finally:
         daemon.close()
 
@@ -1245,6 +2810,9 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--max-task-attempts",
+            "4",
+            "--implement",
             "--once",
         ]
     )
@@ -1254,6 +2822,7 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
     )
     try:
         assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.max_task_attempts == 4
         assert context.state_path.name.startswith("dqp_")
         daemon.materialize_population(_population(2))
         first = daemon.claim_next()
@@ -1396,6 +2965,7 @@ def test_already_in_progress_control_task_creates_no_execution_attempt(
         authority_mode="embedded",
         task_source_kind="duckdb",
         task_source=source,
+        require_real_execution=True,
     )
     try:
         daemon.open()
@@ -1435,6 +3005,7 @@ def test_authoritative_cas_race_creates_no_execution_attempt(
         authority_mode="embedded",
         task_source_kind="duckdb",
         task_source=source,
+        require_real_execution=True,
     )
     try:
         daemon.open()
@@ -1456,6 +3027,7 @@ def test_authoritative_cas_race_creates_no_execution_attempt(
 def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
     tmp_path: Path,
 ) -> None:
+    now = {"ms": 1_000}
     provider_attempts: list[DatabaseTaskAttempt] = []
 
     def fail_first_portal_pass(
@@ -1463,15 +3035,22 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
     ) -> dict[str, object]:
         provider_attempts.append(attempt)
         if len(provider_attempts) == 1:
-            raise DatabasePortalBridgeError(
-                "launch redteam forced retryable Portal bridge failure"
+            raise DatabasePortalBridgeDeferred(
+                "launch_redteam_forced_retryable_portal_bridge_failure",
+                backoff_seconds=1,
             )
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "ok",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     daemon = _open_daemon(
         tmp_path,
         session="session:portal-requeue",
         provider_fn=fail_first_portal_pass,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
     )
     try:
         daemon.materialize_population(_population(1))
@@ -1480,9 +3059,10 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
         first_result = first_pass["implementation_result"]
         assert first_result["portal_retryable_failure"] is True
         assert first_result["status"] == "failed"
-        assert first_result["control_requeue"]["changed"] is True
-        assert first_result["control_requeue"]["previous_status"] == "in_progress"
-        assert first_result["control_requeue"]["status"] == "ready"
+        assert first_result["deferred"] is True
+        assert first_result["retry_state"]["changed"] is True
+        assert first_result["retry_state"]["status"] == "retrying"
+        assert first_result["retry_state"]["backoff_seconds"] == 1
 
         first_attempt_id = str(first_result["attempt_id"])
         first_attempt = daemon.get_attempt(first_attempt_id)
@@ -1496,30 +3076,29 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
         ]
         assert len(failure_phases) == 1
         failure_receipt = failure_phases[0]["body"]
-        assert failure_receipt["schema"] == (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "database-portal-retryable-failure@1"
-        )
-        assert failure_receipt["failure_code"] == "portal_bridge_error"
-        assert failure_receipt["expected_attempt_revision"] == 2
-        assert failure_receipt["failed_attempt_revision"] == 3
-        assert failure_receipt["attempt_id"] == first_attempt_id
-        assert failure_receipt["claim_id"] == first_attempt.claim_id
-        assert failure_receipt["fencing_token"] == first_attempt.fencing_token
-        assert failure_receipt["fence_epoch"] == first_attempt.fence_epoch
-        assert failure_receipt["receipt_id"]
+        assert failure_receipt["portal_retryable_failure"] is True
+        assert failure_receipt["portal_terminal_failure"] is False
+        assert failure_receipt["deferred"] is True
+        assert failure_receipt["attempt_consumed"] is False
+        assert failure_receipt["provider_dispatched"] is False
+        assert failure_receipt["typed_deferral_slot_consumed"] is True
+        assert failure_receipt["backoff_seconds"] == 1
+        assert failure_receipt["typed_deferral"]["attempt_id"] == first_attempt_id
 
-        released_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
-        released_attempt = daemon.coordinator.get_task_attempt(first_attempt_id)
-        assert released_claim is not None
-        assert released_attempt is not None
-        assert released_claim.state.value == "released"
-        assert released_attempt.status.value == "released"
+        initial_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        initial_coordination_attempt = daemon.coordinator.get_task_attempt(
+            first_attempt_id
+        )
+        assert initial_claim is not None
+        assert initial_coordination_attempt is not None
+        assert initial_claim.state.value == "accepted"
+        assert initial_coordination_attempt.status.value == "running"
         control_after_failure = daemon.task_source.get(first_attempt.task_cid)
         assert control_after_failure is not None
-        assert control_after_failure.status == "ready"
+        assert control_after_failure.status == "retrying"
         assert daemon.list_running_attempts() == []
 
+        now["ms"] = 6_001
         second_pass = daemon.run_once()
         second_result = second_pass["implementation_result"]
         assert second_result["status"] == "succeeded"
@@ -1528,6 +3107,9 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
         assert second_attempt["attempt_number"] == 2
         assert second_attempt["fencing_token"] > first_attempt.fencing_token
         assert len(provider_attempts) == 2
+        expired_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        assert expired_claim is not None
+        assert expired_claim.state.value == "expired"
         final_control = daemon.task_source.get(first_attempt.task_cid)
         assert final_control is not None
         assert final_control.status == "completed"
