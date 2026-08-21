@@ -78,9 +78,9 @@
       "name": "ipfs-accelerate-agent-implementation-daemon",
       "reachability": "production",
       "source_span": {
-        "end_line": 73234,
+        "end_line": 74729,
         "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
-        "start_line": 73234
+        "start_line": 74729
       },
       "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main",
       "uncertainty": null
@@ -90,9 +90,9 @@
       "name": "ipfs-accelerate-agent-implementation-supervisor",
       "reachability": "production",
       "source_span": {
-        "end_line": 20322,
+        "end_line": 20336,
         "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
-        "start_line": 20322
+        "start_line": 20336
       },
       "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
       "uncertainty": null
@@ -198,9 +198,9 @@
       "name": "agent_supervisor_usage",
       "reachability": "production",
       "source_span": {
-        "end_line": 559,
+        "end_line": 444,
         "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
-        "start_line": 559
+        "start_line": 444
       },
       "target": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
       "uncertainty": null

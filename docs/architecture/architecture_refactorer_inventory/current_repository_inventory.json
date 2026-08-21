@@ -164,9 +164,9 @@
       "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
       "present": true,
       "source_span": {
-        "end_line": 352,
+        "end_line": 354,
         "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
-        "start_line": 352
+        "start_line": 354
       },
       "uncertainty": null
     },
@@ -411,6 +411,66 @@
       "uncertainty": null
     },
     {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 52,
+        "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+        "start_line": 52
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 178,
+        "path": "ipfs_accelerate_py/llm_router.py",
+        "start_line": 178
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/embeddings_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 135,
+        "path": "ipfs_accelerate_py/embeddings_router.py",
+        "start_line": 135
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/multimodal_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 106,
+        "path": "ipfs_accelerate_py/multimodal_router.py",
+        "start_line": 106
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/voice_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 144,
+        "path": "ipfs_accelerate_py/voice_router.py",
+        "start_line": 144
+      },
+      "uncertainty": null
+    },
+    {
       "kind": "provider",
       "path": "ipfs_accelerate_py/api_backends",
       "present": true,
@@ -495,12 +555,60 @@
       "uncertainty": null
     },
     {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/api_integrations",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 43,
+        "path": "ipfs_accelerate_py/api_integrations/__init__.py",
+        "start_line": 43
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/voice_providers",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/voice_providers/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/container_backends",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/container_backends/backends.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
       "kind": "hardware",
       "path": "ipfs_accelerate_py/hardware_detection.py",
       "present": false,
       "reachability": "production",
       "source_span": null,
       "uncertainty": "path_absent_from_current_tree"
+    },
+    {
+      "kind": "hardware",
+      "path": "common/hardware_detection.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 49,
+        "path": "common/hardware_detection.py",
+        "start_line": 49
+      },
+      "uncertainty": null
     },
     {
       "kind": "hardware",
@@ -623,6 +731,42 @@
       "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
     },
     {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/github_cli/libp2p_compat.py",
+      "present": true,
+      "reachability": "compatibility",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/github_cli/libp2p_compat.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/embedding_router.py",
+      "present": true,
+      "reachability": "compatibility",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/embedding_router.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/tts_router.py",
+      "present": true,
+      "reachability": "compatibility",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/tts_router.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
       "kind": "entrypoint",
       "path": "ipfs_accelerate_py/ai_inference_cli.py",
       "present": true,
@@ -655,6 +799,30 @@
         "end_line": 12,
         "path": "ipfs_accelerate_py/cli_entry.py",
         "start_line": 12
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/ipfs_accelerate_cli.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/ipfs_accelerate_cli.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/unified_cli.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 547,
+        "path": "ipfs_accelerate_py/unified_cli.py",
+        "start_line": 547
       },
       "uncertainty": null
     },
@@ -798,17 +966,18 @@
       ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer",
-      "python_file_count": 3,
+      "python_file_count": 4,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py",
         "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py",
-        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py"
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/entropy.py"
       ],
       "source_span": {
-        "end_line": 12,
+        "end_line": 20,
         "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py",
-        "start_line": 12
+        "start_line": 20
       },
       "uncertainty": null
     },
