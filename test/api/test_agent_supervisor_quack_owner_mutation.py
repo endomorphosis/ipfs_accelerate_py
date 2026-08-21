@@ -1117,13 +1117,18 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
         read_stopping = threading.Event()
         read_failures: list[BaseException] = []
         read_revisions: list[int] = []
+        first_read_samples = [threading.Event() for _source in sources]
 
-        def read_during_refresh(source: DatabaseTaskSource) -> None:
+        def read_during_refresh(
+            source: DatabaseTaskSource,
+            first_read_sample: threading.Event,
+        ) -> None:
             while not read_stopping.is_set():
                 try:
                     observed_task = source.get_task("task:test")
                     if observed_task is not None:
                         read_revisions.append(observed_task.revision)
+                        first_read_sample.set()
                 except BaseException as exc:  # retained for exact assertion
                     read_failures.append(exc)
                     return
@@ -1132,13 +1137,24 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
         readers = [
             threading.Thread(
                 target=read_during_refresh,
-                args=(source,),
+                args=(source, first_read_sample),
                 daemon=True,
             )
-            for source in sources
+            for source, first_read_sample in zip(
+                sources, first_read_samples, strict=True
+            )
         ]
         for reader in readers:
             reader.start()
+        first_samples_observed = [
+            first_read_sample.wait(timeout=5)
+            for first_read_sample in first_read_samples
+        ]
+        if not all(first_samples_observed):
+            read_stopping.set()
+            for reader in readers:
+                reader.join(timeout=5)
+        assert all(first_samples_observed), read_failures
         completed = sources[0].compare_and_set_status(
             "task:test",
             expected_revision=2,

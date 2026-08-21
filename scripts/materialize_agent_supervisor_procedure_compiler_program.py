@@ -1354,6 +1354,7 @@ def _qualify_exact_tree() -> dict[str, Any]:
             {
                 "argv": item["argv"],
                 "returncode": item["returncode"],
+                "stdout_tail": item["stdout_tail"][-4000:],
                 "stderr_tail": item["stderr_tail"][-2000:],
             }
             for item in failures
