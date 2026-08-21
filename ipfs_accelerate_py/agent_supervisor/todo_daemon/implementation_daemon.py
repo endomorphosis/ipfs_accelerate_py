@@ -69863,6 +69863,9 @@ DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
 DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON = (
     "post_merge_declared_outputs_missing"
 )
+DATABASE_PORTAL_BINDING_CHANGED_RESUME_REASON = (
+    "database Portal attempt binding changed across resume"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -73700,10 +73703,32 @@ class DatabaseImplementationDaemon:
                 )
             except DatabaseImplementationAuthorityError as exc:
                 observed_phase = type(exc).__name__
+            task_body = getattr(task, "body", None)
+            receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            receipt_op = (
+                receipt.get("operation") if isinstance(receipt, Mapping) else None
+            )
+            receipt_reason = (
+                self._canonical_portal_failure_reason(receipt.get("reason"))
+                if isinstance(receipt, Mapping)
+                else ""
+            )
+            receipt_attempt = (
+                receipt.get("attempt_id") if isinstance(receipt, Mapping) else None
+            )
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization source no longer matches "
                 "the latest terminal failure"
-                f" (phase_reason={observed_phase!r})"
+                f" (phase_reason={observed_phase!r}"
+                f" task_status={getattr(task, 'status', None)!r}"
+                f" receipt_op={receipt_op!r}"
+                f" receipt_reason={receipt_reason!r}"
+                f" receipt_attempt={receipt_attempt!r}"
+                f" latest_attempt={latest.attempt_id!r})"
             )
         status = str(getattr(task, "status", "") or "").strip().lower()
         if status == "retrying":
@@ -73745,7 +73770,16 @@ class DatabaseImplementationDaemon:
             else None
         )
         task_revision = getattr(task, "revision", None)
-        if (
+        binding_changed_resume = (
+            isinstance(terminal_receipt, Mapping)
+            and self._receipt_is_binding_changed_resume_artifact(
+                terminal_receipt,
+                latest,
+            )
+        )
+        if binding_changed_resume:
+            pass
+        elif (
             not isinstance(terminal_receipt, Mapping)
             or set(terminal_receipt) != terminal_fields
             or terminal_receipt.get("operation")
@@ -75285,11 +75319,32 @@ class DatabaseImplementationDaemon:
         receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
         if not isinstance(receipt, Mapping):
             return False
-        return (
+        if (
             receipt.get("operation") == "database_portal_terminal_failure"
             and receipt.get("attempt_id") == attempt.attempt_id
             and self._canonical_portal_failure_reason(receipt.get("reason"))
             == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        ):
+            return True
+        # A later resume that cannot reuse the sealed Portal projection
+        # overwrites the blocked receipt without replacing the latest failed
+        # attempt row.  The original missing-output quarantine remains the
+        # recovery source.
+        return self._receipt_is_binding_changed_resume_artifact(
+            receipt,
+            attempt,
+        )
+
+    @staticmethod
+    def _receipt_is_binding_changed_resume_artifact(
+        receipt: Mapping[str, Any],
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        reason = str(receipt.get("reason") or "")
+        return (
+            receipt.get("operation") == "database_portal_terminal_failure"
+            and str(receipt.get("attempt_id") or "") != attempt.attempt_id
+            and DATABASE_PORTAL_BINDING_CHANGED_RESUME_REASON in reason
         )
 
     def _reconcile_failed_attempt_coordination(

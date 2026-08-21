@@ -3312,6 +3312,64 @@ def test_preauthorize_rejects_when_receipt_is_not_post_merge_terminal(
         daemon.close()
 
 
+def test_preauthorize_accepts_binding_changed_resume_receipt_from_later_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-binding-changed",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={"reason": "post_merge_declared_outputs_missing"},
+        )
+        daemon._persist_terminal_portal_failure(
+            failed,
+            reason="post_merge_declared_outputs_missing",
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        body = dict(blocked.body)
+        receipt = dict(body["completion_receipt"])
+        receipt["attempt_id"] = "attempt:later-resume"
+        receipt["reason"] = (
+            "database Portal attempt binding changed across resume"
+        )
+        body["completion_receipt"] = receipt
+        wrapped = SimpleNamespace(
+            task_cid=blocked.task_cid,
+            task_alias=blocked.task_alias,
+            status=blocked.status,
+            revision=blocked.revision,
+            body=body,
+        )
+        original_get = daemon.task_source.get
+
+        def get_task(cid: str) -> object:
+            if cid == failed.task_cid:
+                return wrapped
+            return original_get(cid)
+
+        monkeypatch.setattr(daemon.task_source, "get", get_task)
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, failed)
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+    finally:
+        daemon.close()
+
+
 def test_descendant_requalification_recovery_replays_one_queue_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

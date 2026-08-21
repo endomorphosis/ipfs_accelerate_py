@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shlex
@@ -30,6 +31,8 @@ from typing import Any, Final
 
 from ..runtime.event_log import append_jsonl_event
 from ..validation.validation_commands import validation_command_repository_root
+
+_LOG = logging.getLogger(__name__)
 
 DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutionBridge@1"
 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
@@ -3482,6 +3485,13 @@ class DatabasePortalExecutionBridge:
                     if not _is_implementation_conflict(exc):
                         raise
                     owned_conflict = True
+                    _LOG.warning(
+                        "post-merge recovery preauthorization conflict "
+                        "request_id=%s task_id=%s: %s",
+                        getattr(request, "request_id", ""),
+                        getattr(request, "task_id", ""),
+                        exc,
+                    )
                     continue
                 selected = request
                 selected_projection = projection
