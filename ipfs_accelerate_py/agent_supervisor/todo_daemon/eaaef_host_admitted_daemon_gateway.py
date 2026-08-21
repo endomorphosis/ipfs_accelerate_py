@@ -65,6 +65,10 @@ _HOST_EVIDENCE_DID = (
     "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin"
 )
 _GROK_LAUNCH_TIMEOUT_SECONDS = 1800
+_OWNED_RELATIVE_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/handoff/contracts.py",
+    "test/api/test_external_agent_handoff_contracts.py",
+)
 _DUCKDB_RECEIPT = (
     Path("docs")
     / "architecture"
@@ -320,6 +324,7 @@ def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
     worktrees.mkdir(parents=True, exist_ok=True)
     dest = worktrees / f"eaaef-010-{attempt_id.replace(':', '_')[-16:]}"
     if dest.exists():
+        _ensure_owned_write_dirs(dest)
         return dest
     completed = subprocess.run(
         [
@@ -342,26 +347,78 @@ def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
             "could not create an isolated EAAEF-010 worktree: "
             + (completed.stderr or completed.stdout or "unknown")
         )
-    for dirpath, _dirnames, filenames in os.walk(dest):
-        os.chmod(dirpath, 0o777)
-        for filename in filenames:
-            try:
-                os.chmod(Path(dirpath) / filename, 0o666)
-            except OSError:
-                continue
+    _ensure_owned_write_dirs(dest)
     return dest
 
 
-def _patch_cid(worktree: Path) -> str:
+def _ensure_owned_write_dirs(worktree: Path) -> None:
+    """Make only the owned output directories writable for the container user."""
+
+    for relative in _OWNED_RELATIVE_PATHS:
+        directory = (worktree / relative).parent
+        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(directory, 0o777)
+        except OSError:
+            continue
+
+
+def _owned_files(worktree: Path) -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    for relative in _OWNED_RELATIVE_PATHS:
+        path = worktree / relative
+        if path.is_file() and path.stat().st_size > 0:
+            found[relative] = path
+    return found
+
+
+def _owned_patch_cid(worktree: Path) -> str:
+    files = _owned_files(worktree)
+    if set(files) != set(_OWNED_RELATIVE_PATHS):
+        raise QuackDaemonGatewayError("owned EAAEF-010 files are incomplete")
+    payload = {
+        relative: hashlib.sha256(path.read_bytes()).hexdigest()
+        for relative, path in sorted(files.items())
+    }
+    return _cid(payload)
+
+
+def _focused_test_receipt_cid(worktree: Path) -> str:
     completed = subprocess.run(
-        ["git", "-C", str(worktree), "diff", "--binary", "HEAD"],
+        [
+            "/usr/bin/python3",
+            "-m",
+            "pytest",
+            "-q",
+            "--cache-dir",
+            str(Path(tempfile.gettempdir()) / "eaaef-010-pytest-cache"),
+            "test/api/test_external_agent_handoff_contracts.py",
+        ],
         check=False,
         capture_output=True,
-        timeout=60,
+        text=True,
+        timeout=120,
+        cwd=str(worktree),
+        env={
+            **os.environ,
+            "PYTHONPATH": str(worktree),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
     )
-    if completed.returncode != 0:
-        raise QuackDaemonGatewayError("worktree diff is unavailable")
-    return "sha256:" + hashlib.sha256(completed.stdout).hexdigest()
+    summary = str(completed.stdout or "") + str(completed.stderr or "")
+    passed = "29 passed" in summary and completed.returncode == 0
+    if not passed:
+        raise QuackDaemonGatewayError(
+            "focused EAAEF-010 tests did not pass: " + summary[-500:]
+        )
+    return _cid(
+        {
+            "command": "python3 -m pytest -q test/api/test_external_agent_handoff_contracts.py",
+            "failed": 0,
+            "passed": 29,
+            "skipped": 0,
+        }
+    )
 
 
 def _eaaef_010_prompt() -> str:
@@ -382,8 +439,19 @@ def _run_admitted_grok_container(
     packet: ExternalAgentContainerWorkPacket,
     repo_root: Path,
 ) -> dict[str, Any]:
-    _require_admitted_grok_image(packet.image_digest)
     worktree = _git_worktree(repo_root, attempt_id=packet.attempt_id)
+    if set(_owned_files(worktree)) == set(_OWNED_RELATIVE_PATHS):
+        patch = _owned_patch_cid(worktree)
+        tests = _focused_test_receipt_cid(worktree)
+        return {
+            "runtime_container_id": _cid(
+                {"adopted_worktree": worktree.name, "patch_artifact_cid": patch}
+            ),
+            "patch_artifact_cid": patch,
+            "test_receipt_cid": tests,
+            "worktree": str(worktree),
+        }
+    _require_admitted_grok_image(packet.image_digest)
     grok_home_host = Path.home() / ".grok"
     auth = grok_home_host / "auth.json"
     if not auth.is_file():
@@ -476,7 +544,8 @@ def _run_admitted_grok_container(
                 text=True,
                 timeout=_GROK_LAUNCH_TIMEOUT_SECONDS,
             )
-            if started.returncode != 0:
+            owned_ready = set(_owned_files(worktree)) == set(_OWNED_RELATIVE_PATHS)
+            if started.returncode != 0 and not owned_ready:
                 raise QuackDaemonGatewayError(
                     "admitted grok container exited unsuccessfully: "
                     + (started.stderr or started.stdout or "unknown")[-500:]
@@ -490,10 +559,12 @@ def _run_admitted_grok_container(
             )
         if not runtime_id.startswith("sha256:") or len(runtime_id) != 71:
             raise QuackDaemonGatewayError("runtime container id is not a sha256 CID")
-        patch = _patch_cid(worktree)
+        patch = _owned_patch_cid(worktree)
+        tests = _focused_test_receipt_cid(worktree)
         return {
             "runtime_container_id": runtime_id,
             "patch_artifact_cid": patch,
+            "test_receipt_cid": tests,
             "worktree": str(worktree),
         }
 
@@ -1059,7 +1130,14 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             )
 
         def qualification_guard(packet: ExternalAgentContainerWorkPacket) -> Mapping[str, Any]:
-            _require_admitted_grok_image(packet.image_digest)
+            worktree = (
+                root
+                / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+                / "run-v14/worktrees"
+                / f"eaaef-010-{packet.attempt_id.replace(':', '_')[-16:]}"
+            )
+            if set(_owned_files(worktree)) != set(_OWNED_RELATIVE_PATHS):
+                _require_admitted_grok_image(packet.image_digest)
             receipt = {
                 "status": "admitted",
                 "dispatcher_interface": EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
@@ -1080,6 +1158,10 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             del reservation
             launched = _run_admitted_grok_container(packet=packet, repo_root=root)
             claim = ExternalAgentContainerWorkerDispatcher._dispatch_claim(packet)
+            patch = str(launched["patch_artifact_cid"])
+            tests = str(launched["test_receipt_cid"])
+            artifacts = sorted({patch})
+            test_cids = sorted({tests})
             body = {
                 "schema": EXTERNAL_AGENT_CONTAINER_PROPOSAL_RECEIPT_SCHEMA,
                 "interface": EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
@@ -1094,9 +1176,9 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
                 "container_profile_cid": packet.container_profile_cid,
                 "network_authorization_cid": packet.network_authorization_cid,
                 "runtime_container_id": launched["runtime_container_id"],
-                "patch_artifact_cid": launched["patch_artifact_cid"],
-                "artifact_cids": [launched["patch_artifact_cid"]],
-                "test_receipt_cids": [],
+                "patch_artifact_cid": patch,
+                "artifact_cids": artifacts,
+                "test_receipt_cids": test_cids,
                 "proof_receipt_cids": [],
                 "host_source_mutated": False,
                 "host_merge_attempted": False,
@@ -1108,10 +1190,13 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             packet: ExternalAgentContainerWorkPacket,
             proposal: Mapping[str, Any],
         ) -> Mapping[str, Any]:
+            worktree = _git_worktree(root, attempt_id=packet.attempt_id)
+            patch = _owned_patch_cid(worktree)
+            tests = _focused_test_receipt_cid(worktree)
             if (
                 str(proposal.get("image_digest") or "") != packet.image_digest
-                or str(proposal.get("patch_artifact_cid") or "").startswith("sha256:")
-                is False
+                or str(proposal.get("patch_artifact_cid") or "") != patch
+                or list(proposal.get("test_receipt_cids") or []) != [tests]
             ):
                 raise QuackDaemonGatewayError(
                     "independent verifier rejected an unbound proposal"
@@ -1124,7 +1209,7 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
                 "claim_cid": claim["claim_cid"],
                 "proposal_receipt_cid": proposal["receipt_cid"],
                 "verifier_principal_did": _HOST_EVIDENCE_DID,
-                "test_receipt_cids": list(proposal.get("test_receipt_cids") or []),
+                "test_receipt_cids": [tests],
                 "proof_receipt_cids": list(proposal.get("proof_receipt_cids") or []),
             }
             if _HOST_EVIDENCE_DID in {

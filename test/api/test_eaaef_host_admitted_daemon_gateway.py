@@ -158,6 +158,25 @@ def test_owner_mutation_reads_owner_done_receipt(tmp_path: Path) -> None:
     assert updated == 1
 
 
+def test_owned_patch_cid_hashes_only_owned_files(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _OWNED_RELATIVE_PATHS,
+        _owned_patch_cid,
+    )
+
+    for relative in _OWNED_RELATIVE_PATHS:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("eaaef-010\n", encoding="utf-8")
+    (tmp_path / "unrelated.txt").write_text("noise\n", encoding="utf-8")
+    first = _owned_patch_cid(tmp_path)
+    (tmp_path / "unrelated.txt").write_text("changed\n", encoding="utf-8")
+    assert _owned_patch_cid(tmp_path) == first
+    owned = tmp_path / _OWNED_RELATIVE_PATHS[0]
+    owned.write_text("changed-owned\n", encoding="utf-8")
+    assert _owned_patch_cid(tmp_path) != first
+
+
 def test_ensure_attempt_returns_the_attempt_record() -> None:
     from types import SimpleNamespace
 
