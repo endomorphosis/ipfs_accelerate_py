@@ -201,6 +201,9 @@ SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
 ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
     resolve_agent_implementation_route(default_route="legacy").as_environment()
 )
+_IMPLEMENTATION_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+)
 _ROUTE_AUTHORIZATION_ENV_NAMES = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE",
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH",
@@ -3517,12 +3520,14 @@ def seal_ordered_implementation_provider_route(
     *,
     repo_root: Path | str | None = None,
 ) -> dict[str, str]:
-    """Atomically default or validate the reviewed implementation route.
+    """Classify a direct Codex selector or seal the reviewed ordered route.
 
-    Validation precedes every mutation.  An unset route receives all six
-    bindings together.  Compatible legacy Grok primary aliases are
-    canonicalized to ``grok_cli``; any other explicit value fails closed and
-    leaves the environment unchanged.
+    Validation precedes every mutation.  A lone ``codex`` provider remains
+    the legacy direct-provider selector consumed by the implementation
+    daemon.  An unset route receives all six ordered bindings together.
+    Compatible legacy Grok primary aliases are canonicalized to ``grok_cli``;
+    any incompatible ordered tuple fails closed and leaves the environment
+    unchanged.
     """
 
     target = os.environ if environment is None else environment
@@ -3534,6 +3539,18 @@ def seal_ordered_implementation_provider_route(
         name: str(target.get(name, "") or "").strip()
         for name in _ROUTE_AUTHORIZATION_ENV_NAMES
     }
+    if (
+        route_environment[_IMPLEMENTATION_PROVIDER_ENV].lower() == "codex"
+        and not any(
+            value
+            for name, value in route_environment.items()
+            if name != _IMPLEMENTATION_PROVIDER_ENV
+        )
+        and not any(authorization_environment.values())
+    ):
+        selected_provider = {_IMPLEMENTATION_PROVIDER_ENV: "codex"}
+        target.update(selected_provider)
+        return selected_provider
     authorization = None
     if any(authorization_environment.values()):
         if not all(authorization_environment.values()):
@@ -3862,7 +3879,15 @@ def build_repo_implementation_multi_supervisor_launcher(
         caller_route_defaults,
         repo_root=repo_root,
     )
-    effective_env_defaults = implementation_multi_supervisor_env_defaults()
+    if sealed_route_defaults == {_IMPLEMENTATION_PROVIDER_ENV: "codex"}:
+        # The direct provider selector must not be overlaid onto the ordered
+        # Grok-to-Codex defaults.  Doing so creates a hybrid six-field tuple
+        # that the canonical route resolver correctly rejects.
+        effective_env_defaults = implementation_multi_supervisor_env_defaults()
+        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE:
+            effective_env_defaults.pop(name, None)
+    else:
+        effective_env_defaults = implementation_multi_supervisor_env_defaults()
     effective_env_defaults.update(
         {
             name: value

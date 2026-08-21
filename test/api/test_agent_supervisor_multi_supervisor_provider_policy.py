@@ -86,7 +86,6 @@ def test_direct_multi_supervisor_canonicalizes_compatible_grok_alias(
     ("name", "value"),
     (
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", "auto"),
-        ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", "codex"),
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER", "copilot"),
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", "always"),
         ("IPFS_ACCELERATE_AGENT_GROK_MODEL", "grok-4.6"),
@@ -113,6 +112,48 @@ def test_direct_multi_supervisor_rejects_incompatible_partial_route_atomically(
 
     assert raised.value.code == 2
     assert {key: os.environ.get(key) for key in ORDERED_ROUTE} == before
+
+
+def test_direct_multi_supervisor_preserves_provider_only_codex_selector(
+    tmp_path, monkeypatch
+) -> None:
+    _clear_ordered_route(monkeypatch)
+    provider_env = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+    monkeypatch.setenv(provider_env, "codex")
+    captured: dict[str, str | None] = {}
+
+    def fake_launch(_args, _argv):
+        captured.update({name: os.environ.get(name) for name in ORDERED_ROUTE})
+        return _fake_detached_payload()
+
+    monkeypatch.setattr(multi_supervisor_runner, "launch_detached", fake_launch)
+
+    assert (
+        multi_supervisor_runner.main(_detached_implementation_args(tmp_path))
+        == 0
+    )
+    assert captured == {
+        name: "codex" if name == provider_env else None
+        for name in ORDERED_ROUTE
+    }
+
+
+def test_direct_codex_selector_rejects_ordered_route_metadata_atomically(
+) -> None:
+    environment = {
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+    }
+    before = dict(environment)
+
+    with pytest.raises(ValueError, match="reviewed legacy"):
+        multi_supervisor_runner.seal_ordered_implementation_provider_route(
+            environment
+        )
+
+    assert environment == before
 
 
 def test_generic_raw_tracks_do_not_receive_implementation_provider_policy(
@@ -166,10 +207,10 @@ def test_direct_multi_supervisor_preserves_admitted_high_fallback_effort(
     assert captured == expected
 
 
-def test_repo_launcher_rejects_incompatible_caller_route_defaults(
+def test_repo_launcher_preserves_direct_codex_provider_default(
     tmp_path,
 ) -> None:
-    with pytest.raises(ValueError, match="reviewed legacy"):
+    launcher = (
         multi_supervisor_runner.build_repo_implementation_multi_supervisor_launcher(
             repo_root=tmp_path,
             implementation_track_configs=(
@@ -185,6 +226,15 @@ def test_repo_launcher_rejects_incompatible_caller_route_defaults(
                 "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "codex",
             },
         )
+    )
+
+    defaults = dict(launcher.env_defaults)
+    assert defaults["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"] == "codex"
+    assert all(
+        name not in defaults
+        for name in ORDERED_ROUTE
+        if name != "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+    )
 
 
 def test_repo_launcher_canonicalizes_compatible_partial_route_defaults(
