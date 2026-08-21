@@ -169,7 +169,29 @@ _MUTATION_REQUEST_FIELDS: Final[frozenset[str]] = frozenset(
     }
 )
 _MUTATION_READY_FROM: Final[frozenset[str]] = frozenset(
-    {"todo", "ready", "open"}
+    {
+        "todo",
+        "ready",
+        "open",
+        "pending",
+        "queued",
+        "proposed",
+        "admitted",
+        "retrying",
+    }
+)
+_MUTATION_ALLOWED_TO: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        **{
+            status: frozenset({"in_progress"})
+            for status in _MUTATION_READY_FROM - {"retrying"}
+        },
+        "retrying": frozenset({"in_progress", "blocked"}),
+        "claimed": frozenset({"in_progress", "ready", "blocked"}),
+        "running": frozenset({"ready", "completed", "blocked", "retrying"}),
+        "in_progress": frozenset({"ready", "completed", "blocked", "retrying"}),
+        "blocked": frozenset({"retrying", "ready"}),
+    }
 )
 
 _MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
@@ -2944,9 +2966,7 @@ class QuackStateServer:
         old_status, old_revision = str(task[2]), int(task[3])
         if old_revision != update[5]:
             raise QuackStateServerMutationError("cas_conflict")
-        allowed = (
-            old_status in _MUTATION_READY_FROM and update[0] == "in_progress"
-        ) or (old_status == "in_progress" and update[0] in {"ready", "completed"})
+        allowed = update[0] in _MUTATION_ALLOWED_TO.get(old_status, frozenset())
         if not allowed or update[1] != update[5] + 1:
             raise QuackStateServerMutationError("transition_invalid")
         _canonical_object(update[3], code="task_body_invalid")

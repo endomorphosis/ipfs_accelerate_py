@@ -235,6 +235,8 @@ def _transition_request(
     *,
     session_id: str,
     owner_id: str,
+    new_status: str = "in_progress",
+    recorded_at: str = "2026-08-20T20:00:00Z",
 ) -> dict[str, Any]:
     connection = server._connection  # noqa: SLF001
     task = connection.execute(
@@ -246,14 +248,13 @@ def _transition_request(
         "FROM domain_events WHERE stream_id = 'stream:intent'"
     ).fetchone()
     assert task is not None and head is not None
-    recorded_at = "2026-08-20T20:00:00Z"
     revision = int(task[3]) + 1
     inner = {
         "task_cid": "task:test",
         "task_alias": str(task[0]),
         "goal_cid": str(task[1]),
         "previous_status": str(task[2]),
-        "status": "in_progress",
+        "status": new_status,
         "revision": revision,
         "receipt": {},
         "recorded_at": recorded_at,
@@ -282,7 +283,7 @@ def _transition_request(
         {
             "template_id": QUACK_MUTATION_TASK_STATUS_CAS,
             "parameters": [
-                "in_progress",
+                new_status,
                 revision,
                 recorded_at,
                 body_json,
@@ -293,7 +294,7 @@ def _transition_request(
         {
             "template_id": QUACK_MUTATION_TASK_REVISION_INSERT,
             "parameters": [
-                "task:test", revision, "in_progress", body_json, recorded_at
+                "task:test", revision, new_status, body_json, recorded_at
             ],
         },
         {
@@ -513,6 +514,111 @@ def test_two_remote_bundles_have_one_winner_and_typed_loser(tmp_path: Path) -> N
         server.stop()
     with DatabaseTaskSource(database, install_schema=False) as source:
         assert source.projection_matches_events() is True
+
+
+@pytest.mark.parametrize(
+    ("new_status", "expected"),
+    [
+        ("blocked", True),
+        ("retrying", True),
+        ("ready", True),
+        ("failed", False),
+        ("cancelled", False),
+    ],
+)
+def test_in_progress_recovery_transitions_are_closed(
+    tmp_path: Path, new_status: str, expected: bool
+) -> None:
+    server, _identity, token, database = _server(tmp_path)
+    try:
+        claim = _transition_request(
+            server, token, session_id="lane:claim", owner_id="claim"
+        )
+        _publish(server, claim)
+        assert server.service_mutation_inbox() == 1
+        assert _done(server, claim)["ok"] is True
+        recover = _transition_request(
+            server,
+            token,
+            session_id=f"lane:{new_status}",
+            owner_id=new_status,
+            new_status=new_status,
+            recorded_at="2026-08-20T20:00:01Z",
+        )
+        _publish(server, recover)
+        assert server.service_mutation_inbox() == 1
+        result = _done(server, recover)
+        if expected:
+            assert result["ok"] is True
+            assert server._connection.execute(  # noqa: SLF001
+                "SELECT status FROM tasks WHERE task_cid = 'task:test'"
+            ).fetchone()[0] == new_status
+        else:
+            assert result["ok"] is False
+            assert result["error_code"] == "transition_invalid"
+            assert server._connection.execute(  # noqa: SLF001
+                "SELECT status FROM tasks WHERE task_cid = 'task:test'"
+            ).fetchone()[0] == "in_progress"
+    finally:
+        server.stop()
+    with DatabaseTaskSource(database, install_schema=False) as source:
+        assert source.projection_matches_events() is True
+
+
+def test_blocked_and_retrying_can_reenter_execution(tmp_path: Path) -> None:
+    server, _identity, token, database = _server(tmp_path)
+    try:
+        for index, status in enumerate(
+            ("in_progress", "blocked", "retrying", "in_progress")
+        ):
+            request = _transition_request(
+                server,
+                token,
+                session_id=f"lane:{index}",
+                owner_id=f"owner:{index}",
+                new_status=status,
+                recorded_at=f"2026-08-20T20:00:0{index}Z",
+            )
+            _publish(server, request)
+            assert server.service_mutation_inbox() == 1
+            result = _done(server, request)
+            assert result["ok"] is True, result
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT status FROM tasks WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == "in_progress"
+    finally:
+        server.stop()
+    with DatabaseTaskSource(database, install_schema=False) as source:
+        assert source.projection_matches_events() is True
+
+
+def test_completed_cannot_be_reopened(tmp_path: Path) -> None:
+    server, _identity, token, database = _server(tmp_path)
+    try:
+        claim = _transition_request(
+            server, token, session_id="lane:claim", owner_id="claim"
+        )
+        _publish(server, claim)
+        assert server.service_mutation_inbox() == 1
+        assert _done(server, claim)["ok"] is True
+        server._connection.execute(  # noqa: SLF001
+            "UPDATE tasks SET status = 'completed' WHERE task_cid = 'task:test'"
+        )
+        reopen = _transition_request(
+            server,
+            token,
+            session_id="lane:reopen",
+            owner_id="reopen",
+            new_status="in_progress",
+            recorded_at="2026-08-20T21:00:00Z",
+        )
+        _publish(server, reopen)
+        assert server.service_mutation_inbox() == 1
+        result = _done(server, reopen)
+        assert result["ok"] is False
+        assert result["error_code"] == "transition_invalid"
+    finally:
+        server.stop()
 
 
 @pytest.mark.parametrize("attack", ["malformed", "forged_mac", "wrong_generation"])

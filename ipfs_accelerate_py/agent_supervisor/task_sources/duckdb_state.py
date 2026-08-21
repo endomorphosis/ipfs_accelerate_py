@@ -722,6 +722,10 @@ class DuckDBQuackMutationConflictError(DuckDBConnectionPolicyError):
     """A closed owner-side compare-and-set observed a stale revision."""
 
 
+class DuckDBQuackMutationTransitionError(DuckDBConnectionPolicyError):
+    """Owner rejected a status CAS outside the closed transition matrix."""
+
+
 class DuckDBQuackMutationUnknownOutcomeError(DuckDBConnectionPolicyError):
     """The writer committed but fresh transport settlement was not proved."""
 
@@ -974,6 +978,10 @@ def _validate_quack_mutation_result(
         if error_code in {"cas_conflict", "event_head_conflict"}:
             raise DuckDBQuackMutationConflictError(
                 "quack owner mutation compare-and-set conflicted"
+            )
+        if error_code == "transition_invalid":
+            raise DuckDBQuackMutationTransitionError(
+                "quack owner mutation failed: transition_invalid"
             )
         if error_code in {
             "read_replica_refresh_unknown_outcome",

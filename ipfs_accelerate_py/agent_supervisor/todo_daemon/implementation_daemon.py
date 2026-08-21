@@ -68763,6 +68763,19 @@ class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
     """Raised when a claim or phase transition conflicts with durable state."""
 
 
+def _is_control_transition_invalid(exc: BaseException) -> bool:
+    """Return True for a closed owner rejection of an illegal status CAS."""
+
+    names = {type(exc).__name__, *(base.__name__ for base in type(exc).mro())}
+    if names & {
+        "TaskSourceTransitionError",
+        "IntentRepositoryTransitionError",
+        "DuckDBQuackMutationTransitionError",
+    }:
+        return True
+    return "transition_invalid" in str(exc)
+
+
 def _database_daemon_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
 
@@ -71080,13 +71093,34 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 receipt_payload["validation_retry_seed"] = verified_seed
-        return cas(
-            task_cid,
-            expected_revision=int(expected_revision),
-            status=new_status,
-            receipt=receipt_payload,
-            evidence_digests=evidence_digests,
-        )
+        try:
+            return cas(
+                task_cid,
+                expected_revision=int(expected_revision),
+                status=new_status,
+                receipt=receipt_payload,
+                evidence_digests=evidence_digests,
+            )
+        except Exception as exc:
+            if not _is_control_transition_invalid(exc):
+                raise
+            current = self.task_source.get(task_cid)
+            if (
+                current is None
+                or str(current.status or "").strip().lower()
+                != str(new_status).strip().lower()
+            ):
+                raise
+            # The owner already holds the requested status.  Replay the CAS at
+            # the observed revision so a no-op receipt is admitted instead of
+            # crash-looping the daemon on transition_invalid.
+            return cas(
+                current.task_cid,
+                expected_revision=int(current.revision),
+                status=new_status,
+                receipt=receipt_payload,
+                evidence_digests=evidence_digests,
+            )
 
     @staticmethod
     def _database_portal_backoff_seconds(value: Any) -> int:
@@ -73294,11 +73328,19 @@ class DatabaseImplementationDaemon:
                     f"terminal Portal failure cannot reconcile control status {status!r}"
                 )
             coordination = self._reconcile_failed_attempt_coordination(attempt)
-            outcome = self._persist_terminal_portal_failure(
-                attempt,
-                reason=reason,
-                coordination_evidence=coordination,
-            )
+            try:
+                outcome = self._persist_terminal_portal_failure(
+                    attempt,
+                    reason=reason,
+                    coordination_evidence=coordination,
+                )
+            except Exception as exc:
+                if not _is_control_transition_invalid(exc):
+                    raise
+                refreshed = self.task_source.get(attempt.task_cid)
+                if refreshed is None or str(refreshed.status or "").strip().lower() != "blocked":
+                    raise
+                continue
             outcome["coordination"] = coordination
             outcomes.append(outcome)
         return outcomes

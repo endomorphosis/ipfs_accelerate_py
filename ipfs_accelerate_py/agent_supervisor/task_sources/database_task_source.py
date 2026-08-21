@@ -41,6 +41,7 @@ from .intent_repository import (
     IntentRepositoryConflictError,
     IntentRepositoryError,
     IntentRepositoryIntegrityError,
+    IntentRepositoryTransitionError,
     IntentRepositoryUnknownOutcomeError,
     PlanRevisionRepository,
     QueueEntry,
@@ -85,6 +86,10 @@ class TaskSourceIntegrityError(DatabaseTaskSourceError, IntentRepositoryIntegrit
 
 class TaskSourceConflictError(DatabaseTaskSourceError, IntentRepositoryConflictError):
     """CAS head or expected-revision conflict."""
+
+
+class TaskSourceTransitionError(DatabaseTaskSourceError, IntentRepositoryTransitionError):
+    """Owner rejected a status transition outside the closed matrix."""
 
 
 class TaskSourceUnknownOutcomeError(
@@ -1348,6 +1353,8 @@ class DatabaseTaskSource:
             raise TaskSourceCompletionError(str(exc)) from exc
         except IntentRepositoryConflictError as exc:
             raise TaskSourceConflictError(str(exc)) from exc
+        except IntentRepositoryTransitionError as exc:
+            raise TaskSourceTransitionError(str(exc)) from exc
         except IntentRepositoryUnknownOutcomeError as exc:
             raise TaskSourceUnknownOutcomeError(str(exc)) from exc
         updated = self._intent.get_task(str(prior["task_cid"]))

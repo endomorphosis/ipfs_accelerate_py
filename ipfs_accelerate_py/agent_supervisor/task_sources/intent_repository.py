@@ -48,6 +48,7 @@ from .control_plane_migrations import duckdb_available
 from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
     DuckDBQuackMutationConflictError,
+    DuckDBQuackMutationTransitionError,
     DuckDBQuackMutationUnknownOutcomeError,
     exclusive_file_lock,
     is_quack_transport_target,
@@ -203,6 +204,10 @@ class IntentRepositoryError(RuntimeError):
 
 class IntentRepositoryConflictError(IntentRepositoryError):
     """CAS head, fence, or expected-revision conflict."""
+
+
+class IntentRepositoryTransitionError(IntentRepositoryError):
+    """Owner rejected a status transition outside the closed matrix."""
 
 
 class IntentRepositoryUnknownOutcomeError(IntentRepositoryError):
@@ -936,6 +941,14 @@ class IntentRepository:
                             pass
                         raise IntentRepositoryConflictError(
                             "remote task revision or event-head CAS conflicted"
+                        ) from exc
+                    except DuckDBQuackMutationTransitionError as exc:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise IntentRepositoryTransitionError(
+                            "remote task status transition is not admitted"
                         ) from exc
                     except DuckDBQuackMutationUnknownOutcomeError as exc:
                         try:
@@ -5178,6 +5191,7 @@ __all__ = (
     "IntentRepository",
     "IntentRepositoryError",
     "IntentRepositoryConflictError",
+    "IntentRepositoryTransitionError",
     "IntentRepositoryUnknownOutcomeError",
     "IntentRepositoryIntegrityError",
     "IntentRepositoryBoundsError",
