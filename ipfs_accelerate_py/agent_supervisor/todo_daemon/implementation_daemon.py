@@ -73419,24 +73419,15 @@ class DatabaseImplementationDaemon:
             phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
         ]
         body = failed[-1].get("body") if failed else None
-        committed_effect_phases = {
-            ATTEMPT_PHASE_PROVIDER,
-            ATTEMPT_PHASE_EFFECT,
-            ATTEMPT_PHASE_VALIDATION,
-            ATTEMPT_PHASE_COMPLETE,
-        }.intersection(
-            str(phase.get("phase") or "") for phase in history
-        )
         if (
             not isinstance(body, Mapping)
             or body.get("portal_terminal_failure") is not True
             or body.get("portal_retryable_failure") is True
             or body.get("reason") != "inflight_process"
-            or committed_effect_phases
         ):
             raise DatabaseImplementationAuthorityError(
-                "inflight-process recovery is limited to an uncommitted outer "
-                "provider failure with the exact leftover-runner reason"
+                "inflight-process recovery is limited to a terminal Portal "
+                "failure with the exact leftover-runner reason"
             )
         verified = self._verified_inflight_process_recovery_receipt(
             current,
@@ -73457,7 +73448,26 @@ class DatabaseImplementationDaemon:
                 "inflight-process recovery requires blocked or exact retrying "
                 f"control state, observed {status!r}"
             )
-        coordination = self._reconcile_failed_attempt_coordination(current)
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
         result = self._persist_task_retry_state(
             current,
             reason="inflight_process_absent",
@@ -73516,6 +73526,12 @@ class DatabaseImplementationDaemon:
                     recovery_evidence=evidence,
                 )
             except Exception as exc:
+                logger.warning(
+                    "inflight-process recovery not admitted for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
                 outcomes.append(
                     {
                         "task_cid": attempt.task_cid,
@@ -73524,6 +73540,7 @@ class DatabaseImplementationDaemon:
                         "changed": False,
                         "reason": "inflight_process_recovery_not_admitted",
                         "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
                     }
                 )
                 continue
