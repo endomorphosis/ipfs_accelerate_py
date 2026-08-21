@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     resolved_reconciliation_guardrail_keys,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    PREPARED_COMPLETION_STATUS,
     TASK_COMPLETION_PREPARATION_SCHEMA,
     DatabaseCoordinator,
 )
@@ -318,6 +319,11 @@ def test_reconcile_skips_completed_rescue_leftover_before_preflight(
     preparation["preparation_digest"] = (
         DatabaseCoordinator._preparation_digest(preparation)
     )
+    # The coordinator hashes the durable preparation before adding these
+    # returned projection fields.  The exact returned mapping is what the
+    # task completion receipt persists.
+    preparation["status"] = PREPARED_COMPLETION_STATUS
+    preparation["replayed"] = False
     canonical_task = SimpleNamespace(
         task_alias="PORTAL-060",
         task_cid=task_cid,
@@ -349,6 +355,30 @@ def test_reconcile_skips_completed_rescue_leftover_before_preflight(
     assert completion_proof["verified"] is True
     assert completion_proof["branch_attempt_number"] == 1
     assert completion_proof["completion_attempt_number"] == 4
+    for projection_field, invalid_value in (
+        ("status", "completed"),
+        ("replayed", 1),
+    ):
+        forged_body = json.loads(json.dumps(canonical_task.body))
+        forged_body["completion_receipt"]["coordination_preparation"][
+            projection_field
+        ] = invalid_value
+        forged_task = SimpleNamespace(
+            task_alias=canonical_task.task_alias,
+            task_cid=canonical_task.task_cid,
+            status=canonical_task.status,
+            revision=canonical_task.revision,
+            body=forged_body,
+        )
+        forged_proof = supervisor._database_completion_receipt_proof(
+            forged_task,
+            expected_alias="PORTAL-060",
+            branch=branch_name,
+        )
+        assert forged_proof["verified"] is False
+        assert forged_proof["reason"] == (
+            "database_completion_preparation_unverified"
+        )
     monkeypatch.setattr(
         supervisor,
         "_canonical_completed_reconciliation_task",

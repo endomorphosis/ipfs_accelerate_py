@@ -13886,11 +13886,19 @@ class PortalImplementationSupervisor:
         # the coordinator's canonical digest function; do not invent a second
         # preparation schema in reconciliation code.
         from ..merge.database_coordination import (
+            PREPARED_COMPLETION_STATUS,
             TASK_COMPLETION_PREPARATION_SCHEMA,
             DatabaseCoordinator,
         )
 
         binding = dict(coordination_preparation)
+        preparation_projection_status = binding.get("status")
+        preparation_projection_replayed = binding.get("replayed")
+        preparation_digest_material = {
+            key: value
+            for key, value in binding.items()
+            if key not in {"status", "replayed"}
+        }
         preparation_digest = str(
             binding.get("preparation_digest") or ""
         ).strip()
@@ -13909,6 +13917,9 @@ class PortalImplementationSupervisor:
         if (
             binding.get("schema")
             != TASK_COMPLETION_PREPARATION_SCHEMA
+            or preparation_projection_status
+            != PREPARED_COMPLETION_STATUS
+            or type(preparation_projection_replayed) is not bool
             or any(
                 str(binding.get(field) or "") != expected
                 for field, expected in binding_string_pairs
@@ -13924,7 +13935,9 @@ class PortalImplementationSupervisor:
             or control_expected_revision + 1 != revision
             or not preparation_digest
             or preparation_digest
-            != DatabaseCoordinator._preparation_digest(binding)
+            != DatabaseCoordinator._preparation_digest(
+                preparation_digest_material
+            )
         ):
             return {
                 "verified": False,
