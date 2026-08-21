@@ -1,0 +1,127 @@
+{
+  "allowed_statuses": [
+    "available",
+    "available_with_caveats",
+    "stale",
+    "incompatible",
+    "missing"
+  ],
+  "authority": false,
+  "prerequisites": [
+    {
+      "class_name": "SemanticCompressionHarness",
+      "name": "SemanticCompressionHarness",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py:780",
+      "source_blob": "f103337a4095d02ffe7ac959a69a7b2232504d24",
+      "status": "available",
+      "test": "test/api/semantic_state/test_harness.py",
+      "test_blob": "10b2becf9e00c60cba95abdba8a8c57fcae022e1"
+    },
+    {
+      "caveat": "Qualification binds the initialized pinned ipfs_datasets_py gitlink.",
+      "class_name": "SemanticCompressionGovernor",
+      "name": "SemanticCompressionGovernor",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py:450",
+      "source_blob": "74ff019c0a0e233322c4d962457dbf277a12e38a",
+      "status": "available_with_caveats",
+      "test": "test/api/semantic_governor/test_public_api.py",
+      "test_blob": "10949288b00372c4e23202776cb06ff55c99cf04"
+    },
+    {
+      "blocker": "prerequisite.adversarial_assurance.exact_engine_symbol_absent",
+      "caveat": "Subsystem canonical facade is AssuranceCampaignApi@1; the exact requested class symbol is absent.",
+      "class_name": "AssuranceCampaignApi",
+      "name": "AdversarialAssuranceEngine",
+      "qualified": false,
+      "requested_class_name": "AdversarialAssuranceEngine",
+      "requested_class_present": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py:1710",
+      "source_blob": "4c7fa7cd5783bb01ef5a34699aade6f21f6dce0d",
+      "status": "available_with_caveats",
+      "test": "test/api/adversarial_assurance/test_current_tree_conformance.py",
+      "test_blob": "d0ec4cdf3504b579fa00e67cf817d55bb43e22ab"
+    },
+    {
+      "class_name": "IncrementalVerificationPlanner",
+      "name": "IncrementalVerificationPlanner",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/verification/planner.py:2310",
+      "source_blob": "d283fa8d84547d37b4f26444c8af91b6afcf93a9",
+      "status": "available",
+      "test": "test/api/test_agent_supervisor_incremental_verification_planner.py",
+      "test_blob": "d5ddfa4ead7f0ffe83394a4d5a92c7f74708d0ae"
+    },
+    {
+      "caveat": "Qualification binds pinned datasets proof types.",
+      "class_name": "IncrementalProofSealer",
+      "name": "IncrementalProofSealer",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py:377",
+      "source_blob": "40013d424655712d5471dda7747c8e685686cacc",
+      "status": "available_with_caveats",
+      "test": "test/api/incremental_sealing/test_public_api.py",
+      "test_blob": "7493cb51792155b7d2cc47ba20e6487104722205"
+    },
+    {
+      "class_name": "AdaptivePlanner",
+      "name": "AdaptivePlanner",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py:2750",
+      "source_blob": "aebfc5bccd9b821f454c522e58f819c96259fc19",
+      "status": "available",
+      "test": "test/api/test_agent_supervisor_adaptive_planner.py",
+      "test_blob": "ce25791f270644b3b9068d15fcb0eb240a9b3aae"
+    },
+    {
+      "class_name": "ContextCompiler",
+      "name": "ContextCompiler",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py:4028",
+      "source_blob": "fea50c565815772b7e80401d038a92b9ec6489e2",
+      "status": "available",
+      "test": "test/api/test_agent_supervisor_context_compiler.py",
+      "test_blob": "e154f6fa9a071c99fbdd1c8225f03e7217809366"
+    },
+    {
+      "class_name": "SupervisorControlService",
+      "name": "SupervisorControlService",
+      "qualified": false,
+      "source": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py:4383",
+      "source_blob": "f06b091ff4e5a0a3ea09da81c866845bf064af9b",
+      "status": "available",
+      "test": "test/api/test_agent_supervisor_control_conformance_v2.py",
+      "test_blob": "3162751f0fc5f06f3ac0529bb0a3aef0639ead78"
+    },
+    {
+      "blocker": "prerequisite.autonomous_meta_controller.current_tree_missing",
+      "class_name": "AutonomousMetaController",
+      "name": "AutonomousMetaController",
+      "qualified": false,
+      "response": "Continue independent PCAR work and do not copy an unmerged branch implementation.",
+      "source": null,
+      "source_blob": null,
+      "status": "missing",
+      "test": null,
+      "test_blob": null
+    },
+    {
+      "blocker": "prerequisite.proof_carrying_procedure_compiler.current_tree_missing",
+      "class_name": "ProofCarryingProcedureCompiler",
+      "name": "ProofCarryingProcedureCompiler",
+      "qualified": false,
+      "response": "Expose a narrow future adapter; do not recreate the compiler.",
+      "source": null,
+      "source_blob": null,
+      "status": "missing",
+      "test": null,
+      "test_blob": null
+    }
+  ],
+  "program_id": "agent-supervisor-proof-carrying-architecture-refactorer-v1",
+  "repository_commit": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc",
+  "repository_tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}",
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.sealed-prerequisite-matrix@1",
+  "task_id": "PCAR-000"
+}
