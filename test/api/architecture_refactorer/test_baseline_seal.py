@@ -47,7 +47,7 @@ GITMODULES_PATH = ROOT / ".gitmodules"
 PYPROJECT_PATH = ROOT / "pyproject.toml"
 WORKFLOW_PATH = ROOT / ".github/workflows/documentation-gates.yml"
 
-SEALED_COMMIT = "e119ee7311c04ac3c04dc70278897f1c9f34e7dc"
+SEALED_COMMIT = "a2d1529934197dc64fe18cfbaec9dc7daf438703"
 STARTING_COMMIT = "bbf7f68799072c2b81f7d96eac91f2df3c4b3952"
 STARTING_TREE = "a698da9e4b54e2929adacb613bc61ba3e72eed58"
 MERGE_TARGET_BRANCH = "codex/proof-carrying-architecture-refactorer-v1"
@@ -192,7 +192,9 @@ def test_source_tree_seal() -> None:
     baseline = _load(BASELINE_PATH)
     repository = baseline["repository"]
     head = _git("rev-parse", "HEAD")
-    live_tree = _git("rev-parse", "HEAD^{tree}")
+    # PCAR-000 seals the inspected pre-implementation tree.  Later accepted
+    # tasks must remain descendants of that commit; requiring every later
+    # HEAD to have the same tree would make the baseline self-invalidating.
     sealed_tree = _peel_tree(repository["tree"])
     sealed_commit_tree = _peel_tree(repository["commit"])
 
@@ -207,9 +209,8 @@ def test_source_tree_seal() -> None:
     assert repository["merge_target_branch"] == MERGE_TARGET_BRANCH
     assert repository["origin"] == "https://github.com/endomorphosis/ipfs_accelerate_py"
     assert SHA1_RE.fullmatch(head)
-    assert SHA1_RE.fullmatch(live_tree)
-    assert sealed_tree == live_tree
-    assert sealed_commit_tree == live_tree
+    assert SHA1_RE.fullmatch(sealed_tree)
+    assert sealed_commit_tree == sealed_tree
     assert _git_ok("merge-base", "--is-ancestor", STARTING_COMMIT, "HEAD")
     assert _git_ok("merge-base", "--is-ancestor", SEALED_COMMIT, "HEAD")
     assert _git("rev-parse", f"{STARTING_COMMIT}^{{tree}}") == STARTING_TREE
@@ -285,8 +286,6 @@ def test_exact_gitlinks() -> None:
     sealed = baseline["gitlinks"]
     declared = _gitmodules_paths()
     assert set(sealed) == set(declared)
-    live_tree = _git("rev-parse", "HEAD^{tree}")
-
     for path in declared:
         record = sealed[path]
         gitlink = _gitlink_sha(path)
@@ -309,7 +308,9 @@ def test_exact_gitlinks() -> None:
         assert record["checkout_head"] == pin
         assert record["checkout_matches_gitlink"] is True
 
-    assert _peel_tree(baseline["repository"]["tree"]) == live_tree
+    assert _peel_tree(baseline["repository"]["tree"]) == _git(
+        "rev-parse", f"{SEALED_COMMIT}^{{tree}}"
+    )
 
 
 def test_current_prerequisite_matrix() -> None:
@@ -324,7 +325,9 @@ def test_current_prerequisite_matrix() -> None:
     assert _peel_tree(matrix["repository_tree"]) == _peel_tree(
         baseline["repository"]["tree"]
     )
-    assert _peel_tree(matrix["repository_tree"]) == _git("rev-parse", "HEAD^{tree}")
+    assert _peel_tree(matrix["repository_tree"]) == _git(
+        "rev-parse", f"{SEALED_COMMIT}^{{tree}}"
+    )
 
     names = [item["name"] for item in matrix["prerequisites"]]
     assert names == [
@@ -403,7 +406,7 @@ def test_qualified_test_ledger() -> None:
     baseline = _load(BASELINE_PATH)
     bootstrap = _load(BOOTSTRAP_LEDGER_PATH)
     ledger = baseline["qualified_test_ledger"]
-    live_tree = _git("rev-parse", "HEAD^{tree}")
+    sealed_tree = _git("rev-parse", f"{SEALED_COMMIT}^{{tree}}")
 
     assert ledger["schema"] == (
         "ipfs_accelerate_py.agent_supervisor.architecture-refactorer"
@@ -422,7 +425,7 @@ def test_qualified_test_ledger() -> None:
         assert item["execution_status"] in EXECUTION_STATUSES
         assert item["environment"]["network"] == "deny"
         assert item["environment"]["python"] == "/usr/bin/python3.12"
-        assert _peel_tree(item["tree"]) == live_tree
+        assert _peel_tree(item["tree"]) == sealed_tree
         assert item["argv"][:4] == ["python3", "-m", "pytest", "-q"]
         for target in item["argv"][4:]:
             path = ROOT / target

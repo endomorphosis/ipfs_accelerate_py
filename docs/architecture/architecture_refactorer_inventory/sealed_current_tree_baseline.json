@@ -146,7 +146,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -170,7 +170,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -193,7 +193,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -217,7 +217,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -242,7 +242,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -266,7 +266,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -292,7 +292,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -317,7 +317,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       },
       {
         "argv": [
@@ -341,7 +341,7 @@
         "reason": "command_identity_bound_execution_not_claimed_as_qualification",
         "receipt_identity": null,
         "skipped": null,
-        "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+        "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
       }
     ],
     "network_required": false,
@@ -357,14 +357,14 @@
     "ipfs_accelerate_py/agent-supervisor/signed-test-pass-receipt-v2"
   ],
   "repository": {
-    "commit": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc",
+    "commit": "a2d1529934197dc64fe18cfbaec9dc7daf438703",
     "merge_target_branch": "codex/proof-carrying-architecture-refactorer-v1",
     "name": "endomorphosis/ipfs_accelerate_py",
     "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
     "starting_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
     "starting_commit_is_ancestor": true,
     "starting_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
-    "tree": "e119ee7311c04ac3c04dc70278897f1c9f34e7dc^{tree}"
+    "tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}"
   },
   "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.sealed-current-tree-baseline@1",
   "task_id": "PCAR-000"

@@ -1,0 +1,86 @@
+{
+  "authority": false,
+  "entrypoints": [
+    {
+      "kind": "console_script",
+      "name": "ipfs_accelerate",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.ai_inference_cli:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.cli_entry:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-objective-daemon",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-backlog-refinery",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-bundle-supervisor",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-artifact-query",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-implementation-daemon",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-implementation-supervisor",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-merge-resolver",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-llm-merge-resolver-fallback",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-proof-reuse-provision",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main"
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-llama-cpp-serve",
+      "reachability": "production",
+      "target": "ipfs_accelerate_py.utils.llama_cpp:main"
+    },
+    {
+      "kind": "operator_launcher",
+      "name": "run_agent_supervisor_architecture_refactorer",
+      "reachability": "production",
+      "target": "scripts/run_agent_supervisor_architecture_refactorer.py"
+    }
+  ],
+  "repository_tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}",
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.current-entrypoints@1",
+  "task_id": "PCAR-001"
+}

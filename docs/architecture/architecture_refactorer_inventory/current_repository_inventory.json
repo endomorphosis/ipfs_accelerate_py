@@ -1,0 +1,526 @@
+{
+  "authority": false,
+  "invariant": "Every mandated path has an exact classification or typed unknown.",
+  "overlapping_paths": [
+    {
+      "kind": "hardware",
+      "path": "ipfs_accelerate_py/hardware_detection.py",
+      "present": false,
+      "reachability": "production",
+      "uncertainty": "path_absent_from_current_tree"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/utils",
+      "present": true,
+      "reachability": "production",
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/mcp_server",
+      "present": true,
+      "reachability": "production",
+      "uncertainty": null
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/cli_entry.py",
+      "present": true,
+      "reachability": "production",
+      "uncertainty": null
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/ai_inference_cli.py",
+      "present": true,
+      "reachability": "production",
+      "uncertainty": null
+    },
+    {
+      "kind": "test",
+      "path": "test/api",
+      "present": true,
+      "reachability": "test",
+      "uncertainty": null
+    },
+    {
+      "kind": "fixture",
+      "path": "test/fixtures",
+      "present": true,
+      "reachability": "test",
+      "uncertainty": null
+    }
+  ],
+  "packages": [
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/admission",
+      "python_file_count": 2,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/admission/formal_kernel.py",
+        "ipfs_accelerate_py/agent_supervisor/admission/transport_gate.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
+      "python_file_count": 18,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/adapters.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/admission.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/cli_assurance.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/cli_campaign.py",
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/diagnosis.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis",
+      "python_file_count": 98,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_cache.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_consensus.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_operation_registry.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_pipeline.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/analysis_retrieval.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer",
+      "python_file_count": 3,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/assurance",
+      "python_file_count": 1,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/assurance/formal_claim_adapter.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair",
+      "python_file_count": 27,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/capabilities.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/deterministic_artifacts.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/drift_monitor.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/edit_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/engine.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair/formal_assurance_cegis.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/context",
+      "python_file_count": 11,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/context/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+        "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/context/database_context.py",
+        "ipfs_accelerate_py/agent_supervisor/context/decision_context.py",
+        "ipfs_accelerate_py/agent_supervisor/context/decision_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/context/decision_runtime_benchmark.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/contract_analysis",
+      "python_file_count": 3,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/contract_analysis/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/contract_analysis/cache_adapter.py",
+        "ipfs_accelerate_py/agent_supervisor/contract_analysis/execution_profile.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/contracts",
+      "python_file_count": 4,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/contracts/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/contracts/authority.py",
+        "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
+        "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/control",
+      "python_file_count": 22,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/control/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/control/authorization_logic.py",
+        "ipfs_accelerate_py/agent_supervisor/control/campaign_public_api.py",
+        "ipfs_accelerate_py/agent_supervisor/control/capability_resolver.py",
+        "ipfs_accelerate_py/agent_supervisor/control/control_cli.py",
+        "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+        "ipfs_accelerate_py/agent_supervisor/control/database_backend.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/core",
+      "python_file_count": 9,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/core/asref_layout_evidence.py",
+        "ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+        "ipfs_accelerate_py/agent_supervisor/core/external_completion.py",
+        "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "ipfs_accelerate_py/agent_supervisor/core/program_behavior.py",
+        "ipfs_accelerate_py/agent_supervisor/core/protected_acceptance_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/core/submodule_degradation.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints",
+      "python_file_count": 56,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/authority_resolver.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/capability_resolver.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/database_run_registry.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/evaluation",
+      "python_file_count": 7,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/evaluation/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_adversarial.py",
+        "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_benchmark.py",
+        "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_canary.py",
+        "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_fixed_point.py",
+        "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_release.py",
+        "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/gui_optimizer",
+      "python_file_count": 11,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/artifact_store.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/authority.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/benchmark.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/check_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/improvement_loop.py",
+        "ipfs_accelerate_py/agent_supervisor/gui_optimizer/patch_scope.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations",
+      "python_file_count": 19,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/change_propagation_capabilities.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/contract_repair_capabilities.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/contract_repair_dependencies.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_analysis_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_embedding_provider.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge",
+      "python_file_count": 19,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/campaign_leases.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/git_gc.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives",
+      "python_file_count": 27,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/objectives/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/adaptive_goal_refiner.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/bundle_optimizer.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/change_propagation_task_source.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/contract_mismatch_refinery.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning",
+      "python_file_count": 56,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/planning/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/analytical_change_transforms.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/campaign_prompt_handoff.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/change_propagation_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/change_propagation_transaction.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/database_symbolic_planning.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt",
+      "python_file_count": 11,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/prompt/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/plan_steer_service.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/plan_supervisor_service.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/prompt_directory_scanner.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+        "ipfs_accelerate_py/agent_supervisor/prompt/prompt_plan_admission.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof",
+      "python_file_count": 130,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/admissibility_enforcement.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/bounded_expert_iteration.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/campaign_proof_replay.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/change_propagation_edit_packet.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/change_propagation_obligations.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/rescue",
+      "python_file_count": 11,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/codex_failure_policy.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/database_recovery.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/database_watchdog.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/learning_recovery.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/recovery_diagnostics.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/rescue_orchestrator.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/rescue_planner.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime",
+      "python_file_count": 45,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/authoritative_board_projection.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/benchmark_telemetry.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/control_plane_backup.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/daemon_registry.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/database_artifact_store.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement",
+      "python_file_count": 18,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/campaign_refill_policy.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/database_epochs.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/database_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/database_shadow_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_epoch.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/proof_reuse_benchmark.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor",
+      "python_file_count": 19,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/adapters.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/differential.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/expansion_loop.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/metrics.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state",
+      "python_file_count": 27,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/benchmark.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/capsules.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources",
+      "python_file_count": 27,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/dataset_store.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon",
+      "python_file_count": 72,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/__main__.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/analytical_close_executor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/campaign_resume.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation",
+      "python_file_count": 60,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/change_propagation_pre_provider_gate.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/change_propagation_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/change_propagation_validation.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/compositional_verification_vertical.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/contract_repair_pre_provider_gate.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/contract_repair_validation.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_benchmark.py"
+      ],
+      "uncertainty": null
+    },
+    {
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification",
+      "python_file_count": 17,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/verification/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/adapters/mypy_adapter.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/adapters/prover_adapters.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/adapters/pytest_adapter.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/bundle.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py"
+      ],
+      "uncertainty": null
+    }
+  ],
+  "repository_tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}",
+  "required_root": "ipfs_accelerate_py/agent_supervisor",
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.current-repository-inventory@1",
+  "task_id": "PCAR-001"
+}
