@@ -69860,6 +69860,9 @@ DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery-preauthorization@1"
 )
+DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON = (
+    "post_merge_declared_outputs_missing"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -72269,7 +72272,34 @@ class DatabaseImplementationDaemon:
         return int(value)
 
     @staticmethod
+    def _canonical_portal_failure_reason(value: Any) -> str:
+        """Return a closed Portal failure token from stored or exception text.
+
+        Failed-phase ``reason`` fields historically stored ``str(exc)``.  A
+        wrapped DatabasePortalBridgeError therefore no longer compared equal
+        to the closed ``post_merge_declared_outputs_missing`` token even
+        though that remained the durable terminal failure.
+        """
+
+        if value is None:
+            return ""
+        reason = str(value).strip()
+        if not reason or reason == "None":
+            return ""
+        if (
+            reason == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+            or DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON in reason
+        ):
+            return DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        return reason[:1024]
+
+    @staticmethod
     def _database_portal_reason(value: Any) -> str:
+        canonical = DatabaseImplementationDaemon._canonical_portal_failure_reason(
+            value
+        )
+        if canonical:
+            return canonical
         reason = str(value or "portal_execution_deferred").strip()
         return (reason or "portal_execution_deferred")[:1024]
 
@@ -73660,9 +73690,9 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery preauthorization rejected a superseded "
                 "source attempt"
             )
-        if (
-            self._terminal_portal_failure_reason(latest)
-            != "post_merge_declared_outputs_missing"
+        if not self._is_post_merge_declared_outputs_missing_terminal(
+            latest,
+            task,
         ):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization source no longer matches "
@@ -73728,8 +73758,10 @@ class DatabaseImplementationDaemon:
             != int(latest.revision)
             or terminal_receipt.get("execution_finished_at_ms")
             != latest.finished_at_ms
-            or terminal_receipt.get("reason")
-            != "post_merge_declared_outputs_missing"
+            or self._canonical_portal_failure_reason(
+                terminal_receipt.get("reason")
+            )
+            != DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
             or terminal_receipt.get("retryable") is not False
             or not isinstance(coordination, Mapping)
             or coordination.get("attempt_id") != latest.attempt_id
@@ -73938,9 +73970,9 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery evidence is not bound to the latest "
                 "failed database attempt"
             )
-        if (
-            self._terminal_portal_failure_reason(latest)
-            != "post_merge_declared_outputs_missing"
+        if not self._is_post_merge_declared_outputs_missing_terminal(
+            latest,
+            task,
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery is limited to an exact durable "
@@ -74288,9 +74320,9 @@ class DatabaseImplementationDaemon:
                 "post-merge declared-output recovery receipt does not match "
                 "its source attempt"
             )
-        if (
-            self._terminal_portal_failure_reason(attempt)
-            != "post_merge_declared_outputs_missing"
+        if not self._is_post_merge_declared_outputs_missing_terminal(
+            attempt,
+            task,
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge declared-output recovery does not supersede this "
@@ -75212,8 +75244,45 @@ class DatabaseImplementationDaemon:
                 body.get("portal_terminal_failure") is True
                 and body.get("portal_retryable_failure") is not True
             ):
-                return str(body.get("reason") or "portal_terminal_failure")
+                canonical = self._canonical_portal_failure_reason(
+                    body.get("reason")
+                )
+                return canonical or "portal_terminal_failure"
         return None
+
+    def _is_post_merge_declared_outputs_missing_terminal(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any | None = None,
+    ) -> bool:
+        """Return whether this attempt's durable terminal failure is recoverable.
+
+        Phase history is preferred.  When a later non-portal crash phase, a
+        wrapped exception string, or a missing portal_terminal_failure flag
+        would hide that closed reason, the blocked control receipt bound to
+        the same attempt remains authoritative.
+        """
+
+        phase_reason = self._canonical_portal_failure_reason(
+            self._terminal_portal_failure_reason(attempt)
+        )
+        if phase_reason == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON:
+            return True
+        if phase_reason:
+            return False
+        current = task if task is not None else self.task_source.get(
+            attempt.task_cid
+        )
+        body = getattr(current, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not isinstance(receipt, Mapping):
+            return False
+        return (
+            receipt.get("operation") == "database_portal_terminal_failure"
+            and receipt.get("attempt_id") == attempt.attempt_id
+            and self._canonical_portal_failure_reason(receipt.get("reason"))
+            == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        )
 
     def _reconcile_failed_attempt_coordination(
         self,
