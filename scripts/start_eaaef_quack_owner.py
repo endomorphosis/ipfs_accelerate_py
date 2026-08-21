@@ -25,6 +25,14 @@ CURSOR_PATH = DATA / "generation-cursor.json"
 HOST = "127.0.0.1"
 PORT = 19495
 SECRET_HANDLE = "secret-handle:eaaef-quack-owner-v1"
+# Keep this identical to the host-admitted gateway CAS template. Quack ATTACH
+# cannot UPDATE the remote tasks view; the exclusive owner applies this DML.
+ALLOWED_OWNER_SQL = frozenset(
+    {
+        "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+        "WHERE task_cid = ? AND revision = ?"
+    }
+)
 
 
 def _active_generation() -> str:
@@ -195,10 +203,50 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _handle)
     control_path = server.stop_control_path()
     os.environ["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] = str(mutation_dir)
+
+    def _apply_owner_mutations() -> None:
+        owner_conn = getattr(server, "_connection", None)
+        if owner_conn is None:
+            return
+        inner = getattr(owner_conn, "_connection", owner_conn)
+        for request in sorted(mutation_dir.glob("*.request.json")):
+            done = request.with_name(request.name.replace(".request.json", ".done.json"))
+            try:
+                payload = json.loads(request.read_text(encoding="utf-8"))
+                sql = " ".join(str(payload.get("sql") or "").split())
+                parameters = payload.get("parameters")
+                if sql not in ALLOWED_OWNER_SQL:
+                    raise RuntimeError("owner mutation SQL is not allowlisted")
+                if parameters is None:
+                    inner.execute(sql)
+                else:
+                    inner.execute(sql, parameters)
+                try:
+                    rowcount = int(inner.execute("SELECT changes()").fetchone()[0])
+                except Exception:
+                    rowcount = -1
+                done.write_text(
+                    json.dumps({"ok": True, "rowcount": rowcount}) + "\n",
+                    encoding="utf-8",
+                )
+            except Exception as exc:
+                done.write_text(
+                    json.dumps(
+                        {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            try:
+                request.unlink()
+            except OSError:
+                pass
+
     while server.lifecycle.value == "ready" and not stop_requested["value"]:
         if control_path.is_file():
             break
-        time.sleep(0.25)
+        _apply_owner_mutations()
+        time.sleep(0.05)
     result = server.stop()
     print(json.dumps(result if isinstance(result, dict) else {"stopped": True}))
     return 0

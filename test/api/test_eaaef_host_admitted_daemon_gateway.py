@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+    _CAS_TASK_STATUS_SQL,
     _admitted_home_directory,
     _admitted_httpfs_extension,
     _connect_admitted_duckdb,
+    _submit_owner_mutation,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
     QuackDaemonGatewayError,
@@ -108,3 +111,48 @@ def test_record_defaults_missing_task_dependencies() -> None:
     assert tuple(task.dependencies) == ()
     assert task.body == {}
     assert task.task_cid == "cid:1"
+
+
+def test_owner_mutation_rejects_non_cas_sql(tmp_path: Path) -> None:
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    with pytest.raises(QuackDaemonGatewayError, match="closed CAS template"):
+        _submit_owner_mutation(
+            mutation_dir=inbox,
+            sql="DELETE FROM tasks",
+            parameters=[],
+            timeout_seconds=0.2,
+        )
+
+
+def test_owner_mutation_reads_owner_done_receipt(tmp_path: Path) -> None:
+    import json
+    import threading
+
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+
+    def _consume() -> None:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            requests = list(inbox.glob("*.request.json"))
+            if not requests:
+                time.sleep(0.01)
+                continue
+            request = requests[0]
+            payload = json.loads(request.read_text(encoding="utf-8"))
+            assert payload["sql"] == _CAS_TASK_STATUS_SQL
+            done = request.with_name(request.name.replace(".request.json", ".done.json"))
+            done.write_text(json.dumps({"ok": True, "rowcount": 1}) + "\n", encoding="utf-8")
+            return
+
+    worker = threading.Thread(target=_consume, daemon=True)
+    worker.start()
+    updated = _submit_owner_mutation(
+        mutation_dir=inbox,
+        sql=_CAS_TASK_STATUS_SQL,
+        parameters=["in_progress", 3, "2026-08-21T00:00:00Z", "cid:1", 2],
+        timeout_seconds=2.0,
+    )
+    worker.join(timeout=2.0)
+    assert updated == 1

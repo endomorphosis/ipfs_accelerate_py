@@ -16,7 +16,8 @@ import os
 import stat
 import sys
 import time
-from collections.abc import Mapping
+import uuid
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, ClassVar
@@ -46,6 +47,13 @@ from .external_agent_container_dispatcher import (
 _ADMITTED_DUCKDB_VERSION = "1.5.5"
 _OWNER_HANDLE = "secret-handle:eaaef-quack-owner-v1"
 _REQUIRED_RECEIPTS = ("EAAEF-191", "EAAEF-189", "EAAEF-188")
+# Exact closed CAS template. Quack ATTACH exposes tasks as a view, so UPDATE
+# must run on the exclusive owner's local file connection via the mutation inbox.
+_CAS_TASK_STATUS_SQL = (
+    "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+    "WHERE task_cid = ? AND revision = ?"
+)
+_OWNER_MUTATION_TIMEOUT_SECONDS = 15.0
 _DUCKDB_RECEIPT = (
     Path("docs")
     / "architecture"
@@ -157,6 +165,58 @@ def _import_admitted_duckdb(repo_root: Path) -> Any:
         raise QuackDaemonGatewayError("admitted Quack extension file is absent")
     _admitted_httpfs_extension(extension)
     return duckdb, extension
+
+
+def _submit_owner_mutation(
+    *,
+    mutation_dir: Path,
+    sql: str,
+    parameters: Sequence[Any],
+    timeout_seconds: float = _OWNER_MUTATION_TIMEOUT_SECONDS,
+) -> int:
+    """Ask the exclusive owner to apply one allowlisted DML statement."""
+
+    if " ".join(str(sql).split()) != _CAS_TASK_STATUS_SQL:
+        raise QuackDaemonGatewayError("owner mutation SQL is not the closed CAS template")
+    try:
+        metadata = os.lstat(mutation_dir)
+    except OSError as exc:
+        raise QuackDaemonGatewayError("Quack owner mutation inbox is absent") from exc
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise QuackDaemonGatewayError("Quack owner mutation inbox is not a directory")
+    request_id = uuid.uuid4().hex
+    request_path = mutation_dir / f"{request_id}.request.json"
+    done_path = mutation_dir / f"{request_id}.done.json"
+    request_path.write_text(
+        json.dumps({"parameters": list(parameters), "sql": sql}, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    deadline = time.monotonic() + float(timeout_seconds)
+    while time.monotonic() < deadline:
+        if done_path.is_file():
+            try:
+                payload = json.loads(done_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise QuackDaemonGatewayError(
+                    "owner mutation receipt is unreadable"
+                ) from exc
+            try:
+                request_path.unlink(missing_ok=True)
+                done_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if payload.get("ok") is not True:
+                raise QuackDaemonGatewayError(
+                    "owner mutation failed: " + str(payload.get("error") or "unknown")
+                )
+            return int(payload.get("rowcount") or 0)
+        time.sleep(0.05)
+    try:
+        request_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+    raise QuackDaemonGatewayError("timed out waiting for the Quack owner to apply CAS")
 
 
 def _resolve_owner_token(handle: str, *, vault_dir: Path) -> str:
@@ -275,16 +335,13 @@ class _TaskSource(_Component):
         expected = int(kwargs.get("expected_revision") or kwargs.get("revision") or 0)
         new_status = str(kwargs.get("new_status") or kwargs.get("status") or "")
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        self._gateway._client.execute(
-            "cas_task_status",
-            {
-                "status": new_status,
-                "new_revision": expected + 1,
-                "updated_at": now,
-                "task_cid": str(task_cid),
-                "expected_revision": expected,
-            },
+        updated = _submit_owner_mutation(
+            mutation_dir=self._gateway._mutation_dir,
+            sql=_CAS_TASK_STATUS_SQL,
+            parameters=[new_status, expected + 1, now, str(task_cid), expected],
         )
+        if updated < 1:
+            raise QuackDaemonGatewayError("CAS task status did not match expected revision")
         current = self.get(str(task_cid))
         if current is None:
             raise QuackDaemonGatewayError("CAS task disappeared after update")
@@ -465,6 +522,7 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
         binding_cid: str,
         owner_session_id: str,
         client: QuackStateClient,
+        mutation_dir: Path,
     ) -> None:
         self.capability = _HostAdmittedCapability(
             command_endpoint=str(program.quack_endpoint),
@@ -475,6 +533,7 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
         self._program = program
         self._owner_session_id = owner_session_id
         self._client = client
+        self._mutation_dir = Path(mutation_dir)
         self._attached = False
         self._bound_daemon: dict[str, Any] = {}
         self.task_source = _TaskSource(self)
@@ -573,6 +632,7 @@ def build_eaaef_host_admitted_command_gateway(
         / run_dir
         / "live/state/quack-owner"
     )
+    mutation_dir = vault_dir / "mutations"
 
     def _open_admitted_connection(endpoint: Any) -> Any:
         uri = str(getattr(endpoint, "quack_uri", "") or getattr(endpoint, "target", "") or "")
@@ -600,6 +660,7 @@ def build_eaaef_host_admitted_command_gateway(
         binding_cid=binding_cid,
         owner_session_id=owner_session_id or "eaaef-host-admitted-daemon",
         client=client,
+        mutation_dir=mutation_dir,
     )
 
 
