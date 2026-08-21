@@ -321,6 +321,27 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
         raise IntentRepositoryIntegrityError(f"{noun} is not valid JSON") from exc
 
 
+def _receipt_with_preserved_reopen_count(
+    receipt: Mapping[str, Any],
+    previous_receipt: Any,
+) -> dict[str, Any]:
+    """Keep unknown-callback reopen count across later claim receipts."""
+
+    stored = dict(receipt)
+    if "unknown_callback_reopen_count" in stored:
+        return stored
+    previous_count = None
+    if isinstance(previous_receipt, Mapping):
+        previous_count = previous_receipt.get("unknown_callback_reopen_count")
+    if previous_count is None:
+        return stored
+    try:
+        stored["unknown_callback_reopen_count"] = max(0, int(previous_count))
+    except (TypeError, ValueError):
+        return dict(receipt)
+    return stored
+
+
 def _mapping(value: Any, *, noun: str = "mapping") -> dict[str, Any]:
     if value is None:
         return {}
@@ -2590,7 +2611,10 @@ class IntentRepository:
                 body_map = {}
             body_map = dict(body_map)
             if receipt_map:
-                body_map["completion_receipt"] = receipt_map
+                body_map["completion_receipt"] = _receipt_with_preserved_reopen_count(
+                    receipt_map,
+                    body_map.get("completion_receipt"),
+                )
             updated_rows = connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = revision + 1, updated_at = ?,
@@ -3633,7 +3657,10 @@ class IntentRepository:
             else:
                 body = {}
             if receipt:
-                body["completion_receipt"] = receipt
+                body["completion_receipt"] = _receipt_with_preserved_reopen_count(
+                    receipt,
+                    body.get("completion_receipt"),
+                )
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,

@@ -1299,6 +1299,65 @@ def test_unknown_callback_without_declared_outputs_stays_quarantined(
         daemon.close()
 
 
+def test_unknown_callback_reopen_count_survives_later_claim_receipt(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        first = daemon.run_once()
+        assert first["unknown_callback_reopens"]
+        assert first["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 1
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "in_progress",
+            receipt={
+                "operation": "database_claim",
+                "claim_id": "claim:fresh",
+                "attempt_id": "attempt:fresh",
+            },
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        claim_receipt = task.body.get("completion_receipt")
+        assert isinstance(claim_receipt, dict)
+        assert claim_receipt.get("unknown_callback_reopen_count") == 1
+        receipt = _unknown_callback_quarantine_receipt()
+        receipt.pop("unknown_callback_reopen_count", None)
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        second = daemon.run_once()
+        assert second["unknown_callback_reopens"]
+        assert second["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 2
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        current_receipt = current.body.get("completion_receipt")
+        assert isinstance(current_receipt, dict)
+        assert current_receipt.get("unknown_callback_reopen_count") == 2
+    finally:
+        daemon.close()
+
+
 def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
     repo = _git_repo(tmp_path)
     daemon = _open_daemon(tmp_path / "lane", repo_root=repo)

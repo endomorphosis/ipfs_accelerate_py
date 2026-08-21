@@ -2148,7 +2148,13 @@ def _grok_cli_available() -> bool:
 
         if not _grok_cli_auth_available():
             return False
-        return get_llm_provider("grok_cli") is not None
+        try:
+            return get_llm_provider("grok_cli") is not None
+        except ValueError:
+            # Catalog construction historically probed PATH `grok`. systemd
+            # --user units often omit ~/.local/bin even when GROK_BIN is set.
+            # Binary + headless auth is enough for daemon dispatch.
+            return True
     except Exception:
         return False
 
@@ -60454,13 +60460,39 @@ class PortalImplementationDaemon:
         # Prefer only when the binary is actually resolvable so an auth-only
         # readiness signal does not bypass an explicit provider pin.
         if force_grok:
-            if not grok_ready:
+            if grok_ready:
+                return _grok_cli_command(workspace_path=workspace_path)
+            fallback = os.environ.get(
+                IMPLEMENTATION_FALLBACK_PROVIDER_ENV, ""
+            ).strip().lower()
+            if not (
+                fallback in SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES
+                and fallback not in GROK_IMPLEMENTATION_PROVIDER_NAMES
+            ):
                 raise RuntimeError(
                     "Implementation provider "
                     f"{provider!r} requires the Grok Build CLI (`grok`) with "
                     "login/auth (or XAI_API_KEY)"
                 )
-            return _grok_cli_command(workspace_path=workspace_path)
+            # Readiness already admitted the configured fallback so a missing
+            # Grok CLI does not crash after the provider callback intent.
+            provider = fallback
+            prefer_grok = False
+            force_codex = fallback in {"codex", "openai"}
+            force_claude = fallback in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES
+            force_gemini = fallback in GEMINI_IMPLEMENTATION_PROVIDER_NAMES
+            force_copilot = fallback == "copilot"
+            force_goose_meta = fallback in {
+                "goose",
+                "goose_meta",
+                "goose-meta",
+                "meta",
+                "meta_spark",
+                "meta-spark",
+                "muse",
+                "muse-spark",
+                "spark",
+            }
         if (
             prefer_grok
             and grok_ready
@@ -72050,13 +72082,22 @@ class DatabaseImplementationDaemon:
         body = getattr(task, "body", None)
         if not isinstance(body, Mapping):
             return 0
+        counts: list[int] = []
+        raw_body = body.get("unknown_callback_reopen_count")
+        if raw_body is not None:
+            try:
+                counts.append(max(0, int(raw_body)))
+            except (TypeError, ValueError):
+                pass
         receipt = body.get("completion_receipt")
-        if not isinstance(receipt, Mapping):
-            return 0
-        try:
-            return max(0, int(receipt.get("unknown_callback_reopen_count") or 0))
-        except (TypeError, ValueError):
-            return 0
+        if isinstance(receipt, Mapping):
+            raw_receipt = receipt.get("unknown_callback_reopen_count")
+            if raw_receipt is not None:
+                try:
+                    counts.append(max(0, int(raw_receipt)))
+                except (TypeError, ValueError):
+                    pass
+        return max(counts) if counts else 0
 
     @staticmethod
     def _neutral_portal_quarantine_material(

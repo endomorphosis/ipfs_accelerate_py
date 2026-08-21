@@ -119,6 +119,67 @@ def test_default_implementation_provider_prefers_grok(
     assert fallback_command[-1] == "-"
 
 
+def test_explicit_grok_unavailable_dispatches_configured_codex_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(
+        implementation_daemon._GROK_MODEL_ENV,
+        "grok-4.6",
+    )
+    monkeypatch.setenv(
+        implementation_daemon._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        implementation_daemon._CODEX_REASONING_EFFORT_ENV,
+        "medium",
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=tmp_path,
+        implement=True,
+    )
+    command = daemon._build_implementation_command(tmp_path)
+
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+
+
 def test_ordinary_prompt_task_uses_grok_with_codex_fallback(
     tmp_path: Path,
     monkeypatch,
