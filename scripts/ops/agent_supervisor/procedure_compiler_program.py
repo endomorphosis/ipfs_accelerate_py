@@ -15,10 +15,12 @@ import ipaddress
 import json
 import os
 import re
+import site
 import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from collections import Counter
@@ -81,6 +83,7 @@ ERROR_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/pcpc-launch-error@1"
 MATERIALIZATION_VERIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/procedure-compiler-materialization-verification@1"
 )
+TRUSTED_DUCKDB_HOME_ENV: Final = "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"
 RUNTIME_LABEL_KEY: Final = "org.ipfs-accelerate.pcpc-runtime"
 RUNTIME_LABELS: Final = {
     "org.ipfs-accelerate.pcpc.role": "quack-owner",
@@ -90,6 +93,7 @@ MAX_JSON_BYTES: Final = 1_048_576
 MAX_OWNER_WAIT_SECONDS: Final = 120
 MAX_SUPERVISOR_DURATION_SECONDS: Final = 31_536_000
 MAX_FAILED_OWNER_QUARANTINES: Final = 16
+MAX_EXTENSION_FILE_BYTES: Final = 128 * 1024 * 1024
 HEX_64: Final = re.compile(r"^[0-9a-f]{64}$")
 CONTAINER_ID: Final = re.compile(r"^[0-9a-f]{64}$")
 
@@ -395,6 +399,18 @@ class ProgramConfig:
     def repository_id_prefix(self) -> str:
         return f"git:{self.board_namespace}"
 
+    @property
+    def qualification_home(self) -> Path:
+        identity = hashlib.sha256(
+            canonical_json_bytes(
+                {
+                    "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-duckdb-home@1",
+                    "extension_files_sha256": dict(sorted(self.extension_hashes.items())),
+                }
+            )
+        ).hexdigest()
+        return self.state_root / "qualification-homes" / identity
+
 
 def parse_program_config(
     payload: Mapping[str, Any], *, repo_root: Path, config_path: Path
@@ -560,22 +576,70 @@ def load_program_config(repo_root: Path, config_path: Path | None = None) -> Pro
     return parse_program_config(payload, repo_root=root, config_path=selected)
 
 
+def _regular_file_sha256(path: Path, *, noun: str) -> tuple[os.stat_result, str]:
+    """Hash one bounded regular file through a stable no-follow descriptor."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ProgramLaunchError("extension_invalid", f"{noun} cannot be opened") from exc
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_EXTENSION_FILE_BYTES:
+            raise ProgramLaunchError("extension_invalid", f"{noun} is unsafe")
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            total += len(block)
+            if total > MAX_EXTENSION_FILE_BYTES:
+                raise ProgramLaunchError("extension_invalid", f"{noun} is oversized")
+            digest.update(block)
+        after = os.fstat(descriptor)
+    except ProgramLaunchError:
+        raise
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "extension_invalid", f"{noun} cannot be read"
+        ) from exc
+    finally:
+        os.close(descriptor)
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if total != before.st_size or any(
+        getattr(before, field) != getattr(after, field) for field in stable_fields
+    ):
+        raise ProgramLaunchError("extension_drift", f"{noun} changed while being hashed")
+    return after, digest.hexdigest()
+
+
 def verify_extension_files(config: ProgramConfig) -> None:
     for name, expected in config.extension_hashes.items():
         path = config.extension_directory / name
         try:
-            observed = path.stat()
+            os.lstat(path)
         except OSError as exc:
             raise ProgramLaunchError(
                 "extension_missing", f"extension file is absent: {name}"
             ) from exc
+        observed, digest = _regular_file_sha256(path, noun=f"extension file {name}")
         if (
             path.is_symlink()
             or not stat.S_ISREG(observed.st_mode)
-            or observed.st_size > 128 * 1024 * 1024
+            or observed.st_size > MAX_EXTENSION_FILE_BYTES
         ):
             raise ProgramLaunchError("extension_invalid", f"extension file is unsafe: {name}")
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         if digest != expected:
             raise ProgramLaunchError("extension_drift", f"extension digest drifted: {name}")
 
@@ -1064,6 +1128,305 @@ def _bounded_environment() -> dict[str, str]:
     return result
 
 
+def _copy_exact_extension_file(source: Path, target: Path, *, expected_sha256: str) -> None:
+    """Copy one allowlisted extension without following source or target links."""
+
+    read_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    write_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        source_fd = os.open(source, read_flags)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "extension_missing", f"extension file cannot be opened: {source.name}"
+        ) from exc
+    target_fd: int | None = None
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        source_info = os.fstat(source_fd)
+        if not stat.S_ISREG(source_info.st_mode) or source_info.st_size > MAX_EXTENSION_FILE_BYTES:
+            raise ProgramLaunchError(
+                "extension_invalid", f"extension file is unsafe: {source.name}"
+            )
+        target_fd = os.open(target, write_flags, 0o400)
+        while True:
+            block = os.read(source_fd, 1024 * 1024)
+            if not block:
+                break
+            total += len(block)
+            if total > MAX_EXTENSION_FILE_BYTES:
+                raise ProgramLaunchError(
+                    "extension_invalid", f"extension file is oversized: {source.name}"
+                )
+            digest.update(block)
+            remaining = memoryview(block)
+            while remaining:
+                written = os.write(target_fd, remaining)
+                if written < 1:
+                    raise OSError("extension copy made no progress")
+                remaining = remaining[written:]
+        os.fsync(target_fd)
+    except ProgramLaunchError:
+        raise
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "extension_copy_failed", f"extension file cannot be isolated: {source.name}"
+        ) from exc
+    finally:
+        os.close(source_fd)
+        if target_fd is not None:
+            os.close(target_fd)
+    if total != source_info.st_size or digest.hexdigest() != expected_sha256:
+        raise ProgramLaunchError(
+            "extension_drift", f"extension digest drifted during isolation: {source.name}"
+        )
+
+
+def _validate_qualification_home(config: ProgramConfig, *, home: Path | None = None) -> Path:
+    home = config.qualification_home if home is None else home
+    directories = (
+        home,
+        home / ".duckdb",
+        home / ".duckdb" / "extensions",
+        home / ".duckdb" / "extensions" / "v1.5.5",
+        home / ".duckdb" / "extensions" / "v1.5.5" / "linux_arm64",
+    )
+    for directory in directories:
+        try:
+            observed = os.lstat(directory)
+        except OSError as exc:
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification HOME is incomplete"
+            ) from exc
+        if (
+            not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != 0o700
+        ):
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification HOME directory is unsafe"
+            )
+    extension_home = directories[-1]
+    expected_children = {
+        home: {".duckdb"},
+        directories[1]: {"extensions"},
+        directories[2]: {"v1.5.5"},
+        directories[3]: {"linux_arm64"},
+        extension_home: set(config.extension_hashes),
+    }
+    for directory, names in expected_children.items():
+        try:
+            observed_names = {entry.name for entry in directory.iterdir()}
+        except OSError as exc:
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification HOME cannot be inspected"
+            ) from exc
+        if observed_names != names:
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification HOME contains undeclared content"
+            )
+    for name, expected_sha256 in config.extension_hashes.items():
+        target = extension_home / name
+        try:
+            observed = os.lstat(target)
+        except OSError as exc:
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification extension is unavailable"
+            ) from exc
+        try:
+            stable, digest = _regular_file_sha256(
+                target,
+                noun=f"qualification extension {name}",
+            )
+        except ProgramLaunchError as exc:
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification extension cannot be hashed"
+            ) from exc
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != 0o400
+            or observed.st_nlink != 1
+            or observed.st_size > MAX_EXTENSION_FILE_BYTES
+            or stable.st_ino != observed.st_ino
+            or stable.st_dev != observed.st_dev
+            or digest != expected_sha256
+        ):
+            raise ProgramLaunchError(
+                "qualification_home_invalid", "qualification extension identity drifted"
+            )
+    return home
+
+
+def _private_program_directory(path: Path, *, noun: str) -> None:
+    try:
+        observed = os.lstat(path)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "qualification_home_invalid", f"{noun} cannot be inspected"
+        ) from exc
+    if (
+        not stat.S_ISDIR(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o700
+    ):
+        raise ProgramLaunchError("qualification_home_invalid", f"{noun} is not private")
+
+
+def _fsync_program_directory(path: Path) -> None:
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
+        )
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "qualification HOME publication is not durable"
+        ) from exc
+
+
+def _quarantine_qualification_home(config: ProgramConfig) -> None:
+    home = config.qualification_home
+    try:
+        observed = os.lstat(home)
+    except OSError:
+        return
+    if observed.st_uid != os.geteuid():
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "invalid qualification HOME has a foreign owner"
+        )
+    quarantine_root = config.state_root / "qualification-home-quarantine"
+    try:
+        quarantine_root.mkdir(mode=0o700, exist_ok=True)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "qualification HOME quarantine is unavailable"
+        ) from exc
+    _private_program_directory(quarantine_root, noun="qualification HOME quarantine")
+    if len(tuple(islice(quarantine_root.iterdir(), MAX_FAILED_OWNER_QUARANTINES + 1))) >= (
+        MAX_FAILED_OWNER_QUARANTINES
+    ):
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "qualification HOME quarantine is at capacity"
+        )
+    target = quarantine_root / f"{home.name}-{uuid.uuid4().hex}"
+    try:
+        os.rename(home, target)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "invalid qualification HOME cannot be quarantined"
+        ) from exc
+    _fsync_program_directory(quarantine_root)
+    _fsync_program_directory(config.state_root)
+
+
+def _build_qualification_home(config: ProgramConfig) -> Path:
+    home = config.qualification_home
+    homes_root = home.parent
+    try:
+        homes_root.mkdir(mode=0o700, exist_ok=True)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "qualification HOME root cannot be prepared"
+        ) from exc
+    _private_program_directory(homes_root, noun="qualification HOME root")
+    try:
+        return _validate_qualification_home(config)
+    except ProgramLaunchError:
+        if home.exists() or home.is_symlink():
+            _quarantine_qualification_home(config)
+    with tempfile.TemporaryDirectory(
+        prefix=f".{home.name}.staging-", dir=homes_root
+    ) as raw_staging:
+        staging = Path(raw_staging)
+        staging.chmod(0o700)
+        extension_home = staging / ".duckdb" / "extensions" / "v1.5.5" / "linux_arm64"
+        extension_home.mkdir(parents=True, mode=0o700)
+        for parent in (
+            staging / ".duckdb",
+            staging / ".duckdb" / "extensions",
+            extension_home.parent,
+        ):
+            parent.chmod(0o700)
+        for name, expected_sha256 in config.extension_hashes.items():
+            _copy_exact_extension_file(
+                config.extension_directory / name,
+                extension_home / name,
+                expected_sha256=expected_sha256,
+            )
+        _validate_qualification_home(config, home=staging)
+        try:
+            os.rename(staging, home)
+        except OSError:
+            # A concurrent launcher may have published the same content-bound
+            # HOME. Admit only the independently revalidated exact artifact.
+            return _validate_qualification_home(config)
+        _fsync_program_directory(homes_root)
+    return _validate_qualification_home(config)
+
+
+def _qualification_environment(config: ProgramConfig) -> dict[str, str]:
+    """Build a persistent private HOME containing only the pinned DuckDB extensions."""
+
+    verify_extension_files(config)
+    try:
+        config.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        state_info = os.lstat(config.state_root)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "program state root cannot be prepared"
+        ) from exc
+    if (
+        not stat.S_ISDIR(state_info.st_mode)
+        or stat.S_ISLNK(state_info.st_mode)
+        or state_info.st_uid != os.geteuid()
+        or stat.S_IMODE(state_info.st_mode) != 0o700
+    ):
+        raise ProgramLaunchError(
+            "qualification_home_invalid", "program state root is not private"
+        )
+    home = _build_qualification_home(config)
+    environment = _bounded_environment()
+    environment["HOME"] = str(home)
+    environment[TRUSTED_DUCKDB_HOME_ENV] = str(home)
+    user_base = Path(site.getuserbase()).resolve()
+    user_site = Path(site.getusersitepackages()).resolve()
+    if (
+        not user_base.is_dir()
+        or not user_site.is_dir()
+        or str(user_site) not in sys.path
+        or user_base not in user_site.parents
+    ):
+        raise ProgramLaunchError(
+            "python_environment_invalid",
+            "active Python user site is unavailable for isolated qualification",
+        )
+    environment["PYTHONUSERBASE"] = str(user_base)
+    return environment
+
+
+def _revalidate_qualification_home_after_child(config: ProgramConfig) -> None:
+    try:
+        _validate_qualification_home(config)
+    except ProgramLaunchError:
+        if config.qualification_home.exists() or config.qualification_home.is_symlink():
+            _quarantine_qualification_home(config)
+        raise
+
+
 def _default_remote_probe(config: ProgramConfig, *, tree: str) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
@@ -1418,8 +1781,9 @@ class ProcedureCompilerProgramLauncher:
         result = self._run(
             (sys.executable, str(self.repo_root / MATERIALIZER_RELATIVE), "--verify"),
             timeout=3600,
-            env=_bounded_environment(),
+            env=_qualification_environment(self.config),
         )
+        _revalidate_qualification_home_after_child(self.config)
         if result.returncode:
             raise ProgramLaunchError(
                 "materialization_unqualified", "current-tree materialization verification failed"
@@ -1791,7 +2155,8 @@ class ProcedureCompilerProgramLauncher:
                 "coordinator_exists", "coordinator PID projection already exists"
             )
         argv = self.supervisor_plan()["argv"]
-        result = self._run(argv, timeout=180, env=_bounded_environment())
+        result = self._run(argv, timeout=180, env=_qualification_environment(self.config))
+        _revalidate_qualification_home_after_child(self.config)
         if result.returncode:
             raise ProgramLaunchError(
                 "supervisor_launch_failed", "configured scheduler launch failed"

@@ -926,6 +926,96 @@ def test_sealed_isolation_survives_profile_gate_and_daemon_handoffs(
     assert multi_runner_module.REPOSITORY_ROOT_ENV not in provider_environment
 
 
+def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    trusted_home = (
+        repository
+        / "state"
+        / "qualification-homes"
+        / ("a" * 64)
+    )
+    trusted_home.mkdir(parents=True, mode=0o700)
+    trusted_home.chmod(0o700)
+    python_user_base = Path.home() / ".local"
+    environment = {
+        "HOME": str(trusted_home),
+        multi_runner_module.TRUSTED_DUCKDB_HOME_ENV: str(trusted_home),
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV: str(python_user_base),
+    }
+
+    profile_environment = dict(
+        multi_runner_module._trusted_duckdb_profile_environment(
+            environment,
+            repository_root=repository,
+        )
+    )
+    assert profile_environment["HOME"] == str(trusted_home)
+    assert profile_environment[
+        multi_runner_module.TRUSTED_DUCKDB_HOME_ENV
+    ] == str(trusted_home)
+
+    lane_environment = {
+        **profile_environment,
+        multi_runner_module.REPOSITORY_ROOT_ENV: str(repository),
+    }
+    projected = multi_runner_module._plan_bound_positive_child_environment(
+        lane_environment
+    )
+    assert projected["HOME"] == str(trusted_home)
+
+    previous = {
+        name: os.environ.get(name)
+        for name in (
+            "HOME",
+            multi_runner_module.TRUSTED_DUCKDB_HOME_ENV,
+            multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV,
+            multi_runner_module.REPOSITORY_ROOT_ENV,
+        )
+    }
+    try:
+        os.environ.update(projected)
+        managed = supervisor_module._managed_daemon_child_environment()
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    assert managed["HOME"] == str(trusted_home)
+    assert managed[multi_runner_module.TRUSTED_DUCKDB_HOME_ENV] == str(
+        trusted_home
+    )
+
+    provider_environment = multi_runner_module.provider_subprocess_environment(
+        projected
+    )
+    assert "HOME" not in provider_environment
+    assert multi_runner_module.TRUSTED_DUCKDB_HOME_ENV not in provider_environment
+    assert (
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV
+        not in provider_environment
+    )
+
+    unpaired = multi_runner_module._plan_bound_positive_child_environment(
+        {
+            multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV: (
+                "/tmp/hostile-python-user-base"
+            )
+        }
+    )
+    assert (
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV not in unpaired
+    )
+
+    with pytest.raises(ValueError, match="binding is incomplete"):
+        multi_runner_module._trusted_duckdb_profile_environment(
+            {**environment, "HOME": str(Path.home())},
+            repository_root=repository,
+        )
+
+
 def test_external_isolation_contract_rejects_unknown_fields(
     tmp_path: Path,
 ) -> None:

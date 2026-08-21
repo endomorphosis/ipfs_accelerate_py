@@ -89,6 +89,8 @@ from .multi_supervisor_runner import (
     DATABASE_PROGRAM_CONFIG_INTERFACE,
     STATE_LIVE_SCHEMA_REVISION_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
+    TRUSTED_DUCKDB_HOME_ENV,
+    TRUSTED_PYTHON_USER_BASE_ENV,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
@@ -96,6 +98,7 @@ from .multi_supervisor_runner import (
     _read_stable_regular_bytes,
     _read_stable_regular_json,
     _StableArtifactReadError,
+    _validate_trusted_duckdb_home,
     accepted_control_plane_pin_json,
     build_configured_multi_supervisor_cli_runner,
     build_sealed_control_plane_module_command,
@@ -3234,6 +3237,8 @@ def _plan_bound_coordinator_environment() -> dict[str, str]:
             "TZ",
             STATE_STORE_LIVE_GENERATION_ENV,
             STATE_LIVE_SCHEMA_REVISION_ENV,
+            TRUSTED_DUCKDB_HOME_ENV,
+            TRUSTED_PYTHON_USER_BASE_ENV,
         }
     }
     for name in (
@@ -3248,6 +3253,28 @@ def _plan_bound_coordinator_environment() -> dict[str, str]:
             raise ConfiguredBoardError(
                 f"plan-bound coordinator {name} is not a bounded identity"
             )
+    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    if trusted_home:
+        try:
+            _validate_trusted_duckdb_home(
+                trusted_home,
+                repository_root=str(Path(__file__).absolute().parents[3]),
+                observed_home=str(os.environ.get("HOME", "") or ""),
+            )
+        except ValueError as exc:
+            raise ConfiguredBoardError(
+                "plan-bound coordinator trusted DuckDB HOME is invalid"
+            ) from exc
+        python_user_base = str(
+            environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
+        )
+        if not python_user_base or not Path(python_user_base).is_absolute():
+            raise ConfiguredBoardError(
+                "plan-bound coordinator Python user base is invalid"
+            )
+        environment["HOME"] = trusted_home
+    else:
+        environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
     environment["PATH"] = "/usr/bin:/bin"
     return environment
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -34,6 +35,22 @@ def _load() -> ModuleType:
 def _config(module: ModuleType) -> Any:
     payload = json.loads(CONFIG.read_text(encoding="utf-8"))
     return module.parse_program_config(payload, repo_root=REPO_ROOT, config_path=CONFIG)
+
+
+def _with_hermetic_extensions(module: ModuleType, config: Any, root: Path) -> Any:
+    extension_directory = root / "source-extensions"
+    extension_directory.mkdir()
+    extension_hashes: dict[str, str] = {}
+    for index, name in enumerate(config.extension_hashes):
+        content = f"hermetic-extension-{index}".encode()
+        (extension_directory / name).write_bytes(content)
+        extension_hashes[name] = hashlib.sha256(content).hexdigest()
+    return replace(
+        config,
+        extension_directory=extension_directory,
+        extension_hashes=extension_hashes,
+        state_root=root / "state",
+    )
 
 
 def _fake_inspect(
@@ -285,10 +302,13 @@ def test_forged_container_inspect_and_scope_escape_are_rejected() -> None:
     assert raised.value.code == "container_network_mismatch"
 
 
-def test_materialization_verification_uses_injected_runner_and_rejects_extra_field() -> None:
+def test_materialization_verification_uses_isolated_extension_home_and_rejects_extra_field(
+    tmp_path: Path,
+) -> None:
     module = _load()
     head = "1" * 40
     tree = "2" * 40
+    config = _with_hermetic_extensions(module, _config(module), tmp_path)
     valid = {
         "schema": module.MATERIALIZATION_VERIFICATION_SCHEMA,
         "valid": True,
@@ -308,20 +328,81 @@ def test_materialization_verification_uses_injected_runner_and_rejects_extra_fie
         "fresh_qualification_cid": "bafy-qualification",
     }
     calls: list[tuple[str, ...]] = []
+    qualification_homes: list[Path] = []
+    contaminate_home = {"enabled": False}
 
     def runner(argv, *, cwd, env=None, timeout=60):
-        del cwd, env, timeout
+        del cwd, timeout
+        assert env is not None
+        assert "HOME" in env
+        assert set(env) <= {
+            "PATH",
+            "HOME",
+            "PYTHONUSERBASE",
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "TZ",
+            module.TRUSTED_DUCKDB_HOME_ENV,
+        }
+        assert not any(
+            fragment in name.upper()
+            for name in env
+            for fragment in ("CODEX", "OPENAI", "ANTHROPIC", "GITHUB_TOKEN", "HF_TOKEN")
+        )
+        home = Path(env["HOME"])
+        assert env[module.TRUSTED_DUCKDB_HOME_ENV] == str(home)
+        assert home != Path.home()
+        assert home.stat().st_mode & 0o777 == 0o700
+        assert {item.name for item in home.iterdir()} == {".duckdb"}
+        isolated_extensions = home / ".duckdb/extensions/v1.5.5/linux_arm64"
+        assert {
+            name: hashlib.sha256((isolated_extensions / name).read_bytes()).hexdigest()
+            for name in config.extension_hashes
+        } == config.extension_hashes
+        assert all(
+            (isolated_extensions / name).stat().st_mode & 0o777 == 0o400
+            for name in config.extension_hashes
+        )
+        if contaminate_home["enabled"]:
+            (home / ".codex").mkdir()
+        qualification_homes.append(home)
         calls.append(tuple(argv))
         return module.CommandResult(0, json.dumps(valid), "")
 
     launcher = module.ProcedureCompilerProgramLauncher(repo_root=REPO_ROOT, runner=runner)
+    launcher.config = config
     assert launcher._materialization_verify(head=head, tree=tree)["valid"] is True
     assert calls[0][-1] == "--verify"
+    assert qualification_homes and qualification_homes[0].is_dir()
+    first_file_inode = (
+        qualification_homes[0]
+        / ".duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension"
+    ).stat().st_ino
 
     valid["forged_completion"] = True
     with pytest.raises(module.ProgramLaunchError) as raised:
         launcher._materialization_verify(head=head, tree=tree)
     assert raised.value.code == "materialization_invalid"
+    assert set(qualification_homes) == {config.qualification_home}
+    assert (
+        config.qualification_home
+        / ".duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension"
+    ).stat().st_ino == first_file_inode
+
+    valid.pop("forged_completion")
+    contaminate_home["enabled"] = True
+    with pytest.raises(module.ProgramLaunchError) as raised:
+        launcher._materialization_verify(head=head, tree=tree)
+    assert raised.value.code == "qualification_home_invalid"
+    contaminate_home["enabled"] = False
+    recovered = module._qualification_environment(config)
+    assert recovered["HOME"] == str(config.qualification_home)
+    assert {item.name for item in config.qualification_home.iterdir()} == {".duckdb"}
+    quarantines = tuple((config.state_root / "qualification-home-quarantine").iterdir())
+    assert len(quarantines) == 1
+    assert (quarantines[0] / ".codex").is_dir()
+    assert not any(".staging-" in item.name for item in config.qualification_home.parent.iterdir())
 
 
 @pytest.mark.parametrize("forgery", ["unknown_field", "log_path_escape"])
@@ -337,6 +418,7 @@ def test_supervisor_launch_rejects_unknown_receipt_and_path_forgery(
         state_root=tmp_path / "state",
         evidence_root=tmp_path / "evidence",
     )
+    config = _with_hermetic_extensions(module, config, tmp_path)
     launch = {
         "coordinator_pid": 424242,
         "coordinator_pid_path": str(config.state_root / "configured-board-master.pid"),
@@ -346,7 +428,11 @@ def test_supervisor_launch_rejects_unknown_receipt_and_path_forgery(
         launch["self_authorized"] = True
 
     def runner(argv, *, cwd, env=None, timeout=60):
-        del argv, cwd, env, timeout
+        del argv, cwd, timeout
+        assert env is not None
+        assert env["HOME"] == str(config.qualification_home)
+        assert env[module.TRUSTED_DUCKDB_HOME_ENV] == str(config.qualification_home)
+        assert config.qualification_home.is_dir()
         return module.CommandResult(0, json.dumps(launch), "")
 
     launcher = module.ProcedureCompilerProgramLauncher(repo_root=REPO_ROOT, runner=runner)

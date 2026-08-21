@@ -483,6 +483,8 @@ RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
 EXPORT_PROFILE_ENV = "IPFS_ACCELERATE_AGENT_EXPORT_PROFILE"
 STATE_FAILOVER_POLICY_ENV = "IPFS_ACCELERATE_AGENT_STATE_FAILOVER_POLICY"
 DATABASE_PROGRAM_JSON_ENV = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
+TRUSTED_DUCKDB_HOME_ENV = "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"
+TRUSTED_PYTHON_USER_BASE_ENV = "PYTHONUSERBASE"
 
 DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_AUTHORITY_MODE_ENV,
@@ -508,6 +510,7 @@ _PLAN_BOUND_PROFILE_ENV_NAMES = frozenset(
         *_PROVIDER_EXECUTABLE_ENV_NAMES,
         *DATABASE_PROGRAM_ENV_NAMES,
         PROVIDER_EXTERNAL_ISOLATION_ENV,
+        TRUSTED_DUCKDB_HOME_ENV,
     }
 )
 _PLAN_BOUND_LIFECYCLE_ENV_NAMES = frozenset(
@@ -542,6 +545,28 @@ def _plan_bound_positive_child_environment(
         for name, value in environment.items()
         if name in allowed_names
     }
+    trusted_home = str(projected.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    if trusted_home:
+        repository_root = str(environment.get(REPOSITORY_ROOT_ENV, "") or "")
+        _validate_trusted_duckdb_home(
+            trusted_home,
+            repository_root=repository_root,
+            observed_home=str(environment.get("HOME", "") or ""),
+        )
+        python_user_base = str(
+            environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
+        )
+        if (
+            not python_user_base
+            or "\x00" in python_user_base
+            or len(python_user_base.encode("utf-8")) > 4096
+            or not Path(python_user_base).is_absolute()
+        ):
+            raise ValueError("trusted Python user base binding is incomplete")
+        projected["HOME"] = trusted_home
+        projected[TRUSTED_PYTHON_USER_BASE_ENV] = python_user_base
+    else:
+        projected.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
     projected["PATH"] = "/usr/bin:/bin"
     return projected
 
@@ -556,6 +581,85 @@ def _plan_bound_profile_environment(
             (name, str(environment[name]))
             for name in _PLAN_BOUND_PROFILE_ENV_NAMES
             if name in environment
+        )
+    )
+
+
+def _validate_trusted_duckdb_home(
+    value: str,
+    *,
+    repository_root: str,
+    observed_home: str,
+) -> Path:
+    """Check the shape of a launcher-created DuckDB extension HOME binding."""
+
+    if (
+        not value
+        or "\x00" in value
+        or len(value.encode("utf-8")) > 4096
+        or value != observed_home
+    ):
+        raise ValueError("trusted DuckDB HOME binding is incomplete")
+    home = Path(value)
+    root = Path(repository_root)
+    if (
+        not home.is_absolute()
+        or not root.is_absolute()
+        or home.parent.name != "qualification-homes"
+        or re.fullmatch(r"[0-9a-f]{64}", home.name) is None
+    ):
+        raise ValueError("trusted DuckDB HOME binding is not canonical")
+    try:
+        home.relative_to(root)
+        resolved_home = home.resolve(strict=True)
+        resolved_root = root.resolve(strict=True)
+        resolved_home.relative_to(resolved_root)
+        observed = os.lstat(home)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("trusted DuckDB HOME escapes the accepted repository") from exc
+    if (
+        resolved_home != home
+        or not stat.S_ISDIR(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o700
+    ):
+        raise ValueError("trusted DuckDB HOME is not a private owned directory")
+    return home
+
+
+def _trusted_duckdb_profile_environment(
+    environment: Mapping[str, str],
+    *,
+    repository_root: Path,
+) -> tuple[tuple[str, str], ...]:
+    """Bind an admitted extension HOME into a lifecycle profile."""
+
+    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    if not trusted_home:
+        return ()
+    _validate_trusted_duckdb_home(
+        trusted_home,
+        repository_root=str(repository_root.resolve()),
+        observed_home=str(environment.get("HOME", "") or ""),
+    )
+    python_user_base = str(
+        environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or ""
+    )
+    if (
+        not python_user_base
+        or "\x00" in python_user_base
+        or len(python_user_base.encode("utf-8")) > 4096
+        or not Path(python_user_base).is_absolute()
+    ):
+        raise ValueError("trusted Python user base binding is incomplete")
+    return tuple(
+        sorted(
+            {
+                "HOME": trusted_home,
+                TRUSTED_DUCKDB_HOME_ENV: trusted_home,
+                TRUSTED_PYTHON_USER_BASE_ENV: python_user_base,
+            }.items()
         )
     )
 
@@ -1112,6 +1216,10 @@ def provider_subprocess_environment(
         cleaned.pop(name, None)
     cleaned.pop(REPOSITORY_ROOT_ENV, None)
     cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
+    trusted_home = str(cleaned.pop(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    cleaned.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+    if trusted_home and cleaned.get("HOME") == trusted_home:
+        cleaned.pop("HOME", None)
     return cleaned
 
 
@@ -4874,11 +4982,18 @@ def start_track(
     state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
     run_root = state_root / "lifecycle-runs" / resolved.name
     status_path = _inferred_supervisor_status_path(resolved)
-    profile_environment = (
+    profile_environment_values = dict(
         _plan_bound_profile_environment(os.environ)
         if plan_bound_dispatch
         else ()
     )
+    profile_environment_values.update(
+        _trusted_duckdb_profile_environment(
+            os.environ,
+            repository_root=repo_root,
+        )
+    )
+    profile_environment = tuple(sorted(profile_environment_values.items()))
     profile = LifecycleProfile(
         target_id=f"supervisor-track:{resolved.name}",
         run_id=(

@@ -1167,6 +1167,25 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         shutil.rmtree(runtime_root, ignore_errors=True)
 
 
+def test_plan_bound_coordinator_strips_unpaired_python_user_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(
+        multi_runner_module.TRUSTED_DUCKDB_HOME_ENV,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV,
+        "/tmp/hostile-python-user-base",
+    )
+
+    environment = scheduler_module._plan_bound_coordinator_environment()
+
+    assert (
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV not in environment
+    )
+
+
 def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
