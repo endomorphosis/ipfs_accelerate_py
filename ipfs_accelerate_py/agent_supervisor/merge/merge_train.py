@@ -137,6 +137,14 @@ MERGE_LOCK_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
         "lock_exists",
     }
 )
+INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "post_merge_declared_outputs_repair_failed",
+        "post_merge_declared_outputs_repair_postcondition_failed",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -3120,7 +3128,24 @@ class MergeTrain:
         for request in snapshot(
             limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
         ):
-            if request.failure_reason in AUTHORITY_QUARANTINE_REASONS:
+            quarantine_metadata = request.metadata.get("quarantine")
+            quarantined_merge_result = (
+                quarantine_metadata.get("merge_result")
+                if isinstance(quarantine_metadata, Mapping)
+                else None
+            )
+            if (
+                isinstance(quarantined_merge_result, Mapping)
+                and quarantined_merge_result.get(
+                    "automatic_repair_terminal"
+                )
+                is True
+            ):
+                continue
+            if request.failure_reason in (
+                AUTHORITY_QUARANTINE_REASONS
+                | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
+            ):
                 continue
             if not self._quarantined_candidate_is_integrated(request):
                 continue
@@ -5378,6 +5403,8 @@ class MergeTrain:
                 call_kwargs["receipt"] = dict(receipt)
             if "details" in supported:
                 call_kwargs["details"] = dict(receipt)
+            if "metadata" in supported:
+                call_kwargs["metadata"] = dict(receipt)
             call_kwargs.update({key: value for key, value in kwargs.items() if key in supported})
             callback(request, **call_kwargs)
         except (TypeError, ValueError):

@@ -481,6 +481,86 @@ def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path
     assert queue.pending_count() == 0
 
 
+def test_queue_quarantine_preserves_callback_failure_metadata(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/missing-outputs",
+        task_id="MISSING-OUTPUTS",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    failure = {
+        "status": "quarantined",
+        "reason": "post_merge_declared_outputs_missing",
+        "merge_result": {
+            "reason": "post_merge_declared_outputs_missing",
+            "automatic_repair_attempted": True,
+            "automatic_repair_terminal": True,
+            "repair_reason": "declared_output_repair_conflict",
+        },
+    }
+
+    MergeTrain._call_queue_failure(
+        queue.quarantine,
+        claimed,
+        "post_merge_declared_outputs_missing",
+        failure,
+    )
+
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "quarantined"
+    assert stored.metadata["quarantine"] == failure
+
+
+def test_terminal_missing_output_repair_quarantine_is_not_revived(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/missing-outputs",
+        task_id="MISSING-OUTPUTS",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.quarantine(
+        claimed,
+        reason="post_merge_declared_outputs_missing",
+        metadata={
+            "merge_result": {
+                "reason": "post_merge_declared_outputs_missing",
+                "automatic_repair_attempted": True,
+                "automatic_repair_terminal": True,
+                "repair_reason": "declared_output_repair_conflict",
+            }
+        },
+    )
+    train = MergeTrain(repo, queue)
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert train._quarantined_candidate_is_integrated(quarantined) is True
+
+    assert train._recover_integrated_quarantines() == 0
+
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "quarantined"
+    assert "revivals" not in stored.metadata
+
+
 def test_one_conflict_fingerprint_has_one_active_resolver_attempt(tmp_path: Path) -> None:
     registry = MergeResolverRegistry(tmp_path / "resolver", max_attempts=2)
     event = {

@@ -101,6 +101,70 @@ def _proposal_task(task_id: str, *outputs: str) -> PortalTask:
     )
 
 
+def _null_merge_scenario(
+    tmp_path: Path,
+    *,
+    output: str = "deliverable.txt",
+    undeclared_candidate_output: str = "",
+    executable_output: bool = False,
+) -> tuple[Path, PortalTask, str, str, str, str]:
+    """Build the exact two-parent, first-parent-tree loss shape."""
+
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", "implementation/out-repair")
+    candidate_output = repo / output
+    candidate_output.parent.mkdir(parents=True, exist_ok=True)
+    candidate_output.write_text("candidate\n", encoding="utf-8")
+    if executable_output:
+        candidate_output.chmod(0o755)
+    candidate_paths = [output]
+    if undeclared_candidate_output:
+        undeclared_output = repo / undeclared_candidate_output
+        undeclared_output.parent.mkdir(parents=True, exist_ok=True)
+        undeclared_output.write_text("undeclared\n", encoding="utf-8")
+        candidate_paths.append(undeclared_candidate_output)
+    _git(repo, "add", *candidate_paths)
+    _git(repo, "commit", "-m", "OUT-REPAIR: add declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "rev-parse", f"{candidate}^{{tree}}")
+
+    _git(repo, "checkout", "main")
+    baseline_tree = _git(repo, "rev-parse", f"{baseline}^{{tree}}")
+    null_merge = _git(
+        repo,
+        "commit-tree",
+        baseline_tree,
+        "-p",
+        baseline,
+        "-p",
+        candidate,
+        "-m",
+        "discard candidate tree",
+    )
+    _git(repo, "update-ref", "refs/heads/main", null_merge, baseline)
+
+    task = PortalTask(
+        task_id="OUT-REPAIR",
+        title="Recover the declared output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="verification",
+        outputs=[output],
+        validation=[
+            "python -c \"assert(__import__('pathlib')."
+            f"Path('{output}').read_bytes()=="
+            "b'candidate'+bytes([10]))\""
+        ],
+    )
+    return repo, task, baseline, candidate, candidate_tree, null_merge
+
+
 def test_declared_output_tracking_invariant_accepts_tracked_root_file(
     tmp_path: Path,
 ) -> None:
@@ -639,6 +703,380 @@ def test_merge_callback_skips_completion_when_ignored_output_is_not_in_tree(
     assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
     assert _git(repo, "cat-file", "-e", "main:deliverable.json") == ""
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_exact_null_merge_declared_output_recovery_adopts_identical_untracked(
+    tmp_path: Path,
+) -> None:
+    output = "artifacts/deliverable.txt"
+    (
+        repo,
+        task,
+        baseline,
+        candidate,
+        candidate_tree,
+        null_merge,
+    ) = _null_merge_scenario(tmp_path, output=output)
+    untracked_output = repo / output
+    untracked_output.parent.mkdir(parents=True, exist_ok=True)
+    untracked_output.write_bytes(
+        subprocess.run(
+            ["git", "show", f"{candidate}:{output}"],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    candidate_blob = _git(repo, "rev-parse", f"{candidate}:{output}")
+    assert _git(
+        repo,
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+    ) == f"?? {output}"
+
+    daemon = _daemon(repo, task_header_prefix="OUT-")
+    result = daemon._repair_post_merge_declared_outputs_locked(
+        [task],
+        primary_task=task,
+        attempt=3,
+        candidate_commit=candidate,
+        candidate_tree=candidate_tree,
+        baseline_ref=baseline,
+        target_branch="main",
+        target_commit=null_merge,
+    )
+
+    repair_commit = _git(repo, "rev-parse", "main")
+    assert result["passed"] is True, result.get("reason")
+    assert result["reason"] == "post_merge_declared_outputs_repaired"
+    assert result["attempted"] is True
+    assert result["failed_integration_commit"] == null_merge
+    assert result["repair_commit"] == repair_commit
+    assert repair_commit != null_merge
+    assert _git(repo, "rev-list", "--count", f"{null_merge}..main") == "1"
+    assert _git(repo, "rev-parse", f"{repair_commit}^") == null_merge
+    assert _git(repo, "diff", "--name-only", null_merge, repair_commit) == output
+    assert _git(repo, "rev-parse", f"{repair_commit}:{output}") == candidate_blob
+    assert _git(repo, "ls-files", "--error-unmatch", "--", output) == output
+    assert untracked_output.read_text(encoding="utf-8") == "candidate\n"
+    assert _git(repo, "status", "--porcelain") == ""
+
+    assert len(result["validation"]) == 1
+    validation = result["validation"][0]
+    assert validation["task_id"] == task.task_id
+    assert validation["result"]["attempted"] is True
+    assert validation["result"]["passed"] is True
+    assert result["staged_declared_output_invariant"]["passed"] is True
+    assert result["repaired_declared_output_invariant"]["passed"] is True
+    assert daemon._declared_output_tracking_invariant(
+        [task],
+        repository_ref=repair_commit,
+    )["passed"] is True
+    assert result["receipt"]["candidate_commit"] == candidate
+    assert result["receipt"]["repair_parent_commit"] == null_merge
+    assert result["receipt"]["entries"] == [
+        {
+            "path": output,
+            "mode": "100644",
+            "object_type": "blob",
+            "object_id": candidate_blob,
+        }
+    ]
+
+
+def test_null_merge_recovery_rejects_divergent_untracked_without_mutation(
+    tmp_path: Path,
+) -> None:
+    output = "deliverable.txt"
+    (
+        repo,
+        task,
+        baseline,
+        candidate,
+        candidate_tree,
+        null_merge,
+    ) = _null_merge_scenario(tmp_path, output=output)
+    untracked_output = repo / output
+    untracked_output.write_text("operator-owned divergence\n", encoding="utf-8")
+    head_before = _git(repo, "rev-parse", "HEAD")
+    tree_before = _git(repo, "write-tree")
+    status_before = _git(repo, "status", "--porcelain=v1")
+    content_before = untracked_output.read_bytes()
+
+    result = _daemon(
+        repo,
+        task_header_prefix="OUT-",
+    )._repair_post_merge_declared_outputs_locked(
+        [task],
+        primary_task=task,
+        attempt=4,
+        candidate_commit=candidate,
+        candidate_tree=candidate_tree,
+        baseline_ref=baseline,
+        target_branch="main",
+        target_commit=null_merge,
+    )
+
+    assert result["passed"] is False
+    assert result["attempted"] is False
+    assert result["reason"] == "repair_declared_output_content_conflict"
+    assert [item["path"] for item in result["mismatched_files"]] == [output]
+    assert _git(repo, "rev-parse", "HEAD") == head_before == null_merge
+    assert _git(repo, "write-tree") == tree_before
+    assert _git(repo, "status", "--porcelain=v1") == status_before
+    assert untracked_output.read_bytes() == content_before
+    assert _git(repo, "ls-files", "--", output) == ""
+
+
+def test_null_merge_recovery_rejects_incomplete_candidate_replay(
+    tmp_path: Path,
+) -> None:
+    output = "deliverable.txt"
+    (
+        repo,
+        task,
+        baseline,
+        candidate,
+        candidate_tree,
+        null_merge,
+    ) = _null_merge_scenario(
+        tmp_path,
+        output=output,
+        undeclared_candidate_output="implementation.py",
+    )
+    (repo / output).write_text("candidate\n", encoding="utf-8")
+    head_before = _git(repo, "rev-parse", "HEAD")
+    status_before = _git(repo, "status", "--porcelain=v1")
+
+    result = _daemon(
+        repo,
+        task_header_prefix="OUT-",
+    )._repair_post_merge_declared_outputs_locked(
+        [task],
+        primary_task=task,
+        attempt=5,
+        candidate_commit=candidate,
+        candidate_tree=candidate_tree,
+        baseline_ref=baseline,
+        target_branch="main",
+        target_commit=null_merge,
+    )
+
+    assert result["passed"] is False
+    assert result["attempted"] is False
+    assert result["reason"] == (
+        "repair_candidate_delta_not_exact_declared_additions"
+    )
+    assert result["candidate_delta_paths"] == [
+        output,
+        "implementation.py",
+    ]
+    assert result["expected_paths"] == [output]
+    assert _git(repo, "rev-parse", "HEAD") == head_before == null_merge
+    assert _git(repo, "status", "--porcelain=v1") == status_before
+    assert _git(repo, "ls-files", "--", output) == ""
+
+
+def test_null_merge_recovery_rejects_validation_staged_blob_tampering(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = "deliverable.txt"
+    (
+        repo,
+        task,
+        baseline,
+        candidate,
+        candidate_tree,
+        null_merge,
+    ) = _null_merge_scenario(tmp_path, output=output)
+    (repo / output).write_text("candidate\n", encoding="utf-8")
+    daemon = _daemon(repo, task_header_prefix="OUT-")
+
+    def tamper_and_stage(workspace, *_args, **_kwargs):
+        (workspace / output).write_text("tampered\n", encoding="utf-8")
+        _git(workspace, "add", output)
+        return {"attempted": True, "passed": True, "returncode": 0, "results": []}
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        tamper_and_stage,
+    )
+    result = daemon._repair_post_merge_declared_outputs_locked(
+        [task],
+        primary_task=task,
+        attempt=6,
+        candidate_commit=candidate,
+        candidate_tree=candidate_tree,
+        baseline_ref=baseline,
+        target_branch="main",
+        target_commit=null_merge,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == (
+        "repair_validation_changed_staged_content"
+    )
+    assert result["rollback"]["restored"] is True
+    assert _git(repo, "rev-parse", "HEAD") == null_merge
+    assert _git(repo, "status", "--porcelain=v1") == f"?? {output}"
+    assert (repo / output).read_text(encoding="utf-8") == "candidate\n"
+
+
+def test_null_merge_recovery_exception_restores_executable_untracked(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = "repair-tool"
+    (
+        repo,
+        task,
+        baseline,
+        candidate,
+        candidate_tree,
+        null_merge,
+    ) = _null_merge_scenario(
+        tmp_path,
+        output=output,
+        executable_output=True,
+    )
+    candidate_bytes = subprocess.run(
+        ["git", "show", f"{candidate}:{output}"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    ).stdout
+    untracked_output = repo / output
+    untracked_output.write_bytes(candidate_bytes)
+    untracked_output.chmod(0o755)
+    daemon = _daemon(repo, task_header_prefix="OUT-")
+
+    def raise_during_validation(*_args, **_kwargs):
+        raise RuntimeError("synthetic validation infrastructure failure")
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        raise_during_validation,
+    )
+    result = daemon._repair_post_merge_declared_outputs_locked(
+        [task],
+        primary_task=task,
+        attempt=7,
+        candidate_commit=candidate,
+        candidate_tree=candidate_tree,
+        baseline_ref=baseline,
+        target_branch="main",
+        target_commit=null_merge,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "repair_internal_error"
+    assert result["error_class"] == "RuntimeError"
+    assert result["rollback"]["restored"] is True
+    assert _git(repo, "rev-parse", "HEAD") == null_merge
+    assert _git(repo, "status", "--porcelain=v1") == f"?? {output}"
+    assert untracked_output.read_bytes() == candidate_bytes
+    assert untracked_output.stat().st_mode & 0o777 == 0o755
+
+
+def test_commit_llm_resolved_merge_rejects_unchanged_first_parent_tree(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    baseline_tree = _git(repo, "rev-parse", f"{baseline}^{{tree}}")
+
+    _git(repo, "checkout", "-b", "implementation/out-resolver")
+    (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "candidate.txt")
+    _git(repo, "commit", "-m", "candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "rev-parse", f"{candidate}^{{tree}}")
+    _git(repo, "checkout", "main")
+    _git(
+        repo,
+        "merge",
+        "--no-commit",
+        "--no-ff",
+        "implementation/out-resolver",
+    )
+    assert _git(repo, "rev-parse", "MERGE_HEAD") == candidate
+    _git(repo, "read-tree", "--reset", "-u", baseline)
+    assert _git(repo, "write-tree") == baseline_tree
+    assert _git(repo, "rev-parse", "MERGE_HEAD") == candidate
+
+    result = _daemon(repo)._commit_llm_resolved_merge(
+        repo,
+        expected_merge_head=candidate,
+        pre_merge_commit=baseline,
+        expected_candidate_tree=candidate_tree,
+    )
+
+    assert result["attempted"] is True
+    assert result["completed"] is False
+    assert result["reason"] == "resolved_merge_tree_unchanged_from_first_parent"
+    assert result["expected_merge_head"] == candidate
+    assert result["pre_merge_commit"] == baseline
+    assert result["pre_merge_tree"] == baseline_tree
+    assert result["candidate_tree"] == candidate_tree
+    assert result["resolved_tree"] == baseline_tree
+    assert _git(repo, "rev-parse", "HEAD") == baseline
+    assert _git(repo, "rev-parse", "MERGE_HEAD") == candidate
+
+
+def test_commit_llm_resolved_merge_requires_candidate_output_identity(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "deliverable.txt").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "deliverable.txt")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", "implementation/out-identity")
+    (repo / "deliverable.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "deliverable.txt")
+    _git(repo, "commit", "-m", "candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "rev-parse", f"{candidate}^{{tree}}")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-commit", "--no-ff", candidate)
+    _git(
+        repo,
+        "restore",
+        "--source",
+        baseline,
+        "--staged",
+        "--worktree",
+        "--",
+        "deliverable.txt",
+    )
+    (repo / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+    _git(repo, "add", "unrelated.txt")
+
+    result = _daemon(repo)._commit_llm_resolved_merge(
+        repo,
+        expected_merge_head=candidate,
+        pre_merge_commit=baseline,
+        expected_candidate_tree=candidate_tree,
+        required_tasks=(_proposal_task("OUT-IDENTITY", "deliverable.txt"),),
+    )
+
+    assert result["attempted"] is True
+    assert result["completed"] is False
+    assert result["reason"] == (
+        "resolved_merge_declared_output_identity_mismatch"
+    )
+    assert result["declared_output_invariant"]["passed"] is True
+    assert result["declared_output_identity"]["passed"] is False
+    assert _git(repo, "rev-parse", "HEAD") == baseline
+    assert _git(repo, "rev-parse", "MERGE_HEAD") == candidate
 
 
 def test_historical_completion_requires_bound_immutable_tree(
