@@ -2,9 +2,10 @@
 """Dual-sign and CAS Plan R2 for EAAEF run-v14.
 
 Stops the exclusive Quack owner just long enough to run prepare/apply/observe
-through the in-process Plan-R2 owner gateway, materializes only the conflict-
-free B frontier (EAAEF-010), preserves completed R1 rows, then restarts Quack
-and binds the Plan-R2 unix sockets. Does not mark the remaining 93 templates
+through the in-process Plan-R2 owner gateway, materializes only the current
+conflict-free frontier (tasks whose dependencies are completed and whose
+write/effect scopes do not overlap), preserves completed R1 rows, then leaves
+Quack stopped for the caller to restart. Does not mark unresolved templates
 todo. Does not mount a Docker socket. Operator and security signatures use the
 existing local-dev and lifecycle-root keys.
 """
@@ -191,18 +192,23 @@ def _prepare_snapshot(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
         "WHERE store_id = ?",
         [STORE_ID],
     )
-    con.execute(
-        "UPDATE server_epochs SET ended_at = NULL WHERE server_id IN "
-        "(SELECT server_id FROM state_servers WHERE store_id = ?)",
-        [STORE_ID],
-    )
     gen = con.execute(
         "SELECT generation, fence_epoch, revision FROM store_generations "
         "ORDER BY generation DESC LIMIT 1"
     ).fetchone()
+    if gen is None:
+        raise SystemExit("store generation row is missing")
+    con.execute(
+        "UPDATE server_epochs SET ended_at = NULL WHERE fence_epoch = ?",
+        [int(gen[1])],
+    )
     epoch = con.execute(
-        "SELECT epoch, fence_epoch FROM server_epochs WHERE ended_at IS NULL LIMIT 1"
+        "SELECT epoch, fence_epoch FROM server_epochs "
+        "WHERE fence_epoch = ? ORDER BY epoch DESC LIMIT 1",
+        [int(gen[1])],
     ).fetchone()
+    if epoch is None:
+        raise SystemExit("no server epoch for the live store generation")
     cursor = con.execute(
         "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events "
         "WHERE event_type NOT IN (?, ?)",
@@ -226,6 +232,64 @@ def _prepare_snapshot(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     }
 
 
+def _scope_values(task: dict[str, Any], field: str, *fallback: str) -> set[str]:
+    body = task.get("body") if isinstance(task.get("body"), dict) else {}
+    raw = body.get(field)
+    if not isinstance(raw, list) or not raw:
+        for name in fallback:
+            raw = body.get(name)
+            if isinstance(raw, list) and raw:
+                break
+        else:
+            raw = []
+    return {str(item) for item in raw if str(item)}
+
+
+def _tasks_conflict(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_reads = _scope_values(left, "read_scope")
+    left_writes = _scope_values(left, "write_scope", "owned_files")
+    left_effects = _scope_values(left, "effect_scope", "external_effect_scope")
+    right_reads = _scope_values(right, "read_scope")
+    right_writes = _scope_values(right, "write_scope", "owned_files")
+    right_effects = _scope_values(right, "effect_scope", "external_effect_scope")
+    return bool(
+        left_writes & (right_reads | right_writes)
+        or right_writes & left_reads
+        or left_effects & right_effects
+    )
+
+
+def _next_frontier(
+    rows: list[dict[str, Any]],
+    dependencies: list[tuple[str, str]],
+) -> list[dict[str, Any]]:
+    completed = {
+        str(task["task_cid"])
+        for task in rows
+        if str(task["status"]) in {"completed", "accepted"}
+    }
+    deps_by_task: dict[str, list[str]] = {}
+    for task_cid, dep in dependencies:
+        deps_by_task.setdefault(task_cid, []).append(dep)
+    candidates = [
+        task
+        for task in rows
+        if str(task["status"]) == "blocked"
+        and all(dep in completed for dep in deps_by_task.get(str(task["task_cid"]), ()))
+    ]
+    candidates.sort(key=lambda task: str(task["task_alias"]))
+    chosen: list[dict[str, Any]] = []
+    for task in candidates:
+        if len(chosen) >= r2._MAX_FRONTIER:
+            break
+        if any(_tasks_conflict(task, existing) for existing in chosen):
+            continue
+        chosen.append(task)
+    if not chosen:
+        raise SystemExit("no conflict-free Plan R2 frontier is ready")
+    return chosen
+
+
 def _build_population(
     con: duckdb.DuckDBPyConnection,
     snapshot: dict[str, Any],
@@ -236,19 +300,27 @@ def _build_population(
             "SELECT task_cid FROM tasks ORDER BY task_cid"
         ).fetchall()
     ]
-    frontier_alias = "EAAEF-010"
+    dependency_pairs = [
+        (str(task_cid), str(dep))
+        for task_cid, dep in con.execute(
+            "SELECT task_cid, dependency_task_cid FROM task_dependencies"
+        ).fetchall()
+    ]
+    frontier_rows = _next_frontier(rows, dependency_pairs)
+    frontier_aliases = [str(task["task_alias"]) for task in frontier_rows]
+    revision = int(snapshot["plan_revision"]) + 1
     new_plan_body = {
         "predecessor_plan_cid": snapshot["plan_cid"],
         "predecessor_alias": snapshot["plan_alias"],
-        "transition": "EAAEF-009",
-        "frontier_aliases": [frontier_alias],
+        "transition": "EAAEF-010",
+        "frontier_aliases": frontier_aliases,
     }
     plan_root_cid = _cid(
         {
             "schema": "eaaef-plan-r2-root@1",
             "semantic_root_cid": SEMANTIC_ROOT,
             "body": new_plan_body,
-            "revision": 3,
+            "revision": revision,
         }
     )
     plan_cid = _cid(
@@ -264,12 +336,13 @@ def _build_population(
         "plan_root_cid": plan_root_cid,
         "semantic_root_cid": SEMANTIC_ROOT,
         "status": "active",
-        "revision": 3,
+        "revision": revision,
         "body": new_plan_body,
     }
     tasks: list[dict[str, Any]] = []
     protected: list[dict[str, Any]] = []
-    frontier_cid = ""
+    frontier_cids: list[str] = []
+    frontier_alias_set = set(frontier_aliases)
     for row in rows:
         task = dict(row)
         identity = dict(task["identity"])
@@ -297,12 +370,12 @@ def _build_population(
             body["write_scope"] = list(body.get("owned_files") or [])
         if not isinstance(body.get("read_scope"), list):
             body["read_scope"] = list(body.get("read_scope") or [])
-        if task["task_alias"] == frontier_alias:
+        if task["task_alias"] in frontier_alias_set:
             body["is_schedulable"] = True
             body["population_state"] = "materialized"
             body["blocked_reason"] = ""
             task["status"] = "todo"
-            frontier_cid = task["task_cid"]
+            frontier_cids.append(str(task["task_cid"]))
         else:
             body["is_schedulable"] = False
             body["population_state"] = "template_only_awaiting_predecessor"
@@ -312,8 +385,9 @@ def _build_population(
         task["plan_cid"] = plan_cid
         task["revision"] = int(task["revision"]) + 1
         tasks.append(task)
-    if not frontier_cid:
-        raise SystemExit("EAAEF-010 was not in the blocked population")
+    frontier_cids = sorted(set(frontier_cids))
+    if not frontier_cids:
+        raise SystemExit("Plan R2 frontier was empty after population rewrite")
     deps = [
         {
             "task_cid": str(task_cid),
@@ -333,7 +407,8 @@ def _build_population(
         "tasks": tasks,
         "dependencies": deps,
         "protected_tasks": protected,
-        "frontier_task_cids": [frontier_cid],
+        "frontier_task_cids": frontier_cids,
+        "revision": revision,
     }
 
 
@@ -357,6 +432,8 @@ def _signed_approval(
 
 
 def main() -> int:
+    if str(getattr(duckdb, "__version__", "") or "") != "1.5.5":
+        raise SystemExit("Plan R2 apply requires DuckDB 1.5.5")
     easr._cid = lambda value: "sha256:" + hashlib.sha256(
         canonical_json_bytes(value)
     ).hexdigest()
@@ -415,7 +492,7 @@ def main() -> int:
         owner_generation=snapshot["owner_generation"],
         expected_epoch=snapshot["epoch"],
         fencing_token=snapshot["fence"],
-        lease_id="eaaef-plan-r2-lease-v14",
+        lease_id=f"eaaef-plan-r2-lease-v14-r{population['revision']}",
         expected_version=snapshot["version"],
         expected_active_plan_cid=snapshot["plan_cid"],
         expected_active_plan_root_cid=snapshot["plan_root_cid"],
@@ -433,8 +510,8 @@ def main() -> int:
                 "frontier": population["frontier_task_cids"],
             }
         ),
-        request_id="eaaef-plan-r2-request-v14",
-        idempotency_key="eaaef-plan-r2-idempotency-v14",
+        request_id=f"eaaef-plan-r2-request-v14-r{population['revision']}",
+        idempotency_key=f"eaaef-plan-r2-idempotency-v14-r{population['revision']}",
         deadline_ms=now_ms + 50_000,
         issued_at_ms=now_ms - 1_000,
         expires_at_ms=now_ms + 100_000,
