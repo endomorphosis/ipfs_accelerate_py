@@ -931,19 +931,25 @@ def _verify_control_plane(path: Path) -> Any:
         MigrationRunReport,
     )
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
-        verify_datasets_authoritative_operational_schema,
+        CONTROL_PLANE_MIGRATION_VERSION,
+        load_control_plane_catalog,
+        verify_installed_schema,
     )
 
-    verification = verify_datasets_authoritative_operational_schema(path)
-    if verification.get("valid") is not True:
-        raise OperatorError("existing control plane failed authoritative schema verification")
+    # PCAR uses the canonical full control-plane schema revision ``1``.  The
+    # smaller datasets-authoritative operational profile is deliberately not
+    # selected: the generic multi-supervisor rejects that profile for live
+    # Quack operation, and the PCAR board needs the full proof/evidence tables.
+    verification = verify_installed_schema(path)
     fingerprint = str(verification.get("schema_fingerprint") or "")
+    if not fingerprint:
+        raise OperatorError("existing full control plane has no schema fingerprint")
     return MigrationRunReport(
-        from_version=1,
-        to_version=1,
+        from_version=CONTROL_PLANE_MIGRATION_VERSION,
+        to_version=CONTROL_PLANE_MIGRATION_VERSION,
         receipts=(),
         schema_fingerprint=fingerprint,
-        catalog_fingerprint=fingerprint,
+        catalog_fingerprint=load_control_plane_catalog().fingerprint(),
         changed=False,
     )
 

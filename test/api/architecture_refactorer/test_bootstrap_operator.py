@@ -86,3 +86,22 @@ def test_token_path_uses_only_the_opaque_handle(tmp_path: Path) -> None:
 
     assert path == tmp_path / "handle_pcar-v1.quack-token"
     assert "token-value" not in str(path)
+
+
+def test_state_owner_verifies_the_canonical_full_control_plane(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    operator = _operator()
+    database = tmp_path / "control.duckdb"
+    with DatabaseTaskSource(database, owner_id="pcar-full-schema-test"):
+        pass
+
+    report = operator._verify_control_plane(database)
+
+    assert report.from_version == 1
+    assert report.to_version == 1
+    assert report.changed is False
+    assert report.schema_fingerprint
+    assert report.catalog_fingerprint
