@@ -19907,12 +19907,32 @@ class PortalImplementationDaemon:
             canonical_task_cid = self._canonical_ref(task)
             reason_key = exc.reason.replace(" ", "_")
             if exc.backoff_seconds > 0:
-                self.task_queue.defer(
-                    canonical_task_cid,
-                    exc.backoff_seconds,
-                    reason=exc.reason,
-                )
-                self.task_queue.save()
+                try:
+                    defer = getattr(self.task_queue, "defer", None)
+                    if callable(defer):
+                        defer(
+                            canonical_task_cid,
+                            exc.backoff_seconds,
+                            reason=exc.reason,
+                        )
+                        save = getattr(self.task_queue, "save", None)
+                        if callable(save):
+                            save()
+                    else:
+                        record_failure = getattr(
+                            self.task_queue, "record_failure", None
+                        )
+                        if callable(record_failure):
+                            record_failure(
+                                canonical_task_cid,
+                                reason=exc.reason,
+                            )
+                except Exception:
+                    logger.warning(
+                        "implementation deferral could not persist queue backoff",
+                        extra={"task_id": str(getattr(task, "task_id", "") or "")},
+                        exc_info=True,
+                    )
             result = {
                 "skipped": True,
                 "deferred": True,
@@ -59429,6 +59449,16 @@ class PortalImplementationDaemon:
             "xai_cli",
             "xai-cli",
         } and not (_grok_cli_available() and _grok_binary()):
+            fallback = os.environ.get(
+                IMPLEMENTATION_FALLBACK_PROVIDER_ENV, ""
+            ).strip().lower()
+            if (
+                fallback in SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES
+                and fallback not in GROK_IMPLEMENTATION_PROVIDER_NAMES
+            ):
+                # Keep dispatch on the ordered fallback runner instead of
+                # crashing the database claim with an unknown callback.
+                return
             raise ImplementationRetryDeferred(
                 "explicit Grok provider is unavailable",
                 backoff_seconds=300,
@@ -71755,34 +71785,30 @@ class DatabaseImplementationDaemon:
                         }
                     )
                     continue
-                if task is not None and task_status not in {
-                    "in_progress",
-                    "claimed",
-                    "running",
-                }:
-                    settled = self._retire_stale_running_attempt(
-                        attempt,
-                        task,
-                        claim=claim,
+                if task is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "expired callback quarantine lacks exact shared claim binding"
                     )
-                    outcomes.append(
-                        {
-                            "task_cid": attempt.task_cid,
-                            "claim_id": attempt.claim_id,
-                            "attempt_id": attempt.attempt_id,
-                            "status": settled.status,
-                            "retry_required": True,
-                            "provider_evidence_reused": False,
-                            "effect_evidence_reused": False,
-                            "reason": "control_task_left_in_progress",
-                            "disposition": "retired",
-                            "replayed": False,
-                        }
-                    )
-                    continue
-                raise DatabaseImplementationAuthorityError(
-                    "expired callback quarantine lacks exact shared claim binding"
+                settled = self._retire_stale_running_attempt(
+                    attempt,
+                    task,
+                    claim=claim,
                 )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "claim_id": attempt.claim_id,
+                        "attempt_id": attempt.attempt_id,
+                        "status": settled.status,
+                        "retry_required": True,
+                        "provider_evidence_reused": False,
+                        "effect_evidence_reused": False,
+                        "reason": "control_task_left_in_progress",
+                        "disposition": "retired",
+                        "replayed": False,
+                    }
+                )
+                continue
             completion = self.coordinator.get_prepared_task_completion(
                 attempt.task_cid
             )

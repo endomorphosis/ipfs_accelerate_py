@@ -1406,6 +1406,85 @@ def test_reopened_task_retires_stale_running_unknown_callback(
         restarted.close()
 
 
+def test_expired_unknown_callback_with_rebound_in_progress_is_retired(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise SimulatedProcessCrash("injected rebound in-progress crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:rebound-in-progress",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(attempt)
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "todo",
+            receipt={"operation": "reopen_unimplemented_unknown_callback_quarantine"},
+        )
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "in_progress",
+            receipt={
+                "operation": "database_claim",
+                "claim_id": "claim:rebound-owner",
+                "attempt_id": "attempt:rebound-owner",
+            },
+        )
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:rebound-in-progress",
+        provider_fn=lambda attempt: {"status": "ok", "task_cid": attempt.task_cid},
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        replay = restarted.run_once()
+        retired = [
+            item
+            for item in replay["expired_attempt_reconciliations"]
+            if item.get("reason") == "control_task_left_in_progress"
+        ]
+        assert retired
+        assert retired[0]["attempt_id"] == attempt.attempt_id
+        stale = restarted.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+    finally:
+        restarted.close()
+
+
 def test_consumed_no_progress_quarantine_replays_after_commit_crash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
