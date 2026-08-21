@@ -11,13 +11,17 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +29,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (  # noqa: E402
+    OwnerLiveness,
+    ProcessBirthIdentity,
+    owner_liveness,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # noqa: E402
     parse_goal_heap,
 )
@@ -37,11 +46,54 @@ from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler impo
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (  # noqa: E402
     DatabaseTaskSource,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (  # noqa: E402
+    connect_duckdb_with_policy,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402
     parse_task_text,
 )
 
 CONFIG_RELATIVE = "config/agent_supervisor_proof_carrying_procedure_compiler_scheduler.json"
+CONTROL_DATABASE_RELATIVE = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/control/control.duckdb"
+)
+QUACK_OWNER_STATE_RELATIVE = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/control/quack-owner"
+)
+PROGRAM_LAUNCHER_PATH = (
+    Path(__file__).resolve().parent / "ops/agent_supervisor/procedure_compiler_program.py"
+)
+TRUSTED_DUCKDB_HOME_ENV = "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"
+DUCKLAKE_CATALOG_RELATIVE = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake"
+)
+DUCKLAKE_DATA_RELATIVE = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/history/data"
+)
+DUCKLAKE_EXTENSION_HASHES = {
+    "ducklake.duckdb_extension": (
+        "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    ),
+    "ducklake.duckdb_extension.info": (
+        "14c3385450437fee5570ff21b53de687536a75b4590e33f351887df194ef9393"
+    ),
+}
+DUCKLAKE_PROJECTION_FIELDS = frozenset(
+    {
+        "mode",
+        "authority",
+        "scheduling_prerequisite",
+        "extension_files_sha256",
+        "extension_install_policy",
+        "network_access",
+        "catalog_path",
+        "data_path",
+        "source",
+        "logical_datasets",
+        "outage_policy",
+        "maximum_rows_per_projection",
+    }
+)
 BASELINE_RELATIVE = "docs/architecture/procedure_compiler_inventory/baseline.json"
 PREREQUISITES_RELATIVE = "docs/architecture/procedure_compiler_inventory/prerequisites.json"
 PROGRAM = "agent-supervisor-proof-carrying-procedure-compiler-v1"
@@ -49,6 +101,15 @@ BRANCH = "codex/proof-carrying-procedure-compiler-v1"
 BASE_COMMIT = "bbf7f68799072c2b81f7d96eac91f2df3c4b3952"
 P0_TASKS = tuple(f"PCPC-{index:03d}" for index in range(9))
 EXPECTED_READY = ("PCPC-009", "PCPC-011", "PCPC-013")
+SEALED_DUCKDB_CONNECTION_SETTINGS = {
+    "allow_unsigned_extensions": False,
+    "autoinstall_known_extensions": False,
+    "autoload_known_extensions": False,
+    "temp_directory": "",
+}
+MAX_CONTROL_DATABASE_BYTES = 512 * 1024 * 1024
+CONTROL_DATABASE_COPY_CHUNK_BYTES = 1024 * 1024
+MAX_OWNER_EVIDENCE_BYTES = 1024 * 1024
 MAX_CAPTURE_BYTES = 64_000
 MAX_PREREQUISITE_PRODUCERS = 64
 PREREQUISITE_PRODUCER_TIMEOUT_SECONDS = 900
@@ -103,6 +164,49 @@ REQUIRED_PREREQUISITE_PRODUCER_IDS = frozenset(
         "TP-FENCE-REGISTRY-QUEUE",
     }
 )
+
+
+class MaterializationError(RuntimeError):
+    """Fail-closed bootstrap or qualification error."""
+
+
+def _load_program_launcher_module() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "pcpc_program_launcher_materializer_adapter", PROGRAM_LAUNCHER_PATH
+    )
+    if spec is None or spec.loader is None:
+        raise MaterializationError("trusted DuckDB HOME validator is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _require_trusted_duckdb_home(
+    *, launcher_module: Any | None = None, program_config: Any | None = None
+) -> Path:
+    raw_home = os.environ.get("HOME", "")
+    raw_trusted = os.environ.get(TRUSTED_DUCKDB_HOME_ENV, "")
+    home = Path(raw_home)
+    if (
+        not raw_home
+        or raw_home != raw_trusted
+        or not home.is_absolute()
+        or str(home) != raw_home
+    ):
+        raise MaterializationError("exact trusted DuckDB HOME binding is required")
+    launcher = launcher_module or _load_program_launcher_module()
+    try:
+        config = program_config or launcher.load_program_config(REPO_ROOT)
+        if home != config.qualification_home or home.resolve(strict=True) != home:
+            raise MaterializationError("trusted DuckDB HOME identity is not current")
+        return launcher._validate_qualification_home(config, home=home)
+    except MaterializationError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - narrow launcher compatibility adapter
+        raise MaterializationError("trusted DuckDB HOME validation failed") from exc
+
+
 PREREQUISITE_BINDING_FIELDS = (
     "source_bindings",
     "symbol_bindings",
@@ -160,10 +264,6 @@ QUALIFICATION_COMMANDS = (
 )
 
 
-class MaterializationError(RuntimeError):
-    """Fail-closed bootstrap or qualification error."""
-
-
 def _git(*args: str) -> str:
     result = subprocess.run(
         ("git", *args),
@@ -187,6 +287,272 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _database_file_identity(value: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(value.st_dev),
+        int(value.st_ino),
+        int(value.st_mode),
+        int(value.st_uid),
+        int(value.st_nlink),
+        int(value.st_size),
+        int(value.st_mtime_ns),
+        int(value.st_ctime_ns),
+    )
+
+
+def _open_stable_control_database(database_path: Path) -> tuple[int, os.stat_result]:
+    expected = REPO_ROOT.resolve() / CONTROL_DATABASE_RELATIVE
+    if database_path != expected:
+        raise MaterializationError("control database path is not exact")
+    try:
+        observed = os.lstat(database_path)
+        descriptor = os.open(
+            database_path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise MaterializationError("control database cannot be opened without following links") from exc
+    try:
+        stable = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or observed.st_nlink != 1
+            or observed.st_size < 1
+            or observed.st_size > MAX_CONTROL_DATABASE_BYTES
+            or _database_file_identity(observed) != _database_file_identity(stable)
+            or database_path.resolve(strict=True) != database_path
+        ):
+            raise MaterializationError("control database identity is unsafe or out of bounds")
+        return descriptor, stable
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _control_database_digest(database_path: Path) -> tuple[tuple[int, ...], str]:
+    descriptor, opened = _open_stable_control_database(database_path)
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        while True:
+            chunk = os.read(descriptor, CONTROL_DATABASE_COPY_CHUNK_BYTES)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_CONTROL_DATABASE_BYTES:
+                raise MaterializationError("control database exceeded the verification bound")
+            digest.update(chunk)
+        closed_over = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if total != opened.st_size or _database_file_identity(opened) != _database_file_identity(
+        closed_over
+    ):
+        raise MaterializationError("control database changed while being hashed")
+    return _database_file_identity(opened), digest.hexdigest()
+
+
+def _reject_control_database_wal(database_path: Path) -> None:
+    wal_path = Path(f"{database_path}.wal")
+    try:
+        os.lstat(wal_path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise MaterializationError("control database WAL cannot be inspected") from exc
+    raise MaterializationError("control database WAL exists; offline verification is required")
+
+
+def _read_owner_evidence(path: Path) -> Mapping[str, Any] | None:
+    try:
+        observed = os.lstat(path)
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise MaterializationError("owner liveness evidence cannot be opened safely") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or observed.st_nlink != 1
+            or observed.st_size < 1
+            or observed.st_size > MAX_OWNER_EVIDENCE_BYTES
+            or _database_file_identity(observed) != _database_file_identity(opened)
+        ):
+            raise MaterializationError("owner liveness evidence is unsafe")
+        body = bytearray()
+        while len(body) <= MAX_OWNER_EVIDENCE_BYTES:
+            chunk = os.read(descriptor, min(65_536, MAX_OWNER_EVIDENCE_BYTES + 1 - len(body)))
+            if not chunk:
+                break
+            body.extend(chunk)
+        closed_over = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (
+        len(body) > MAX_OWNER_EVIDENCE_BYTES
+        or _database_file_identity(opened) != _database_file_identity(closed_over)
+    ):
+        raise MaterializationError("owner liveness evidence changed while being read")
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _reject_live_owner_evidence(database_path: Path) -> None:
+    marker_path = database_path.with_name(
+        f".{database_path.name}.state-owner.json"
+    )
+    status_path = (
+        REPO_ROOT.resolve()
+        / QUACK_OWNER_STATE_RELATIVE
+        / "quack-state-server.status.json"
+    )
+    for path, kind in ((marker_path, "lease"), (status_path, "status")):
+        payload = _read_owner_evidence(path)
+        if payload is None:
+            continue
+        if kind == "lease":
+            process_birth = payload.get("process_birth")
+        else:
+            identity = payload.get("identity")
+            if (
+                payload.get("lifecycle") not in {"ready", "running"}
+                or not isinstance(identity, Mapping)
+                or identity.get("status") not in {"ready", "running"}
+            ):
+                continue
+            process_birth = identity.get("process_birth")
+        if not isinstance(process_birth, Mapping):
+            continue
+        try:
+            birth = ProcessBirthIdentity.from_dict(process_birth)
+        except (TypeError, ValueError):
+            continue
+        liveness = owner_liveness(birth)
+        if liveness is not OwnerLiveness.DEAD:
+            raise MaterializationError(
+                f"live or indeterminate Quack owner {kind} prevents offline verification"
+            )
+
+
+@contextmanager
+def _disposable_control_database_copy(database_path: Path) -> Iterator[Path]:
+    """Yield a private replay copy while proving authority bytes stay unchanged."""
+
+    _reject_control_database_wal(database_path)
+    lock_descriptor, _lock_identity = _open_stable_control_database(database_path)
+    lock_connection: Any | None = None
+    try:
+        try:
+            import duckdb
+
+            lock_connection = connect_duckdb_with_policy(
+                duckdb,
+                f"/proc/self/fd/{lock_descriptor}",
+                read_only=True,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+        except Exception as exc:  # noqa: BLE001 - typed offline-authority refusal
+            raise MaterializationError(
+                "control database is not exclusively available for read-only verification"
+            ) from exc
+        _reject_live_owner_evidence(database_path)
+        initial_identity, initial_digest = _control_database_digest(database_path)
+        with tempfile.TemporaryDirectory(prefix="pcpc-control-verify-") as raw_directory:
+            directory = Path(raw_directory)
+            directory.chmod(0o700)
+            copy_path = directory / "control.duckdb"
+            source_descriptor, opened = _open_stable_control_database(database_path)
+            copied_digest = hashlib.sha256()
+            total = 0
+            try:
+                destination_descriptor = os.open(
+                    copy_path,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_CLOEXEC", 0),
+                    0o600,
+                )
+                try:
+                    while True:
+                        chunk = os.read(source_descriptor, CONTROL_DATABASE_COPY_CHUNK_BYTES)
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        if total > MAX_CONTROL_DATABASE_BYTES:
+                            raise MaterializationError(
+                                "control database exceeded the verification bound"
+                            )
+                        copied_digest.update(chunk)
+                        pending = memoryview(chunk)
+                        while pending:
+                            written = os.write(destination_descriptor, pending)
+                            if written < 1:
+                                raise MaterializationError(
+                                    "control database copy made no progress"
+                                )
+                            pending = pending[written:]
+                    os.fsync(destination_descriptor)
+                finally:
+                    os.close(destination_descriptor)
+                closed_over = os.fstat(source_descriptor)
+            finally:
+                os.close(source_descriptor)
+            if (
+                total != opened.st_size
+                or _database_file_identity(opened) != _database_file_identity(closed_over)
+                or _database_file_identity(opened) != initial_identity
+                or copied_digest.hexdigest() != initial_digest
+                or copy_path.stat().st_size != total
+            ):
+                raise MaterializationError("control database changed while being copied")
+            _reject_control_database_wal(database_path)
+            copied_identity, copied_sha256 = _control_database_digest(database_path)
+            if copied_identity != initial_identity or copied_sha256 != initial_digest:
+                raise MaterializationError("control database changed after private copy")
+            try:
+                yield copy_path
+            finally:
+                _reject_control_database_wal(database_path)
+                _reject_live_owner_evidence(database_path)
+                final_identity, final_digest = _control_database_digest(database_path)
+                if final_identity != initial_identity or final_digest != initial_digest:
+                    raise MaterializationError("control database changed during verification")
+    finally:
+        if lock_connection is not None:
+            lock_connection.close()
+        os.close(lock_descriptor)
+
+
+def _projection_matches_events_on_disposable_copy(
+    database_path: Path, *, repository_tree_id: str, plan_root_cid: str
+) -> bool:
+    with _disposable_control_database_copy(database_path) as verification_database:
+        with DatabaseTaskSource(
+            verification_database,
+            install_schema=False,
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+        ) as source:
+            return source.projection_matches_events()
 
 
 def _relative_repository_path(value: object, *, field: str) -> str:
@@ -1561,17 +1927,106 @@ def _population(*, head: str, tree: str, qualification_cid: str) -> tuple[dict[s
 GOAL_IDS = ("PCPC-G000", "PCPC-G010", "PCPC-G020", "PCPC-G030", "PCPC-G040")
 
 
+def _sealed_duckdb_connection(duckdb_module: Any) -> Any:
+    """Open an in-memory connection that cannot install or auto-load extensions."""
+
+    connection = duckdb_module.connect(
+        ":memory:", config=dict(SEALED_DUCKDB_CONNECTION_SETTINGS)
+    )
+    try:
+        setting_names = sorted(SEALED_DUCKDB_CONNECTION_SETTINGS)
+        placeholders = ", ".join("?" for _ in setting_names)
+        observed = dict(
+            connection.execute(
+                "SELECT name, value FROM duckdb_settings() "
+                f"WHERE name IN ({placeholders}) ORDER BY name",
+                setting_names,
+            ).fetchall()
+        )
+        expected = {
+            name: str(value).lower()
+            for name, value in SEALED_DUCKDB_CONNECTION_SETTINGS.items()
+        }
+        if observed != expected:
+            raise MaterializationError("DuckDB extension policy was not enforced")
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+def _seal_external_access(
+    connection: Any,
+    *,
+    allowed_paths: Sequence[Path] = (),
+    allowed_directories: Sequence[Path] = (),
+) -> None:
+    """Deny network and unlisted filesystem access, then lock the policy."""
+
+    paths = sorted({str(path.resolve(strict=False)) for path in allowed_paths})
+    directories = sorted(
+        {str(path.resolve(strict=False)) for path in allowed_directories}
+    )
+    if any("\x00" in value or not Path(value).is_absolute() for value in (*paths, *directories)):
+        raise MaterializationError("DuckDB external-access allowlist is malformed")
+    connection.execute("SET allowed_paths = ?", [paths])
+    connection.execute("SET allowed_directories = ?", [directories])
+    connection.execute("SET enable_external_access = false")
+    connection.execute("SET lock_configuration = true")
+    observed = connection.execute(
+        "SELECT current_setting('allowed_paths'), "
+        "current_setting('allowed_directories'), "
+        "current_setting('allowed_configs'), "
+        "current_setting('enable_external_access'), "
+        "current_setting('lock_configuration'), "
+        "current_setting('allow_unsigned_extensions'), "
+        "current_setting('autoinstall_known_extensions'), "
+        "current_setting('autoload_known_extensions'), "
+        "current_setting('temp_directory')"
+    ).fetchone()
+    normalized_directories = [
+        value if value.endswith(os.sep) else f"{value}{os.sep}" for value in directories
+    ]
+    expected = (
+        paths,
+        normalized_directories,
+        [],
+        False,
+        True,
+        False,
+        False,
+        False,
+        "",
+    )
+    if (
+        not isinstance(observed, tuple)
+        or len(observed) != len(expected)
+        or not isinstance(observed[0], list)
+        or not isinstance(observed[1], list)
+        or (sorted(observed[0]), sorted(observed[1]), *observed[2:])
+        != (sorted(expected[0]), sorted(expected[1]), *expected[2:])
+    ):
+        raise MaterializationError("DuckDB external-access policy was not locked")
+
+
 def _extension_profile() -> dict[str, Any]:
     try:
         import duckdb
     except ImportError as exc:  # pragma: no cover - environment gate
         return {"available": False, "reason": f"ImportError: {exc}"}
-    connection = duckdb.connect(":memory:")
+    connection = _sealed_duckdb_connection(duckdb)
     rows: list[dict[str, Any]] = []
     try:
+        load_errors: dict[str, str] = {}
         for name in ("quack", "ducklake", "httpfs"):
             try:
                 connection.execute(f"LOAD {name}")
+            except Exception as exc:  # noqa: BLE001 - typed capability result
+                load_errors[name] = f"{type(exc).__name__}: {exc}"
+        for name in ("quack", "ducklake", "httpfs"):
+            try:
+                if name in load_errors:
+                    raise RuntimeError(load_errors[name])
                 record = connection.execute(
                     "SELECT extension_name, extension_version, installed, loaded "
                     "FROM duckdb_extensions() WHERE extension_name = ?",
@@ -1593,7 +2048,9 @@ def _extension_profile() -> dict[str, Any]:
                         "version": "",
                         "installed": False,
                         "loaded": False,
-                        "error": f"{type(exc).__name__}: {exc}",
+                        "error": (
+                            load_errors.get(name) or f"{type(exc).__name__}: {exc}"
+                        ),
                     }
                 )
         return {
@@ -1605,6 +2062,43 @@ def _extension_profile() -> dict[str, Any]:
         connection.close()
 
 
+def _validated_ducklake_projection_paths(
+    config: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    projection = config.get("ducklake_projection_program")
+    if not isinstance(projection, Mapping) or set(projection) != DUCKLAKE_PROJECTION_FIELDS:
+        raise MaterializationError("DuckLake projection configuration is not closed")
+    if (
+        projection.get("mode") != "enabled_non_authoritative"
+        or projection.get("authority") is not False
+        or projection.get("scheduling_prerequisite") is not False
+        or projection.get("extension_files_sha256") != DUCKLAKE_EXTENSION_HASHES
+        or projection.get("extension_install_policy") != "forbidden"
+        or projection.get("network_access") is not False
+        or projection.get("catalog_path") != DUCKLAKE_CATALOG_RELATIVE
+        or projection.get("data_path") != DUCKLAKE_DATA_RELATIVE
+        or projection.get("source") != "sealed read-only DuckDB snapshot"
+        or projection.get("logical_datasets")
+        != ["program_runs", "task_history", "qualification"]
+        or projection.get("outage_policy")
+        != "record_projection_failure_without_changing_control_state"
+        or projection.get("maximum_rows_per_projection") != 4096
+    ):
+        raise MaterializationError("DuckLake projection configuration is unsafe")
+    root = REPO_ROOT.resolve()
+    catalog = root / DUCKLAKE_CATALOG_RELATIVE
+    data = root / DUCKLAKE_DATA_RELATIVE
+    if (
+        catalog.resolve(strict=False) != catalog
+        or data.resolve(strict=False) != data
+        or catalog == data
+        or catalog in data.parents
+        or data in catalog.parents
+    ):
+        raise MaterializationError("DuckLake projection paths are aliased or overlapping")
+    return catalog, data
+
+
 def _project_ducklake(
     *,
     config: Mapping[str, Any],
@@ -1612,27 +2106,21 @@ def _project_ducklake(
     qualification: Mapping[str, Any],
     tasks: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    projection = config.get("ducklake_projection_program")
-    if not isinstance(projection, Mapping):
-        return {"projected": False, "reason": "configuration_missing"}
-    catalog = REPO_ROOT / str(projection["catalog_path"])
-    data = REPO_ROOT / str(projection["data_path"])
-    for path in (catalog, data):
-        try:
-            path.resolve(strict=False).relative_to(REPO_ROOT.resolve())
-        except ValueError as exc:
-            raise MaterializationError("DuckLake path escapes repository runtime root") from exc
-        if "'" in str(path) or "\x00" in str(path):
-            raise MaterializationError("DuckLake path cannot be represented safely")
-    catalog.parent.mkdir(parents=True, exist_ok=True)
-    data.mkdir(parents=True, exist_ok=True)
+    catalog, data = _validated_ducklake_projection_paths(config)
     try:
+        catalog.parent.mkdir(parents=True, exist_ok=True)
+        data.mkdir(parents=True, exist_ok=True)
         import duckdb
 
-        connection = duckdb.connect(":memory:")
+        connection = _sealed_duckdb_connection(duckdb)
         try:
             connection.execute("LOAD ducklake")
             connection.execute("LOAD httpfs")
+            _seal_external_access(
+                connection,
+                allowed_paths=(catalog, Path(f"{catalog}.wal")),
+                allowed_directories=(data,),
+            )
             connection.execute(f"ATTACH 'ducklake:{catalog}' AS pcpc_history (DATA_PATH '{data}')")
             connection.execute(
                 """
@@ -1737,18 +2225,22 @@ def _project_ducklake(
 
 
 def materialize() -> dict[str, Any]:
+    _require_trusted_duckdb_home()
+    config = _read_json(REPO_ROOT / CONFIG_RELATIVE)
+    # Reject unsafe or aliased projection targets before qualification creates
+    # evidence or the authoritative DuckDB control database is created.
+    _validated_ducklake_projection_paths(config)
     qualification = _qualify_exact_tree()
     head = str(qualification["repository_commit"])
     tree = str(qualification["repository_tree"])
-    config = _read_json(REPO_ROOT / CONFIG_RELATIVE)
     program = config.get("database_program")
     if not isinstance(program, Mapping):
         raise MaterializationError("database_program is missing")
-    database_path = REPO_ROOT / str(program["store_id"])
-    try:
-        database_path.resolve(strict=False).relative_to(REPO_ROOT.resolve())
-    except ValueError as exc:
-        raise MaterializationError("control database escapes repository") from exc
+    if program.get("store_id") != CONTROL_DATABASE_RELATIVE:
+        raise MaterializationError("control database path is not exact")
+    database_path = REPO_ROOT.resolve() / CONTROL_DATABASE_RELATIVE
+    if database_path.resolve(strict=False) != database_path:
+        raise MaterializationError("control database path is aliased")
     if database_path.exists():
         raise MaterializationError(
             f"refusing to overwrite existing control database: {database_path}"
@@ -1803,8 +2295,13 @@ def materialize() -> dict[str, Any]:
         snapshot = source.snapshot()
         ready = tuple(item.task_alias for item in source.ready_tasks(limit=64).tasks)
         records = [item.to_dict() for item in source.list_tasks(limit=64).tasks]
-        projection_matches = source.projection_matches_events()
-        final_snapshot = source.snapshot()
+    # Replay is a destructive integrity probe even when parity holds. Perform
+    # it only on a stable private copy after the authority is closed.
+    projection_matches = _projection_matches_events_on_disposable_copy(
+        database_path,
+        repository_tree_id=tree,
+        plan_root_cid=plan_cid,
+    )
     if ready != EXPECTED_READY:
         raise MaterializationError(
             f"ready task mismatch: expected {EXPECTED_READY}, observed {ready}"
@@ -1829,6 +2326,9 @@ def materialize() -> dict[str, Any]:
         "task_count": len(records),
         "ready_count": len(ready),
     }
+    # Observe the exact pinned profile before the projection connection locks
+    # DuckDB's process-global external-access policy.
+    extension_profile = _extension_profile()
     ducklake = _project_ducklake(
         config=config,
         run=run,
@@ -1848,8 +2348,8 @@ def materialize() -> dict[str, Any]:
         "materialization": materialization,
         "projection_matches_events": projection_matches,
         "initial_projection_cid": snapshot.projection_cid,
-        "final_projection_cid": final_snapshot.projection_cid,
-        "extension_profile": _extension_profile(),
+        "final_projection_cid": snapshot.projection_cid,
+        "extension_profile": extension_profile,
         "ducklake_projection": ducklake,
         "simulated": False,
     }
@@ -1860,14 +2360,20 @@ def materialize() -> dict[str, Any]:
 
 
 def verify_existing() -> dict[str, Any]:
+    _require_trusted_duckdb_home()
     # Stored command-shaped JSON and a public CID are provenance, not producer
     # authority.  Re-run the exact-tree qualification here so launch admission
     # depends on current observed test results rather than a replayable file.
     fresh_qualification = _qualify_exact_tree()
     config = _read_json(REPO_ROOT / CONFIG_RELATIVE)
-    database_path = REPO_ROOT / str(config["database_program"]["store_id"])
-    if not database_path.is_file():
-        raise MaterializationError("control database is absent")
+    _validated_ducklake_projection_paths(config)
+    database_program = config.get("database_program")
+    if (
+        not isinstance(database_program, Mapping)
+        or database_program.get("store_id") != CONTROL_DATABASE_RELATIVE
+    ):
+        raise MaterializationError("control database path is not exact")
+    database_path = REPO_ROOT.resolve() / CONTROL_DATABASE_RELATIVE
     head = _git("rev-parse", "HEAD")
     tree = _git("rev-parse", "HEAD^{tree}")
     evidence_root = REPO_ROOT / str(config["runtime_paths"]["evidence"])
@@ -1883,17 +2389,21 @@ def verify_existing() -> dict[str, Any]:
         tree=tree,
         qualification_cid=str(fresh_qualification.get("qualification_cid") or ""),
     )
-    with DatabaseTaskSource(
-        database_path,
-        install_schema=False,
-        repository_tree_id=tree,
-        plan_root_cid=expected_plan_cid,
-    ) as source:
-        records = [item.to_dict() for item in source.list_tasks(limit=64).tasks]
-        ready = [item.task_alias for item in source.ready_tasks(limit=64).tasks]
-        snapshot = source.snapshot()
-        matches = source.projection_matches_events()
-        plan = source.get_plan(snapshot.plan_root_cid)
+    # DatabaseTaskSource replay is intentionally mutating. Run all source reads
+    # and the replay comparison against a private bounded byte-for-byte copy;
+    # the context re-hashes the authority on both success and exceptional exit.
+    with _disposable_control_database_copy(database_path) as verification_database:
+        with DatabaseTaskSource(
+            verification_database,
+            install_schema=False,
+            repository_tree_id=tree,
+            plan_root_cid=expected_plan_cid,
+        ) as source:
+            records = [item.to_dict() for item in source.list_tasks(limit=64).tasks]
+            ready = [item.task_alias for item in source.ready_tasks(limit=64).tasks]
+            snapshot = source.snapshot()
+            plan = source.get_plan(snapshot.plan_root_cid)
+            matches = source.projection_matches_events()
     completed = [item["task_alias"] for item in records if item["status"] == "completed"]
     blocked = [item["task_alias"] for item in records if item["status"] == "blocked"]
     plan_body = plan.get("body") if isinstance(plan, Mapping) else None

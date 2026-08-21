@@ -49,6 +49,36 @@ P0_COMPLETED = tuple(f"PCPC-{index:03d}" for index in range(9))
 INITIAL_READY = ("PCPC-009", "PCPC-011", "PCPC-013")
 TERMINAL_TASK = "PCPC-031"
 LANE_COUNT = 4
+DUCKLAKE_PROJECTION_FIELDS = frozenset(
+    {
+        "mode",
+        "authority",
+        "scheduling_prerequisite",
+        "extension_files_sha256",
+        "extension_install_policy",
+        "network_access",
+        "catalog_path",
+        "data_path",
+        "source",
+        "logical_datasets",
+        "outage_policy",
+        "maximum_rows_per_projection",
+    }
+)
+DUCKLAKE_EXTENSION_HASHES = {
+    "ducklake.duckdb_extension": (
+        "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    ),
+    "ducklake.duckdb_extension.info": (
+        "14c3385450437fee5570ff21b53de687536a75b4590e33f351887df194ef9393"
+    ),
+}
+DUCKLAKE_CATALOG_PATH = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake"
+)
+DUCKLAKE_DATA_PATH = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/history/data"
+)
 
 TASK_GROUPS = {
     "PCPC-G010": tuple(f"PCPC-{index:03d}" for index in range(0, 9)),
@@ -397,6 +427,32 @@ def _safe_relative(value: str) -> bool:
     text = str(value or "").strip().replace("\\", "/")
     path = PurePosixPath(text)
     return bool(text and not path.is_absolute() and ".." not in path.parts and "\x00" not in text)
+
+
+def _ducklake_projection_is_valid(
+    ducklake: Mapping[str, Any], *, owner_extension_hashes: Mapping[str, Any]
+) -> bool:
+    extension_hashes = ducklake.get("extension_files_sha256")
+    if not isinstance(extension_hashes, Mapping):
+        return False
+    return (
+        set(ducklake) == DUCKLAKE_PROJECTION_FIELDS
+        and ducklake.get("mode") == "enabled_non_authoritative"
+        and ducklake.get("authority") is False
+        and ducklake.get("scheduling_prerequisite") is False
+        and dict(extension_hashes) == DUCKLAKE_EXTENSION_HASHES
+        and set(extension_hashes).isdisjoint(owner_extension_hashes)
+        and ducklake.get("extension_install_policy") == "forbidden"
+        and ducklake.get("network_access") is False
+        and ducklake.get("catalog_path") == DUCKLAKE_CATALOG_PATH
+        and ducklake.get("data_path") == DUCKLAKE_DATA_PATH
+        and ducklake.get("source") == "sealed read-only DuckDB snapshot"
+        and ducklake.get("logical_datasets")
+        == ["program_runs", "task_history", "qualification"]
+        and ducklake.get("outage_policy")
+        == "record_projection_failure_without_changing_control_state"
+        and ducklake.get("maximum_rows_per_projection") == 4096
+    )
 
 
 def _csv(value: object) -> tuple[str, ...]:
@@ -786,7 +842,15 @@ def validate_program() -> dict[str, Any]:
                 "extension_files": sorted(extension_hashes),
             },
         )
-        _append(checks, errors, name="ducklake_non_authority", passed=ducklake.get("mode") == "enabled_non_authoritative" and ducklake.get("authority") is False and ducklake.get("scheduling_prerequisite") is False and _safe_relative(str(ducklake.get("catalog_path") or "")) and _safe_relative(str(ducklake.get("data_path") or "")), detail=ducklake)
+        _append(
+            checks,
+            errors,
+            name="ducklake_non_authority",
+            passed=_ducklake_projection_is_valid(
+                ducklake, owner_extension_hashes=extension_hashes
+            ),
+            detail=ducklake,
+        )
 
     try:
         baseline = _load_json(INVENTORY_ROOT / "baseline.json")

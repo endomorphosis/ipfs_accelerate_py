@@ -96,6 +96,12 @@
     "mode": "enabled_non_authoritative",
     "authority": false,
     "scheduling_prerequisite": false,
+    "extension_files_sha256": {
+      "ducklake.duckdb_extension": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088",
+      "ducklake.duckdb_extension.info": "14c3385450437fee5570ff21b53de687536a75b4590e33f351887df194ef9393"
+    },
+    "extension_install_policy": "forbidden",
+    "network_access": false,
     "catalog_path": "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake",
     "data_path": "state/agent_supervisor_proof_carrying_procedure_compiler/history/data",
     "source": "sealed read-only DuckDB snapshot",

@@ -2321,6 +2321,508 @@ def test_sparse_legacy_launch_clears_stale_ordered_route_environment(
     }
 
 
+def test_detached_launch_receipt_only_is_one_closed_json_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    board = SimpleNamespace()
+    unsigned_receipt = {
+        "schema": scheduler_module.COORDINATOR_LAUNCH_RECEIPT_SCHEMA,
+        "repository_commit": "1" * 40,
+        "repository_tree": "2" * 40,
+        "configuration_revision": "configuration@test",
+        "board_namespace": "receipt-test",
+        "launch_session_id": "3" * 64,
+        "coordinator_pid": 424242,
+        "coordinator_pid_path": str(tmp_path / "configured-board-master.pid"),
+        "coordinator_log": str(tmp_path / "configured-board.log"),
+        "coordinator_status_path": str(tmp_path / "coordinator.status.json"),
+        "coordinator_status_cid": "status@test",
+        "coordinator_profile": {"profile_id": "profile@test"},
+        "coordinator_process_identity": {"identity_id": "identity@test"},
+        "coordinator_argv_cid": "argv@test",
+    }
+    launch_receipt = {
+        **unsigned_receipt,
+        "receipt_cid": scheduler_module.content_identity(unsigned_receipt),
+    }
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda _path, *, repo_root: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_profile",
+        lambda _board: False,
+    )
+
+    def contaminated_launch(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        print("nested planning diagnostic")
+        print("nested launch diagnostic")
+        os.write(1, b"native launch diagnostic\n")
+        return launch_receipt
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_launch_detached_receipt_coordinator",
+        contaminated_launch,
+    )
+
+    result = scheduler_module.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--config",
+            str(tmp_path / "scheduler.json"),
+            "launch",
+            "--implement",
+            "--duration-seconds",
+            "1",
+            "--launch-receipt-only",
+        ]
+    )
+
+    captured = capfd.readouterr()
+    assert result == 0
+    assert json.loads(captured.out) == launch_receipt
+    assert len(captured.out.splitlines()) == 1
+    assert "nested planning diagnostic" in captured.err
+    assert "nested launch diagnostic" in captured.err
+    assert "native launch diagnostic" in captured.err
+
+
+def test_detached_launch_receipt_only_failure_emits_no_success_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    board = SimpleNamespace()
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda _path, *, repo_root: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_profile",
+        lambda _board: False,
+    )
+
+    def failed_launch(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        print("nested failure diagnostic")
+        raise ConfiguredBoardError("coordinator exited before publication")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_launch_detached_receipt_coordinator",
+        failed_launch,
+    )
+
+    result = scheduler_module.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--config",
+            str(tmp_path / "scheduler.json"),
+            "launch",
+            "--launch-receipt-only",
+        ]
+    )
+
+    captured = capfd.readouterr()
+    assert result == 2
+    assert captured.out == ""
+    assert "nested failure diagnostic" in captured.err
+    assert "coordinator exited before publication" in captured.err
+    assert "coordinator_pid" not in captured.err
+
+
+def test_detached_launch_default_output_remains_the_full_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    board = SimpleNamespace()
+    plan = {
+        "schema": "configured-board-launch-plan@test",
+        "board_namespace": "default-output-test",
+    }
+    launch_receipt = {
+        "coordinator_pid": 424242,
+        "coordinator_pid_path": str(tmp_path / "configured-board-master.pid"),
+        "coordinator_log": str(tmp_path / "configured-board.log"),
+    }
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda _path, *, repo_root: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_profile",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_launch_plan",
+        lambda *_args, **_kwargs: dict(plan),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_launch_detached_plan_bound_coordinator",
+        lambda *_args, **_kwargs: dict(launch_receipt),
+    )
+
+    result = scheduler_module.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--config",
+            str(tmp_path / "scheduler.json"),
+            "launch",
+        ]
+    )
+
+    captured = capfd.readouterr()
+    assert result == 0
+    assert json.loads(captured.out) == {**plan, **launch_receipt}
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("incompatible", ["--dry-run", "--foreground"])
+def test_launch_receipt_only_rejects_non_detached_or_dry_mode(
+    tmp_path: Path,
+    incompatible: str,
+) -> None:
+    with pytest.raises(SystemExit) as raised:
+        scheduler_module.main(
+            [
+                "--repo-root",
+                str(tmp_path),
+                "--config",
+                str(tmp_path / "scheduler.json"),
+                "launch",
+                incompatible,
+                "--launch-receipt-only",
+            ]
+        )
+
+    assert raised.value.code == 2
+
+
+def test_receipt_coordinator_requires_every_fresh_lane_heartbeat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now_ms = int(time.time() * 1000)
+    started_at_ms = now_ms - 1_000
+    paths = tuple(
+        tmp_path / f"lane-{index}" / f"pcpc_lane_{index}_supervisor_status.json"
+        for index in range(4)
+    )
+    observed_pids: list[int] = []
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        task_prefix="PCPC-",
+        task_header_prefix="## PCPC-",
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_configured_lane_process_ready",
+        lambda _board, **kwargs: observed_pids.append(kwargs["supervisor_pid"])
+        is None,
+    )
+    updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now_ms / 1000))
+    for index, path in enumerate(paths):
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "todo_implementation_supervisor.supervisor"
+                    ),
+                    "status": "running",
+                    "updated_at": updated_at,
+                    "supervisor_pid": 500000 + index,
+                    "repo_root": str(tmp_path),
+                    "task_prefix": "## PCPC-",
+                    "state_prefix": f"pcpc_lane_{index}",
+                }
+            ),
+            encoding="utf-8",
+        )
+        path.chmod(0o600)
+
+    assert scheduler_module._lane_statuses_ready(
+        board,
+        paths,
+        started_at_ms=started_at_ms,
+        now_ms=now_ms,
+        coordinator_pid=424242,
+        coordinator_start_ticks=123456,
+        repository_commit="1" * 40,
+        repository_tree="2" * 40,
+    )
+    assert observed_pids == [500000, 500001, 500002, 500003]
+
+    paths[0].unlink()
+    assert not scheduler_module._lane_statuses_ready(
+        board,
+        paths,
+        started_at_ms=started_at_ms,
+        now_ms=now_ms,
+        coordinator_pid=424242,
+        coordinator_start_ticks=123456,
+        repository_commit="1" * 40,
+        repository_tree="2" * 40,
+    )
+
+
+@pytest.mark.parametrize("process_kind", ["unrelated", "zombie"])
+def test_receipt_coordinator_rejects_unrelated_or_zombie_lane_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    process_kind: str,
+) -> None:
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        payload={"watchdog_startup_grace_seconds": 300},
+        runtime_paths={"state": "state"},
+        task_prefix="PCPC-",
+        task_header_prefix="## PCPC-",
+        taskboard_path="board.md",
+        board_namespace="receipt-test",
+        max_lanes=4,
+        path=lambda relative: tmp_path / relative,
+    )
+    monkeypatch.setattr(scheduler_module, "_plan_bound_profile", lambda _board: True)
+    command = (
+        [sys.executable, "-c", "pass"]
+        if process_kind == "zombie"
+        else [sys.executable, "-c", "import time; time.sleep(30)"]
+    )
+    process = subprocess.Popen(command, cwd=tmp_path)
+    try:
+        if process_kind == "zombie":
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                try:
+                    raw = Path(f"/proc/{process.pid}/stat").read_text(encoding="utf-8")
+                except FileNotFoundError:
+                    break
+                if raw[raw.rfind(")") + 2 :].split()[0] == "Z":
+                    break
+                time.sleep(0.01)
+        coordinator_ticks = scheduler_module.LinuxProcessAdapter._stat(os.getpid())[3]
+        assert not scheduler_module._configured_lane_process_ready(
+            board,
+            lane_index=0,
+            supervisor_pid=process.pid,
+            coordinator_pid=os.getpid(),
+            coordinator_start_ticks=coordinator_ticks,
+            repository_commit="1" * 40,
+            repository_tree="2" * 40,
+        )
+    finally:
+        if process_kind != "zombie":
+            process.terminate()
+        process.wait(timeout=5.0)
+
+
+def test_receipt_coordinator_admits_exact_lifecycle_marked_lane_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        payload={"watchdog_startup_grace_seconds": 300},
+        runtime_paths={"state": "state"},
+        task_prefix="PCPC-",
+        task_header_prefix="## PCPC-",
+        taskboard_path="board.md",
+        board_namespace="receipt-test",
+        max_lanes=4,
+        path=lambda relative: tmp_path / relative,
+    )
+    monkeypatch.setattr(scheduler_module, "_plan_bound_profile", lambda _board: True)
+    bootstrap = "import time; time.sleep(30)"
+    lane_name = "receipt-test-lane-0"
+    state_dir = tmp_path / "state" / "lane-0"
+    command = [
+        sys.executable,
+        "-I",
+        "-c",
+        bootstrap,
+        "9",
+        "{}",
+        (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        "sha256:" + hashlib.sha256(bootstrap.encode()).hexdigest(),
+        "sha256:" + "4" * 64,
+        "--todo-path",
+        str(tmp_path / "board.md"),
+        "--task-prefix",
+        "## PCPC-",
+        "--state-dir",
+        "state/lane-0",
+        "--state-prefix",
+        "pcpc_lane_0",
+        "--plan-bound-accepted-tree-root",
+        str(tmp_path),
+        "--plan-bound-source-head",
+        "1" * 40,
+        "--plan-bound-source-tree",
+        "2" * 40,
+        "--task-shard-count",
+        "1",
+        "--task-shard-index",
+        "0",
+    ]
+    environment = dict(os.environ)
+    environment.update(
+        {
+            scheduler_module.RUN_ID_ENV: (
+                "multi-supervisor:"
+                + hashlib.sha256(f"{tmp_path.resolve()}:{lane_name}".encode()).hexdigest()
+            ),
+            scheduler_module.PROFILE_ID_ENV: "sha256:" + "5" * 64,
+            scheduler_module.TARGET_ID_ENV: f"supervisor-track:{lane_name}",
+            scheduler_module.REPOSITORY_ROOT_ENV: str(tmp_path.resolve()),
+            scheduler_module.STATE_ROOT_ENV: str(state_dir),
+            scheduler_module.RUN_ROOT_ENV: str(
+                state_dir / "lifecycle-runs" / lane_name
+            ),
+            scheduler_module.FENCING_EPOCH_ENV: "0",
+            scheduler_module.CONFIGURATION_ROOT_ENV: "sha256:" + "6" * 64,
+        }
+    )
+    coordinator_ticks = scheduler_module.LinuxProcessAdapter._stat(os.getpid())[3]
+    process = subprocess.Popen(
+        command,
+        cwd=tmp_path,
+        env=environment,
+        start_new_session=True,
+    )
+    try:
+        assert scheduler_module._configured_lane_process_ready(
+            board,
+            lane_index=0,
+            supervisor_pid=process.pid,
+            coordinator_pid=os.getpid(),
+            coordinator_start_ticks=coordinator_ticks,
+            repository_commit="1" * 40,
+            repository_tree="2" * 40,
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=5.0)
+
+
+def test_receipt_coordinator_uses_admitted_startup_grace_horizon() -> None:
+    board = SimpleNamespace(payload={"watchdog_startup_grace_seconds": 300})
+
+    assert scheduler_module._coordinator_readiness_timeout_seconds(board) == 300.0
+    assert scheduler_module._coordinator_launch_attestation_max_age_ms(board) == 300_000
+
+
+def test_receipt_coordinator_prepares_fresh_private_lane_directories(
+    tmp_path: Path,
+) -> None:
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        runtime_paths={"state": "state"},
+        task_prefix="PCPC-",
+        max_lanes=4,
+        path=lambda relative: tmp_path / relative,
+    )
+
+    scheduler_module._prepare_coordinator_lane_status_permissions(board)
+
+    for lane_index in range(4):
+        lane_dir = tmp_path / "state" / f"lane-{lane_index}"
+        assert lane_dir.is_dir()
+        assert not lane_dir.is_symlink()
+        assert stat.S_IMODE(os.lstat(lane_dir).st_mode) == 0o700
+
+
+def test_receipt_coordinator_preidentity_failure_fences_exact_child_handle() -> None:
+    class UnidentifiedChild:
+        pid = 424242
+
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.terminated = False
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.terminated = True
+            self.returncode = -signal.SIGTERM
+
+        def kill(self) -> None:
+            raise AssertionError("cooperative exact child should not need SIGKILL")
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 35.0
+            assert self.returncode is not None
+            return self.returncode
+
+    child = UnidentifiedChild()
+
+    assert scheduler_module._fence_exact_coordinator_group(
+        child,  # type: ignore[arg-type]
+        observed_start_ticks=0,
+    )
+
+    assert child.terminated
+    assert child.poll() == -signal.SIGTERM
+
+
+def test_receipt_coordinator_preidentity_failure_never_claims_unproved_fence() -> None:
+    class UnfenceableChild:
+        pid = 424243
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout in {35.0, 2.0}
+            raise subprocess.TimeoutExpired("coordinator", timeout)
+
+    assert not scheduler_module._fence_exact_coordinator_group(
+        UnfenceableChild(),  # type: ignore[arg-type]
+        observed_start_ticks=0,
+    )
+
+
 def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(
     tmp_path: Path,
 ) -> None:

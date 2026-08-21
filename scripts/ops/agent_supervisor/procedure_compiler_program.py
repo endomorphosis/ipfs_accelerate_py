@@ -13,8 +13,10 @@ import argparse
 import hashlib
 import ipaddress
 import json
+import math
 import os
 import re
+import signal
 import site
 import socket
 import stat
@@ -35,6 +37,20 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (  # noqa: E402
+    CONFIGURATION_ROOT_ENV,
+    FENCING_EPOCH_ENV,
+    PROFILE_ID_ENV,
+    REPOSITORY_ROOT_ENV,
+    RUN_ID_ENV,
+    RUN_ROOT_ENV,
+    STATE_ROOT_ENV,
+    TARGET_ID_ENV,
+    LifecycleProfile,
+    LinuxProcessAdapter,
+    ProcessIdentity,
+    ProcessIdentityMismatch,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (  # noqa: E402
     QUACK_ISOLATION_RECEIPT_SCHEMA,
     QUACK_STATE_SERVER_INTERFACE,
@@ -62,6 +78,12 @@ EXPECTED_OWNER_WRITE_ROOT: Final = (
 )
 EXPECTED_OWNER_STATE_DIR: Final = f"{EXPECTED_OWNER_WRITE_ROOT}/quack-owner"
 EXPECTED_DATABASE_PATH: Final = f"{EXPECTED_OWNER_WRITE_ROOT}/control.duckdb"
+EXPECTED_DUCKLAKE_CATALOG_PATH: Final = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake"
+)
+EXPECTED_DUCKLAKE_DATA_PATH: Final = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/history/data"
+)
 EXPECTED_EXTENSION_HASHES: Final = {
     "httpfs.duckdb_extension": ("eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"),
     "httpfs.duckdb_extension.info": (
@@ -70,6 +92,14 @@ EXPECTED_EXTENSION_HASHES: Final = {
     "quack.duckdb_extension": ("41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"),
     "quack.duckdb_extension.info": (
         "14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89"
+    ),
+}
+EXPECTED_DUCKLAKE_EXTENSION_HASHES: Final = {
+    "ducklake.duckdb_extension": (
+        "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    ),
+    "ducklake.duckdb_extension.info": (
+        "14c3385450437fee5570ff21b53de687536a75b4590e33f351887df194ef9393"
     ),
 }
 OWNER_START_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/pcpc-owner-launch@1"
@@ -102,6 +132,14 @@ RUNTIME_LABELS: Final = {
 MAX_JSON_BYTES: Final = 1_048_576
 MAX_OWNER_WAIT_SECONDS: Final = 120
 MAX_SUPERVISOR_DURATION_SECONDS: Final = 31_536_000
+MAX_SUPERVISOR_READINESS_ATTEMPTS: Final = 10
+SUPERVISOR_READINESS_POLL_SECONDS: Final = 0.1
+# Lane status remains a live heartbeat.  The immutable coordinator status is a
+# launch attestation whose longer horizon is derived from the admitted board.
+COORDINATOR_STATUS_MAX_AGE_MS: Final = 30_000
+COORDINATOR_READY_TIMEOUT_MAX_SECONDS: Final = 600.0
+MAX_COORDINATOR_CLEANUP_ATTEMPTS: Final = 350
+COORDINATOR_CLEANUP_POLL_SECONDS: Final = 0.1
 MAX_FAILED_OWNER_QUARANTINES: Final = 16
 MAX_EXTENSION_FILE_BYTES: Final = 128 * 1024 * 1024
 HEX_64: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -132,6 +170,22 @@ _OWNER_CONFIG_FIELDS: Final = frozenset(
         "memory_bytes",
         "cpus",
         "tmpfs_size_bytes",
+    }
+)
+_DUCKLAKE_CONFIG_FIELDS: Final = frozenset(
+    {
+        "mode",
+        "authority",
+        "scheduling_prerequisite",
+        "extension_files_sha256",
+        "extension_install_policy",
+        "network_access",
+        "catalog_path",
+        "data_path",
+        "source",
+        "logical_datasets",
+        "outage_policy",
+        "maximum_rows_per_projection",
     }
 )
 _DATABASE_PROGRAM_FIELDS: Final = frozenset(
@@ -262,7 +316,92 @@ _OWNER_ISOLATION_FIELDS: Final = frozenset(
     }
 )
 _SUPERVISOR_LAUNCH_FIELDS: Final = frozenset(
-    {"coordinator_pid", "coordinator_pid_path", "coordinator_log"}
+    {
+        "schema",
+        "repository_commit",
+        "repository_tree",
+        "configuration_revision",
+        "board_namespace",
+        "launch_session_id",
+        "coordinator_pid",
+        "coordinator_pid_path",
+        "coordinator_log",
+        "coordinator_status_path",
+        "coordinator_status_cid",
+        "coordinator_profile",
+        "coordinator_process_identity",
+        "coordinator_argv_cid",
+        "receipt_cid",
+    }
+)
+_COORDINATOR_LAUNCH_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/configured-board-coordinator-launch@1"
+)
+_COORDINATOR_STATUS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/configured-board-coordinator-status@1"
+)
+_COORDINATOR_STATUS_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "repository_commit",
+        "repository_tree",
+        "configuration_revision",
+        "board_namespace",
+        "launch_session_id",
+        "lifecycle_profile_id",
+        "coordinator_pid",
+        "coordinator_process_start_ticks",
+        "coordinator_argv_cid",
+        "started_at_ms",
+        "attested_at_ms",
+        "phase",
+        "lane_status_paths",
+        "receipt_cid",
+    }
+)
+_LIFECYCLE_PROFILE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "target_id",
+        "run_id",
+        "configuration_root",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "argv",
+        "cwd",
+        "environment",
+        "health_path",
+        "health_stale_ms",
+        "profile_id",
+    }
+)
+_PROCESS_IDENTITY_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "pid",
+        "start_time_ticks",
+        "parent_pid",
+        "process_group_id",
+        "session_id",
+        "boot_id",
+        "argv",
+        "cwd",
+        "executable",
+        "run_id",
+        "profile_id",
+        "target_id",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "fencing_epoch",
+        "configuration_root",
+        "identity_id",
+    }
+)
+_LANE_STATUS_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "todo_implementation_supervisor.supervisor"
 )
 
 
@@ -394,6 +533,7 @@ class ProgramConfig:
     endpoint: str
     extension_directory: Path
     extension_hashes: Mapping[str, str]
+    projection_extension_hashes: Mapping[str, str]
     pids_limit: int
     memory_bytes: int
     cpus: int
@@ -410,12 +550,23 @@ class ProgramConfig:
         return f"git:{self.board_namespace}"
 
     @property
+    def qualification_extension_hashes(self) -> dict[str, str]:
+        combined = dict(self.extension_hashes)
+        overlap = set(combined).intersection(self.projection_extension_hashes)
+        if overlap:
+            raise ProgramLaunchError(
+                "config_invalid", "owner and projection extension allowlists overlap"
+            )
+        combined.update(self.projection_extension_hashes)
+        return dict(sorted(combined.items()))
+
+    @property
     def qualification_home(self) -> Path:
         identity = hashlib.sha256(
             canonical_json_bytes(
                 {
                     "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-duckdb-home@1",
-                    "extension_files_sha256": dict(sorted(self.extension_hashes.items())),
+                    "extension_files_sha256": self.qualification_extension_hashes,
                 }
             )
         ).hexdigest()
@@ -430,6 +581,7 @@ def parse_program_config(
     if not isinstance(payload, Mapping):
         raise ProgramLaunchError("config_invalid", "scheduler config must be an object")
     owner = payload.get("quack_owner_isolation")
+    projection = payload.get("ducklake_projection_program")
     database = payload.get("database_program")
     source = payload.get("source_binding")
     runtime_paths = payload.get("runtime_paths")
@@ -442,6 +594,11 @@ def parse_program_config(
         raise ProgramLaunchError(
             "config_unknown_field",
             "database_program has unknown or missing normative fields",
+        )
+    if not isinstance(projection, Mapping) or set(projection) != _DUCKLAKE_CONFIG_FIELDS:
+        raise ProgramLaunchError(
+            "config_unknown_field",
+            "ducklake_projection_program has unknown or missing normative fields",
         )
     if not isinstance(source, Mapping) or not isinstance(runtime_paths, Mapping):
         raise ProgramLaunchError("config_invalid", "source/runtime bindings are required")
@@ -465,8 +622,32 @@ def parse_program_config(
         or database.get("task_source_kind") != "duckdb"
         or database.get("failover_policy") != "fail_closed"
         or database.get("explicit_legacy") is not False
+        or projection.get("mode") != "enabled_non_authoritative"
+        or projection.get("authority") is not False
+        or projection.get("scheduling_prerequisite") is not False
+        or projection.get("extension_install_policy") != "forbidden"
+        or projection.get("network_access") is not False
+        or projection.get("source") != "sealed read-only DuckDB snapshot"
+        or projection.get("logical_datasets")
+        != ["program_runs", "task_history", "qualification"]
+        or projection.get("outage_policy")
+        != "record_projection_failure_without_changing_control_state"
+        or projection.get("maximum_rows_per_projection") != 4096
     ):
         raise ProgramLaunchError("config_invalid", "program authority profile is invalid")
+    projection_catalog = _canonical_relative(
+        projection.get("catalog_path"), field="ducklake_projection_program.catalog_path"
+    )
+    projection_data = _canonical_relative(
+        projection.get("data_path"), field="ducklake_projection_program.data_path"
+    )
+    if (
+        projection_catalog != EXPECTED_DUCKLAKE_CATALOG_PATH
+        or projection_data != EXPECTED_DUCKLAKE_DATA_PATH
+    ):
+        raise ProgramLaunchError(
+            "config_invalid", "DuckLake projection paths are not the exact program paths"
+        )
     branch = str(source.get("accelerator_required_branch") or "")
     ancestor = str(source.get("accelerator_required_ancestor") or "")
     if not branch or not re.fullmatch(r"[0-9a-f]{40}", ancestor):
@@ -520,6 +701,7 @@ def parse_program_config(
         raise ProgramLaunchError("config_invalid", "endpoint secret must be an opaque handle")
     extension_directory = Path(str(owner.get("extension_directory") or ""))
     hashes = owner.get("extension_files_sha256")
+    projection_hashes = projection.get("extension_files_sha256")
     required_extensions = {
         "httpfs.duckdb_extension",
         "httpfs.duckdb_extension.info",
@@ -534,6 +716,9 @@ def parse_program_config(
             not isinstance(value, str) or not HEX_64.fullmatch(value) for value in hashes.values()
         )
         or dict(hashes) != EXPECTED_EXTENSION_HASHES
+        or not isinstance(projection_hashes, Mapping)
+        or dict(projection_hashes) != EXPECTED_DUCKLAKE_EXTENSION_HASHES
+        or not set(hashes).isdisjoint(projection_hashes)
     ):
         raise ProgramLaunchError("config_invalid", "extension allowlist is malformed")
     evidence = _canonical_relative(runtime_paths.get("evidence"), field="runtime_paths.evidence")
@@ -565,6 +750,7 @@ def parse_program_config(
         endpoint=endpoint,
         extension_directory=extension_directory.resolve(),
         extension_hashes=dict(sorted(hashes.items())),
+        projection_extension_hashes=dict(sorted(projection_hashes.items())),
         pids_limit=_positive_int(owner.get("pids_limit"), field="pids_limit", maximum=4096),
         memory_bytes=_positive_int(owner.get("memory_bytes"), field="memory_bytes", maximum=2**40),
         cpus=_positive_int(owner.get("cpus"), field="cpus", maximum=64),
@@ -635,7 +821,7 @@ def _regular_file_sha256(path: Path, *, noun: str) -> tuple[os.stat_result, str]
 
 
 def verify_extension_files(config: ProgramConfig) -> None:
-    for name, expected in config.extension_hashes.items():
+    for name, expected in config.qualification_extension_hashes.items():
         path = config.extension_directory / name
         try:
             os.lstat(path)
@@ -1033,6 +1219,919 @@ def _safe_read_json(path: Path, *, exact_fields: frozenset[str], noun: str) -> d
     return value
 
 
+def _runtime_path_parent_chain(path: Path, *, root: Path, noun: str) -> None:
+    """Require a lexical runtime path below real, current-UID directories."""
+
+    artifact = Path(path)
+    runtime_root = Path(root)
+    if not artifact.is_absolute() or not runtime_root.is_absolute():
+        raise ProgramLaunchError("artifact_unsafe", f"{noun} path is not absolute")
+    try:
+        relative = artifact.relative_to(runtime_root)
+    except ValueError as exc:
+        raise ProgramLaunchError("path_escape", f"{noun} escapes its runtime root") from exc
+    current = runtime_root
+    for part in relative.parts[:-1]:
+        if part in {"", ".", ".."}:
+            raise ProgramLaunchError("artifact_unsafe", f"{noun} path is not canonical")
+        try:
+            observed = os.lstat(current)
+        except OSError as exc:
+            raise ProgramLaunchError(
+                "artifact_unavailable", f"{noun} parent is unavailable"
+            ) from exc
+        if (
+            stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISDIR(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+        ):
+            raise ProgramLaunchError(
+                "artifact_unsafe", f"{noun} parent is not an owner directory"
+            )
+        current /= part
+    try:
+        observed = os.lstat(current)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "artifact_unavailable", f"{noun} parent is unavailable"
+        ) from exc
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISDIR(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+    ):
+        raise ProgramLaunchError(
+            "artifact_unsafe", f"{noun} parent is not an owner directory"
+        )
+
+
+def _stable_runtime_bytes(
+    path: Path,
+    *,
+    root: Path,
+    noun: str,
+) -> tuple[bytes, os.stat_result]:
+    """Read one bounded, stable, no-follow, owner-only runtime artifact."""
+
+    _runtime_path_parent_chain(path, root=root, noun=noun)
+
+    def identity(info: os.stat_result) -> tuple[int, ...]:
+        return (
+            int(info.st_dev),
+            int(info.st_ino),
+            int(info.st_mode),
+            int(info.st_uid),
+            int(info.st_nlink),
+            int(info.st_size),
+            int(info.st_mtime_ns),
+            int(info.st_ctime_ns),
+        )
+
+    try:
+        before = os.lstat(path)
+    except OSError as exc:
+        raise ProgramLaunchError("artifact_unavailable", f"{noun} is unavailable") from exc
+    if (
+        stat.S_ISLNK(before.st_mode)
+        or not stat.S_ISREG(before.st_mode)
+        or before.st_uid != os.geteuid()
+        or before.st_nlink != 1
+        or stat.S_IMODE(before.st_mode) != 0o600
+        or before.st_size < 1
+        or before.st_size > MAX_JSON_BYTES
+    ):
+        raise ProgramLaunchError(
+            "artifact_unsafe", f"{noun} is not a private single-link file"
+        )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ProgramLaunchError("artifact_unsafe", f"{noun} cannot be opened safely") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if identity(opened) != identity(before):
+            raise ProgramLaunchError("artifact_changed", f"{noun} changed before open")
+        chunks: list[bytes] = []
+        remaining = MAX_JSON_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        after_read = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        after_path = os.lstat(path)
+    except OSError as exc:
+        raise ProgramLaunchError("artifact_changed", f"{noun} disappeared") from exc
+    if (
+        len(raw) > MAX_JSON_BYTES
+        or identity(opened) != identity(after_read)
+        or identity(opened) != identity(after_path)
+    ):
+        raise ProgramLaunchError("artifact_changed", f"{noun} changed during read")
+    return raw, opened
+
+
+def _stable_runtime_json(
+    path: Path,
+    *,
+    root: Path,
+    noun: str,
+    exact_fields: frozenset[str] | None = None,
+) -> tuple[dict[str, Any], os.stat_result]:
+    raw, evidence = _stable_runtime_bytes(path, root=root, noun=noun)
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProgramLaunchError("json_invalid", f"{noun} is not UTF-8 JSON") from exc
+    payload = _decode_json_object(text, noun=noun)
+    if exact_fields is not None and set(payload) != exact_fields:
+        raise ProgramLaunchError(
+            "artifact_unknown_field", f"{noun} has unknown or missing fields"
+        )
+    return payload, evidence
+
+
+def _validate_runtime_log(path: Path, *, root: Path) -> None:
+    """Observe a live append-only log without requiring byte stability."""
+
+    _runtime_path_parent_chain(path, root=root, noun="coordinator log")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "artifact_unavailable", "coordinator log is unavailable"
+        ) from exc
+    try:
+        opened = os.fstat(descriptor)
+        observed = os.lstat(path)
+    finally:
+        os.close(descriptor)
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or opened.st_uid != os.geteuid()
+        or opened.st_nlink != 1
+        or stat.S_IMODE(opened.st_mode) != 0o600
+        or (opened.st_dev, opened.st_ino) != (observed.st_dev, observed.st_ino)
+    ):
+        raise ProgramLaunchError(
+            "artifact_unsafe", "coordinator log is not a private single-link file"
+        )
+
+
+def _utc_timestamp_ms(value: Any, *, noun: str) -> int:
+    if not isinstance(value, str) or not value.strip():
+        raise ProgramLaunchError("coordinator_not_ready", f"{noun} is absent")
+    try:
+        observed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ProgramLaunchError("coordinator_not_ready", f"{noun} is invalid") from exc
+    if observed.tzinfo is None:
+        raise ProgramLaunchError("coordinator_not_ready", f"{noun} is not UTC-bound")
+    return int(observed.astimezone(UTC).timestamp() * 1000)
+
+
+def _scheduler_launch_bindings(config: ProgramConfig) -> dict[str, Any]:
+    """Derive coordinator and lane paths only from the admitted config bytes."""
+
+    try:
+        config_bytes = config.config_path.read_bytes()
+    except OSError as exc:
+        raise ProgramLaunchError("config_drift", "scheduler config is unavailable") from exc
+    if hashlib.sha256(config_bytes).hexdigest() != config.config_sha256:
+        raise ProgramLaunchError("config_drift", "scheduler config bytes changed")
+    try:
+        payload = _decode_json_object(config_bytes.decode("utf-8"), noun="scheduler config")
+    except UnicodeDecodeError as exc:
+        raise ProgramLaunchError("config_drift", "scheduler config is not UTF-8") from exc
+    task_prefix = payload.get("task_prefix")
+    max_lanes = payload.get("max_lanes")
+    startup_grace_seconds = payload.get("watchdog_startup_grace_seconds")
+    runtime_paths = payload.get("runtime_paths")
+    if (
+        payload.get("board_namespace") != config.board_namespace
+        or task_prefix != "PCPC-"
+        or type(max_lanes) is not int
+        or max_lanes < 1
+        or max_lanes > 64
+        or isinstance(startup_grace_seconds, bool)
+        or not isinstance(startup_grace_seconds, (int, float))
+        or not math.isfinite(float(startup_grace_seconds))
+        or float(startup_grace_seconds) <= 0.0
+        or not isinstance(runtime_paths, Mapping)
+    ):
+        raise ProgramLaunchError(
+            "config_drift", "scheduler lane authority is absent or foreign"
+        )
+    state_relative = _canonical_relative(
+        runtime_paths.get("state"), field="runtime_paths.state"
+    )
+    log_relative = _canonical_relative(
+        runtime_paths.get("logs"), field="runtime_paths.logs"
+    )
+    taskboard_relative = _canonical_relative(
+        payload.get("taskboard_path"), field="taskboard_path"
+    )
+    state_root = _resolved_inside(config.repo_root, state_relative, field="runtime_paths.state")
+    log_root = _resolved_inside(config.repo_root, log_relative, field="runtime_paths.logs")
+    taskboard_path = _resolved_inside(
+        config.repo_root, taskboard_relative, field="taskboard_path"
+    )
+    if state_root != config.state_root:
+        raise ProgramLaunchError("config_drift", "scheduler state root changed")
+    state_prefix = re.sub(r"[^a-z0-9._-]+", "-", task_prefix.lower()).strip("-")
+    lane_status_paths = tuple(
+        state_root
+        / f"lane-{lane_index}"
+        / f"{state_prefix}_lane_{lane_index}_supervisor_status.json"
+        for lane_index in range(max_lanes)
+    )
+    configuration_revision = content_identity(
+        {
+            "path": config.config_path.relative_to(config.repo_root).as_posix(),
+            "bytes_sha256": config.config_sha256,
+        }
+    )
+    return {
+        "configuration_revision": configuration_revision,
+        "state_root": state_root,
+        "log_root": log_root,
+        "lane_status_paths": lane_status_paths,
+        "state_relative": state_relative,
+        "taskboard_path": taskboard_path,
+        "task_prefix": task_prefix,
+        "task_header_prefix": f"## {task_prefix}",
+        "max_lanes": max_lanes,
+        "launch_attestation_max_age_ms": max(
+            1,
+            int(
+                min(
+                    float(startup_grace_seconds),
+                    COORDINATOR_READY_TIMEOUT_MAX_SECONDS,
+                )
+                * 1_000
+            ),
+        ),
+    }
+
+
+def _scheduler_startup_grace_seconds(config: ProgramConfig) -> float:
+    """Read only the bounded startup horizon needed for the child timeout."""
+
+    try:
+        config_bytes = config.config_path.read_bytes()
+    except OSError as exc:
+        raise ProgramLaunchError("config_drift", "scheduler config is unavailable") from exc
+    if hashlib.sha256(config_bytes).hexdigest() != config.config_sha256:
+        raise ProgramLaunchError("config_drift", "scheduler config bytes changed")
+    try:
+        payload = _decode_json_object(config_bytes.decode("utf-8"), noun="scheduler config")
+    except UnicodeDecodeError as exc:
+        raise ProgramLaunchError("config_drift", "scheduler config is not UTF-8") from exc
+    value = payload.get("watchdog_startup_grace_seconds")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) <= 0.0
+    ):
+        raise ProgramLaunchError(
+            "config_drift", "scheduler startup grace is absent or invalid"
+        )
+    return min(float(value), COORDINATOR_READY_TIMEOUT_MAX_SECONDS)
+
+
+def _require_profile_option(argv: tuple[str, ...], name: str, expected: str) -> None:
+    if argv.count(name) != 1:
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", f"coordinator argv {name} is ambiguous"
+        )
+    index = argv.index(name)
+    if index + 1 >= len(argv) or argv[index + 1] != expected:
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", f"coordinator argv {name} is foreign"
+        )
+
+
+def _validate_profile_argv(
+    argv: tuple[str, ...],
+    *,
+    config: ProgramConfig,
+    launch_session_id: str,
+    status_path: Path,
+) -> None:
+    """Validate the sealed module command while retaining exact live re-observation."""
+
+    module_name = (
+        "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler"
+    )
+    if (
+        len(argv) < 20
+        or Path(argv[0]).resolve(strict=False) != Path(sys.executable).resolve(strict=False)
+        or argv[1:3] != ("-I", "-c")
+        or argv[6] != module_name
+        or argv[7]
+        != "sha256:" + hashlib.sha256(argv[3].encode("utf-8")).hexdigest()
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", argv[8])
+    ):
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", "sealed coordinator command is foreign"
+        )
+    try:
+        sealed_descriptor = int(argv[4])
+    except (TypeError, ValueError) as exc:
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", "sealed coordinator descriptor is invalid"
+        ) from exc
+    if sealed_descriptor < 3 or not argv[5].startswith("{"):
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", "sealed coordinator binding is invalid"
+        )
+    _decode_json_object(argv[5], noun="coordinator sealed control-plane pin")
+    _require_profile_option(argv, "--repo-root", str(config.repo_root))
+    _require_profile_option(argv, "--config", str(config.config_path))
+    _require_profile_option(argv, "--accepted-tree-root", str(config.repo_root))
+    _require_profile_option(argv, "--accepted-control-plane-fd", str(sealed_descriptor))
+    _require_profile_option(argv, "--accepted-control-plane-pin-json", argv[5])
+    _require_profile_option(
+        argv, "--coordinator-launch-session", launch_session_id
+    )
+    _require_profile_option(argv, "--coordinator-status-path", str(status_path))
+    if argv.count("--accepted-control-plane-capsule-parent") != 1:
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", "control-plane capsule binding is ambiguous"
+        )
+    launch_index = argv.index("launch") if argv.count("launch") == 1 else -1
+    if launch_index < 0 or argv[launch_index:] != (
+        "launch",
+        "--foreground",
+        "--duration-seconds",
+        str(float(MAX_SUPERVISOR_DURATION_SECONDS)),
+        "--implement",
+    ):
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", "coordinator launch suffix is foreign"
+        )
+
+
+def _coordinator_identity_matches(
+    expected: ProcessIdentity,
+    observed: ProcessIdentity,
+) -> bool:
+    """Compare every stable identity field; reparenting may change only PPID."""
+
+    expected_payload = expected.to_dict()
+    observed_payload = observed.to_dict()
+    for field in ("parent_pid", "identity_id"):
+        expected_payload.pop(field, None)
+        observed_payload.pop(field, None)
+    return expected_payload == observed_payload
+
+
+def _lane_process_option(argv: Sequence[str], name: str, expected: str) -> bool:
+    if argv.count(name) != 1:
+        return False
+    index = argv.index(name)
+    return index + 1 < len(argv) and argv[index + 1] == expected
+
+
+def _configured_lane_process_ready(
+    *,
+    config: ProgramConfig,
+    bindings: Mapping[str, Any],
+    lane_index: int,
+    supervisor_pid: int,
+    coordinator_pid: int,
+    coordinator_start_ticks: int,
+    repository_commit: str,
+    repository_tree: str,
+) -> bool:
+    """Re-observe one exact PCPC implementation-supervisor process."""
+
+    adapter = LinuxProcessAdapter()
+    try:
+        parent, group, session, start_ticks = adapter._stat(  # noqa: SLF001
+            supervisor_pid
+        )
+        argv = adapter._argv(supervisor_pid)  # noqa: SLF001
+        environment = adapter._environ(supervisor_pid)  # noqa: SLF001
+        cwd = Path(os.readlink(f"/proc/{supervisor_pid}/cwd")).resolve(
+            strict=False
+        )
+        executable = Path(os.readlink(f"/proc/{supervisor_pid}/exe")).resolve(
+            strict=False
+        )
+    except (
+        FileNotFoundError,
+        ProcessLookupError,
+        OSError,
+        UnicodeError,
+        ValueError,
+    ):
+        return False
+
+    lane_name = f"{config.board_namespace}-lane-{lane_index}"
+    state_relative = Path(bindings["state_relative"]) / f"lane-{lane_index}"
+    state_dir = (config.repo_root / state_relative).resolve(strict=False)
+    state_prefix = f"pcpc_lane_{lane_index}"
+    expected_run_id = "multi-supervisor:" + hashlib.sha256(
+        f"{config.repo_root.resolve()}:{lane_name}".encode()
+    ).hexdigest()
+    expected_markers = {
+        RUN_ID_ENV: expected_run_id,
+        TARGET_ID_ENV: f"supervisor-track:{lane_name}",
+        REPOSITORY_ROOT_ENV: str(config.repo_root.resolve()),
+        STATE_ROOT_ENV: str(state_dir),
+        RUN_ROOT_ENV: str(state_dir / "lifecycle-runs" / lane_name),
+        FENCING_EPOCH_ENV: "0",
+    }
+    return bool(
+        parent == coordinator_pid
+        and group == supervisor_pid
+        and session == supervisor_pid
+        and start_ticks >= coordinator_start_ticks
+        and cwd == config.repo_root.resolve()
+        and executable == Path(sys.executable).resolve()
+        and len(argv) > 9
+        and Path(argv[0]).resolve(strict=False)
+        == Path(sys.executable).resolve(strict=False)
+        and argv[1:3] == ("-I", "-c")
+        and argv[6]
+        == (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        )
+        and argv[7]
+        == "sha256:" + hashlib.sha256(argv[3].encode("utf-8")).hexdigest()
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", argv[8]) is not None
+        and any(environment.get(name) != value for name, value in expected_markers.items())
+        is False
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", environment.get(PROFILE_ID_ENV, ""))
+        is not None
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            environment.get(CONFIGURATION_ROOT_ENV, ""),
+        )
+        is not None
+        and _lane_process_option(
+            argv, "--todo-path", str(bindings["taskboard_path"])
+        )
+        and _lane_process_option(
+            argv, "--task-prefix", str(bindings["task_header_prefix"])
+        )
+        and _lane_process_option(argv, "--state-dir", state_relative.as_posix())
+        and _lane_process_option(argv, "--state-prefix", state_prefix)
+        and _lane_process_option(
+            argv, "--plan-bound-accepted-tree-root", str(config.repo_root)
+        )
+        and _lane_process_option(
+            argv, "--plan-bound-source-head", repository_commit
+        )
+        and _lane_process_option(
+            argv, "--plan-bound-source-tree", repository_tree
+        )
+        and _lane_process_option(argv, "--task-shard-count", "1")
+        and _lane_process_option(argv, "--task-shard-index", "0")
+    )
+
+
+def _parse_coordinator_launch_receipt(
+    plan: Mapping[str, Any],
+    *,
+    config: ProgramConfig,
+    head: str,
+    tree: str,
+) -> tuple[
+    int,
+    Path,
+    Path,
+    Path,
+    LifecycleProfile,
+    ProcessIdentity,
+    tuple[Path, ...],
+]:
+    """Validate the producer receipt without treating it as live evidence."""
+
+    if set(plan) != _SUPERVISOR_LAUNCH_FIELDS:
+        raise ProgramLaunchError(
+            "supervisor_receipt_invalid",
+            "configured scheduler launch receipt is not closed",
+        )
+    receipt_cid = plan.get("receipt_cid")
+    unsigned = dict(plan)
+    unsigned.pop("receipt_cid", None)
+    bindings = _scheduler_launch_bindings(config)
+    launch_session_id = plan.get("launch_session_id")
+    pid = plan.get("coordinator_pid")
+    pid_path = Path(str(plan.get("coordinator_pid_path") or ""))
+    log_path = Path(str(plan.get("coordinator_log") or ""))
+    status_path = Path(str(plan.get("coordinator_status_path") or ""))
+    expected_pid_path = config.state_root / "configured-board-master.pid"
+    expected_status_path = config.state_root / (
+        f"configured-board-{launch_session_id}.status.json"
+    )
+    log_root = bindings["log_root"]
+    if (
+        receipt_cid != content_identity(unsigned)
+        or plan.get("schema") != _COORDINATOR_LAUNCH_SCHEMA
+        or plan.get("repository_commit") != head
+        or plan.get("repository_tree") != tree
+        or plan.get("configuration_revision") != bindings["configuration_revision"]
+        or plan.get("board_namespace") != config.board_namespace
+        or not isinstance(launch_session_id, str)
+        or HEX_64.fullmatch(launch_session_id) is None
+        or type(pid) is not int
+        or pid < 2
+        or pid_path != expected_pid_path
+        or status_path != expected_status_path
+        or not log_path.is_absolute()
+        or log_path.parent != log_root
+        or re.fullmatch(
+            rf"configured-board-[0-9]{{8}}T[0-9]{{6}}Z-{launch_session_id}\.log",
+            log_path.name,
+        )
+        is None
+    ):
+        raise ProgramLaunchError(
+            "supervisor_receipt_invalid", "configured scheduler launch identity is invalid"
+        )
+    profile_payload = plan.get("coordinator_profile")
+    process_payload = plan.get("coordinator_process_identity")
+    if (
+        not isinstance(profile_payload, Mapping)
+        or set(profile_payload) != _LIFECYCLE_PROFILE_FIELDS
+        or not isinstance(process_payload, Mapping)
+        or set(process_payload) != _PROCESS_IDENTITY_FIELDS
+    ):
+        raise ProgramLaunchError(
+            "supervisor_receipt_invalid", "coordinator lifecycle evidence is not closed"
+        )
+    try:
+        profile = LifecycleProfile.from_dict(profile_payload)
+        process_identity = ProcessIdentity.from_dict(process_payload)
+    except (TypeError, ValueError) as exc:
+        raise ProgramLaunchError(
+            "supervisor_receipt_invalid", "coordinator lifecycle evidence is invalid"
+        ) from exc
+    expected_target = f"configured-board-coordinator:{config.board_namespace}"
+    expected_run = f"configured-board:{config.board_namespace}:{launch_session_id}"
+    argv_cid = content_identity({"argv": list(profile.argv)})
+    if (
+        profile.target_id != expected_target
+        or profile.run_id != expected_run
+        or profile.configuration_root != bindings["configuration_revision"]
+        or profile.repository_root != str(config.repo_root)
+        or profile.state_root != str(config.state_root)
+        or profile.run_root != str(config.state_root)
+        or profile.cwd != str(config.repo_root)
+        or profile.health_path != str(status_path)
+        or profile.health_stale_ms
+        != bindings["launch_attestation_max_age_ms"]
+        or plan.get("coordinator_argv_cid") != argv_cid
+        or process_identity.pid != pid
+        or process_identity.start_time_ticks < 1
+        or process_identity.process_group_id != pid
+        or process_identity.session_id != pid
+        or process_identity.argv != profile.argv
+        or process_identity.cwd != str(config.repo_root)
+        or process_identity.run_id != profile.run_id
+        or process_identity.profile_id != profile.profile_id
+        or process_identity.target_id != profile.target_id
+        or process_identity.repository_root != profile.repository_root
+        or process_identity.state_root != profile.state_root
+        or process_identity.run_root != profile.run_root
+        or process_identity.fencing_epoch != 0
+        or process_identity.configuration_root != profile.configuration_root
+    ):
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch", "coordinator lifecycle binding is foreign"
+        )
+    _validate_profile_argv(
+        profile.argv,
+        config=config,
+        launch_session_id=launch_session_id,
+        status_path=status_path,
+    )
+    return (
+        pid,
+        pid_path,
+        log_path,
+        status_path,
+        profile,
+        process_identity,
+        bindings["lane_status_paths"],
+    )
+
+
+def _observe_coordinator_status(
+    *,
+    config: ProgramConfig,
+    head: str,
+    tree: str,
+    launch_started_at_ms: int,
+    plan: Mapping[str, Any],
+    pid: int,
+    status_path: Path,
+    profile: LifecycleProfile,
+    process_identity: ProcessIdentity,
+    lane_status_paths: tuple[Path, ...],
+) -> dict[str, Any]:
+    """Re-observe coordinator birth, launch attestation, and every live lane."""
+
+    try:
+        observed_identity = LinuxProcessAdapter()._identity(pid, profile)  # noqa: SLF001
+    except (
+        FileNotFoundError,
+        ProcessLookupError,
+        ProcessIdentityMismatch,
+        OSError,
+        UnicodeError,
+        ValueError,
+    ) as exc:
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch",
+            "coordinator process identity cannot be re-observed",
+        ) from exc
+    if not _coordinator_identity_matches(process_identity, observed_identity):
+        raise ProgramLaunchError(
+            "coordinator_identity_mismatch",
+            "coordinator process birth or argv identity changed",
+        )
+    status, status_evidence = _stable_runtime_json(
+        status_path,
+        root=config.state_root,
+        noun="coordinator status",
+        exact_fields=_COORDINATOR_STATUS_FIELDS,
+    )
+    status_cid = status.get("receipt_cid")
+    unsigned_status = dict(status)
+    unsigned_status.pop("receipt_cid", None)
+    now_ms = int(time.time() * 1000)
+    started_at_ms = status.get("started_at_ms")
+    attested_at_ms = status.get("attested_at_ms")
+    bindings = _scheduler_launch_bindings(config)
+    expected_lane_paths = [str(path) for path in lane_status_paths]
+    if (
+        status_cid != content_identity(unsigned_status)
+        or plan.get("coordinator_status_cid") != status_cid
+        or status.get("schema") != _COORDINATOR_STATUS_SCHEMA
+        or status.get("repository_commit") != head
+        or status.get("repository_tree") != tree
+        or status.get("configuration_revision") != profile.configuration_root
+        or status.get("board_namespace") != config.board_namespace
+        or status.get("launch_session_id") != plan.get("launch_session_id")
+        or status.get("lifecycle_profile_id") != profile.profile_id
+        or status.get("coordinator_pid") != pid
+        or status.get("coordinator_process_start_ticks")
+        != process_identity.start_time_ticks
+        or status.get("coordinator_argv_cid")
+        != content_identity({"argv": list(profile.argv)})
+        or status.get("phase") != "launch_attested"
+        or status.get("lane_status_paths") != expected_lane_paths
+        or type(started_at_ms) is not int
+        or type(attested_at_ms) is not int
+        or started_at_ms < launch_started_at_ms - 5_000
+        or started_at_ms > attested_at_ms
+        or attested_at_ms > now_ms + 5_000
+        or now_ms - attested_at_ms
+        > bindings["launch_attestation_max_age_ms"]
+        or int(status_evidence.st_mtime_ns // 1_000_000)
+        < launch_started_at_ms - 5_000
+        or tuple(lane_status_paths) != tuple(bindings["lane_status_paths"])
+    ):
+        raise ProgramLaunchError(
+            "coordinator_status_mismatch", "coordinator status is stale or foreign"
+        )
+    lane_pids: set[int] = set()
+    for lane_index, lane_path in enumerate(lane_status_paths):
+        lane, lane_evidence = _stable_runtime_json(
+            lane_path,
+            root=config.state_root,
+            noun=f"coordinator lane {lane_index} status",
+        )
+        lane_updated_at_ms = _utc_timestamp_ms(
+            lane.get("updated_at"), noun=f"lane {lane_index} heartbeat"
+        )
+        lane_pid = lane.get("supervisor_pid")
+        expected_prefix = f"pcpc_lane_{lane_index}"
+        if (
+            lane.get("schema") != _LANE_STATUS_SCHEMA
+            or lane.get("status")
+            not in {"starting", "running", "restarting", "agentic_maintenance_started"}
+            or type(lane_pid) is not int
+            or lane_pid < 2
+            or lane_pid in lane_pids
+            or lane.get("repo_root") != str(config.repo_root)
+            or lane.get("task_prefix") != bindings["task_header_prefix"]
+            or lane.get("state_prefix") != expected_prefix
+            or lane_updated_at_ms < started_at_ms
+            or lane_updated_at_ms > now_ms + 5_000
+            or now_ms - lane_updated_at_ms > COORDINATOR_STATUS_MAX_AGE_MS
+            or int(lane_evidence.st_mtime_ns // 1_000_000)
+            < int(status_evidence.st_mtime_ns // 1_000_000) - 1_000
+        ):
+            raise ProgramLaunchError(
+                "coordinator_not_ready", f"lane {lane_index} heartbeat is stale or foreign"
+            )
+        if not _configured_lane_process_ready(
+            config=config,
+            bindings=bindings,
+            lane_index=lane_index,
+            supervisor_pid=lane_pid,
+            coordinator_pid=pid,
+            coordinator_start_ticks=process_identity.start_time_ticks,
+            repository_commit=head,
+            repository_tree=tree,
+        ):
+            raise ProgramLaunchError(
+                "coordinator_not_ready",
+                f"lane {lane_index} supervisor identity is stale or foreign",
+            )
+        lane_pids.add(lane_pid)
+    return status
+
+
+def _remove_exact_runtime_artifact(
+    path: Path,
+    *,
+    root: Path,
+    noun: str,
+    expected_raw: bytes | None = None,
+    expected_identity: tuple[int, int] | None = None,
+) -> bool:
+    """Remove only a stable artifact whose inode and optional bytes are exact."""
+
+    try:
+        raw, evidence = _stable_runtime_bytes(path, root=root, noun=noun)
+    except ProgramLaunchError as exc:
+        if exc.code != "artifact_unavailable":
+            return False
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return False
+        return False
+    if expected_raw is not None and raw != expected_raw:
+        return False
+    if expected_identity is not None and (
+        evidence.st_dev,
+        evidence.st_ino,
+    ) != expected_identity:
+        return False
+    try:
+        observed = os.lstat(path)
+        if (observed.st_dev, observed.st_ino) != (evidence.st_dev, evidence.st_ino):
+            return False
+        path.unlink()
+        directory = os.open(
+            path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except OSError:
+        return False
+    return True
+
+
+def _cleanup_failed_coordinator_launch(
+    *,
+    config: ProgramConfig,
+    pid: int,
+    pid_path: Path,
+    status_path: Path,
+    status_cid: str,
+    profile: LifecycleProfile,
+    process_identity: ProcessIdentity,
+    sleeper: Callable[[float], None],
+) -> bool:
+    """Fence only the exact coordinator and clear only its exact projections."""
+
+    adapter = LinuxProcessAdapter()
+    try:
+        pid_raw, pid_evidence = _stable_runtime_bytes(
+            pid_path,
+            root=config.state_root,
+            noun="failed coordinator PID projection",
+        )
+        status, status_evidence = _stable_runtime_json(
+            status_path,
+            root=config.state_root,
+            noun="failed coordinator status",
+            exact_fields=_COORDINATOR_STATUS_FIELDS,
+        )
+    except ProgramLaunchError:
+        return False
+    unsigned_status = dict(status)
+    observed_status_cid = unsigned_status.pop("receipt_cid", None)
+    if (
+        pid_raw != f"{pid}\n".encode("ascii")
+        or observed_status_cid != status_cid
+        or observed_status_cid != content_identity(unsigned_status)
+    ):
+        return False
+    pid_identity = (pid_evidence.st_dev, pid_evidence.st_ino)
+    status_identity = (status_evidence.st_dev, status_evidence.st_ino)
+
+    def birth_identity_state() -> str:
+        try:
+            _parent, group, session, start_ticks = adapter._stat(pid)  # noqa: SLF001
+        except (FileNotFoundError, ProcessLookupError):
+            return "dead"
+        except (OSError, UnicodeError, ValueError):
+            return "unknown"
+        if start_ticks != process_identity.start_time_ticks:
+            return "dead"
+        if group != process_identity.process_group_id or session != process_identity.session_id:
+            return "unknown"
+        return "alive"
+
+    birth_state = birth_identity_state()
+    if birth_state == "unknown":
+        return False
+    exact_alive = birth_state == "alive"
+    if exact_alive:
+        try:
+            observed = adapter._identity(pid, profile)  # noqa: SLF001
+        except (
+            FileNotFoundError,
+            ProcessLookupError,
+            ProcessIdentityMismatch,
+            OSError,
+            UnicodeError,
+            ValueError,
+        ):
+            observed = None
+        if (
+            observed is None
+            or not _coordinator_identity_matches(process_identity, observed)
+            or observed.process_group_id != pid
+            or observed.session_id != pid
+        ):
+            return False
+        try:
+            adapter._signal_exact(process_identity, signal.SIGTERM)  # noqa: SLF001
+        except ProcessLookupError:
+            exact_alive = False
+        except (OSError, ProcessIdentityMismatch):
+            return False
+        for _attempt in range(MAX_COORDINATOR_CLEANUP_ATTEMPTS):
+            birth_state = birth_identity_state()
+            if birth_state == "dead":
+                exact_alive = False
+                break
+            if birth_state == "unknown":
+                return False
+            sleeper(COORDINATOR_CLEANUP_POLL_SECONDS)
+        if exact_alive:
+            try:
+                adapter._signal_exact(  # noqa: SLF001
+                    process_identity,
+                    signal.SIGKILL,
+                )
+            except ProcessLookupError:
+                exact_alive = False
+            except (OSError, ProcessIdentityMismatch):
+                return False
+            if exact_alive:
+                for _attempt in range(20):
+                    birth_state = birth_identity_state()
+                    if birth_state == "dead":
+                        exact_alive = False
+                        break
+                    if birth_state == "unknown":
+                        return False
+                    sleeper(0.05)
+    if exact_alive:
+        return False
+    pid_removed = _remove_exact_runtime_artifact(
+        pid_path,
+        root=config.state_root,
+        noun="failed coordinator PID projection",
+        expected_raw=f"{pid}\n".encode("ascii"),
+        expected_identity=pid_identity,
+    )
+    status_removed = _remove_exact_runtime_artifact(
+        status_path,
+        root=config.state_root,
+        noun="failed coordinator status",
+        expected_identity=status_identity,
+    )
+    return pid_removed and status_removed
+
+
 def _identity_summary(status: Mapping[str, Any]) -> dict[str, Any]:
     identity = status.get("identity")
     if not isinstance(identity, Mapping) or set(identity) != _IDENTITY_FIELDS:
@@ -1253,7 +2352,7 @@ def _validate_qualification_home(config: ProgramConfig, *, home: Path | None = N
         extension_directories[1]: {"extensions"},
         extension_directories[2]: {"v1.5.5"},
         extension_directories[3]: {"linux_arm64"},
-        extension_home: set(config.extension_hashes),
+        extension_home: set(config.qualification_extension_hashes),
     }
     for directory, names in expected_children.items():
         try:
@@ -1266,7 +2365,7 @@ def _validate_qualification_home(config: ProgramConfig, *, home: Path | None = N
             raise ProgramLaunchError(
                 "qualification_home_invalid", "qualification HOME contains undeclared content"
             )
-    for name, expected_sha256 in config.extension_hashes.items():
+    for name, expected_sha256 in config.qualification_extension_hashes.items():
         target = extension_home / name
         try:
             observed = os.lstat(target)
@@ -1422,7 +2521,7 @@ def _build_qualification_home(config: ProgramConfig) -> Path:
             extension_home.parent,
         ):
             parent.chmod(0o700)
-        for name, expected_sha256 in config.extension_hashes.items():
+        for name, expected_sha256 in config.qualification_extension_hashes.items():
             _copy_exact_extension_file(
                 config.extension_directory / name,
                 extension_home / name,
@@ -2188,6 +3287,7 @@ class ProcedureCompilerProgramLauncher:
             "--implement",
             "--duration-seconds",
             str(MAX_SUPERVISOR_DURATION_SECONDS),
+            "--launch-receipt-only",
         ]
         unsigned = {
             "schema": PLAN_SCHEMA,
@@ -2241,96 +3341,155 @@ class ProcedureCompilerProgramLauncher:
                 "coordinator_exists", "coordinator PID projection already exists"
             )
         argv = self.supervisor_plan()["argv"]
-        result = self._run(argv, timeout=180, env=_qualification_environment(self.config))
-        _revalidate_qualification_home_after_child(self.config)
+        launch_started_at_ms = int(time.time() * 1000)
+        runner_timeout = max(
+            180,
+            int(_scheduler_startup_grace_seconds(self.config)) + 30,
+        )
+        result = self._run(
+            argv,
+            timeout=runner_timeout,
+            env=_qualification_environment(self.config),
+        )
         if result.returncode:
             raise ProgramLaunchError(
                 "supervisor_launch_failed", "configured scheduler launch failed"
             )
         plan = _decode_json_object(result.stdout, noun="configured scheduler launch receipt")
-        if set(plan) != _SUPERVISOR_LAUNCH_FIELDS:
-            raise ProgramLaunchError(
-                "supervisor_receipt_invalid",
-                "configured scheduler launch receipt is not closed",
-            )
-        pid = plan.get("coordinator_pid")
-        pid_path = Path(str(plan.get("coordinator_pid_path") or ""))
-        log_path = Path(str(plan.get("coordinator_log") or ""))
-        expected_pid_path = self.config.state_root / "configured-board-master.pid"
-        if (
-            type(pid) is not int
-            or pid < 2
-            or pid_path != expected_pid_path
-            or not log_path.is_absolute()
-            or log_path.parent
-            != _resolved_inside(
-                self.repo_root,
-                _canonical_relative(
-                    _decode_json_object(
-                        self.config.config_path.read_text(encoding="utf-8"), noun="scheduler config"
-                    )["runtime_paths"]["logs"],
-                    field="runtime_paths.logs",
+        (
+            pid,
+            pid_path,
+            log_path,
+            status_path,
+            profile,
+            process_identity,
+            lane_status_paths,
+        ) = _parse_coordinator_launch_receipt(
+            plan,
+            config=self.config,
+            head=head,
+            tree=tree,
+        )
+        try:
+            try:
+                _revalidate_qualification_home_after_child(self.config)
+                pid_raw, _pid_evidence = _stable_runtime_bytes(
+                    pid_path,
+                    root=self.config.state_root,
+                    noun="coordinator PID projection",
+                )
+                _validate_runtime_log(
+                    log_path,
+                    root=_scheduler_launch_bindings(self.config)["log_root"],
+                )
+            except ProgramLaunchError as exc:
+                raise ProgramLaunchError(
+                    "coordinator_pid_forged",
+                    "coordinator launch projections are unsafe",
+                ) from exc
+            if pid_raw != f"{pid}\n".encode("ascii"):
+                raise ProgramLaunchError(
+                    "coordinator_pid_forged",
+                    "coordinator PID projection is foreign",
+                )
+            status: dict[str, Any] | None = None
+            last_readiness_error = "coordinator readiness was not published"
+            for attempt in range(MAX_SUPERVISOR_READINESS_ATTEMPTS):
+                try:
+                    status = _observe_coordinator_status(
+                        config=self.config,
+                        head=head,
+                        tree=tree,
+                        launch_started_at_ms=launch_started_at_ms,
+                        plan=plan,
+                        pid=pid,
+                        status_path=status_path,
+                        profile=profile,
+                        process_identity=process_identity,
+                        lane_status_paths=lane_status_paths,
+                    )
+                    break
+                except ProgramLaunchError as exc:
+                    if exc.code == "coordinator_identity_mismatch":
+                        raise
+                    if exc.code not in {
+                        "artifact_unavailable",
+                        "artifact_changed",
+                        "json_invalid",
+                        "coordinator_not_ready",
+                    }:
+                        raise
+                    last_readiness_error = f"{exc.code}: {exc}"
+                    if attempt + 1 < MAX_SUPERVISOR_READINESS_ATTEMPTS:
+                        self.sleeper(SUPERVISOR_READINESS_POLL_SECONDS)
+            if status is None:
+                raise ProgramLaunchError(
+                    "coordinator_not_ready", last_readiness_error
+                )
+            ending_head, ending_tree = self.repository_identity(require_clean=True)
+            if (ending_head, ending_tree) != (head, tree):
+                raise ProgramLaunchError(
+                    "repository_mismatch",
+                    "repository identity changed during launch admission",
+                )
+            probe = self._probe(tree=tree)
+            if probe.get("blocked_task_ids") != []:
+                raise ProgramLaunchError(
+                    "supervisor_blocked", "control state contains blocked tasks"
+                )
+            unsigned = {
+                "schema": SUPERVISOR_START_RECEIPT_SCHEMA,
+                "program": PROGRAM,
+                "repository_commit": head,
+                "repository_tree": tree,
+                "config_sha256": self.config.config_sha256,
+                "owner_status_receipt_cid": owner.get("receipt_cid"),
+                "owner_start_receipt_cid": (
+                    None if supplied is None else supplied.get("receipt_cid")
                 ),
-                field="runtime_paths.logs",
-            )
-        ):
-            raise ProgramLaunchError(
-                "supervisor_receipt_invalid", "configured scheduler launch identity is invalid"
-            )
-        try:
-            info = os.lstat(pid_path)
-            log_info = os.lstat(log_path)
-            pid_raw = pid_path.read_bytes()
-            os.kill(pid, 0)
-        except (OSError, ValueError) as exc:
-            raise ProgramLaunchError("coordinator_not_live", "coordinator PID is not live") from exc
-        if (
-            stat.S_ISLNK(info.st_mode)
-            or not stat.S_ISREG(info.st_mode)
-            or info.st_uid != os.geteuid()
-            or stat.S_IMODE(info.st_mode) != 0o600
-            or info.st_nlink != 1
-            or pid_raw != f"{pid}\n".encode("ascii")
-            or stat.S_ISLNK(log_info.st_mode)
-            or not stat.S_ISREG(log_info.st_mode)
-            or log_info.st_uid != os.geteuid()
-            or stat.S_IMODE(log_info.st_mode) != 0o600
-            or log_info.st_nlink != 1
-        ):
-            raise ProgramLaunchError(
-                "coordinator_pid_forged", "coordinator PID projection is unsafe"
-            )
-        self.sleeper(1.0)
-        try:
-            os.kill(pid, 0)
-        except OSError as exc:
-            raise ProgramLaunchError(
-                "coordinator_early_exit", "coordinator exited during launch admission"
-            ) from exc
-        probe = self._probe(tree=tree)
-        if probe.get("blocked_task_ids") != []:
-            raise ProgramLaunchError("supervisor_blocked", "control state contains blocked tasks")
-        unsigned = {
-            "schema": SUPERVISOR_START_RECEIPT_SCHEMA,
-            "program": PROGRAM,
-            "repository_commit": head,
-            "repository_tree": tree,
-            "config_sha256": self.config.config_sha256,
-            "owner_status_receipt_cid": owner.get("receipt_cid"),
-            "owner_start_receipt_cid": (None if supplied is None else supplied.get("receipt_cid")),
-            "owner_container_id": owner.get("container_id"),
-            "coordinator_pid": pid,
-            "coordinator_pid_path": str(pid_path),
-            "coordinator_log": str(log_path),
-            "scheduler_argv": argv,
-            "remote_probe": probe,
-            "implement": True,
-            "detached": True,
-            "started_at": self.clock(),
-        }
-        receipt = {**unsigned, "receipt_cid": content_identity(unsigned)}
-        _persist_receipt(self.config, receipt)
-        return receipt
+                "owner_container_id": owner.get("container_id"),
+                "coordinator_pid": pid,
+                "coordinator_pid_path": str(pid_path),
+                "coordinator_log": str(log_path),
+                "coordinator_launch_receipt_cid": plan.get("receipt_cid"),
+                "coordinator_launch_session_id": plan.get("launch_session_id"),
+                "coordinator_status_path": str(status_path),
+                "coordinator_status_cid": status.get("receipt_cid"),
+                "coordinator_profile_id": profile.profile_id,
+                "coordinator_process_identity_id": process_identity.identity_id,
+                "scheduler_argv": argv,
+                "remote_probe": probe,
+                "implement": True,
+                "detached": True,
+                "started_at": self.clock(),
+            }
+            receipt = {**unsigned, "receipt_cid": content_identity(unsigned)}
+            _persist_receipt(self.config, receipt)
+            return receipt
+        except BaseException as exc:
+            try:
+                cleaned = _cleanup_failed_coordinator_launch(
+                    config=self.config,
+                    pid=pid,
+                    pid_path=pid_path,
+                    status_path=status_path,
+                    status_cid=str(plan.get("coordinator_status_cid") or ""),
+                    profile=profile,
+                    process_identity=process_identity,
+                    sleeper=self.sleeper,
+                )
+            except BaseException as cleanup_exc:
+                raise ProgramLaunchError(
+                    "coordinator_cleanup_failed",
+                    "failed launch cleanup could not be proved",
+                ) from cleanup_exc
+            if not cleaned:
+                code = exc.code if isinstance(exc, ProgramLaunchError) else type(exc).__name__
+                raise ProgramLaunchError(
+                    "coordinator_cleanup_failed",
+                    f"post-receipt admission failed ({code}) and exact cleanup was not proved",
+                ) from exc
+            raise
 
     def start(self) -> dict[str, Any]:
         owner = self.owner_start()

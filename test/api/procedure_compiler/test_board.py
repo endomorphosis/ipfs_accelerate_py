@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATOR = ROOT / "scripts/validate_agent_supervisor_procedure_compiler_board.py"
@@ -93,3 +96,102 @@ def test_ducklake_is_explicitly_non_authoritative() -> None:
     assert config["database_program"]["task_source_kind"] == "duckdb"
     assert config["ducklake_projection_program"]["authority"] is False
     assert config["ducklake_projection_program"]["scheduling_prerequisite"] is False
+    assert config["ducklake_projection_program"]["extension_files_sha256"] == {
+        "ducklake.duckdb_extension": (
+            "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+        ),
+        "ducklake.duckdb_extension.info": (
+            "14c3385450437fee5570ff21b53de687536a75b4590e33f351887df194ef9393"
+        ),
+    }
+    assert config["ducklake_projection_program"]["extension_install_policy"] == "forbidden"
+    assert config["ducklake_projection_program"]["network_access"] is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "value"),
+    (
+        ("authority", True),
+        ("scheduling_prerequisite", True),
+        ("extension_install_policy", "allowed"),
+        ("network_access", True),
+        ("unknown_normative_field", False),
+    ),
+)
+def test_board_validator_rejects_unsafe_ducklake_projection_config(
+    mutation: str,
+    value: object,
+) -> None:
+    module = _validator_module()
+    config = json.loads(
+        (
+            ROOT / "config/agent_supervisor_proof_carrying_procedure_compiler_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    corrupted = deepcopy(config)
+    corrupted["ducklake_projection_program"][mutation] = value
+    assert module._ducklake_projection_is_valid(
+        corrupted["ducklake_projection_program"],
+        owner_extension_hashes=corrupted["quack_owner_isolation"][
+            "extension_files_sha256"
+        ],
+    ) is False
+
+
+def test_board_validator_rejects_ducklake_extension_digest_drift() -> None:
+    module = _validator_module()
+    config = json.loads(
+        (
+            ROOT / "config/agent_supervisor_proof_carrying_procedure_compiler_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    config["ducklake_projection_program"]["extension_files_sha256"][
+        "ducklake.duckdb_extension"
+    ] = "0" * 64
+    assert module._ducklake_projection_is_valid(
+        config["ducklake_projection_program"],
+        owner_extension_hashes=config["quack_owner_isolation"]["extension_files_sha256"],
+    ) is False
+
+
+@pytest.mark.parametrize(
+    ("catalog_path", "data_path"),
+    (
+        (
+            "docs/redteam.ducklake",
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history/data",
+        ),
+        (
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake",
+            ".",
+        ),
+        (
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake",
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake",
+        ),
+        (
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history",
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history/data",
+        ),
+        (
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history/catalog.ducklake",
+            "state/agent_supervisor_proof_carrying_procedure_compiler/history",
+        ),
+    ),
+)
+def test_board_validator_rejects_non_exact_or_overlapping_ducklake_paths(
+    catalog_path: str, data_path: str
+) -> None:
+    module = _validator_module()
+    config = json.loads(
+        (
+            ROOT / "config/agent_supervisor_proof_carrying_procedure_compiler_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    config["ducklake_projection_program"]["catalog_path"] = catalog_path
+    config["ducklake_projection_program"]["data_path"] = data_path
+
+    assert module._ducklake_projection_is_valid(
+        config["ducklake_projection_program"],
+        owner_extension_hashes=config["quack_owner_isolation"]["extension_files_sha256"],
+    ) is False
