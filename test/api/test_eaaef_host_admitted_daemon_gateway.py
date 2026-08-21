@@ -156,3 +156,40 @@ def test_owner_mutation_reads_owner_done_receipt(tmp_path: Path) -> None:
     )
     worker.join(timeout=2.0)
     assert updated == 1
+
+
+def test_ensure_attempt_returns_the_attempt_record() -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
+        _Execution,
+    )
+
+    gateway = SimpleNamespace(
+        capability=SimpleNamespace(content_id="sha256:" + "a" * 64),
+        _attempts={},
+    )
+    execution = _Execution(gateway)
+    stored = execution.ensure_attempt(
+        attempt={
+            "attempt_id": "attempt:1",
+            "claim_id": "claim:1",
+            "task_cid": "cid:1",
+            "task_alias": "EAAEF-010",
+            "attempt_number": 1,
+            "owner_session_id": "owner",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "lease_id": "lease:1",
+            "committed_phase": "claimed",
+            "status": "running",
+            "started_at_ms": 1,
+            "revision": 1,
+            "body": {},
+        },
+        claimed_phase={"phase": "claimed", "revision": 1},
+    )
+    assert stored["attempt_id"] == "attempt:1"
+    assert execution.get_attempt("attempt:1")["attempt_id"] == "attempt:1"
+    running = execution.list_running_attempts(owner_session_id="owner")
+    assert len(running) == 1

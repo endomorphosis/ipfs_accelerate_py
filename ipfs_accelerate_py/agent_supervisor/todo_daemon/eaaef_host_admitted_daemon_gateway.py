@@ -452,18 +452,67 @@ class _Execution(_Component):
         return MappingProxyType(dict(kwargs))
 
     def ensure_attempt(self, **kwargs: Any) -> Any:
-        return MappingProxyType(dict(kwargs))
+        raw = kwargs.get("attempt")
+        if not isinstance(raw, Mapping):
+            raise QuackDaemonGatewayError("ensure_attempt requires an attempt object")
+        payload = dict(raw)
+        attempt_id = str(payload.get("attempt_id") or "")
+        if not attempt_id:
+            raise QuackDaemonGatewayError("ensure_attempt lacks attempt_id")
+        existing = self._gateway._attempts.get(attempt_id)
+        if existing is not None:
+            return dict(existing)
+        claimed = kwargs.get("claimed_phase")
+        if isinstance(claimed, Mapping):
+            payload["committed_phase"] = str(
+                claimed.get("phase") or payload.get("committed_phase") or ""
+            )
+            payload["revision"] = int(
+                claimed.get("revision") or payload.get("revision") or 1
+            )
+        self._gateway._attempts[attempt_id] = payload
+        return dict(payload)
 
     def get_attempt(self, attempt_id: str) -> Any:
-        del attempt_id
-        return None
+        stored = self._gateway._attempts.get(str(attempt_id))
+        return None if stored is None else dict(stored)
 
     def list_running_attempts(self, **kwargs: Any) -> Any:
-        del kwargs
-        return ()
+        owner = str(kwargs.get("owner_session_id") or "")
+        running: list[dict[str, Any]] = []
+        for payload in self._gateway._attempts.values():
+            if str(payload.get("status") or "") != "running":
+                continue
+            if owner and str(payload.get("owner_session_id") or "") != owner:
+                continue
+            running.append(dict(payload))
+        return running
 
     def commit_phase(self, **kwargs: Any) -> Any:
-        return MappingProxyType(dict(kwargs))
+        attempt_id = str(kwargs.get("attempt_id") or "")
+        stored = self._gateway._attempts.get(attempt_id)
+        if stored is None:
+            raise QuackDaemonGatewayError("commit_phase for unknown attempt")
+        expected_rev = int(kwargs.get("expected_revision") or 0)
+        if int(stored.get("revision") or 0) != expected_rev:
+            return None
+        updated = dict(stored)
+        updated["committed_phase"] = str(
+            kwargs.get("committed_phase") or updated.get("committed_phase") or ""
+        )
+        updated["status"] = str(kwargs.get("status") or updated.get("status") or "")
+        updated["revision"] = int(
+            kwargs.get("revision") or int(updated.get("revision") or 0) + 1
+        )
+        if "finished_at_ms" in kwargs:
+            updated["finished_at_ms"] = kwargs.get("finished_at_ms")
+        body = kwargs.get("body")
+        if isinstance(body, Mapping):
+            merged = dict(updated.get("body") or {})
+            merged.update(dict(body))
+            updated["body"] = merged
+        self._gateway._attempts[attempt_id] = updated
+        return dict(updated)
 
     def commit_reconciled_attempt(self, **kwargs: Any) -> Any:
         return MappingProxyType(dict(kwargs))
@@ -534,6 +583,7 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
         self._owner_session_id = owner_session_id
         self._client = client
         self._mutation_dir = Path(mutation_dir)
+        self._attempts: dict[str, dict[str, Any]] = {}
         self._attached = False
         self._bound_daemon: dict[str, Any] = {}
         self.task_source = _TaskSource(self)
