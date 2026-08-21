@@ -14279,6 +14279,7 @@ class PortalImplementationSupervisor:
             }
 
         state_paths = {self.config.state_path}
+        snapshot_paths: set[Path] = set()
         namespace_root = self.config.state_path.parent.parent
         try:
             sibling_dirs = [
@@ -14292,6 +14293,17 @@ class PortalImplementationSupervisor:
         for state_dir in sibling_dirs:
             try:
                 state_paths.update(state_dir.glob("*task_state.json"))
+                state_paths.update(
+                    state_dir.glob(
+                        "*_database_portal_attempts/*/portal-task-state.json"
+                    )
+                )
+                snapshot_paths.update(
+                    state_dir.glob(
+                        "*_database_portal_attempts/*/"
+                        f"{IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME}"
+                    )
+                )
             except OSError:
                 continue
 
@@ -14311,9 +14323,11 @@ class PortalImplementationSupervisor:
             )
 
         for state_dir in sibling_dirs:
-            snapshot_path = (
+            snapshot_paths.add(
                 state_dir / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
             )
+
+        for snapshot_path in sorted(snapshot_paths):
             payload = load_json_dict(snapshot_path)
             if not payload:
                 continue
