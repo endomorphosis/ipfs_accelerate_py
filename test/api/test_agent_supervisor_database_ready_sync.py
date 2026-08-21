@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
@@ -155,6 +156,10 @@ def test_cross_lane_completion_is_projected_before_successor_claim(
             "projection_root"
         ]
         assert first_projection["counts"]["logical_completions"] == 1
+        ready_frontier_revision = first_projection["logical_completions"][0][
+            "body"
+        ]["ready_frontier_revision"]
+        assert ready_frontier_revision > 0
         assert first_projection["logical_completions"] == [
             {
                 "task_cid": "task:cid:pcar-000",
@@ -162,9 +167,7 @@ def test_cross_lane_completion_is_projected_before_successor_claim(
                 "body": {
                     "authority": "DatabaseTaskSource@1",
                     "projection": "canonical_dependency_completion",
-                    "source_status": "completed",
-                    "task_alias": "PCAR-000",
-                    "task_revision": completed.revision,
+                    "ready_frontier_revision": ready_frontier_revision,
                 },
             }
         ]
@@ -215,11 +218,91 @@ def test_skipped_canonical_prerequisite_satisfies_lane_local_dependency(
         ]
         projection = successor_lane.coordinator.coordination_registry_projection()
         assert projection["logical_completions"][0]["status"] == "succeeded"
-        assert projection["logical_completions"][0]["body"][
-            "source_status"
-        ] == "skipped"
+        assert projection["logical_completions"][0]["body"]["authority"] == (
+            "DatabaseTaskSource@1"
+        )
         attempt = successor_lane.claim_next()
         assert attempt is not None
         assert attempt.task_cid == "task:cid:pcar-002"
     finally:
         successor_lane.close()
+
+
+def test_ready_frontier_accepts_1001_dependencies_without_point_reads(
+    tmp_path: Path,
+) -> None:
+    """The canonical 1,024/task bound is not narrowed to the 1,000 page bound."""
+
+    dependencies = tuple(f"task:cid:dep-{index:04d}" for index in range(1_001))
+    ready_task = SimpleNamespace(
+        task_cid="task:cid:wide-successor",
+        task_alias="PCAR-WIDE",
+        status="ready",
+        revision=7,
+        dependencies=dependencies,
+        body={},
+    )
+
+    class TaskSource:
+        point_reads = 0
+
+        def ready_tasks(self, **_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(tasks=(ready_task,), revision=17)
+
+        def get(self, _task_cid: str) -> None:
+            self.point_reads += 1
+            pytest.fail("ready-snapshot reconciliation performed a point read")
+
+    class Coordinator:
+        def __init__(self) -> None:
+            self.registered: list[str] = []
+            self.completions: list[tuple[str, dict[str, object]]] = []
+
+        def coordination_registry_projection(self) -> dict[str, object]:
+            return {"tasks": [], "logical_completions": []}
+
+        def register_task(self, *, task_cid: str, **_kwargs: object) -> None:
+            self.registered.append(task_cid)
+
+        def mark_task_complete(
+            self,
+            task_cid: str,
+            *,
+            body: dict[str, object],
+            **_kwargs: object,
+        ) -> None:
+            self.completions.append((task_cid, dict(body)))
+
+    task_source = TaskSource()
+    coordinator = Coordinator()
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "wide-control.duckdb",
+        coordination_path=tmp_path / "wide-coordination.duckdb",
+        execution_path=tmp_path / "wide-execution.duckdb",
+        owner_session_id="session:wide-frontier",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=task_source,
+        coordinator=coordinator,
+        install_schema=False,
+        require_real_execution=True,
+    )
+    try:
+        assert daemon.sync_ready_tasks_into_coordination() == [
+            "task:cid:wide-successor"
+        ]
+    finally:
+        daemon.close()
+
+    assert task_source.point_reads == 0
+    assert coordinator.registered[:-1] == sorted(dependencies)
+    assert coordinator.registered[-1] == "task:cid:wide-successor"
+    assert len(coordinator.completions) == 1_001
+    assert all(
+        body == {
+            "authority": "DatabaseTaskSource@1",
+            "projection": "canonical_dependency_completion",
+            "ready_frontier_revision": 17,
+        }
+        for _task_cid, body in coordinator.completions
+    )

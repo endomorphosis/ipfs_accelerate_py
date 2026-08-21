@@ -67612,9 +67612,6 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
-_CANONICAL_DEPENDENCY_SATISFIED_STATUSES = frozenset(
-    {"completed", "complete", "done", "skipped"}
-)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -68901,46 +68898,43 @@ class DatabaseImplementationDaemon:
         the child.  The sidecar completion is scheduling evidence only; it
         never changes canonical task state.
 
-        Reconciliation is bounded by the ready-task query limit and is
-        idempotent: an already-successful local completion is not rewritten.
-        If canonical state changes between the ready query and dependency
-        reads, the affected child is omitted from this claim frontier and the
-        later pass can retry from a fresh authoritative snapshot.
+        Reconciliation is bounded by the ready-task snapshot and the canonical
+        per-task dependency limit.  It is idempotent: an already-successful
+        local completion is not rewritten.  The snapshot proves dependency
+        satisfaction for local scheduling only; ``claim_next`` re-reads the
+        canonical ready frontier after obtaining its local lease and before
+        attempting the shared status CAS.
         """
+
+        from ..task_sources.intent_repository import MAX_DEPENDENCIES
 
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
         ready_tasks = tuple(ready.tasks)
-        dependency_cids = tuple(
-            sorted(
-                {
-                    str(dependency_cid)
-                    for task in ready_tasks
-                    for dependency_cid in task.dependencies
-                    if str(dependency_cid)
-                }
+        dependency_cid_set: set[str] = set()
+        for task in ready_tasks:
+            dependencies = tuple(
+                str(dependency_cid)
+                for dependency_cid in task.dependencies
+                if str(dependency_cid)
             )
-        )
-        if len(dependency_cids) > TASK_SOURCE_QUERY_LIMIT:
-            raise DatabaseImplementationAuthorityError(
-                "canonical ready frontier dependency population exceeds "
-                "the bounded coordination reconciliation limit"
-            )
+            if len(dependencies) > MAX_DEPENDENCIES:
+                raise DatabaseImplementationAuthorityError(
+                    "canonical ready task dependency population exceeds "
+                    "the intent-repository contract bound"
+                )
+            dependency_cid_set.update(dependencies)
+        dependency_cids = tuple(sorted(dependency_cid_set))
+        ready_frontier_revision = int(getattr(ready, "revision", 0) or 0)
 
-        invalid_dependency_cids: set[str] = set()
         local_task_cids: set[str] = set()
         local_completion_statuses: dict[str, str] = {}
         if dependency_cids:
-            get_task = getattr(self.task_source, "get", None)
             projection_fn = getattr(
                 self.coordinator,
                 "coordination_registry_projection",
                 None,
             )
             mark_complete = getattr(self.coordinator, "mark_task_complete", None)
-            if not callable(get_task):
-                raise DatabaseImplementationAuthorityError(
-                    "database task authority cannot resolve ready-task dependencies"
-                )
             if not callable(projection_fn) or not callable(mark_complete):
                 raise DatabaseImplementationAuthorityError(
                     "coordinator cannot reconcile canonical dependency completions"
@@ -68989,31 +68983,15 @@ class DatabaseImplementationDaemon:
                 local_completion_statuses[task_cid] = status
 
             for dependency_cid in dependency_cids:
-                dependency = get_task(dependency_cid)
-                dependency_status = str(
-                    getattr(dependency, "status", "") or ""
-                ).strip().lower()
-                if (
-                    dependency is None
-                    or dependency_status
-                    not in _CANONICAL_DEPENDENCY_SATISFIED_STATUSES
-                ):
-                    # A concurrent plan/status transition invalidated the
-                    # earlier ready read.  Never turn stale readiness into a
-                    # local success projection.
-                    invalid_dependency_cids.add(dependency_cid)
-                    continue
                 if dependency_cid not in local_task_cids:
                     self.coordinator.register_task(
-                        task_cid=dependency.task_cid,
-                        task_id=dependency.task_alias or dependency.task_cid,
-                        dependency_task_cids=tuple(
-                            str(item) for item in dependency.dependencies
-                        ),
+                        task_cid=dependency_cid,
+                        task_id=dependency_cid,
+                        dependency_task_cids=(),
                         body={
-                            "task_alias": dependency.task_alias,
-                            "status": dependency.status,
-                            "priority": getattr(dependency, "priority", ""),
+                            "authority": "DatabaseTaskSource@1",
+                            "projection": "canonical_ready_dependency",
+                            "ready_frontier_revision": ready_frontier_revision,
                         },
                     )
                     local_task_cids.add(dependency_cid)
@@ -69024,9 +69002,7 @@ class DatabaseImplementationDaemon:
                         body={
                             "authority": "DatabaseTaskSource@1",
                             "projection": "canonical_dependency_completion",
-                            "source_status": dependency_status,
-                            "task_alias": dependency.task_alias,
-                            "task_revision": int(dependency.revision),
+                            "ready_frontier_revision": ready_frontier_revision,
                         },
                     )
                     local_completion_statuses[dependency_cid] = "succeeded"
@@ -69035,11 +69011,6 @@ class DatabaseImplementationDaemon:
         for task in ready_tasks:
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
-                continue
-            if any(
-                str(dependency_cid) in invalid_dependency_cids
-                for dependency_cid in task.dependencies
-            ):
                 continue
             self.coordinator.register_task(
                 task_cid=task.task_cid,
