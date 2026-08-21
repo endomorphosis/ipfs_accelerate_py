@@ -29,7 +29,18 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final
 
-from ..runtime.event_log import append_jsonl_event
+try:  # pragma: no cover - exercised by fail-closed platform checks
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - Windows has no fcntl
+    _fcntl = None
+
+# Probe the real libc wrappers once. Tests may replace os.unlink later
+# without changing whether this platform can unlink through a dir-fd.
+_DIR_FD_OPEN = os.open in getattr(os, "supports_dir_fd", ())
+_DIR_FD_STAT = os.stat in getattr(os, "supports_dir_fd", ())
+_DIR_FD_UNLINK = os.unlink in getattr(os, "supports_dir_fd", ())
+
+from ..runtime.event_log import append_jsonl_event, utc_now
 from ..validation.validation_commands import validation_command_repository_root
 
 DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutionBridge@1"
@@ -164,6 +175,437 @@ class DatabasePortalAttemptPaths:
 
 
 PortalDaemonFactory = Callable[[DatabasePortalAttemptPaths, str], Any]
+
+
+class _ProtectedPathRecoveryAttemptCapability:
+    """Bind recovery I/O to no-follow descriptors for one attempt directory."""
+
+    def __init__(
+        self,
+        paths: DatabasePortalAttemptPaths,
+        *,
+        incident_present: bool,
+    ) -> None:
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory_flag = getattr(os, "O_DIRECTORY", 0)
+        cloexec = getattr(os, "O_CLOEXEC", 0)
+        if (
+            _fcntl is None
+            or not nofollow
+            or not directory_flag
+            or not _DIR_FD_OPEN
+            or not _DIR_FD_STAT
+            or not _DIR_FD_UNLINK
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery no-follow capability is unavailable"
+            )
+        self._root_path = paths.root
+        self._root_fd = -1
+        self._event_fd = -1
+        self._event_lock_fd = -1
+        self._closed = False
+        self._expected: dict[str, tuple[int, int, int, int] | None] = {}
+        self._fence_fds: dict[str, int] = {}
+        self._fence_digests: dict[str, str] = {}
+        self._event_digest = ""
+        try:
+            self._root_fd = os.open(
+                paths.root,
+                os.O_RDONLY | directory_flag | nofollow | cloexec,
+            )
+            root_metadata = os.fstat(self._root_fd)
+            if not stat.S_ISDIR(root_metadata.st_mode):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery attempt capability is not a directory"
+                )
+            self._root_identity = (
+                int(root_metadata.st_dev),
+                int(root_metadata.st_ino),
+                int(stat.S_IFMT(root_metadata.st_mode)),
+                int(root_metadata.st_nlink),
+            )
+            self._event_fd = os.open(
+                paths.events.name,
+                os.O_RDWR | os.O_APPEND | nofollow | cloexec,
+                dir_fd=self._root_fd,
+            )
+            event_metadata = os.fstat(self._event_fd)
+            if (
+                not stat.S_ISREG(event_metadata.st_mode)
+                or event_metadata.st_nlink != 1
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event capability is not a private file"
+                )
+            self._expected[paths.events.name] = self._identity(event_metadata)
+            self._event_lock_fd = os.open(
+                f".{paths.events.name}.lock",
+                os.O_RDWR | os.O_APPEND | os.O_CREAT | nofollow | cloexec,
+                0o600,
+                dir_fd=self._root_fd,
+            )
+            lock_metadata = os.fstat(self._event_lock_fd)
+            if (
+                not stat.S_ISREG(lock_metadata.st_mode)
+                or lock_metadata.st_nlink != 1
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event lock is not a private file"
+                )
+            self._event_digest = _sha256_bytes(
+                self._read_descriptor(
+                    self._event_fd,
+                    maximum=_MAX_DATABASE_PORTAL_EVENT_BYTES,
+                )
+            )
+            self._bind_entry(
+                _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME,
+                required=True,
+            )
+            self._bind_entry(
+                _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+                required=incident_present,
+            )
+            if not self.verify():
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery attempt capability changed during binding"
+                )
+        except OSError as exc:
+            self.close()
+            raise DatabasePortalBridgeError(
+                "protected-path recovery no-follow capability could not be bound"
+            ) from exc
+        except BaseException:
+            self.close()
+            raise
+
+    @staticmethod
+    def _identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+        return (
+            int(metadata.st_dev),
+            int(metadata.st_ino),
+            int(stat.S_IFMT(metadata.st_mode)),
+            int(metadata.st_nlink),
+        )
+
+    def _bind_entry(self, name: str, *, required: bool) -> None:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(
+            os, "O_CLOEXEC", 0
+        )
+        try:
+            descriptor = os.open(name, flags, dir_fd=self._root_fd)
+        except FileNotFoundError:
+            if required:
+                raise DatabasePortalBridgeError(
+                    f"protected-path recovery artifact {name!r} disappeared"
+                )
+            self._expected[name] = None
+            return
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise DatabasePortalBridgeError(
+                    f"protected-path recovery artifact {name!r} is not private"
+                )
+            self._expected[name] = self._identity(metadata)
+            self._fence_fds[name] = descriptor
+            self._fence_digests[name] = _sha256_bytes(
+                self._read_descriptor(descriptor, maximum=1024 * 1024)
+            )
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    @staticmethod
+    def _read_descriptor(descriptor: int, *, maximum: int) -> bytes:
+        metadata = os.fstat(descriptor)
+        if metadata.st_size < 0 or metadata.st_size > maximum:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery artifact exceeds its read bound"
+            )
+        payload = os.pread(descriptor, metadata.st_size, 0)
+        if len(payload) != metadata.st_size:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery artifact changed during read"
+            )
+        return payload
+
+    def verify(self) -> bool:
+        """Return whether every bound name still denotes its admitted inode."""
+
+        if self._closed or self._root_fd < 0:
+            return False
+        try:
+            if self._identity(os.fstat(self._root_fd)) != self._root_identity:
+                return False
+            for name, expected in self._expected.items():
+                try:
+                    observed = os.stat(
+                        name,
+                        dir_fd=self._root_fd,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    if expected is not None:
+                        return False
+                    continue
+                if expected is None or self._identity(observed) != expected:
+                    return False
+                descriptor = self._fence_fds.get(name)
+                if descriptor is not None and (
+                    self._identity(os.fstat(descriptor)) != expected
+                    or _sha256_bytes(
+                        self._read_descriptor(descriptor, maximum=1024 * 1024)
+                    )
+                    != self._fence_digests.get(name)
+                ):
+                    return False
+            return True
+        except (DatabasePortalBridgeError, OSError):
+            return False
+
+    def append_event(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Append one canonical event through the preopened no-follow file."""
+
+        if not self.verify() or self._event_fd < 0 or _fcntl is None:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery attempt capability is no longer current"
+            )
+        if self._event_lock_fd < 0:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery event lock is unavailable"
+            )
+        _fcntl.flock(self._event_lock_fd, _fcntl.LOCK_EX)
+        try:
+            if not self.verify():
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery attempt capability changed before append"
+                )
+            metadata = os.fstat(self._event_fd)
+            if metadata.st_size < 1 or metadata.st_size > _MAX_DATABASE_PORTAL_EVENT_BYTES:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event stream is empty or oversized"
+                )
+            encoded_stream = os.pread(self._event_fd, metadata.st_size, 0)
+            if len(encoded_stream) != metadata.st_size or not encoded_stream.endswith(
+                b"\n"
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event stream is not durably framed"
+                )
+            if _sha256_bytes(encoded_stream) != self._event_digest:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event stream changed after binding"
+                )
+            try:
+                events = [
+                    json.loads(line)
+                    for line in encoded_stream.splitlines()
+                    if line.strip()
+                ]
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event stream is malformed"
+                ) from exc
+            if not events or not isinstance(events[-1], Mapping):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event stream has no predecessor"
+                )
+            expected_previous = ""
+            expected_sequence = 1
+            expected_stream = ""
+            expected_snapshot = ""
+            for observed_event in events:
+                if not isinstance(observed_event, Mapping):
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery event stream contains a non-object"
+                    )
+                observed_body = dict(observed_event)
+                observed_event_id = str(observed_body.pop("event_id", "") or "")
+                derived_event_id = _sha256_bytes(
+                    json.dumps(
+                        observed_body,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("utf-8")
+                )
+                observed_stream = str(observed_event.get("stream_id") or "")
+                observed_snapshot = str(observed_event.get("snapshot_id") or "")
+                if not expected_stream:
+                    expected_stream = observed_stream
+                    expected_snapshot = observed_snapshot
+                if (
+                    observed_event_id != derived_event_id
+                    or observed_event.get("sequence") != expected_sequence
+                    or str(observed_event.get("previous_event_id") or "")
+                    != expected_previous
+                    or observed_stream != expected_stream
+                    or observed_snapshot != expected_snapshot
+                ):
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery event chain is invalid"
+                    )
+                expected_previous = observed_event_id
+                expected_sequence += 1
+            predecessor = events[-1]
+            sequence = predecessor.get("sequence")
+            stream_id = str(predecessor.get("stream_id") or "")
+            snapshot_id = str(predecessor.get("snapshot_id") or "")
+            previous_event_id = str(predecessor.get("event_id") or "")
+            if (
+                type(sequence) is not int
+                or sequence < 1
+                or not stream_id
+                or not snapshot_id
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", previous_event_id)
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery predecessor event is invalid"
+                )
+            supplied = dict(payload)
+            for reserved in (
+                "stream_id",
+                "snapshot_id",
+                "sequence",
+                "position",
+                "event_id",
+                "previous_event_id",
+            ):
+                supplied.pop(reserved, None)
+            timestamp = supplied.pop("timestamp", None) or utc_now()
+            supplied.pop("type", None)
+            matching = [
+                event
+                for event in events
+                if isinstance(event, Mapping)
+                and event.get("type") == event_type
+                and all(event.get(key) == value for key, value in supplied.items())
+            ]
+            if len(matching) > 1:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event is duplicated"
+                )
+            if matching:
+                return dict(matching[0])
+            event = {
+                "type": str(event_type),
+                "timestamp": timestamp,
+                **supplied,
+                "stream_id": stream_id,
+                "snapshot_id": snapshot_id,
+                "sequence": sequence + 1,
+                "previous_event_id": previous_event_id,
+            }
+            event["event_id"] = _sha256_bytes(
+                json.dumps(
+                    event,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            )
+            line = json.dumps(
+                event,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8") + b"\n"
+            if metadata.st_size + len(line) > _MAX_DATABASE_PORTAL_EVENT_BYTES:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery event stream exceeds its bound"
+                )
+            view = memoryview(line)
+            while view:
+                written = os.write(self._event_fd, view)
+                if written < 1:
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery event append made no progress"
+                    )
+                view = view[written:]
+            os.fsync(self._event_fd)
+            self._event_digest = _sha256_bytes(encoded_stream + line)
+            return event
+        finally:
+            _fcntl.flock(self._event_lock_fd, _fcntl.LOCK_UN)
+
+    def clear_fences(self) -> bool:
+        """Unlink only the exact bound fence names through the attempt dir-fd."""
+
+        if not self.verify():
+            return False
+        try:
+            for name in (
+                _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+                _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME,
+            ):
+                expected = self._expected.get(name)
+                if expected is None:
+                    continue
+                observed = os.stat(
+                    name,
+                    dir_fd=self._root_fd,
+                    follow_symlinks=False,
+                )
+                if self._identity(observed) != expected:
+                    return False
+            # Validate the complete incident+active population before the
+            # first unlink. The enclosing checkout-maintenance lease is the
+            # cooperative writer exclusion boundary for these names.
+            if not self.verify():
+                return False
+            for name in (
+                _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+                _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME,
+            ):
+                expected = self._expected.get(name)
+                if expected is None:
+                    continue
+                os.unlink(name, dir_fd=self._root_fd)
+                self._expected[name] = None
+                descriptor = self._fence_fds.pop(name, -1)
+                self._fence_digests.pop(name, None)
+                if descriptor >= 0:
+                    os.close(descriptor)
+            os.fsync(self._root_fd)
+        except OSError:
+            return False
+        return self.verify()
+
+    def recovery_io(self) -> Mapping[str, Callable[..., Any]]:
+        return {
+            "verify": self.verify,
+            "append_event": self.append_event,
+            "clear_fences": self.clear_fences,
+        }
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        descriptors = [
+            *self._fence_fds.values(),
+            self._event_lock_fd,
+            self._event_fd,
+            self._root_fd,
+        ]
+        self._fence_fds.clear()
+        self._fence_digests.clear()
+        for descriptor in descriptors:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    os.close(descriptor)
+        self._event_fd = -1
+        self._event_lock_fd = -1
+        self._root_fd = -1
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -1946,31 +2388,39 @@ class DatabasePortalExecutionBridge:
                     + b"\n",
                 )
             self._verify_protected_path_attempt_boundary(paths)
-            daemon = self.portal_factory(
+            capability = _ProtectedPathRecoveryAttemptCapability(
                 paths,
-                str(binding.get("task_alias") or attempt.task_cid),
+                incident_present=True,
             )
-            reconcile = getattr(
-                daemon,
-                "_reconcile_implementation_protected_path_fence",
-                None,
-            )
-            if not callable(reconcile):
-                raise DatabasePortalBridgeError(
-                    "Portal executor has no protected-path reconciler"
-                )
             try:
-                result = reconcile(
-                    protected_path_recovery_guard=(
-                        self._protected_path_recovery_guard(prepared)
+                daemon = self.portal_factory(
+                    paths,
+                    str(binding.get("task_alias") or attempt.task_cid),
+                )
+                reconcile = getattr(
+                    daemon,
+                    "_reconcile_implementation_protected_path_fence",
+                    None,
+                )
+                if not callable(reconcile):
+                    raise DatabasePortalBridgeError(
+                        "Portal executor has no protected-path reconciler"
                     )
-                )
+                try:
+                    result = reconcile(
+                        protected_path_recovery_guard=(
+                            self._protected_path_recovery_guard(prepared)
+                        ),
+                        protected_path_recovery_io=capability.recovery_io(),
+                    )
+                finally:
+                    close = getattr(daemon, "close_event_runtime", None) or getattr(
+                        daemon, "close", None
+                    )
+                    if callable(close):
+                        close()
             finally:
-                close = getattr(daemon, "close_event_runtime", None) or getattr(
-                    daemon, "close", None
-                )
-                if callable(close):
-                    close()
+                capability.close()
             if (
                 not isinstance(result, Mapping)
                 or result.get("blocked") is not False
@@ -2000,31 +2450,39 @@ class DatabasePortalExecutionBridge:
                 intent=intent,
             )
             if active_path.is_file():
-                daemon = self.portal_factory(
+                capability = _ProtectedPathRecoveryAttemptCapability(
                     paths,
-                    str(binding.get("task_alias") or attempt.task_cid),
+                    incident_present=False,
                 )
-                reconcile = getattr(
-                    daemon,
-                    "_reconcile_implementation_protected_path_fence",
-                    None,
-                )
-                if not callable(reconcile):
-                    raise DatabasePortalBridgeError(
-                        "Portal executor has no protected-path reconciler"
-                    )
                 try:
-                    result = reconcile(
-                        protected_path_recovery_guard=(
-                            self._protected_path_recovery_guard(intent)
-                        )
+                    daemon = self.portal_factory(
+                        paths,
+                        str(binding.get("task_alias") or attempt.task_cid),
                     )
+                    reconcile = getattr(
+                        daemon,
+                        "_reconcile_implementation_protected_path_fence",
+                        None,
+                    )
+                    if not callable(reconcile):
+                        raise DatabasePortalBridgeError(
+                            "Portal executor has no protected-path reconciler"
+                        )
+                    try:
+                        result = reconcile(
+                            protected_path_recovery_guard=(
+                                self._protected_path_recovery_guard(intent)
+                            ),
+                            protected_path_recovery_io=capability.recovery_io(),
+                        )
+                    finally:
+                        close = getattr(
+                            daemon, "close_event_runtime", None
+                        ) or getattr(daemon, "close", None)
+                        if callable(close):
+                            close()
                 finally:
-                    close = getattr(
-                        daemon, "close_event_runtime", None
-                    ) or getattr(daemon, "close", None)
-                    if callable(close):
-                        close()
+                    capability.close()
                 if not isinstance(result, Mapping) or result.get("blocked") is not False:
                     raise DatabasePortalBridgeError(
                         "protected-path recovery could not finish fence cleanup"

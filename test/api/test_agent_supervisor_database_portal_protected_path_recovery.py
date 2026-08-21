@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -100,6 +101,7 @@ class _ExactWorkspaceDisposalReconciler:
         self,
         *,
         protected_path_recovery_guard: object,
+        protected_path_recovery_io: object,
     ) -> dict[str, object]:
         intent = json.loads(
             (
@@ -108,6 +110,7 @@ class _ExactWorkspaceDisposalReconciler:
             ).read_text(encoding="utf-8")
         )
         assert isinstance(protected_path_recovery_guard, dict)
+        assert isinstance(protected_path_recovery_io, dict)
         assert protected_path_recovery_guard["clearance_id"] == intent["clearance_id"]
         incident_path = self.paths.root / "implementation-protected-path-incident.json"
         active_path = self.paths.root / "implementation-protected-path-active.json"
@@ -332,20 +335,24 @@ def test_replays_crash_between_incident_and_active_fence_removal(
     _bind_real_portal_factory(bridge)
     incident_path = paths.root / "implementation-protected-path-incident.json"
     active_path = paths.root / "implementation-protected-path-active.json"
-    original_unlink = Path.unlink
+    original_unlink = os.unlink
     injected = False
 
-    def fail_once_for_active(path: Path, *args: object, **kwargs: object) -> None:
+    def fail_once_for_active(path: object, *args: object, **kwargs: object) -> None:
         nonlocal injected
-        if path == active_path and not injected:
+        if (
+            path == active_path.name
+            and kwargs.get("dir_fd") is not None
+            and not injected
+        ):
             injected = True
             raise OSError("injected crash after incident removal")
         original_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "unlink", fail_once_for_active)
-    with pytest.raises(OSError, match="injected crash"):
+    monkeypatch.setattr(os, "unlink", fail_once_for_active)
+    with pytest.raises(DatabasePortalBridgeError):
         bridge.recover_protected_path_retry(attempt)
-    monkeypatch.setattr(Path, "unlink", original_unlink)
+    monkeypatch.setattr(os, "unlink", original_unlink)
 
     assert not incident_path.exists()
     assert active_path.is_file()
@@ -372,20 +379,24 @@ def test_active_only_replay_rejects_tampered_clearance_without_unlinking_fence(
     _bind_real_portal_factory(bridge)
     incident_path = paths.root / "implementation-protected-path-incident.json"
     active_path = paths.root / "implementation-protected-path-active.json"
-    original_unlink = Path.unlink
+    original_unlink = os.unlink
     injected = False
 
-    def fail_once_for_active(path: Path, *args: object, **kwargs: object) -> None:
+    def fail_once_for_active(path: object, *args: object, **kwargs: object) -> None:
         nonlocal injected
-        if path == active_path and not injected:
+        if (
+            path == active_path.name
+            and kwargs.get("dir_fd") is not None
+            and not injected
+        ):
             injected = True
             raise OSError("injected crash after incident removal")
         original_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "unlink", fail_once_for_active)
-    with pytest.raises(OSError, match="injected crash"):
+    monkeypatch.setattr(os, "unlink", fail_once_for_active)
+    with pytest.raises(DatabasePortalBridgeError):
         bridge.recover_protected_path_retry(attempt)
-    monkeypatch.setattr(Path, "unlink", original_unlink)
+    monkeypatch.setattr(os, "unlink", original_unlink)
     assert not incident_path.exists()
     assert active_path.is_file()
 
@@ -518,6 +529,134 @@ def test_linked_attempt_event_stream_cannot_escape_state_boundary(
 
     assert outside.read_bytes() == outside_before
     assert (paths.root / "implementation-protected-path-incident.json").is_file()
+    assert not (paths.root / "database-portal-protected-path-recovery.json").exists()
+
+
+def test_event_stream_symlink_swap_after_last_static_scan_keeps_fences_latched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, _record_value, paths, _protected, _created = _recovery_fixture(
+        tmp_path
+    )
+    _bind_real_portal_factory(bridge)
+    outside = tmp_path / "outside-events.jsonl"
+    outside.write_bytes(paths.events.read_bytes())
+    outside_before = outside.read_bytes()
+    incident_path = paths.root / "implementation-protected-path-incident.json"
+    active_path = paths.root / "implementation-protected-path-active.json"
+    original_verify = bridge._verify_protected_path_attempt_boundary
+    scans = 0
+
+    def swap_after_last_static_scan(
+        observed_paths: DatabasePortalAttemptPaths,
+    ) -> None:
+        nonlocal scans
+        original_verify(observed_paths)
+        scans += 1
+        if scans == 2:
+            observed_paths.events.unlink()
+            observed_paths.events.symlink_to(outside)
+
+    monkeypatch.setattr(
+        bridge,
+        "_verify_protected_path_attempt_boundary",
+        swap_after_last_static_scan,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.recover_protected_path_retry(attempt)
+
+    assert scans == 2
+    assert outside.read_bytes() == outside_before
+    assert incident_path.is_file()
+    assert active_path.is_file()
+    assert not (paths.root / "database-portal-protected-path-recovery.json").exists()
+
+
+def test_event_stream_symlink_swap_after_capability_binding_keeps_fences_latched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, _record_value, paths, _protected, _created = _recovery_fixture(
+        tmp_path
+    )
+    _bind_real_portal_factory(bridge)
+    outside = tmp_path / "outside-events.jsonl"
+    outside.write_bytes(paths.events.read_bytes())
+    outside_before = outside.read_bytes()
+    incident_path = paths.root / "implementation-protected-path-incident.json"
+    active_path = paths.root / "implementation-protected-path-active.json"
+    original_builder = PortalImplementationDaemon._build_protected_path_auto_clear_guard
+    calls = 0
+
+    def swap_before_under_lease_append(
+        daemon: PortalImplementationDaemon,
+        **kwargs: object,
+    ) -> dict[str, object] | None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            paths.events.unlink()
+            paths.events.symlink_to(outside)
+        return original_builder(daemon, **kwargs)
+
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_build_protected_path_auto_clear_guard",
+        swap_before_under_lease_append,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.recover_protected_path_retry(attempt)
+
+    assert calls == 2
+    assert outside.read_bytes() == outside_before
+    assert incident_path.is_file()
+    assert active_path.is_file()
+    assert not (paths.root / "database-portal-protected-path-recovery.json").exists()
+
+
+def test_fence_symlink_swap_after_capability_binding_keeps_fences_latched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, _record_value, paths, _protected, _created = _recovery_fixture(
+        tmp_path
+    )
+    _bind_real_portal_factory(bridge)
+    incident_path = paths.root / "implementation-protected-path-incident.json"
+    active_path = paths.root / "implementation-protected-path-active.json"
+    outside = tmp_path / "outside-incident.json"
+    outside.write_bytes(incident_path.read_bytes())
+    outside_before = outside.read_bytes()
+    original_builder = PortalImplementationDaemon._build_protected_path_auto_clear_guard
+    calls = 0
+
+    def swap_incident_before_clear(
+        daemon: PortalImplementationDaemon,
+        **kwargs: object,
+    ) -> dict[str, object] | None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            incident_path.unlink()
+            incident_path.symlink_to(outside)
+        return original_builder(daemon, **kwargs)
+
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_build_protected_path_auto_clear_guard",
+        swap_incident_before_clear,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.recover_protected_path_retry(attempt)
+
+    assert calls == 2
+    assert outside.read_bytes() == outside_before
+    assert incident_path.exists()
+    assert active_path.is_file()
     assert not (paths.root / "database-portal-protected-path-recovery.json").exists()
 
 

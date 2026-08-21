@@ -1185,6 +1185,7 @@ class CrashFenceReconciler:
         *,
         max_hold_seconds: float = DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS,
         protected_path_recovery_guard: Mapping[str, Any] | None = None,
+        protected_path_recovery_io: Mapping[str, Any] | None = None,
     ) -> None:
         self._daemon = daemon
         self.max_hold_seconds = float(max_hold_seconds)
@@ -1193,6 +1194,18 @@ class CrashFenceReconciler:
             if isinstance(protected_path_recovery_guard, Mapping)
             else None
         )
+        self._protected_path_recovery_io = (
+            dict(protected_path_recovery_io)
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+
+    def _recovery_io_current(self) -> bool:
+        if self._protected_path_recovery_guard is None:
+            return True
+        recovery_io = self._protected_path_recovery_io
+        verifier = recovery_io.get("verify") if isinstance(recovery_io, Mapping) else None
+        return callable(verifier) and verifier() is True
 
     def reconcile(self) -> dict[str, Any]:
         daemon = self._daemon
@@ -1603,16 +1616,25 @@ class CrashFenceReconciler:
                 )
                 or daemon._protected_path_recovery_clearance_result(guard)
                 != dict(result)
+                or not self._recovery_io_current()
             ):
                 return {
                     "blocked": True,
                     "deferred": True,
                     "reason": "protected_path_recovery_finish_guard_changed",
                 }
-            try:
-                active_path.unlink()
-            except FileNotFoundError:
-                pass
+            recovery_io = self._protected_path_recovery_io
+            fence_clearer = (
+                recovery_io.get("clear_fences")
+                if isinstance(recovery_io, Mapping)
+                else None
+            )
+            if not callable(fence_clearer) or fence_clearer() is not True:
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_fence_identity_changed",
+                }
             return dict(result)
         if action == "auto_clear":
             auto_plan = plan.get("auto_plan")
@@ -1643,10 +1665,18 @@ class CrashFenceReconciler:
                     "reason": "protected_path_recovery_guard_changed",
                     "incident_path": str(incident_path),
                 }
+            if not self._recovery_io_current():
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_artifact_identity_changed",
+                    "incident_path": str(incident_path),
+                }
             return daemon._apply_auto_clear_protected_path_plan(
                 auto_plan,
                 incident_path=incident_path,
                 active_path=active_path,
+                protected_path_recovery_io=self._protected_path_recovery_io,
             )
         if action == "latch_malformed":
             payload = dict(plan.get("payload") or {})
@@ -8740,8 +8770,36 @@ class PortalImplementationDaemon:
         *,
         incident_path: Path,
         active_path: Path,
+        protected_path_recovery_io: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Apply a previously planned auto-clear under the exclusive fence."""
+
+        verifier = (
+            protected_path_recovery_io.get("verify")
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+        event_writer = (
+            protected_path_recovery_io.get("append_event")
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+        fence_clearer = (
+            protected_path_recovery_io.get("clear_fences")
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+        if protected_path_recovery_io is not None and (
+            not callable(verifier)
+            or not callable(event_writer)
+            or not callable(fence_clearer)
+            or verifier() is not True
+        ):
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "protected_path_recovery_artifact_identity_changed",
+            }
 
         clearance_id = str(plan.get("clearance_id") or "")
         receipt = {
@@ -8786,6 +8844,13 @@ class PortalImplementationDaemon:
             receipt = dict(observed_receipt)
         else:
             write_json_atomic(receipt_path, receipt)
+        if callable(verifier) and verifier() is not True:
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "protected_path_recovery_artifact_identity_changed",
+                "clearance_id": clearance_id,
+            }
         result = {
             "cleared": True,
             "auto": True,
@@ -8799,41 +8864,71 @@ class PortalImplementationDaemon:
             "class_codes": receipt["class_codes"],
             "blocked": False,
         }
-        matching_events = [
-            event
-            for event in self._iter_events()
-            if event.get("type")
-            == "implementation_protected_path_incident_auto_cleared"
-            and event.get("clearance_id") == clearance_id
-        ]
-        if len(matching_events) > 1 or (
-            matching_events
-            and any(
-                matching_events[0].get(field) != result.get(field)
-                for field in result
-            )
-        ):
-            return {
-                "blocked": True,
-                "reason": "protected_path_auto_clear_event_changed",
-                "clearance_id": clearance_id,
-            }
-        if not matching_events:
-            # Publish durable clearance evidence before removing either fence.
-            # A crash at every later boundary can therefore replay without
-            # inventing an event after the evidence it describes disappeared.
-            self._record_event(
+        if callable(event_writer):
+            clearance_event = event_writer(
                 "implementation_protected_path_incident_auto_cleared",
                 result,
             )
-        try:
-            incident_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            active_path.unlink()
-        except FileNotFoundError:
-            pass
+            if not isinstance(clearance_event, Mapping) or any(
+                clearance_event.get(field) != value
+                for field, value in result.items()
+            ):
+                return {
+                    "blocked": True,
+                    "reason": "protected_path_auto_clear_event_changed",
+                    "clearance_id": clearance_id,
+                }
+        else:
+            matching_events = [
+                event
+                for event in self._iter_events()
+                if event.get("type")
+                == "implementation_protected_path_incident_auto_cleared"
+                and event.get("clearance_id") == clearance_id
+            ]
+            if len(matching_events) > 1 or (
+                matching_events
+                and any(
+                    matching_events[0].get(field) != result.get(field)
+                    for field in result
+                )
+            ):
+                return {
+                    "blocked": True,
+                    "reason": "protected_path_auto_clear_event_changed",
+                    "clearance_id": clearance_id,
+                }
+            if not matching_events:
+                # Publish evidence before removing either fence so every
+                # subsequent boundary remains replayable.
+                self._record_event(
+                    "implementation_protected_path_incident_auto_cleared",
+                    result,
+                )
+        if callable(verifier) and verifier() is not True:
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "protected_path_recovery_artifact_identity_changed",
+                "clearance_id": clearance_id,
+            }
+        if callable(fence_clearer):
+            if fence_clearer() is not True:
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_fence_identity_changed",
+                    "clearance_id": clearance_id,
+                }
+        else:
+            try:
+                incident_path.unlink()
+            except FileNotFoundError:
+                pass
+            try:
+                active_path.unlink()
+            except FileNotFoundError:
+                pass
         return result
 
     def _auto_clear_ephemeral_protected_path_deletions(
@@ -9248,12 +9343,14 @@ class PortalImplementationDaemon:
         self,
         *,
         protected_path_recovery_guard: Mapping[str, Any] | None = None,
+        protected_path_recovery_io: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
         return CrashFenceReconciler(
             self,
             protected_path_recovery_guard=protected_path_recovery_guard,
+            protected_path_recovery_io=protected_path_recovery_io,
         ).reconcile()
 
     def _reconcile_implementation_protected_path_fence_unserialized(
