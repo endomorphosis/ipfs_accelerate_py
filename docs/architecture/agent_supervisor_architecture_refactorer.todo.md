@@ -1687,7 +1687,7 @@ serializes. Sibling repositories are read-only.
 
 ## PCAR-032 Resolve 1 preflight-conflicting backlogged worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
