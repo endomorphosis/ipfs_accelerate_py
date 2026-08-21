@@ -71398,6 +71398,66 @@ class DatabaseImplementationDaemon:
         )
         return settled
 
+    def _retire_stale_blocked_neutral_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+    ) -> DatabaseTaskAttempt:
+        """Retire a local blocked cursor after control left quarantine.
+
+        Blocked-phase evidence stays immutable.  Only the execution cursor is
+        marked failed so this lane can claim a fresh attempt.
+        """
+
+        now = self._now_ms()
+        revision = int(attempt.revision) + 1
+        connection = self._require_connection()
+        with self._lock:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                changed = connection.execute(
+                    """
+                    UPDATE database_task_attempts
+                    SET status = ?, finished_at_ms = ?, revision = ?
+                    WHERE attempt_id = ? AND revision = ? AND status = 'blocked'
+                    RETURNING attempt_id
+                    """,
+                    [
+                        "failed",
+                        now,
+                        revision,
+                        attempt.attempt_id,
+                        int(attempt.revision),
+                    ],
+                ).fetchone()
+                if changed is None:
+                    replay = self.get_attempt(attempt.attempt_id)
+                    if replay is not None and replay.status == "failed":
+                        connection.execute("COMMIT")
+                        return replay
+                    raise DatabaseImplementationConflictError(
+                        f"blocked attempt {attempt.attempt_id} changed during retirement"
+                    )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+        updated = self.get_attempt(attempt.attempt_id)
+        if updated is None:
+            raise DatabaseImplementationDaemonError(
+                "attempt disappeared after stale blocked retirement"
+            )
+        self._record_event(
+            "stale_blocked_neutral_attempt_retired",
+            attempt_id=updated.attempt_id,
+            task_cid=updated.task_cid,
+            body={
+                "control_status": str(getattr(task, "status", "") or ""),
+                "previous_status": "blocked",
+            },
+        )
+        return updated
+
     def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
         """Retire exact local attempts whose coordination authority expired.
 
@@ -71447,6 +71507,30 @@ class DatabaseImplementationDaemon:
                 attempt,
                 expected_failure_evidence=evidence,
             ):
+                task_status = str(
+                    getattr(task, "status", "") or ""
+                ).strip().lower()
+                if task is not None and task_status != "quarantined":
+                    settled = self._retire_stale_blocked_neutral_attempt(
+                        attempt,
+                        task,
+                    )
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                            "status": settled.status,
+                            "retry_required": task_status
+                            in _DATABASE_READY_TASK_STATUSES,
+                            "provider_evidence_reused": False,
+                            "effect_evidence_reused": False,
+                            "reason": "control_task_left_quarantine",
+                            "disposition": "retired",
+                            "replayed": False,
+                        }
+                    )
+                    continue
                 raise DatabaseImplementationAuthorityError(
                     "blocked neutral Portal attempt has no exact quarantine receipt"
                 )

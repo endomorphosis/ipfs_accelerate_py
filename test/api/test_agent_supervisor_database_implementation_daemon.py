@@ -1116,6 +1116,76 @@ def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
         daemon.close()
 
 
+def test_reopened_quarantine_retires_stale_blocked_attempt(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    failure_evidence: dict[str, object] = {}
+
+    def consumed_failure(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeConsumedNoProgressError(
+            "portal_consumed_no_progress",
+            failure_evidence=failure_evidence,
+        )
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:reopen-stale-block",
+        provider_fn=consumed_failure,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempted = first.claim_next()
+        assert attempted is not None
+        failure_evidence.update(
+            _consumed_no_progress_evidence(
+                first,
+                attempted,
+                tag="reopen-stale-block",
+            )
+        )
+        first._resume_attempt_without_process_crash(attempted)
+        blocked = first.get_attempt(attempted.attempt_id)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        task = first.task_source.get(blocked.task_cid)
+        assert task is not None
+        assert task.status == "quarantined"
+        first.task_source.compare_and_set_status(
+            blocked.task_cid,
+            int(task.revision),
+            "todo",
+            receipt={
+                "operation": "reopen_unimplemented_unknown_callback_quarantine",
+                "reason": "declared_outputs_missing_on_merge_target",
+            },
+        )
+        reopened = first.task_source.get(blocked.task_cid)
+        assert reopened is not None
+        assert reopened.status == "todo"
+
+        outcomes = first.reconcile_expired_running_attempts()
+        retired = [
+            item
+            for item in outcomes
+            if item.get("reason") == "control_task_left_quarantine"
+        ]
+        assert retired
+        assert retired[0]["attempt_id"] == blocked.attempt_id
+        assert retired[0]["status"] == "failed"
+        stale = first.get_attempt(blocked.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+        current = first.task_source.get(blocked.task_cid)
+        assert current is not None
+        assert current.status == "todo"
+        assert first.list_running_attempts() == []
+    finally:
+        first.close()
+
+
 def test_consumed_no_progress_quarantine_replays_after_commit_crash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
