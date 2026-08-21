@@ -218,11 +218,14 @@ def main() -> int:
                 if sql not in ALLOWED_OWNER_SQL:
                     raise RuntimeError("owner mutation SQL is not allowlisted")
                 if parameters is None:
-                    inner.execute(sql)
+                    result = inner.execute(sql)
                 else:
-                    inner.execute(sql, parameters)
+                    result = inner.execute(sql, parameters)
+                rowcount = -1
                 try:
-                    rowcount = int(inner.execute("SELECT changes()").fetchone()[0])
+                    rows = result.fetchall()
+                    if rows:
+                        rowcount = int(rows[0][0])
                 except Exception:
                     rowcount = -1
                 done.write_text(
