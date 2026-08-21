@@ -71795,6 +71795,7 @@ class DatabaseImplementationDaemon:
                 if (
                     task is not None
                     and task_status == "in_progress"
+                    and claim_state == "accepted"
                     and self._shared_claim_binding_matches_attempt(task, attempt)
                 ):
                     settled = self._quarantine_expired_provider_callback_intent(
@@ -71826,6 +71827,23 @@ class DatabaseImplementationDaemon:
                     task,
                     claim=claim,
                 )
+                requeued = self._requeue_unimplemented_control_task(task)
+                if requeued is not None:
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                            "status": settled.status,
+                            "retry_required": True,
+                            "provider_evidence_reused": False,
+                            "effect_evidence_reused": False,
+                            "reason": "unaccepted_unknown_callback_requeued",
+                            "disposition": "requeued",
+                            "replayed": False,
+                        }
+                    )
+                    continue
                 outcomes.append(
                     {
                         "task_cid": attempt.task_cid,
@@ -72083,20 +72101,23 @@ class DatabaseImplementationDaemon:
         if not isinstance(body, Mapping):
             return 0
         counts: list[int] = []
-        raw_body = body.get("unknown_callback_reopen_count")
-        if raw_body is not None:
+
+        def add(raw: Any) -> None:
+            if raw is None:
+                return
             try:
-                counts.append(max(0, int(raw_body)))
+                counts.append(max(0, int(raw)))
             except (TypeError, ValueError):
-                pass
+                return
+
+        add(body.get("unknown_callback_reopen_count"))
         receipt = body.get("completion_receipt")
-        if isinstance(receipt, Mapping):
-            raw_receipt = receipt.get("unknown_callback_reopen_count")
-            if raw_receipt is not None:
-                try:
-                    counts.append(max(0, int(raw_receipt)))
-                except (TypeError, ValueError):
-                    pass
+        if (
+            isinstance(receipt, Mapping)
+            and receipt.get("operation")
+            == "reopen_unimplemented_unknown_callback_quarantine"
+        ):
+            add(receipt.get("unknown_callback_reopen_count"))
         return max(counts) if counts else 0
 
     @staticmethod
@@ -72478,6 +72499,10 @@ class DatabaseImplementationDaemon:
                 DatabasePortalBridgeDeferred,
             )
 
+            from ..merge.database_coordination import (
+                DatabaseCoordinationExpiredError,
+            )
+
             if isinstance(
                 exc,
                 (
@@ -72485,10 +72510,39 @@ class DatabaseImplementationDaemon:
                     DatabaseProviderCallbackOutcomeUnknownError,
                 ),
             ):
-                return self._quarantine_neutral_portal_failure(
-                    attempt,
-                    exc,
-                )
+                try:
+                    return self._quarantine_neutral_portal_failure(
+                        attempt,
+                        exc,
+                    )
+                except DatabaseCoordinationExpiredError:
+                    task = self.task_source.get(attempt.task_cid)
+                    if task is None:
+                        raise
+                    self._retire_stale_running_attempt(attempt, task)
+                    self._requeue_unimplemented_control_task(task)
+                    return {
+                        "resumed": True,
+                        "retryable": True,
+                        "reason": "unaccepted_unknown_callback_requeued",
+                        "attempt_id": attempt.attempt_id,
+                        "task_alias": attempt.task_alias,
+                        "status": "failed",
+                    }
+            if isinstance(exc, DatabaseCoordinationExpiredError):
+                task = self.task_source.get(attempt.task_cid)
+                if task is None:
+                    raise
+                self._retire_stale_running_attempt(attempt, task)
+                self._requeue_unimplemented_control_task(task)
+                return {
+                    "resumed": True,
+                    "retryable": True,
+                    "reason": "control_task_claim_not_accepted",
+                    "attempt_id": attempt.attempt_id,
+                    "task_alias": attempt.task_alias,
+                    "status": "failed",
+                }
             if not isinstance(exc, DatabasePortalBridgeDeferred):
                 # Generic Portal/provider failures carry no retry authority.
                 # The durable callback-start intent prevents a cold restart
@@ -72620,6 +72674,24 @@ class DatabaseImplementationDaemon:
                 ):
                     for item in raw:
                         add(item)
+            metadata = body.get("metadata")
+            if isinstance(metadata, Mapping):
+                for key in (
+                    "outputs",
+                    "predicted files",
+                    "predicted_files",
+                ):
+                    raw = metadata.get(key)
+                    if isinstance(raw, str):
+                        for part in raw.split(","):
+                            add(part.strip())
+                    elif isinstance(raw, (str, Mapping)):
+                        add(raw)
+                    elif isinstance(raw, Sequence) and not isinstance(
+                        raw, (bytes, bytearray, str)
+                    ):
+                        for item in raw:
+                            add(item)
         return tuple(paths)
 
     def _git_tree_contains_path(self, relative: str) -> bool:
@@ -72769,6 +72841,56 @@ class DatabaseImplementationDaemon:
                 outcomes.append(outcome)
         return outcomes
 
+    def _requeue_unimplemented_control_task(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Return an unimplemented in-progress/quarantined task to todo.
+
+        Leftover local attempts can expire their shared claim while control is
+        still in_progress.  Retiring the cursor without this CAS leaves the
+        task unclaimable.
+        """
+
+        if self.repo_root is None:
+            return None
+        current = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
+        if current is None:
+            return None
+        status = str(getattr(current, "status", "") or "").strip().lower()
+        if status not in {
+            "in_progress",
+            "claimed",
+            "running",
+            "quarantined",
+        }:
+            return None
+        paths = self._task_declared_output_paths(current)
+        if not paths or self._task_outputs_landed_on_target(current):
+            return None
+        self._cas_task_status_database(
+            str(current.task_cid),
+            expected_revision=int(current.revision),
+            new_status="todo",
+            receipt={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-unimplemented-stale-attempt-requeue@1"
+                ),
+                "operation": "requeue_unimplemented_stale_attempt",
+                "reason": "claim_not_accepted_outputs_missing",
+                "unknown_callback_reopen_count": (
+                    self._unknown_callback_reopen_count(current)
+                ),
+                "missing_outputs": list(paths),
+            },
+        )
+        return {
+            "task_cid": str(current.task_cid),
+            "requeued": True,
+            "reason": "unaccepted_unknown_callback_requeued",
+        }
+
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -72849,8 +72971,11 @@ class DatabaseImplementationDaemon:
         tasks = tuple(getattr(page, "tasks", ()) or ())
         outcomes: list[dict[str, Any]] = []
         for task in tasks:
+            loaded = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
             try:
-                outcome = self._reopen_unimplemented_unknown_callback_task(task)
+                outcome = self._reopen_unimplemented_unknown_callback_task(
+                    loaded if loaded is not None else task
+                )
             except Exception as exc:
                 outcomes.append(
                     {
@@ -72884,12 +73009,27 @@ class DatabaseImplementationDaemon:
             control_status = str(
                 getattr(control, "status", "") or ""
             ).strip().lower()
-            if control is not None and control_status not in {
-                "in_progress",
-                "claimed",
-                "running",
-            }:
+            claim = self.coordinator.get_task_claim(current.claim_id)
+            claim_state = str(
+                getattr(
+                    getattr(claim, "state", ""),
+                    "value",
+                    getattr(claim, "state", ""),
+                )
+                or ""
+            )
+            if control is not None and (
+                control_status
+                not in {
+                    "in_progress",
+                    "claimed",
+                    "running",
+                }
+                or claim is None
+                or claim_state != "accepted"
+            ):
                 retired = self._retire_stale_running_attempt(current, control)
+                self._requeue_unimplemented_control_task(control)
                 expired_attempt_reconciliations = [
                     *expired_attempt_reconciliations,
                     {

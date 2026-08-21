@@ -1358,7 +1358,9 @@ def test_unknown_callback_reopen_count_survives_later_claim_receipt(
         daemon.close()
 
 
-def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
+def test_unknown_callback_quarantine_receipt_count_does_not_block_reopen(
+    tmp_path: Path,
+) -> None:
     repo = _git_repo(tmp_path)
     daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
     try:
@@ -1371,6 +1373,127 @@ def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
         assert task is not None
         receipt = _unknown_callback_quarantine_receipt()
         receipt["unknown_callback_reopen_count"] = 4
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        result = daemon.run_once()
+        reopened = result["unknown_callback_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+
+def test_unaccepted_unknown_callback_is_retired_not_quarantined(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    repo = _git_repo(tmp_path)
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise SimulatedProcessCrash("injected unaccepted-claim crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:unaccepted-unknown",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        repo_root=repo,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        first.materialize_population(population)
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(attempt)
+        now["ms"] = 10_000
+        claim = first.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        first.coordinator.expire_task_claim(claim, now_ms=now["ms"])
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "in_progress",
+            receipt={
+                "operation": "database_claim",
+                "claim_id": "claim:other-owner",
+                "attempt_id": "attempt:other-owner",
+            },
+        )
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:unaccepted-unknown",
+        provider_fn=lambda attempt: {"status": "ok", "task_cid": attempt.task_cid},
+        strict_task_sharding=True,
+        repo_root=repo,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        replay = restarted.run_once()
+        current = restarted.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        retired = [
+            item
+            for item in replay["expired_attempt_reconciliations"]
+            if item.get("attempt_id") == attempt.attempt_id
+        ]
+        assert retired
+        assert retired[0]["reason"] != "portal_neutral_failure"
+    finally:
+        restarted.close()
+
+
+def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "todo",
+            receipt={
+                "operation": "reopen_unimplemented_unknown_callback_quarantine",
+                "unknown_callback_reopen_count": 4,
+            },
+        )
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = _unknown_callback_quarantine_receipt()
         daemon.task_source.compare_and_set_status(
             "task:cid:001",
             int(task.revision),

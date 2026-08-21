@@ -2615,6 +2615,18 @@ class IntentRepository:
                     receipt_map,
                     body_map.get("completion_receipt"),
                 )
+                if receipt_map.get("operation") in {
+                    "reopen_unimplemented_unknown_callback_quarantine",
+                    "requeue_unimplemented_stale_attempt",
+                }:
+                    raw_reopen_count = receipt_map.get("unknown_callback_reopen_count")
+                    if raw_reopen_count is not None:
+                        try:
+                            body_map["unknown_callback_reopen_count"] = max(
+                                0, int(raw_reopen_count)
+                            )
+                        except (TypeError, ValueError):
+                            pass
             updated_rows = connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = revision + 1, updated_at = ?,
