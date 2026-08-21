@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
@@ -19,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
+    verify_database_portal_attempt_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
@@ -37,7 +39,6 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
     preflight_validation_project_dependencies,
 )
@@ -822,6 +823,115 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
     assert len(attempt_boards) == 1
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
+
+
+def test_database_portal_attempt_projection_verifier_accepts_only_status_mutation(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, expected_binding = bridge._ensure_attempt_projection(
+        _attempt(), record
+    )
+
+    verified = verify_database_portal_attempt_projection(
+        paths.task_projection,
+        expected_task_alias="LGSWF-004",
+        expected_task_cid="task:cid:004",
+    )
+    paths.task_projection.write_text(
+        paths.task_projection.read_text(encoding="utf-8").replace(
+            "- Status: ready", "- Status: completed"
+        ),
+        encoding="utf-8",
+    )
+    status_only = verify_database_portal_attempt_projection(
+        paths.task_projection,
+        expected_task_alias="LGSWF-004",
+        expected_task_cid="task:cid:004",
+    )
+
+    assert verified["verified"] is True
+    assert verified["binding_id"] == expected_binding["binding_id"]
+    assert verified["attempt_id"] == expected_binding["attempt_id"]
+    assert verified["claim_id"] == expected_binding["claim_id"]
+    assert verified["task_alias"] == expected_binding["task_alias"]
+    assert verified["task_cid"] == expected_binding["task_cid"]
+    assert verified["projection_authority"] is False
+    assert status_only == verified
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        "immutable_projection",
+        "authority_flag",
+        "binding_identity",
+        "attempt_directory",
+    ),
+)
+def test_database_portal_attempt_projection_verifier_rejects_tampering(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+
+    if tamper == "immutable_projection":
+        paths.task_projection.write_text(
+            paths.task_projection.read_text(encoding="utf-8").replace(
+                "- Acceptance: Focused validation passes",
+                "- Acceptance: validation waived",
+            ),
+            encoding="utf-8",
+        )
+    elif tamper in {"authority_flag", "binding_identity"}:
+        binding = json.loads(paths.binding.read_text(encoding="utf-8"))
+        binding.pop("binding_id")
+        if tamper == "authority_flag":
+            binding["projection_authority"] = True
+        else:
+            binding["task_cid"] = "task:cid:forged"
+        binding["binding_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                binding,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        paths.binding.write_text(
+            json.dumps(binding, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        renamed = paths.root.with_name("copied-attempt-projection")
+        paths.root.rename(renamed)
+        paths = type(paths)(
+            root=renamed,
+            task_projection=renamed / paths.task_projection.name,
+            binding=renamed / paths.binding.name,
+            state=renamed / paths.state.name,
+            strategy=renamed / paths.strategy.name,
+            events=renamed / paths.events.name,
+            implementation_logs=renamed / paths.implementation_logs.name,
+        )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        verify_database_portal_attempt_projection(
+            paths.task_projection,
+            expected_task_alias="LGSWF-004",
+            expected_task_cid="task:cid:004",
+        )
 
 
 def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:

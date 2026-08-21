@@ -59,6 +59,30 @@ _MAX_DATABASE_PORTAL_BACKOFF_SECONDS: Final[int] = 86_400
 _MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
 _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
+_MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
+_MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
+_DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "interface",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "goal_cid",
+        "plan_cid",
+        "task_revision",
+        "fencing_token",
+        "fence_epoch",
+        "lease_id",
+        "task_body_digest",
+        "projection_seed_digest",
+        "projection_immutable_digest",
+        "authoritative_task_store",
+        "projection_authority",
+        "binding_id",
+    }
+)
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -457,6 +481,226 @@ def _projection_recovery_digest(text: str) -> str:
 def _projection_status(text: str) -> str:
     match = re.search(r"(?mi)^-\s*status\s*:\s*([^\r\n]+)$", text)
     return str(match.group(1) if match else "").strip().lower().replace("-", "_")
+
+
+def _single_projection_field(text: str, label: str) -> str:
+    matches = re.findall(
+        rf"(?mi)^-\s*{re.escape(label)}\s*:\s*([^\r\n]*)$",
+        text,
+    )
+    if len(matches) != 1:
+        raise DatabasePortalBridgeError(
+            f"Portal task projection has an invalid {label!r} field"
+        )
+    return str(matches[0]).strip()
+
+
+def verify_database_portal_attempt_projection(
+    task_projection: Path | str,
+    *,
+    expected_task_alias: str = "",
+    expected_task_cid: str = "",
+    allowed_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Verify one immutable, database-authoritative attempt projection.
+
+    The returned record is identity evidence only.  It grants no task,
+    completion, merge, or policy authority.  This verifier exists so a merge
+    candidate created by one fenced database attempt can be recognized by a
+    later attempt without treating two disposable projection paths as two
+    independent task boards.
+    """
+
+    supplied_projection = Path(task_projection)
+    if supplied_projection.name != "task-projection.md":
+        raise DatabasePortalBridgeError(
+            "database Portal projection has a noncanonical filename"
+        )
+    if supplied_projection.is_symlink() or not supplied_projection.is_file():
+        raise DatabasePortalBridgeError(
+            "database Portal projection is not a regular non-symlink file"
+        )
+    try:
+        projection = supplied_projection.resolve(strict=True)
+        projection_size = projection.stat().st_size
+    except OSError as exc:
+        raise DatabasePortalBridgeError(
+            "database Portal projection is unavailable"
+        ) from exc
+    if projection_size > _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+        raise DatabasePortalBridgeError(
+            "database Portal projection exceeds the verification bound"
+        )
+    if allowed_root is not None:
+        try:
+            projection.relative_to(Path(allowed_root).resolve(strict=True))
+        except (OSError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal projection is outside the admitted root"
+            ) from exc
+
+    binding_path = projection.parent / "database-attempt-binding.json"
+    if binding_path.is_symlink() or not binding_path.is_file():
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding is not a regular non-symlink file"
+        )
+    try:
+        binding_size = binding_path.stat().st_size
+    except OSError as exc:
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding is unavailable"
+        ) from exc
+    if binding_size > _MAX_DATABASE_PORTAL_BINDING_BYTES:
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding exceeds the verification bound"
+        )
+    binding = dict(DatabasePortalExecutionBridge._read_binding(binding_path))
+    if set(binding) != _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS:
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding fields are noncanonical"
+        )
+    if (
+        binding.get("schema") != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+        or binding.get("interface")
+        != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
+        or binding.get("authoritative_task_store") != "duckdb"
+        or binding.get("projection_authority") is not False
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding authority is invalid"
+        )
+
+    string_fields = (
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "goal_cid",
+        "plan_cid",
+        "lease_id",
+    )
+    if any(
+        type(binding.get(field)) is not str
+        or not str(binding[field]).strip()
+        or str(binding[field]) != _line_value(binding[field])
+        or len(str(binding[field]).encode("utf-8", errors="surrogatepass"))
+        > _MAX_TASK_IDENTITY_BYTES
+        for field in string_fields
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding identity is invalid"
+        )
+    if any(
+        type(binding.get(field)) is not int or int(binding[field]) < 0
+        for field in ("task_revision", "fencing_token", "fence_epoch")
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding fence is invalid"
+        )
+    digest_fields = (
+        "task_body_digest",
+        "projection_seed_digest",
+        "projection_immutable_digest",
+        "binding_id",
+    )
+    if any(
+        type(binding.get(field)) is not str
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", binding[field]) is None
+        for field in digest_fields
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding digest is invalid"
+        )
+    binding_body = dict(binding)
+    binding_id = str(binding_body.pop("binding_id"))
+    if binding_id != _sha256_bytes(_canonical_json(binding_body)):
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding identity does not verify"
+        )
+    expected_attempt_directory = hashlib.sha256(
+        str(binding["attempt_id"]).encode("utf-8")
+    ).hexdigest()[:24]
+    if projection.parent.name != expected_attempt_directory:
+        raise DatabasePortalBridgeError(
+            "database Portal attempt directory is not identity-bound"
+        )
+
+    try:
+        projection_text = projection.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise DatabasePortalBridgeError(
+            "database Portal projection is unreadable"
+        ) from exc
+    if _projection_immutable_digest(projection_text) != str(
+        binding["projection_immutable_digest"]
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal projection immutable identity does not verify"
+        )
+    headers = _HEADER.findall(projection_text)
+    task_alias = str(binding["task_alias"])
+    task_cid = str(binding["task_cid"])
+    if headers != [task_alias]:
+        raise DatabasePortalBridgeError(
+            "database Portal projection task alias does not verify"
+        )
+    projected_fields = {
+        "Database task CID": task_cid,
+        "Database attempt ID": str(binding["attempt_id"]),
+        "Database claim ID": str(binding["claim_id"]),
+        "Canonical task CID": task_cid,
+        "Projection authority": "false",
+    }
+    if any(
+        _single_projection_field(projection_text, label) != value
+        for label, value in projected_fields.items()
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal projection fields do not match its binding"
+        )
+    canonical_task_key = _single_projection_field(
+        projection_text,
+        "Canonical task key",
+    )
+    if (
+        not canonical_task_key
+        or canonical_task_key != _line_value(canonical_task_key)
+        or len(
+            canonical_task_key.encode("utf-8", errors="surrogatepass")
+        )
+        > _MAX_TASK_IDENTITY_BYTES
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal projection canonical task key is invalid"
+        )
+    if expected_task_alias and task_alias != str(expected_task_alias):
+        raise DatabasePortalBridgeError(
+            "database Portal projection task alias changed"
+        )
+    if expected_task_cid and task_cid != str(expected_task_cid):
+        raise DatabasePortalBridgeError(
+            "database Portal projection task identity changed"
+        )
+    return {
+        "verified": True,
+        "binding_id": binding_id,
+        "attempt_id": str(binding["attempt_id"]),
+        "claim_id": str(binding["claim_id"]),
+        "task_alias": task_alias,
+        "task_cid": task_cid,
+        "canonical_task_key": canonical_task_key,
+        "goal_cid": str(binding["goal_cid"]),
+        "plan_cid": str(binding["plan_cid"]),
+        "task_revision": int(binding["task_revision"]),
+        "fencing_token": int(binding["fencing_token"]),
+        "fence_epoch": int(binding["fence_epoch"]),
+        "projection_path": str(projection),
+        "projection_immutable_digest": str(
+            binding["projection_immutable_digest"]
+        ),
+        "projection_authority": False,
+        "authoritative_task_store": "duckdb",
+    }
 
 
 def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -1820,4 +2064,5 @@ __all__ = (
     "DatabasePortalExecutionBridge",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",
+    "verify_database_portal_attempt_projection",
 )
