@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -1825,6 +1826,42 @@ def test_non_plan_detach_spawn_failure_discards_exact_reservation(
             ("--detach",),
         )
     assert not pid_path.exists()
+
+
+def test_supervisor_status_health_ignores_leftover_pid_from_prior_generation(
+    tmp_path: Path,
+) -> None:
+    status_path = tmp_path / "vrif_lane_0_supervisor_status.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "stopped",
+                "supervisor_pid": 836631,
+                "updated_at": (
+                    datetime.now(timezone.utc) - timedelta(hours=2)
+                ).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    track = SimpleNamespace(supervisor_status_path=status_path)
+    leftover = multi_runner_module.supervisor_status_health_fields(
+        track,
+        repo_root=tmp_path,
+        stale_seconds=1800.0,
+        live_pid=3156583,
+    )
+    assert leftover["supervisor_status"] == "missing"
+    assert "restart_supervisor" not in leftover
+
+    matching = multi_runner_module.supervisor_status_health_fields(
+        track,
+        repo_root=tmp_path,
+        stale_seconds=1800.0,
+        live_pid=836631,
+    )
+    assert matching["supervisor_status"] == "stale"
+    assert matching["restart_supervisor"] is True
 
 
 def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(

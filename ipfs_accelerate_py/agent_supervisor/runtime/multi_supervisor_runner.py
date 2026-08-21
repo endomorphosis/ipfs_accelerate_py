@@ -4464,6 +4464,7 @@ def supervisor_status_health_fields(
     *,
     repo_root: Path,
     stale_seconds: float,
+    live_pid: int | None = None,
 ) -> dict[str, object]:
     """Return heartbeat fields for the wrapper supervisor status file."""
 
@@ -4472,6 +4473,18 @@ def supervisor_status_health_fields(
         return {"supervisor_status": "untracked"}
     payload = _read_json_dict(status_path)
     if not payload:
+        return {
+            "supervisor_status": "missing",
+            "supervisor_status_path": str(status_path),
+        }
+    recorded_pid = payload.get("supervisor_pid")
+    try:
+        recorded_pid = None if recorded_pid is None else int(recorded_pid)
+    except (TypeError, ValueError):
+        recorded_pid = None
+    if live_pid is not None and recorded_pid not in {None, int(live_pid)}:
+        # A leftover projection from a prior generation must not recycle the
+        # live child before it can publish a matching heartbeat.
         return {
             "supervisor_status": "missing",
             "supervisor_status_path": str(status_path),
@@ -7418,6 +7431,7 @@ def run_supervisor_tracks(
                     resolved,
                     repo_root=resolved_repo_root,
                     stale_seconds=float(supervisor_status_stale_seconds),
+                    live_pid=None if process is None else int(process.pid),
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)

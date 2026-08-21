@@ -55,6 +55,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
     ATTEMPT_PHASE_EFFECT,
+    ATTEMPT_PHASE_FAILED,
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
@@ -3068,6 +3069,48 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         assert repeated["changed"] is False
         assert repeated["status"] == "retrying"
         assert repeated["write_count"] == 0
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_failure_reason_ignores_later_non_portal_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-shutdown-phase",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        original_history = daemon.phase_history(failed.attempt_id)
+
+        def history_with_shutdown(_attempt_id: str) -> list[dict[str, object]]:
+            return [
+                *original_history,
+                {
+                    "phase": ATTEMPT_PHASE_FAILED,
+                    "body": {"reason": "supervisor_signal_shutdown"},
+                },
+            ]
+
+        monkeypatch.setattr(daemon, "phase_history", history_with_shutdown)
+        assert (
+            daemon._terminal_portal_failure_reason(failed)
+            == "post_merge_declared_outputs_missing"
+        )
     finally:
         daemon.close()
 

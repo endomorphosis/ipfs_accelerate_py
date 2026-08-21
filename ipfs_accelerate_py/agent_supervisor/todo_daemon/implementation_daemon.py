@@ -75204,16 +75204,15 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 f"failed attempt {attempt.attempt_id} has no failed-phase receipt"
             )
-        body = failed_phases[-1].get("body")
-        if not isinstance(body, Mapping):
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has malformed phase evidence"
-            )
-        if (
-            body.get("portal_terminal_failure") is True
-            and body.get("portal_retryable_failure") is not True
-        ):
-            return str(body.get("reason") or "portal_terminal_failure")
+        for phase in reversed(failed_phases):
+            body = phase.get("body")
+            if not isinstance(body, Mapping):
+                continue
+            if (
+                body.get("portal_terminal_failure") is True
+                and body.get("portal_retryable_failure") is not True
+            ):
+                return str(body.get("reason") or "portal_terminal_failure")
         return None
 
     def _reconcile_failed_attempt_coordination(
