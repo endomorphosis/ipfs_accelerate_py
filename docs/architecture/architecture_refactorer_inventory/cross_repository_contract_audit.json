@@ -1,0 +1,167 @@
+{
+  "authority": false,
+  "closed_dispositions": [
+    "compatible",
+    "adapter_required",
+    "duplicate_authority",
+    "schema_drift",
+    "version_incompatible",
+    "unavailable"
+  ],
+  "effect_class": "cross_repository_read_only",
+  "evidence": "pcar/cross-repository-audit@1",
+  "extractor_identity": "pcar-025-cross-repository-audit",
+  "proposal_packets": [
+    {
+      "disposition": "duplicate_authority",
+      "gitlink_path": "ipfs_datasets_py",
+      "local_adapter_alternative": "Keep a local adapter or consume the pinned published interface; do not create a second production authority.",
+      "packet_id": "pcar-025-ipfs-datasets-py-duplicate_authority",
+      "published_concern": "semantic and content identities",
+      "requested_change": "Do not write the sibling gitlink. If a shared published-contract change is required for semantic and content identities, emit this packet to the sibling owner instead of mutating the pinned checkout.",
+      "schema": "ipfs_accelerate_py/agent-supervisor/cross-repository-proposal-packet@1",
+      "sibling_write_permitted": false,
+      "target_repository": "ipfs_datasets_py"
+    }
+  ],
+  "required_gitlinks": {
+    "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.cross-repository-contract-audit@1",
+  "scopes": [
+    {
+      "checkout_head": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "checkout_matches_pin": true,
+      "comparison": {
+        "adapter_bound": false,
+        "consumption_kind": "parallel_authority",
+        "gitlink_available": true,
+        "local_authority_claim": true,
+        "published_authority_claim": true,
+        "published_present": true,
+        "shared_schema_tokens": []
+      },
+      "disposition": "duplicate_authority",
+      "gitlink_path": "ipfs_datasets_py",
+      "local_consumers": [
+        {
+          "path": "ipfs_accelerate_py/utils/cid_utils.py",
+          "present": true
+        },
+        {
+          "path": "ipfs_accelerate_py/assurance/content_identity.py",
+          "present": true
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py",
+          "present": true
+        }
+      ],
+      "observed_gitlink": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "published_concern": "semantic and content identities",
+      "published_contracts": [
+        {
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+          "present": true
+        },
+        {
+          "path": "ipfs_datasets_py/ipfs_datasets_py/duckdb_control/contracts.py",
+          "present": true
+        }
+      ],
+      "repository": "ipfs_datasets_py",
+      "required_pin": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "unavailable": false
+    },
+    {
+      "checkout_head": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "checkout_matches_pin": true,
+      "comparison": {
+        "adapter_bound": true,
+        "consumption_kind": "direct_import",
+        "gitlink_available": true,
+        "local_authority_claim": false,
+        "published_authority_claim": true,
+        "published_present": true,
+        "shared_schema_tokens": [
+          "ArtifactKind",
+          "ProofSealStore"
+        ]
+      },
+      "disposition": "compatible",
+      "gitlink_path": "ipfs_kit_py",
+      "local_consumers": [
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py",
+          "present": true
+        }
+      ],
+      "observed_gitlink": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "published_concern": "storage and proof-seal authority",
+      "published_contracts": [
+        {
+          "path": "ipfs_kit_py/ipfs_kit_py/proof_seal_store/contracts.py",
+          "present": true
+        }
+      ],
+      "repository": "ipfs_kit_py",
+      "required_pin": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "unavailable": false
+    },
+    {
+      "checkout_head": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "checkout_matches_pin": true,
+      "comparison": {
+        "adapter_bound": true,
+        "consumption_kind": "runtime_adapter",
+        "gitlink_available": true,
+        "local_authority_claim": false,
+        "published_authority_claim": true,
+        "published_present": true,
+        "shared_schema_tokens": [
+          "mcp++/execution/envelope@1"
+        ]
+      },
+      "disposition": "adapter_required",
+      "gitlink_path": "ipfs_accelerate_py/mcplusplus",
+      "local_consumers": [
+        {
+          "path": "ipfs_accelerate_py/mcp_server/mcplusplus/envelope.py",
+          "present": true
+        },
+        {
+          "path": "ipfs_accelerate_py/mcp_server/mcplusplus/a2a_adapter.py",
+          "present": true
+        }
+      ],
+      "observed_gitlink": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "published_concern": "wire and profile schemas",
+      "published_contracts": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/schemas/execution/execution-envelope-1.schema.json",
+          "present": true
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/schemas/canonicalization/mcpp-jcs-v1.schema.json",
+          "present": true
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/schemas/profile-h/1.0/artifacts.schema.json",
+          "present": true
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/scripts/generate_schemas.py",
+          "present": true
+        }
+      ],
+      "repository": "MCP++",
+      "required_pin": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "unavailable": false
+    }
+  ],
+  "task_id": "PCAR-025",
+  "version": 1,
+  "write_policy": "deny"
+}
