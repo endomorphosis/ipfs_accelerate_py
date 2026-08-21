@@ -726,3 +726,19 @@ repositories are read-only.
 - **Proof requirements:** Exact final commit/tree, declared producer receipts, complete denominators/costs/not-run results, promotion eligibility and rollback target, no unsupported learned/verified/safe/autonomous/token-efficient/production-ready claim.
 - **Rollback:** Revoke report root and regenerate from the corrected exact tree/evidence; never rewrite evidence or promote from a report.
 - **Conflict policy:** Exclusive final report joiner; it reads accepted receipts and DuckLake history but cannot alter source, task, goal, proof, expert, threshold, checkpoint, or release authority.
+
+## VRIF-033 Resolve 1 dirty backlogged worktrees blocked by content_not_in_target
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P2
+- Track: ops
+- Fingerprint: f9504369fc60a8e5dcedd4e6b0ffd0e9ae5c0f14
+- Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target
+- Depends on:
+- Outputs: data/agent_supervisor/residual_intelligence_foundry/state/discovery, docs/architecture/agent_supervisor_residual_intelligence.todo.md
+- Validation: test -f /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/state/discovery/2026-08-21-vrif-033-reconciliation-f9504369fc60.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by content_not_in_target. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/state/discovery/2026-08-21-vrif-033-reconciliation-f9504369fc60.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
