@@ -1133,14 +1133,21 @@ class MergeTrain:
         self.decision_runtime_cancellation = decision_runtime_cancellation
         self._last_merge_runtime_decision: Any = None
         self._last_merge_effect_observation: Any = None
-        queue_dir = Path(getattr(queue, "queue_dir", self.repo_root / ".merge-queue"))
+        queue_dir = Path(
+            getattr(queue, "queue_dir", self.repo_root / ".merge-queue")
+        ).resolve()
         self.state_dir = Path(state_dir) if state_dir is not None else queue_dir / "train"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_dir = self.state_dir / "worktrees"
         self.receipt_dir = self.state_dir / "receipts"
         self.worktree_dir.mkdir(parents=True, exist_ok=True)
         self.receipt_dir.mkdir(parents=True, exist_ok=True)
-        self.consumer_lock_path = self.state_dir / "consumer.lock"
+        # Abandoned-claim recovery is queue-wide authority.  Its exclusion
+        # lock must therefore be canonical for the queue and cannot follow a
+        # caller-selected receipt/worktree state directory.
+        canonical_consumer_dir = queue_dir / "train"
+        canonical_consumer_dir.mkdir(parents=True, exist_ok=True)
+        self.consumer_lock_path = canonical_consumer_dir / "consumer.lock"
         self.distributed_publication_ledger_path = (
             self.state_dir / "distributed-publications.json"
         )
@@ -1354,6 +1361,25 @@ class MergeTrain:
                 preflight = self._run_preflight(request, target_commit=target)
                 return self._process_after_preflight(request, preflight)
             return self._process_claimed(request)
+
+    def run_under_consumer_lease(
+        self,
+        callback: Callable[[], Any],
+    ) -> tuple[bool, Any]:
+        """Run bounded maintenance while excluding every other merge train.
+
+        The boolean distinguishes lease contention from a callback that
+        legitimately returns ``None``.  This helper grants no queue claim or
+        completion authority; the callback must re-read and validate every
+        durable identity it consumes.
+        """
+
+        if not callable(callback):
+            raise TypeError("consumer maintenance callback must be callable")
+        with self._consumer_lease() as acquired:
+            if not acquired:
+                return False, None
+            return True, callback()
 
     # Widely useful aliases for supervisors that phrase one iteration as a tick.
     process_next = run_once
@@ -3112,6 +3138,49 @@ class MergeTrain:
         )
         return proof.get("passed") is True
 
+    @staticmethod
+    def _quarantine_auto_recovery_allowed(request: MergeRequest) -> bool:
+        """Reject authority and terminal-repair quarantines before revival."""
+
+        quarantine_metadata = request.metadata.get("quarantine")
+        quarantined_merge_result = (
+            quarantine_metadata.get("merge_result")
+            if isinstance(quarantine_metadata, Mapping)
+            else None
+        )
+        return not (
+            (
+                isinstance(quarantined_merge_result, Mapping)
+                and quarantined_merge_result.get(
+                    "automatic_repair_terminal"
+                )
+                is True
+            )
+            or request.failure_reason
+            in (
+                AUTHORITY_QUARANTINE_REASONS
+                | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
+            )
+        )
+
+    @staticmethod
+    def _pending_request_is_integrated_quarantine_revival(
+        request: MergeRequest,
+    ) -> bool:
+        revivals = request.metadata.get("revivals")
+        if not isinstance(revivals, list) or not revivals:
+            return False
+        latest = revivals[-1]
+        return bool(
+            isinstance(latest, Mapping)
+            and MergeTrain._quarantine_auto_recovery_allowed(request)
+            and latest.get("previous_failure_reason")
+            not in (
+                AUTHORITY_QUARANTINE_REASONS
+                | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
+            )
+        )
+
     def _recover_integrated_quarantines(self) -> int:
         """Revive only quarantines already integrated into this exact target.
 
@@ -3128,24 +3197,7 @@ class MergeTrain:
         for request in snapshot(
             limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
         ):
-            quarantine_metadata = request.metadata.get("quarantine")
-            quarantined_merge_result = (
-                quarantine_metadata.get("merge_result")
-                if isinstance(quarantine_metadata, Mapping)
-                else None
-            )
-            if (
-                isinstance(quarantined_merge_result, Mapping)
-                and quarantined_merge_result.get(
-                    "automatic_repair_terminal"
-                )
-                is True
-            ):
-                continue
-            if request.failure_reason in (
-                AUTHORITY_QUARANTINE_REASONS
-                | INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS
-            ):
+            if not self._quarantine_auto_recovery_allowed(request):
                 continue
             if not self._quarantined_candidate_is_integrated(request):
                 continue
@@ -3163,6 +3215,167 @@ class MergeTrain:
             ):
                 recovered += 1
         return recovered
+
+    def recover_one_integrated_quarantine(
+        self,
+        *,
+        request_filter: Callable[[MergeRequest], bool] | None = None,
+        request_id: str = "",
+        processor_context: Callable[["MergeTrain"], Any] | None = None,
+        after_process: Callable[
+            [MergeRequest, Mapping[str, Any]], Any
+        ]
+        | None = None,
+    ) -> dict[str, Any] | None:
+        """Recover and process one exact request under the train lease.
+
+        Database-authoritative lanes reconstruct completion authority from an
+        attempt-specific projection.  They therefore cannot use an ordinary
+        priority dequeue after choosing that projection.  This method filters
+        before revival and claims the same request id atomically; a revival
+        left pending by a bounded resource fence is retried exactly on the
+        next pass.  When ``request_id`` is supplied, the durable row is read
+        again only after abandoned train claims are recovered under this
+        train's exclusive consumer lease, so bounded discovery snapshots
+        cannot starve or race the selected request.
+        """
+
+        exact_request_id = str(request_id or "").strip()
+        snapshot = getattr(self.queue, "quarantined_requests", None)
+        pending_snapshot = getattr(self.queue, "pending_requests", None)
+        get_request = getattr(self.queue, "get", None)
+        revive = getattr(self.queue, "revive_quarantined", None)
+        exact_claim = getattr(self.queue, "claim_pending_request", None)
+        if not all(
+            callable(operation)
+            for operation in (snapshot, pending_snapshot, revive, exact_claim)
+        ):
+            return None
+        if exact_request_id and not callable(get_request):
+            return None
+        if processor_context is not None and not exact_request_id:
+            raise ValueError(
+                "processor_context requires an exact recovery request_id"
+            )
+        predicate = request_filter or (lambda _request: True)
+        with self._consumer_lease() as acquired:
+            if not acquired:
+                return None
+            self._recover_abandoned_claims()
+            self._cleanup_abandoned_worktrees()
+
+            selected: MergeRequest | None = None
+            if exact_request_id:
+                request = get_request(exact_request_id)
+                if (
+                    not isinstance(request, MergeRequest)
+                    or request.request_id != exact_request_id
+                    or not predicate(request)
+                ):
+                    return None
+                if request.status == "pending":
+                    if (
+                        self._pending_request_is_integrated_quarantine_revival(
+                            request
+                        )
+                        and self._quarantined_candidate_is_integrated(request)
+                    ):
+                        selected = request
+                elif request.status == "quarantined":
+                    if (
+                        self._quarantine_auto_recovery_allowed(request)
+                        and self._quarantined_candidate_is_integrated(request)
+                    ):
+                        revived = revive(
+                            request.request_id,
+                            reason=(
+                                "merge train proved quarantined candidate already "
+                                "integrated into exact target"
+                            ),
+                            reset_failures=True,
+                        )
+                        if (
+                            isinstance(revived, MergeRequest)
+                            and revived.status == "pending"
+                        ):
+                            selected = revived
+            else:
+                for request in pending_snapshot(
+                    limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
+                ):
+                    if (
+                        self._pending_request_is_integrated_quarantine_revival(
+                            request
+                        )
+                        and predicate(request)
+                        and self._quarantined_candidate_is_integrated(request)
+                    ):
+                        selected = request
+                        break
+                if selected is None:
+                    for request in snapshot(
+                        limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
+                    ):
+                        if (
+                            not self._quarantine_auto_recovery_allowed(request)
+                            or not predicate(request)
+                            or not self._quarantined_candidate_is_integrated(
+                                request
+                            )
+                        ):
+                            continue
+                        revived = revive(
+                            request.request_id,
+                            reason=(
+                                "merge train proved quarantined candidate already "
+                                "integrated into exact target"
+                            ),
+                            reset_failures=True,
+                        )
+                        if (
+                            isinstance(revived, MergeRequest)
+                            and revived.status == "pending"
+                        ):
+                            selected = revived
+                        break
+            if selected is None:
+                return None
+            claimed = exact_claim(
+                selected.request_id,
+                consumer_id=self.owner_id,
+            )
+            if not isinstance(claimed, MergeRequest):
+                return None
+
+            def process_claimed() -> dict[str, Any]:
+                if (
+                    self.preflight_callback is not None
+                    or self.post_merge_validation is not None
+                    or self.post_merge_evidence is not None
+                ):
+                    target = self._target_commit()
+                    preflight = self._run_preflight(
+                        claimed,
+                        target_commit=target,
+                    )
+                    return self._process_after_preflight(claimed, preflight)
+                return self._process_claimed(claimed)
+
+            if processor_context is None:
+                result = process_claimed()
+            else:
+                # The context is entered only after this train owns the
+                # consumer lease and exact queue claim.  This lets callers
+                # construct stateful Portal adapters without a second daemon
+                # touching attempt state while the original train is live.
+                with processor_context(self):
+                    result = process_claimed()
+            if after_process is not None:
+                # Queue settlement, exact target requalification, and any
+                # external retry CAS can now be joined while no other merge
+                # train is able to advance the target.
+                after_process(claimed, result)
+            return result
 
     def _worktree_disk_usage(self) -> tuple[int, int]:
         """Return allocated bytes and child count beneath the train root."""
@@ -5076,8 +5289,41 @@ class MergeTrain:
             ),
         )
         self._write_receipt(self._dedupe_key(canonical, candidate), result)
+        completion_metadata: dict[str, Any] | None = None
+        merge_result = result.get("merge_result")
+        repair = (
+            merge_result.get("post_merge_declared_output_repair")
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        repair_receipt = (
+            repair.get("receipt")
+            if isinstance(repair, Mapping)
+            else None
+        )
+        if (
+            isinstance(repair, Mapping)
+            and repair.get("passed") is True
+            and repair.get("reason")
+            == "post_merge_declared_outputs_repaired"
+            and isinstance(repair_receipt, Mapping)
+        ):
+            completion_metadata = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "post-merge-declared-output-completion@1"
+                ),
+                "status": status,
+                "reason": "post_merge_declared_outputs_repaired",
+                "candidate_commit": candidate,
+                "target_commit": target,
+                "repair_receipt": dict(repair_receipt),
+            }
         try:
-            self.queue.complete(request)
+            self.queue.complete(
+                request,
+                metadata=completion_metadata,
+            )
         except MergeQueueFenceError as exc:
             if callback_owned_integration:
                 result.update(

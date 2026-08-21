@@ -257,6 +257,304 @@ def test_queue_can_revive_false_positive_quarantine(tmp_path: Path) -> None:
     ]
 
 
+def test_queue_claim_pending_request_never_claims_a_fairer_foreign_request(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    fairer = queue.enqueue(
+        branch_name="implementation/fairer",
+        task_id="FAIRER",
+        priority="P0",
+        commit_sha="a" * 40,
+    )
+    selected = queue.enqueue(
+        branch_name="implementation/exact",
+        task_id="EXACT",
+        priority="P3",
+        commit_sha="b" * 40,
+    )
+
+    claimed = queue.claim_pending_request(
+        selected.request_id,
+        consumer_id="request-routed-recovery",
+    )
+
+    assert claimed is not None
+    assert claimed.request_id == selected.request_id
+    assert claimed.consumer_id == "request-routed-recovery"
+    assert queue.get(fairer.request_id).status == "pending"
+    assert [item.request_id for item in queue.pending_requests()] == [
+        fairer.request_id
+    ]
+
+
+def test_bound_quarantine_snapshot_filters_target_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue_dir = tmp_path / "queue"
+    producer = MergeQueue(queue_dir, max_queue_size=32)
+    for index in range(6):
+        foreign = producer.enqueue(
+            branch_name=f"implementation/foreign-{index}",
+            task_id=f"FOREIGN-{index}",
+            commit_sha=f"{index + 1:040x}",
+            target_repository_id="repository:foreign",
+            target_branch="main",
+        )
+        producer.quarantine(foreign, reason="foreign terminal row")
+    selected = producer.enqueue(
+        branch_name="implementation/selected-target",
+        task_id="SELECTED-TARGET",
+        commit_sha="f" * 40,
+        target_repository_id="repository:selected",
+        target_branch="main",
+    )
+    producer.quarantine(
+        selected,
+        reason="post_merge_declared_outputs_missing",
+    )
+    consumer = MergeQueue(
+        queue_dir,
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    visible = consumer.quarantined_requests(limit=1)
+
+    assert [request.request_id for request in visible] == [
+        selected.request_id
+    ]
+
+
+def test_completed_recovery_snapshot_filters_and_paginates_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+    completion_schema = "repair-completion@test"
+    completion_reason = "post_merge_declared_outputs_repaired"
+
+    def complete(task_id: str, *, repair: bool) -> object:
+        request = queue.enqueue(
+            branch_name=f"implementation/{task_id.casefold()}",
+            task_id=task_id,
+            commit_sha=(task_id[-1].casefold() * 40),
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="fixture",
+        )
+        assert claimed is not None
+        queue.complete(
+            claimed,
+            metadata=(
+                {
+                    "schema": completion_schema,
+                    "reason": completion_reason,
+                }
+                if repair
+                else {"schema": "ordinary-completion@test"}
+            ),
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        return stored
+
+    older = complete("TASK-A", repair=True)
+    complete("TASK-B", repair=False)
+    newer = complete("TASK-C", repair=True)
+
+    first_page = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason=completion_reason,
+    )
+    second_page = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason=completion_reason,
+        before_request_id=newer.request_id,
+    )
+
+    assert [request.request_id for request in first_page] == [
+        newer.request_id
+    ]
+    assert [request.request_id for request in second_page] == [
+        older.request_id
+    ]
+
+
+def test_active_recovery_snapshot_keyset_reaches_later_same_target_row(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+    rows = []
+    for index in range(3):
+        request = queue.enqueue(
+            branch_name=f"implementation/recovery-{index}",
+            task_id=f"RECOVERY-{index}",
+            commit_sha=f"{index + 1:040x}",
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="fixture",
+        )
+        assert claimed is not None
+        queue.quarantine(
+            claimed,
+            reason="post_merge_declared_outputs_missing",
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        rows.append(stored)
+
+    first_page = queue.quarantined_requests(
+        limit=2,
+        after_request_id="",
+    )
+    second_page = queue.quarantined_requests(
+        limit=2,
+        after_request_id=first_page[-1].request_id,
+    )
+
+    assert [request.request_id for request in first_page] == [
+        rows[0].request_id,
+        rows[1].request_id,
+    ]
+    assert [request.request_id for request in second_page] == [
+        rows[2].request_id
+    ]
+
+
+def test_recover_one_integrated_quarantine_processes_only_filtered_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    repository_id = checkout_repository_id(repo)
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+    selected = queue.enqueue(
+        branch_name="implementation/selected",
+        task_id="SELECTED",
+        canonical_task_id="task:cid:selected",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+        metadata={"changed_submodule_paths": []},
+    )
+    unrelated = queue.enqueue(
+        branch_name="implementation/unrelated",
+        task_id="UNRELATED",
+        canonical_task_id="task:cid:unrelated",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+        metadata={"changed_submodule_paths": []},
+    )
+    queue.quarantine(
+        selected,
+        reason="post_merge_declared_outputs_missing",
+    )
+    queue.quarantine(
+        unrelated,
+        reason="post_merge_declared_outputs_missing",
+    )
+    candidate = selected.commit_sha
+    repair_commit = _git(repo, "rev-parse", "HEAD")
+
+    train = MergeTrain(
+        repo,
+        queue,
+        merge_callback=lambda request: {
+            "merged": True,
+            "reason": "post_merge_declared_outputs_repaired",
+            "post_merge_declared_output_repair": {
+                "passed": True,
+                "reason": "post_merge_declared_outputs_repaired",
+                "receipt": {
+                    "schema": "repair@test",
+                    "task_ids": [request.task_id],
+                    "candidate_commit": request.commit_sha,
+                    "repair_commit": repair_commit,
+                    "receipt_id": "receipt:test",
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(
+        queue,
+        "pending_requests",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("exact recovery must not rescan pending rows")
+        ),
+    )
+    monkeypatch.setattr(
+        queue,
+        "quarantined_requests",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("exact recovery must not rescan quarantined rows")
+        ),
+    )
+
+    result = train.recover_one_integrated_quarantine(
+        request_filter=lambda request: request.request_id
+        == selected.request_id,
+        request_id=selected.request_id,
+    )
+
+    assert result is not None
+    assert result["status"] == "merged"
+    completed = queue.get(selected.request_id)
+    assert completed is not None and completed.status == "completed"
+    assert completed.metadata["completion"]["candidate_commit"] == candidate
+    untouched = queue.get(unrelated.request_id)
+    assert untouched is not None and untouched.status == "quarantined"
+
+
+def test_custom_train_state_dirs_share_one_queue_consumer_lease(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/canonical-consumer-lease",
+        task_id="CANONICAL-LEASE",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+    )
+    first = MergeTrain(repo, queue, state_dir=tmp_path / "lane-a")
+    second = MergeTrain(repo, queue, state_dir=tmp_path / "lane-b")
+
+    assert first.consumer_lock_path == second.consumer_lock_path
+    with first._consumer_lease() as acquired:
+        assert acquired is True
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=first.owner_id,
+        )
+        assert claimed is not None
+        assert second.run_once() is None
+        assert queue.owns_claim(claimed, consumer_id=first.owner_id)
+
+    recovered = second.run_once()
+
+    assert recovered is not None
+    assert recovered["status"] == "already_merged"
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "completed"
+    assert second.run_once() is None
+
+
 def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
     now = [10.0]
     queue = MergeQueue(

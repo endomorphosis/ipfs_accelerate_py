@@ -23,7 +23,7 @@ import shlex
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final
@@ -61,6 +61,31 @@ _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
 _MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
 _MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
+_POST_MERGE_RECOVERY_SCAN_LIMIT: Final[int] = 256
+_MERGE_CANDIDATE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+)
+_MERGE_TARGET_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+)
+_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON: Final[str] = (
+    "post_merge_declared_outputs_missing"
+)
+_POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-declared-output-completion@1"
+)
+_POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-declared-output-repair@1"
+)
+_DATABASE_POST_MERGE_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-recovery@1"
+)
+_POST_MERGE_COMPLETION_STATUSES: Final[frozenset[str]] = frozenset(
+    {"merged", "already_merged", "deduplicated", "completed"}
+)
 _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -160,6 +185,15 @@ class DatabasePortalAttemptPaths:
     strategy: Path
     events: Path
     implementation_logs: Path
+
+
+@dataclass(frozen=True)
+class _DatabasePortalRecoveryProjection:
+    """Verified ownership of one merge request by this database lane."""
+
+    paths: DatabasePortalAttemptPaths
+    binding: Mapping[str, Any]
+    task_status: str
 
 
 PortalDaemonFactory = Callable[[DatabasePortalAttemptPaths, str], Any]
@@ -686,6 +720,7 @@ def verify_database_portal_attempt_projection(
         "binding_id": binding_id,
         "attempt_id": str(binding["attempt_id"]),
         "claim_id": str(binding["claim_id"]),
+        "lease_id": str(binding["lease_id"]),
         "task_alias": task_alias,
         "task_cid": task_cid,
         "canonical_task_key": canonical_task_key,
@@ -778,6 +813,8 @@ class DatabasePortalExecutionBridge:
         attempt_root: Path | str,
         portal_factory: PortalDaemonFactory,
         repository_root: Path | str | None = None,
+        merge_queue: Any = None,
+        merge_target_branch: str = "",
         worktree_submodule_paths: Sequence[str] = (),
         task_header_prefix: str = "## ",
         max_passes: int = 4,
@@ -803,6 +840,45 @@ class DatabasePortalExecutionBridge:
         self.repository_root = (
             Path(repository_root).absolute() if repository_root is not None else None
         )
+        self.merge_queue = merge_queue
+        self.merge_target_branch = str(merge_target_branch or "").strip()
+        if self.merge_queue is not None:
+            from ..merge.checkout_lock import checkout_repository_id
+
+            if self.repository_root is None or not self.merge_target_branch:
+                raise ValueError(
+                    "post-merge recovery requires repository_root and "
+                    "merge_target_branch"
+                )
+            queue_branch = str(
+                getattr(self.merge_queue, "target_branch", "") or ""
+            ).strip()
+            queue_repository_id = str(
+                getattr(self.merge_queue, "target_repository_id", "") or ""
+            ).strip()
+            if (
+                queue_branch != self.merge_target_branch
+                or not queue_repository_id
+                or queue_repository_id
+                != checkout_repository_id(self.repository_root)
+                or getattr(self.merge_queue, "require_target_binding", False)
+                is not True
+            ):
+                raise ValueError(
+                    "post-merge recovery requires an exact target-bound merge queue"
+                )
+            for operation in (
+                "completed_requests",
+                "pending_requests",
+                "processing_requests",
+                "quarantined_requests",
+                "get",
+            ):
+                if not callable(getattr(self.merge_queue, operation, None)):
+                    raise TypeError(
+                        "post-merge recovery merge queue lacks "
+                        f"{operation}()"
+                    )
         self.worktree_submodule_paths = tuple(
             _safe_repository_path(path) for path in worktree_submodule_paths
         )
@@ -813,6 +889,12 @@ class DatabasePortalExecutionBridge:
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
         self.max_task_attempts = int(max_task_attempts)
+        self._completed_recovery_cursor = ""
+        self._active_recovery_cursors = {
+            "pending_requests": "",
+            "quarantined_requests": "",
+            "processing_requests": "",
+        }
 
     def _validation_repository_scope(self, body: Mapping[str, Any]) -> str:
         """Return the checked nested repository namespace for this task.
@@ -917,6 +999,400 @@ class DatabasePortalExecutionBridge:
             events=root / "portal-events.jsonl",
             implementation_logs=root / "implementation-logs",
         )
+
+    @staticmethod
+    def _request_has_missing_output_recovery_lineage(request: Any) -> bool:
+        """Accept only the exact quarantine class this maintenance path owns."""
+
+        status = str(getattr(request, "status", "") or "").strip()
+        metadata = getattr(request, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            return False
+        failure_reason = str(
+            getattr(request, "failure_reason", "") or ""
+        )
+        if (
+            status == "quarantined"
+            and failure_reason
+            == _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        ):
+            return True
+        if status not in {"pending", "processing", "quarantined", "completed"}:
+            return False
+        revivals = metadata.get("revivals")
+        if (
+            not isinstance(revivals, Sequence)
+            or isinstance(revivals, (str, bytes, bytearray, memoryview))
+            or not revivals
+            or not isinstance(revivals[-1], Mapping)
+            or revivals[-1].get("previous_failure_reason")
+            != _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        ):
+            return False
+        if status == "processing":
+            return bool(
+                str(getattr(request, "consumer_id", "") or "").startswith(
+                    "merge-train:"
+                )
+                and str(getattr(request, "claim_token", "") or "")
+            )
+        if status == "quarantined":
+            # Transport failure must not erase the sealed semantic origin.
+            # These are the only generic terminal reasons produced while
+            # recovering an abandoned merge-train claim.
+            return failure_reason in {
+                "merge train consumer exited on final attempt",
+                "processing request exceeded max age",
+            }
+        if status == "completed":
+            completion = metadata.get("completion")
+            return bool(
+                isinstance(completion, Mapping)
+                and completion.get("schema")
+                == _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
+                and completion.get("reason")
+                == "post_merge_declared_outputs_repaired"
+            )
+        return True
+
+    def _current_recovery_task_status(
+        self,
+        *,
+        task_cid: str,
+        task_alias: str,
+    ) -> str:
+        """Return an eligible canonical database status or an empty value."""
+
+        getter = getattr(self.task_source, "get_task", None) or getattr(
+            self.task_source,
+            "get",
+            None,
+        )
+        if not callable(getter):
+            return ""
+        try:
+            record = getter(task_cid)
+        except Exception:
+            return ""
+        if (
+            record is None
+            or str(getattr(record, "task_cid", "") or "") != task_cid
+            or str(getattr(record, "task_alias", "") or "") != task_alias
+        ):
+            return ""
+        status = str(getattr(record, "status", "") or "").strip().lower()
+        # Once a fresh claim advances to in_progress (or completion lands), an
+        # old completed queue row is historical evidence, not work to replay.
+        return status if status in {"blocked", "retrying"} else ""
+
+    def _owned_post_merge_recovery_projection(
+        self,
+        request: Any,
+    ) -> _DatabasePortalRecoveryProjection | None:
+        """Prove that one eligible request came from this lane's sealed attempt."""
+
+        if self.merge_queue is None or not self._request_has_missing_output_recovery_lineage(
+            request
+        ):
+            return None
+        metadata = getattr(request, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            return None
+        task_alias = str(getattr(request, "task_id", "") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        commit_sha = str(getattr(request, "commit_sha", "") or "")
+        queue_repository_id = str(
+            getattr(self.merge_queue, "target_repository_id", "") or ""
+        )
+        if (
+            metadata.get("schema") != _MERGE_CANDIDATE_SCHEMA
+            or metadata.get("target_binding_schema")
+            != _MERGE_TARGET_BINDING_SCHEMA
+            or metadata.get("target_repository_id") != queue_repository_id
+            or metadata.get("target_branch") != self.merge_target_branch
+            or not task_alias
+            or not task_cid
+            or not task_key
+            or re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None
+            or metadata.get("implementation_commit") != commit_sha
+            or metadata.get("task_header_prefix") != self.task_header_prefix
+            or self.repository_root is None
+            or metadata.get("repo_root") != str(self.repository_root)
+            or metadata.get("completion_task_cids")
+            != {task_alias: task_cid}
+        ):
+            return None
+
+        task_payload = metadata.get("task")
+        if not isinstance(task_payload, Mapping):
+            return None
+        task_metadata = task_payload.get("metadata")
+        if (
+            not isinstance(task_metadata, Mapping)
+            or task_payload.get("task_id") != task_alias
+            or task_payload.get("canonical_task_cid") != task_cid
+            or task_payload.get("canonical_task_key") != task_key
+            or task_metadata.get("database task cid") != task_cid
+            or task_metadata.get("canonical task cid") != task_cid
+            or task_metadata.get("canonical task key") != task_key
+            or task_metadata.get("projection authority") != "false"
+        ):
+            return None
+
+        raw_projection = metadata.get("todo_path")
+        if type(raw_projection) is not str or not raw_projection:
+            return None
+        projection = Path(raw_projection)
+        if (
+            not projection.is_absolute()
+            or str(projection) != raw_projection
+            or projection.parent.parent != self.attempt_root
+        ):
+            return None
+        root = projection.parent
+        paths = DatabasePortalAttemptPaths(
+            root=root,
+            task_projection=projection,
+            binding=root / "database-attempt-binding.json",
+            state=root / "portal-task-state.json",
+            strategy=root / "portal-strategy.json",
+            events=root / "portal-events.jsonl",
+            implementation_logs=root / "implementation-logs",
+        )
+        if any(
+            metadata.get(key) != str(expected)
+            for key, expected in (
+                ("state_path", paths.state),
+                ("strategy_path", paths.strategy),
+                ("events_path", paths.events),
+            )
+        ):
+            return None
+        try:
+            binding = verify_database_portal_attempt_projection(
+                projection,
+                expected_task_alias=task_alias,
+                expected_task_cid=task_cid,
+                allowed_root=self.attempt_root,
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if (
+            binding.get("canonical_task_key") != task_key
+            or task_metadata.get("database attempt id")
+            != binding.get("attempt_id")
+            or task_metadata.get("database claim id")
+            != binding.get("claim_id")
+        ):
+            return None
+        task_status = self._current_recovery_task_status(
+            task_cid=task_cid,
+            task_alias=task_alias,
+        )
+        if not task_status:
+            return None
+        return _DatabasePortalRecoveryProjection(
+            paths=paths,
+            binding=binding,
+            task_status=task_status,
+        )
+
+    def _post_merge_recovery_evidence(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        evidence_digest: Callable[[Mapping[str, Any]], str],
+    ) -> dict[str, Any] | None:
+        """Compile the exact completed-row receipt into the database contract."""
+
+        metadata = getattr(request, "metadata", None)
+        completion = metadata.get("completion") if isinstance(metadata, Mapping) else None
+        expected_completion_fields = {
+            "schema",
+            "status",
+            "reason",
+            "candidate_commit",
+            "target_commit",
+            "repair_receipt",
+        }
+        if (
+            str(getattr(request, "status", "") or "") != "completed"
+            or not isinstance(completion, Mapping)
+            or set(completion) != expected_completion_fields
+            or completion.get("schema")
+            != _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
+            or completion.get("reason")
+            != "post_merge_declared_outputs_repaired"
+            or completion.get("status") not in _POST_MERGE_COMPLETION_STATUSES
+            or completion.get("candidate_commit")
+            != str(getattr(request, "commit_sha", "") or "")
+        ):
+            return None
+        repair_receipt = completion.get("repair_receipt")
+        target_commit = str(completion.get("target_commit") or "")
+        task_alias = str(getattr(request, "task_id", "") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", target_commit) is None
+            or not isinstance(repair_receipt, Mapping)
+            or repair_receipt.get("schema")
+            != _POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA
+            or repair_receipt.get("candidate_commit")
+            != completion.get("candidate_commit")
+            or repair_receipt.get("repair_commit") != target_commit
+            or task_alias not in (repair_receipt.get("task_ids") or ())
+            or not str(repair_receipt.get("receipt_id") or "")
+        ):
+            return None
+        if not self._repair_receipt_matches_current_target(repair_receipt):
+            return None
+        binding = projection.binding
+        evidence: dict[str, Any] = {
+            "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_alias": task_alias,
+            "candidate_commit": str(completion["candidate_commit"]),
+            "repair_commit": target_commit,
+            "repair_receipt_id": str(repair_receipt["receipt_id"]),
+            "repair_receipt": dict(repair_receipt),
+            "source_attempt_id": str(binding.get("attempt_id") or ""),
+            "source_claim_id": str(binding.get("claim_id") or ""),
+            "source_lease_id": str(binding.get("lease_id") or ""),
+            "source_fencing_token": binding.get("fencing_token"),
+            "source_fence_epoch": binding.get("fence_epoch"),
+            "source_binding_id": str(binding.get("binding_id") or ""),
+            "source_projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+        }
+        if (
+            not evidence["request_id"]
+            or not evidence["source_attempt_id"]
+            or not evidence["source_claim_id"]
+            or not evidence["source_lease_id"]
+            or type(evidence["source_fencing_token"]) is not int
+            or type(evidence["source_fence_epoch"]) is not int
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(evidence["source_binding_id"]),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(evidence["source_projection_immutable_digest"]),
+            )
+            is None
+        ):
+            return None
+        evidence_id = evidence_digest(evidence)
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", str(evidence_id or "")) is None:
+            return None
+        evidence["evidence_id"] = str(evidence_id)
+        return evidence
+
+    def _repair_receipt_matches_current_target(
+        self,
+        repair_receipt: Mapping[str, Any],
+    ) -> bool:
+        """Require repair evidence to describe the exact live target tree.
+
+        Queue completion can precede the DuckDB retry CAS.  A later target
+        mutation must not promote a once-valid repair receipt into current
+        completion evidence.  Recovery is deliberately conservative: another
+        target commit requires a new current-tree validation receipt, even if
+        the recorded output blobs happen to survive unchanged.
+        """
+
+        if self.repository_root is None or not self.merge_target_branch:
+            return False
+        repair_commit = str(repair_receipt.get("repair_commit") or "")
+        repair_tree = str(repair_receipt.get("repair_tree") or "")
+        candidate_commit = str(
+            repair_receipt.get("candidate_commit") or ""
+        )
+        entries = repair_receipt.get("entries")
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", repair_commit) is None
+            or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", repair_tree)
+            is None
+            or re.fullmatch(r"[0-9a-f]{40}", candidate_commit) is None
+            or not isinstance(entries, Sequence)
+            or isinstance(entries, (str, bytes, bytearray, memoryview))
+            or not entries
+            or len(entries) > 4096
+        ):
+            return False
+
+        def git(*arguments: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+
+        try:
+            head = git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{self.merge_target_branch}^{{commit}}",
+            )
+            tree = git("rev-parse", "--verify", f"{repair_commit}^{{tree}}")
+            ancestry = git(
+                "merge-base",
+                "--is-ancestor",
+                candidate_commit,
+                repair_commit,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if (
+            head.returncode != 0
+            or head.stdout.strip() != repair_commit
+            or tree.returncode != 0
+            or tree.stdout.strip() != repair_tree
+            or ancestry.returncode != 0
+        ):
+            return False
+
+        observed_paths: set[str] = set()
+        for raw_entry in entries:
+            if not isinstance(raw_entry, Mapping):
+                return False
+            path = str(raw_entry.get("path") or "")
+            if not path or path in observed_paths:
+                return False
+            try:
+                safe_path = _safe_output_path(path)
+                item = subprocess.run(
+                    [
+                        "git",
+                        "ls-tree",
+                        "-z",
+                        repair_commit,
+                        "--",
+                        safe_path,
+                    ],
+                    cwd=self.repository_root,
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return False
+            expected = (
+                f"{raw_entry.get('mode')} "
+                f"{raw_entry.get('object_type')} "
+                f"{raw_entry.get('object_id')}\t{safe_path}\0"
+            ).encode("utf-8")
+            if item.returncode != 0 or item.stdout != expected:
+                return False
+            observed_paths.add(path)
+        return True
 
     @staticmethod
     def _record_for_attempt(task_source: Any, attempt: Any) -> Any:
@@ -1991,6 +2467,343 @@ class DatabasePortalExecutionBridge:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
             if callable(close):
                 close()
+
+    def recover_post_merge_declared_outputs(
+        self,
+        database_daemon: Any,
+    ) -> Mapping[str, Any] | None:
+        """Repair one owned quarantine and rearm its exact database task.
+
+        This is not an ordinary merge-queue consumer.  It can see only a
+        missing-output quarantine whose request points back to this lane's
+        immutable database-attempt projection.  A completed row is replayed
+        first so a crash between queue settlement and the DuckDB status CAS is
+        idempotently recoverable without invoking the merge callback again.
+        """
+
+        if self.merge_queue is None:
+            return None
+        digest = getattr(
+            database_daemon,
+            "_database_portal_evidence_digest",
+            None,
+        )
+        recover = getattr(
+            database_daemon,
+            "recover_blocked_post_merge_declared_outputs",
+            None,
+        )
+        if not callable(digest) or not callable(recover):
+            raise DatabasePortalBridgeError(
+                "database daemon lacks post-merge recovery authority"
+            )
+        # A completed queue row can outlive the database attempt that created
+        # it.  Only an exact latest-attempt conflict is a stale-row signal;
+        # malformed authority evidence must still fail the maintenance tick.
+        from .implementation_daemon import (
+            DatabaseImplementationConflictError,
+        )
+        from ..merge.merge_train import MergeTrain
+
+        train = MergeTrain(
+            repo_root=self.repository_root,
+            queue=self.merge_queue,
+            target_branch=self.merge_target_branch,
+            max_attempts=int(
+                getattr(self.merge_queue, "max_attempts", 3)
+            ),
+        )
+
+        # Queue completion precedes the database CAS.  Replaying its compact
+        # metadata is therefore the first operation after every restart.  The
+        # page is filtered before LIMIT and the cursor advances across ticks,
+        # so unrelated or stale history cannot crowd out an older repair.
+        def completion_recovery_page(cursor: str) -> Sequence[Any]:
+            return self.merge_queue.completed_requests(
+                limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
+                completion_schema=(
+                    _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
+                ),
+                completion_reason=(
+                    "post_merge_declared_outputs_repaired"
+                ),
+                before_request_id=cursor,
+            )
+
+        completion_page = completion_recovery_page(
+            self._completed_recovery_cursor
+        )
+        if not completion_page and self._completed_recovery_cursor:
+            self._completed_recovery_cursor = ""
+            completion_page = completion_recovery_page("")
+
+        def replay_completed_page() -> Mapping[str, Any] | None:
+            for snapshot in completion_page:
+                completed = self.merge_queue.get(
+                    str(getattr(snapshot, "request_id", "") or "")
+                )
+                projection = (
+                    self._owned_post_merge_recovery_projection(completed)
+                    if completed is not None
+                    else None
+                )
+                if projection is None:
+                    continue
+                evidence = self._post_merge_recovery_evidence(
+                    completed,
+                    projection,
+                    evidence_digest=digest,
+                )
+                if evidence is None:
+                    continue
+                try:
+                    result = recover(evidence)
+                except DatabaseImplementationConflictError:
+                    continue
+                if not isinstance(result, Mapping):
+                    raise DatabasePortalBridgeError(
+                        "database post-merge recovery returned a non-object"
+                    )
+                return dict(result)
+            return None
+
+        if completion_page:
+            acquired, replay_result = train.run_under_consumer_lease(
+                replay_completed_page
+            )
+            if not acquired:
+                return None
+            self._completed_recovery_cursor = str(
+                getattr(completion_page[-1], "request_id", "") or ""
+            )
+            if replay_result is not None:
+                self._completed_recovery_cursor = ""
+                return dict(replay_result)
+
+        selected: Any = None
+        selected_projection: _DatabasePortalRecoveryProjection | None = None
+        for snapshot_name in (
+            "pending_requests",
+            "quarantined_requests",
+            "processing_requests",
+        ):
+            snapshot = getattr(self.merge_queue, snapshot_name)
+            cursor = self._active_recovery_cursors[snapshot_name]
+            page = snapshot(
+                limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
+                after_request_id=cursor,
+            )
+            if not page and cursor:
+                self._active_recovery_cursors[snapshot_name] = ""
+                page = snapshot(
+                    limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
+                    after_request_id="",
+                )
+            for request in page:
+                projection = self._owned_post_merge_recovery_projection(request)
+                if projection is not None:
+                    selected = request
+                    selected_projection = projection
+                    break
+            if selected is not None:
+                break
+            if page:
+                self._active_recovery_cursors[snapshot_name] = str(
+                    getattr(page[-1], "request_id", "") or ""
+                )
+        if selected is None or selected_projection is None:
+            return None
+
+        selected_request_id = str(
+            getattr(selected, "request_id", "") or ""
+        )
+
+        def exact_owned_request(request: Any) -> bool:
+            return bool(
+                str(getattr(request, "request_id", "") or "")
+                == selected_request_id
+                and self._owned_post_merge_recovery_projection(request)
+                is not None
+            )
+
+        @contextmanager
+        def configured_processor(recovery_train: Any) -> Any:
+            current = self.merge_queue.get(selected_request_id)
+            current_projection = (
+                self._owned_post_merge_recovery_projection(current)
+                if current is not None
+                else None
+            )
+            if current_projection is None:
+                raise DatabasePortalBridgeError(
+                    "selected recovery request lost its sealed projection"
+                )
+            portal = self.portal_factory(
+                current_projection.paths,
+                str(getattr(current, "task_id", "") or ""),
+            )
+            if portal is None:
+                raise DatabasePortalBridgeError(
+                    "portal_factory did not return a Portal-compatible daemon"
+                )
+            close = getattr(
+                portal,
+                "close_event_runtime",
+                None,
+            ) or getattr(portal, "close", None)
+            try:
+                merge_callback = getattr(
+                    portal,
+                    "_merge_train_callback",
+                    None,
+                )
+                portal_queue = getattr(portal, "merge_queue", None)
+                portal_repo_root = getattr(portal, "repo_root", None)
+                portal_target = str(
+                    getattr(
+                        portal,
+                        "resolved_merge_target_branch",
+                        "",
+                    )
+                    or ""
+                )
+                if (
+                    not callable(merge_callback)
+                    or portal_queue is not self.merge_queue
+                    or portal_repo_root is None
+                    or self.repository_root is None
+                    or Path(portal_repo_root).absolute()
+                    != self.repository_root
+                    or portal_target != self.merge_target_branch
+                ):
+                    raise DatabasePortalBridgeError(
+                        "Portal recovery daemon is not bound to the selected target"
+                    )
+                from ..proof.formal_verification_policy import (
+                    FormalVerificationPolicy,
+                    default_formal_verification_policy,
+                )
+
+                proof_gate = getattr(portal, "proof_gate", None)
+                raw_policy = getattr(
+                    portal,
+                    "formal_verification_policy",
+                    None,
+                )
+                if raw_policy is None:
+                    policy = (
+                        default_formal_verification_policy()
+                        if proof_gate is not None
+                        else None
+                    )
+                elif isinstance(raw_policy, FormalVerificationPolicy):
+                    policy = raw_policy
+                elif isinstance(raw_policy, Mapping):
+                    policy = FormalVerificationPolicy.from_dict(raw_policy)
+                else:
+                    raise TypeError(
+                        "Portal formal_verification_policy is invalid"
+                    )
+                recovery_train.merge_callback = merge_callback
+                recovery_train.formal_verification_policy = policy
+                recovery_train.proof_gate = proof_gate
+                recovery_train.proof_gate_callback = proof_gate
+                portal_proof_cache = getattr(
+                    portal,
+                    "proof_cache_dir",
+                    None,
+                )
+                if portal_proof_cache is not None:
+                    recovery_train.proof_cache_dir = Path(
+                        portal_proof_cache
+                    )
+                if policy is not None:
+                    recovery_train.proof_cache_dir.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    recovery_train.proof_gate_pin_dir.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    recovery_train.proof_gate_attempt_dir.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                recovery_train.decision_runtime = getattr(
+                    portal,
+                    "decision_runtime",
+                    None,
+                )
+                recovery_train.decision_runtime_cancellation = getattr(
+                    portal,
+                    "implementation_cancelled",
+                    None,
+                )
+                yield
+            finally:
+                if callable(close):
+                    close()
+
+        database_result: dict[str, Any] | None = None
+
+        def rearm_after_queue_settlement(
+            _claimed: Any,
+            _train_result: Mapping[str, Any],
+        ) -> None:
+            nonlocal database_result
+            completed = self.merge_queue.get(selected_request_id)
+            projection = (
+                self._owned_post_merge_recovery_projection(completed)
+                if completed is not None
+                else None
+            )
+            evidence = (
+                self._post_merge_recovery_evidence(
+                    completed,
+                    projection,
+                    evidence_digest=digest,
+                )
+                if completed is not None and projection is not None
+                else None
+            )
+            if evidence is None:
+                return
+            try:
+                result = recover(evidence)
+            except DatabaseImplementationConflictError:
+                return
+            if not isinstance(result, Mapping):
+                raise DatabasePortalBridgeError(
+                    "database post-merge recovery returned a non-object"
+                )
+            database_result = dict(result)
+
+        train_result = train.recover_one_integrated_quarantine(
+            request_filter=exact_owned_request,
+            request_id=selected_request_id,
+            processor_context=configured_processor,
+            after_process=rearm_after_queue_settlement,
+        )
+        if database_result is not None:
+            return database_result
+        if train_result is None:
+            return None
+        return {
+            "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "attempted": True,
+            "recovered": False,
+            "reason": "post_merge_repair_not_completed",
+            "request_id": str(getattr(selected, "request_id", "") or ""),
+            "merge_status": str(
+                train_result.get("status")
+                or train_result.get("reason")
+                or ""
+            )
+            if isinstance(train_result, Mapping)
+            else "invalid_result",
+            "write_count": 0,
+        }
 
     @staticmethod
     def _require_accepted_provider(attempt: Any, provider_result: Mapping[str, Any]) -> str:

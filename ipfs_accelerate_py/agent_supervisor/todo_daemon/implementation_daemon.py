@@ -69844,6 +69844,10 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
+DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-recovery@1"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -70013,6 +70017,7 @@ class DatabaseImplementationDaemon:
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        post_merge_recovery_fn: Callable[[], Mapping[str, Any] | None] | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -70145,6 +70150,7 @@ class DatabaseImplementationDaemon:
         self._provider_fn = provider_fn
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
+        self._post_merge_recovery_fn = post_merge_recovery_fn
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -70444,6 +70450,87 @@ class DatabaseImplementationDaemon:
             self._provider_fn = provider_fn
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
+
+    def bind_post_merge_recovery(
+        self,
+        callback: Callable[[], Mapping[str, Any] | None],
+    ) -> None:
+        """Bind one request-routed merge recovery reconciler.
+
+        The callback is deliberately separate from provider execution: an
+        exhausted or terminal database task can leave a validated merge
+        candidate in quarantine while there is no claim eligible to dispatch
+        a provider.  Only an explicitly authorised production daemon may bind
+        this maintenance path.
+        """
+
+        self._require_execution_authority("bind post-merge recovery")
+        if not callable(callback):
+            raise TypeError("post-merge recovery callback must be callable")
+        with self._lock:
+            if self._post_merge_recovery_fn is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge recovery callback is already bound"
+                )
+            self._post_merge_recovery_fn = callback
+
+    def _run_post_merge_recovery(self) -> dict[str, Any]:
+        callback = self._post_merge_recovery_fn
+        if not callable(callback):
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": False,
+                "recovered": False,
+                "reason": "post_merge_recovery_not_configured",
+                "write_count": 0,
+            }
+        try:
+            raw = callback()
+        except Exception as exc:
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "post_merge_recovery_callback_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "write_count": 0,
+            }
+        if raw is None:
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "no_recoverable_post_merge_request",
+                "write_count": 0,
+            }
+        if not isinstance(raw, Mapping):
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "post_merge_recovery_result_invalid",
+                "write_count": 0,
+            }
+        result = dict(raw)
+        raw_write_count = result.get("write_count", 0)
+        if (
+            isinstance(raw_write_count, bool)
+            or not isinstance(raw_write_count, int)
+            or raw_write_count < 0
+            or raw_write_count > 1024
+        ):
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "post_merge_recovery_write_count_invalid",
+                "write_count": 0,
+            }
+        result.setdefault("schema", DATABASE_POST_MERGE_RECOVERY_SCHEMA)
+        result.setdefault("attempted", True)
+        result["write_count"] = raw_write_count
+        return result
 
     def _require_execution_authority(self, operation: str) -> None:
         """Require the explicit real-execution permit for a mutating phase.
@@ -73165,6 +73252,582 @@ class DatabaseImplementationDaemon:
         result["validation_retry_evidence"] = verified
         return result
 
+    def _verified_post_merge_declared_output_repair_receipt(
+        self,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify the complete current-tree repair receipt contract."""
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output repair receipt is malformed"
+            )
+        value = dict(raw)
+        receipt_id = value.pop("receipt_id", None)
+        expected_fields = {
+            "schema",
+            "task_ids",
+            "candidate_commit",
+            "candidate_tree",
+            "baseline_commit",
+            "failed_integration_commit",
+            "repair_parent_commit",
+            "repair_commit",
+            "repair_tree",
+            "entries",
+            "validation",
+            "rollback_target",
+        }
+        task_ids = value.get("task_ids")
+        entries = value.get("entries")
+        validations = value.get("validation")
+        git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
+        if (
+            set(value) != expected_fields
+            or value.get("schema")
+            != POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA
+            or not isinstance(task_ids, list)
+            or not task_ids
+            or any(
+                not isinstance(task_id, str) or not task_id.strip()
+                for task_id in task_ids
+            )
+            or len(set(task_ids)) != len(task_ids)
+            or any(
+                re.fullmatch(git_id, str(value.get(field) or "")) is None
+                for field in (
+                    "candidate_commit",
+                    "candidate_tree",
+                    "baseline_commit",
+                    "failed_integration_commit",
+                    "repair_parent_commit",
+                    "repair_commit",
+                    "repair_tree",
+                )
+            )
+            or value.get("rollback_target")
+            != value.get("repair_parent_commit")
+            or not isinstance(entries, list)
+            or not entries
+            or not isinstance(validations, list)
+            or len(validations) != len(task_ids)
+            or receipt_id != content_identity(value)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output repair receipt is invalid"
+            )
+        for entry in entries:
+            entry_path = str(
+                entry.get("path") if isinstance(entry, Mapping) else ""
+            )
+            if (
+                not isinstance(entry, Mapping)
+                or set(entry)
+                != {"path", "mode", "object_type", "object_id"}
+                or not entry_path
+                or entry_path.startswith("/")
+                or "\0" in entry_path
+                or ".." in PurePosixPath(entry_path).parts
+                or entry.get("mode") not in {"100644", "100755"}
+                or entry.get("object_type") != "blob"
+                or re.fullmatch(
+                    git_id,
+                    str(entry.get("object_id") or ""),
+                )
+                is None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge declared-output repair entry is invalid"
+                )
+        validation_task_ids: list[str] = []
+        for validation in validations:
+            digests = (
+                validation.get("validation_result_digests")
+                if isinstance(validation, Mapping)
+                else None
+            )
+            command_count = (
+                validation.get("command_count")
+                if isinstance(validation, Mapping)
+                else None
+            )
+            if (
+                not isinstance(validation, Mapping)
+                or set(validation)
+                != {
+                    "task_id",
+                    "passed",
+                    "returncode",
+                    "validation_result_digests",
+                    "command_count",
+                    "log_sha256",
+                }
+                or not isinstance(validation.get("task_id"), str)
+                or not str(validation.get("task_id") or "").strip()
+                or validation.get("passed") is not True
+                or validation.get("returncode") != 0
+                or isinstance(command_count, bool)
+                or not isinstance(command_count, int)
+                or command_count < 0
+                or not isinstance(digests, list)
+                or len(digests) != command_count
+                or any(
+                    re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(item))
+                    is None
+                    for item in digests
+                )
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(validation.get("log_sha256") or ""),
+                )
+                is None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge declared-output repair validation is invalid"
+                )
+            validation_task_ids.append(str(validation["task_id"]))
+        if validation_task_ids != task_ids:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge repair validation task identities do not match"
+            )
+        return {**value, "receipt_id": str(receipt_id)}
+
+    def recover_blocked_post_merge_declared_outputs(
+        self,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one blocked task after an exact declared-output repair.
+
+        The repaired merge is not completion authority for DuckDB.  It may
+        only reopen the same automatic task so a fresh fenced database attempt
+        can consume the completed Portal projection and establish canonical
+        validation/completion evidence.  The transition is bound to the
+        latest failed attempt, the exact queue request, and the compact repair
+        receipt emitted after current-tree validation.
+        """
+
+        self._require_execution_authority(
+            "post-merge declared-output recovery"
+        )
+        raw = dict(evidence)
+        evidence_id = str(raw.pop("evidence_id", "") or "")
+        required_fields = {
+            "schema",
+            "request_id",
+            "task_cid",
+            "task_alias",
+            "candidate_commit",
+            "repair_commit",
+            "repair_receipt_id",
+            "repair_receipt",
+            "source_attempt_id",
+            "source_claim_id",
+            "source_lease_id",
+            "source_fencing_token",
+            "source_fence_epoch",
+            "source_binding_id",
+            "source_projection_immutable_digest",
+        }
+        repair_receipt = (
+            self._verified_post_merge_declared_output_repair_receipt(
+                raw.get("repair_receipt")
+            )
+        )
+        if (
+            set(raw) != required_fields
+            or raw.get("schema") != DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            or not str(raw.get("request_id") or "")
+            or not str(raw.get("task_cid") or "")
+            or not str(raw.get("task_alias") or "")
+            or not str(raw.get("source_attempt_id") or "")
+            or not str(raw.get("source_claim_id") or "")
+            or not str(raw.get("source_lease_id") or "")
+            or isinstance(raw.get("source_fencing_token"), bool)
+            or not isinstance(raw.get("source_fencing_token"), int)
+            or int(raw["source_fencing_token"]) < 0
+            or isinstance(raw.get("source_fence_epoch"), bool)
+            or not isinstance(raw.get("source_fence_epoch"), int)
+            or int(raw["source_fence_epoch"]) < 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(raw.get("source_binding_id") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(raw.get("source_projection_immutable_digest") or ""),
+            )
+            is None
+            or not re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(raw.get("candidate_commit") or ""),
+            )
+            or not re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(raw.get("repair_commit") or ""),
+            )
+            or not isinstance(repair_receipt, Mapping)
+            or repair_receipt.get("schema")
+            != POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA
+            or repair_receipt.get("candidate_commit")
+            != raw.get("candidate_commit")
+            or repair_receipt.get("repair_commit")
+            != raw.get("repair_commit")
+            or raw.get("task_alias")
+            not in (repair_receipt.get("task_ids") or ())
+            or repair_receipt.get("receipt_id")
+            != raw.get("repair_receipt_id")
+            or content_identity(
+                {
+                    key: value
+                    for key, value in repair_receipt.items()
+                    if key != "receipt_id"
+                }
+            )
+            != raw.get("repair_receipt_id")
+            or evidence_id != self._database_portal_evidence_digest(raw)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery evidence is invalid"
+            )
+
+        task_cid = str(raw["task_cid"])
+        task = self.task_source.get(task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery task is unavailable"
+            )
+        if (
+            str(getattr(task, "task_alias", "") or "")
+            != str(raw["task_alias"])
+            or self._automatic_claim_forbidden(task)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery rejected task identity or authority"
+            )
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(task_cid)
+        if latest is None:
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery requires the latest failed attempt"
+            )
+        if (
+            raw.get("source_attempt_id") != latest.attempt_id
+            or raw.get("source_claim_id") != latest.claim_id
+            or raw.get("source_lease_id") != latest.lease_id
+            or raw.get("source_fencing_token")
+            != int(latest.fencing_token)
+            or raw.get("source_fence_epoch") != int(latest.fence_epoch)
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery evidence is not bound to the latest "
+                "failed database attempt"
+            )
+        if (
+            self._terminal_portal_failure_reason(latest)
+            != "post_merge_declared_outputs_missing"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery is limited to an exact durable "
+                "post_merge_declared_outputs_missing terminal failure"
+            )
+        status = str(task.status or "").strip().lower()
+        queue_reason = (
+            "database_post_merge_declared_outputs_repair:"
+            + str(raw["request_id"])
+            + ":"
+            + str(raw["repair_receipt_id"])
+        )[:2048]
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        record_queue_backoff = getattr(
+            self.task_source,
+            "record_queue_backoff",
+            None,
+        )
+        if not callable(get_queue_entry) or not callable(record_queue_backoff):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery task source has no retry queue authority"
+            )
+        if status == "retrying":
+            self._verified_post_merge_declared_output_recovery_state(
+                latest,
+                task,
+                expected_evidence=evidence,
+            )
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": True,
+                "changed": False,
+                "status": "retrying",
+                "task_cid": task_cid,
+                "task_alias": str(raw["task_alias"]),
+                "request_id": str(raw["request_id"]),
+                "repair_commit": str(raw["repair_commit"]),
+                "evidence_id": evidence_id,
+                "write_count": 0,
+            }
+        if status != "blocked":
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery requires blocked or exact retrying "
+                f"control state, observed {status!r}"
+            )
+
+        coordination = self._reconcile_failed_attempt_coordination(latest)
+        self._protect_retry_transition_authority(latest, coordination)
+        queue_receipt = record_queue_backoff(
+            task_cid=task_cid,
+            delay_ms=0,
+            reason=queue_reason,
+        )
+        queue_entry = get_queue_entry(task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery queue write did not reproduce"
+            )
+        self._protect_retry_transition_authority(latest, coordination)
+        cas_result = self._cas_task_status_database(
+            task_cid,
+            expected_revision=int(task.revision),
+            new_status="retrying",
+            receipt={
+                "operation": (
+                    "database_post_merge_declared_outputs_repair_recovery"
+                ),
+                "attempt_id": latest.attempt_id,
+                "attempt_number": int(latest.attempt_number),
+                "claim_id": latest.claim_id,
+                "lease_id": latest.lease_id,
+                "owner_session_id": latest.owner_session_id,
+                "fencing_token": int(latest.fencing_token),
+                "fence_epoch": int(latest.fence_epoch),
+                "execution_phase": latest.committed_phase,
+                "execution_revision": int(latest.revision),
+                "execution_finished_at_ms": latest.finished_at_ms,
+                "request_id": str(raw["request_id"]),
+                "candidate_commit": str(raw["candidate_commit"]),
+                "repair_commit": str(raw["repair_commit"]),
+                "repair_receipt_id": str(raw["repair_receipt_id"]),
+                "repair_evidence_id": evidence_id,
+                "source_binding_id": str(raw["source_binding_id"]),
+                "source_projection_immutable_digest": str(
+                    raw["source_projection_immutable_digest"]
+                ),
+                "queue_reason": queue_reason,
+                "queue_receipt": queue_receipt.to_dict(),
+                "coordination": coordination,
+                "control_expected_status": "blocked",
+                "control_expected_revision": int(task.revision),
+            },
+            evidence_digests=[
+                str(raw["repair_receipt_id"]),
+                evidence_id,
+            ],
+        )
+        to_dict = getattr(cas_result, "to_dict", None)
+        if not callable(to_dict):
+            raise DatabaseImplementationDaemonError(
+                "post-merge recovery CAS returned no durable receipt"
+            )
+        return {
+            "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "attempted": True,
+            "recovered": True,
+            "changed": True,
+            "status": "retrying",
+            "task_cid": task_cid,
+            "task_alias": str(raw["task_alias"]),
+            "request_id": str(raw["request_id"]),
+            "candidate_commit": str(raw["candidate_commit"]),
+            "repair_commit": str(raw["repair_commit"]),
+            "repair_receipt_id": str(raw["repair_receipt_id"]),
+            "evidence_id": evidence_id,
+            "coordination": coordination,
+            "queue_receipt": queue_receipt.to_dict(),
+            "control_receipt": dict(to_dict()),
+            "write_count": 2,
+        }
+
+    def _verified_post_merge_declared_output_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the exact retry projection superseding one repaired failure."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "post-merge declared-output recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "attempt_number",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "request_id",
+            "candidate_commit",
+            "repair_commit",
+            "repair_receipt_id",
+            "repair_evidence_id",
+            "source_binding_id",
+            "source_projection_immutable_digest",
+            "queue_reason",
+            "queue_receipt",
+            "coordination",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        task_revision = getattr(task, "revision", None)
+        if (
+            not isinstance(receipt, Mapping)
+            or set(receipt) != expected_fields
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery receipt is malformed"
+            )
+        request_id = str(receipt.get("request_id") or "")
+        repair_receipt_id = str(receipt.get("repair_receipt_id") or "")
+        evidence_id = str(receipt.get("repair_evidence_id") or "")
+        queue_reason = (
+            "database_post_merge_declared_outputs_repair:"
+            + request_id
+            + ":"
+            + repair_receipt_id
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_post_merge_declared_outputs_repair_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or not request_id
+            or re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(receipt.get("candidate_commit") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(receipt.get("repair_commit") or ""),
+            )
+            is None
+            or not repair_receipt_id
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id) is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(receipt.get("source_binding_id") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(
+                    receipt.get("source_projection_immutable_digest") or ""
+                ),
+            )
+            is None
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "post-merge declared-output recovery receipt does not match "
+                "its source attempt"
+            )
+        if (
+            self._terminal_portal_failure_reason(attempt)
+            != "post_merge_declared_outputs_missing"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery does not supersede this "
+                "terminal failure"
+            )
+        if expected_evidence is not None:
+            expected = dict(expected_evidence)
+            if (
+                expected.get("evidence_id") != evidence_id
+                or expected.get("request_id") != request_id
+                or expected.get("task_cid") != attempt.task_cid
+                or expected.get("task_alias") != attempt.task_alias
+                or expected.get("candidate_commit")
+                != receipt.get("candidate_commit")
+                or expected.get("repair_commit")
+                != receipt.get("repair_commit")
+                or expected.get("repair_receipt_id") != repair_receipt_id
+                or expected.get("source_attempt_id") != attempt.attempt_id
+                or expected.get("source_claim_id") != attempt.claim_id
+                or expected.get("source_lease_id") != attempt.lease_id
+                or expected.get("source_fencing_token")
+                != int(attempt.fencing_token)
+                or expected.get("source_fence_epoch")
+                != int(attempt.fence_epoch)
+                or expected.get("source_binding_id")
+                != receipt.get("source_binding_id")
+                or expected.get("source_projection_immutable_digest")
+                != receipt.get("source_projection_immutable_digest")
+            ):
+                raise DatabaseImplementationConflictError(
+                    "post-merge declared-output recovery has foreign evidence"
+                )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify post-merge recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge declared-output recovery queue state does not match"
+            )
+        return {
+            "receipt": dict(receipt),
+            "request_id": request_id,
+            "repair_receipt_id": repair_receipt_id,
+            "repair_evidence_id": evidence_id,
+            "queue_reason": queue_reason,
+        }
+
     def _persist_typed_deferral_budget_exhausted(
         self,
         attempt: DatabaseTaskAttempt,
@@ -74246,7 +74909,16 @@ class DatabaseImplementationDaemon:
                 # The immutable legacy attempt still says terminal failure.
                 # Suppress that old projection only when the exact typed
                 # blocked-to-retrying recovery and its latest fence reproduce.
-                self._verified_validation_retry_recovery_state(attempt, task)
+                if reason == "post_merge_declared_outputs_missing":
+                    self._verified_post_merge_declared_output_recovery_state(
+                        attempt,
+                        task,
+                    )
+                else:
+                    self._verified_validation_retry_recovery_state(
+                        attempt,
+                        task,
+                    )
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "in_progress":
@@ -74665,11 +75337,18 @@ class DatabaseImplementationDaemon:
             self.reconcile_terminal_portal_failures()
         )
         terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
+        post_merge_recovery_reconciliation = (
+            self._run_post_merge_recovery()
+        )
+        post_merge_recovery_write_count = int(
+            post_merge_recovery_reconciliation.get("write_count", 0) or 0
+        )
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
+            + post_merge_recovery_write_count
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -74694,6 +75373,9 @@ class DatabaseImplementationDaemon:
                 ),
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
+                ),
+                "post_merge_recovery_reconciliation": (
+                    post_merge_recovery_reconciliation
                 ),
             }
 
@@ -74720,6 +75402,9 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "post_merge_recovery_reconciliation": (
+                    post_merge_recovery_reconciliation
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -74737,6 +75422,9 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
+            "post_merge_recovery_reconciliation": (
+                post_merge_recovery_reconciliation
+            ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
