@@ -85,7 +85,7 @@
   "objective_goal_refinement_enabled": false,
   "retry_budget_guardrail_enabled": true,
   "dependency_guardrail_enabled": true,
-  "reconciliation_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": false,
   "poll_interval_seconds": 5,
   "daemon_interval_seconds": 20,
   "check_interval_seconds": 10,

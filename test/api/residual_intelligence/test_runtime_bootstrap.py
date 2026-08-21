@@ -49,6 +49,7 @@ def test_runtime_config_closes_authority_and_training_fallbacks() -> None:
     assert config["database_program"]["failover_policy"] == "fail_closed"
     assert config["ducklake_projection_program"]["authority"] is False
     assert config["training_policy"]["training_enabled_at_bootstrap"] is False
+    assert config["reconciliation_guardrail_enabled"] is False
 
 
 def test_owner_command_vocabulary_has_no_raw_sql_surface() -> None:
