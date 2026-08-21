@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import shutil
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
@@ -29,13 +31,90 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runne
     bind_database_portal_execution_from_args,
 )
 
-
 pytestmark = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for database control recovery tests",
 )
 
 PROTECTED_PATH = "docs/architecture/plan.md"
+
+
+def test_portal_receipt_digest_uses_bridge_utf8_canonical_domain() -> None:
+    body = {
+        "task_alias": "PCAR-é",
+        "workspace_path": "/tmp/é",
+        "protected_paths": ["docs/é.md"],
+    }
+    expected = "sha256:" + hashlib.sha256(
+        json.dumps(
+            body,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert DatabaseImplementationDaemon._database_portal_evidence_digest(body) == expected
+
+
+def test_clearance_identity_uses_bridge_utf8_canonical_domain(tmp_path: Path) -> None:
+    protected_relative = "docs/é.md"
+    protected = tmp_path / protected_relative
+    protected.parent.mkdir(parents=True)
+    protected.write_text("sealed\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    worktree_root.mkdir()
+    workspace = worktree_root / "é"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktree_root,
+        implement=True,
+        implementation_command="must-not-run",
+        implementation_protected_paths=(protected_relative,),
+    )
+    incident = {
+        "schema": "implementation-protected-path-incident-v1",
+        "requires_operator_clearance": True,
+        "task_id": "PCAR-é",
+        "attempt": 1,
+        "workspace_path": str(workspace),
+        "latched_at": "2026-08-21T00:00:00Z",
+        "mutations": [
+            {
+                "scope": "workspace",
+                "path": protected_relative,
+                "change": "deleted",
+            }
+        ],
+    }
+
+    plan = daemon._plan_auto_clear_ephemeral_protected_path_deletions(incident)
+
+    assert plan is not None
+    basis = {
+        "kind": "auto-clear-protected-path-stall",
+        "task_id": "PCAR-é",
+        "attempt": 1,
+        "workspace_path": str(workspace),
+        "mutated_paths": [protected_relative],
+        "scopes": ["workspace"],
+        "changes": ["deleted"],
+        "class_codes": ["workspace_protected_deletion"],
+        "latched_at": "2026-08-21T00:00:00Z",
+    }
+    expected = "sha256:" + hashlib.sha256(
+        json.dumps(
+            basis,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert plan["clearance_id"] == expected
 
 
 def _population(*, manual: bool = False) -> dict[str, object]:
@@ -150,7 +229,7 @@ def _recovery_receipt(
         "mutated_paths": [PROTECTED_PATH],
         "class_codes": ["workspace_protected_deletion"],
         "shared_path_digests": {PROTECTED_PATH: "sha256:" + "6" * 64},
-        "event_stream_id": "stream:protected-recovery",
+        "event_stream_id": "event-log:sha256:" + "e" * 64,
         "mutation_event_id": "sha256:" + "7" * 64,
         "clearance_event_id": "sha256:" + "8" * 64,
         "events_digest": "sha256:" + "9" * 64,
@@ -568,8 +647,12 @@ def test_crash_fence_reaches_locked_auto_clear_and_keeps_genuine_mutation(
         before=benign_before,
     )
     assert benign_violation["reason"] == "implementation_protected_path_mutated"
+    # Recovery is intentionally narrower than a missing protected file in an
+    # otherwise live workspace: by reconciliation time the entire managed
+    # ephemeral worktree must have been disposed by the control plane.
+    shutil.rmtree(benign_workspace)
     cleared = benign._reconcile_implementation_protected_path_fence()
-    assert cleared["cleared"] is True
+    assert cleared.get("cleared") is True, cleared
     assert cleared["class_codes"] == ["workspace_protected_deletion"]
 
     genuine = portal("genuine-state")

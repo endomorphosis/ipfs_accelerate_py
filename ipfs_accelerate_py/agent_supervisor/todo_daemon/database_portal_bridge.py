@@ -20,6 +20,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -44,6 +45,30 @@ DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-validation-retry-seed@1"
 )
+DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-protected-path-recovery@1"
+)
+DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-path-recovery-intent@1"
+)
+DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-path-recovery-guard@1"
+)
+_PROTECTED_PATH_RECOVERY_INTENT_FILENAME: Final[str] = (
+    "database-portal-protected-path-recovery-intent.json"
+)
+_PROTECTED_PATH_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-protected-path-recovery.json"
+)
+_IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME: Final[str] = (
+    "implementation-protected-path-active.json"
+)
+_IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME: Final[str] = (
+    "implementation-protected-path-incident.json"
+)
+_MAX_PROTECTED_PATH_RECOVERY_PATHS: Final[int] = 256
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -534,6 +559,8 @@ class DatabasePortalExecutionBridge:
         attempt_root: Path | str,
         portal_factory: PortalDaemonFactory,
         repository_root: Path | str | None = None,
+        worktree_root: Path | str | None = None,
+        implementation_protected_paths: Sequence[str] = (),
         worktree_submodule_paths: Sequence[str] = (),
         task_header_prefix: str = "## ",
         max_passes: int = 4,
@@ -559,6 +586,19 @@ class DatabasePortalExecutionBridge:
         self.repository_root = (
             Path(repository_root).absolute() if repository_root is not None else None
         )
+        self.worktree_root = (
+            Path(worktree_root).absolute() if worktree_root is not None else None
+        )
+        self.implementation_protected_paths = tuple(
+            sorted(
+                _safe_repository_path(path)
+                for path in (implementation_protected_paths or ())
+            )
+        )
+        if len(set(self.implementation_protected_paths)) != len(
+            self.implementation_protected_paths
+        ):
+            raise ValueError("implementation_protected_paths must be unique")
         self.worktree_submodule_paths = tuple(
             _safe_repository_path(path) for path in worktree_submodule_paths
         )
@@ -816,6 +856,16 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError("database Portal attempt binding is malformed")
         return value
 
+    @staticmethod
+    def _read_json_object(path: Path, *, noun: str) -> dict[str, Any]:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(f"{noun} is unreadable") from exc
+        if not isinstance(value, dict):
+            raise DatabasePortalBridgeError(f"{noun} is not an object")
+        return value
+
     def _ensure_attempt_projection(
         self, attempt: Any, record: Any
     ) -> tuple[DatabasePortalAttemptPaths, Mapping[str, Any]]:
@@ -857,6 +907,65 @@ class DatabasePortalExecutionBridge:
                 "Portal task projection no longer contains exactly the claimed task"
             )
         return text
+
+    def _verified_recovery_binding(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        paths: DatabasePortalAttemptPaths,
+    ) -> Mapping[str, Any]:
+        """Rebind immutable attempt evidence after a control-status CAS.
+
+        Blocking and retry transitions advance the DuckDB task revision and
+        replace its operational status receipt.  They must not change the
+        semantic task body, claim identity, or immutable projection.  This is
+        the common recovery boundary used by every typed post-terminal repair.
+        """
+
+        if not (paths.binding.is_file() and paths.task_projection.is_file()):
+            raise DatabasePortalBridgeError(
+                "Portal recovery binding artifacts are incomplete"
+            )
+        seed = self._render_projection(attempt, record)
+        expected_binding = self._binding(attempt, record, seed)
+        observed_binding = self._read_binding(paths.binding)
+        observed_body = dict(observed_binding)
+        observed_binding_id = str(observed_body.pop("binding_id", "") or "")
+        observed_revision = observed_body.get("task_revision")
+        current_revision = int(getattr(record, "revision", 0) or 0)
+        mutable_binding_fields = {
+            "binding_id",
+            "task_revision",
+            "task_body_digest",
+            "projection_seed_digest",
+            "projection_immutable_digest",
+        }
+        stable_expected = {
+            key: value
+            for key, value in expected_binding.items()
+            if key not in mutable_binding_fields
+        }
+        stable_observed = {
+            key: value
+            for key, value in observed_binding.items()
+            if key not in mutable_binding_fields
+        }
+        observed_projection = self._verify_projection(paths, observed_binding)
+        if (
+            observed_binding_id != _sha256_bytes(_canonical_json(observed_body))
+            or isinstance(observed_revision, bool)
+            or not isinstance(observed_revision, int)
+            or observed_revision < 1
+            or current_revision < observed_revision
+            or stable_observed != stable_expected
+            or _projection_recovery_digest(observed_projection)
+            != _projection_recovery_digest(seed)
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal recovery binding does not match the claim"
+            )
+        return observed_binding
 
     @staticmethod
     def _has_completion_event(paths: DatabasePortalAttemptPaths, alias: str) -> bool:
@@ -1021,6 +1130,919 @@ class DatabasePortalExecutionBridge:
             prior_event_id = claimed_event_id
             events.append(event)
         return events
+
+    def _current_protected_path_digests(
+        self,
+        protected_paths: Sequence[str],
+    ) -> dict[str, str]:
+        """Bind protected content to the current shared checkout without links."""
+
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery requires repository_root"
+            )
+        if (
+            not protected_paths
+            or len(protected_paths) > _MAX_PROTECTED_PATH_RECOVERY_PATHS
+            or len(set(protected_paths)) != len(protected_paths)
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery population is outside its closed bound"
+            )
+        try:
+            root = self.repository_root.resolve(strict=True)
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery repository is unavailable"
+            ) from exc
+        digests: dict[str, str] = {}
+        for raw_relative in protected_paths:
+            relative = _safe_repository_path(raw_relative)
+            if relative == ".":
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery refuses the repository root"
+                )
+            candidate = root / relative
+            try:
+                current = root
+                for component in PurePosixPath(relative).parts:
+                    current = current / component
+                    metadata = current.stat(follow_symlinks=False)
+                    if stat.S_ISLNK(metadata.st_mode):
+                        raise DatabasePortalBridgeError(
+                            "protected-path recovery refuses symlink components"
+                        )
+                    if current != candidate and not stat.S_ISDIR(metadata.st_mode):
+                        raise DatabasePortalBridgeError(
+                            "protected-path recovery has a non-directory ancestor"
+                        )
+                    if current != candidate and (current / ".git").exists():
+                        raise DatabasePortalBridgeError(
+                            "protected-path recovery refuses submodule paths"
+                        )
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery requires singly linked regular files"
+                    )
+                candidate.resolve(strict=True).relative_to(root)
+            except (OSError, ValueError, RuntimeError) as exc:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery path escapes the shared checkout"
+                ) from exc
+            digests[relative] = _sha256_file(candidate)
+        return digests
+
+    def _disposed_workspace_path(self, value: Any) -> str:
+        """Return one absent, canonical workspace below this repository."""
+
+        if (
+            self.repository_root is None
+            or self.worktree_root is None
+            or type(value) is not str
+            or not value
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery requires an exact workspace path"
+            )
+        raw = Path(value)
+        try:
+            root = self.repository_root.resolve(strict=True)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            resolved = raw.resolve(strict=False)
+            resolved.relative_to(root)
+            resolved.relative_to(worktree_root)
+            if not raw.is_absolute() or raw != resolved or resolved == root:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery workspace is not canonical and bounded"
+                )
+            try:
+                raw.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery workspace has not been disposed"
+                )
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery workspace is unavailable or unbounded"
+            ) from exc
+        return str(resolved)
+
+    def _verify_protected_path_attempt_boundary(
+        self,
+        paths: DatabasePortalAttemptPaths,
+    ) -> None:
+        """Reject linked or escaped attempt artifacts before recovery writes."""
+
+        try:
+            configured_root = self.attempt_root
+            attempt_root = configured_root.resolve(strict=True)
+            attempt_dir = paths.root.resolve(strict=True)
+            attempt_dir.relative_to(attempt_root)
+            if configured_root != attempt_root or paths.root != attempt_dir:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery attempt root is linked or noncanonical"
+                )
+            for directory in (attempt_root, attempt_dir):
+                metadata = directory.stat(follow_symlinks=False)
+                if not stat.S_ISDIR(metadata.st_mode) or directory.is_symlink():
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery attempt boundary is not a directory"
+                    )
+            entries = list(attempt_dir.iterdir())
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery attempt boundary is unavailable"
+            ) from exc
+        if len(entries) > 4096:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery attempt population exceeds its bound"
+            )
+        for entry in entries:
+            try:
+                metadata = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery attempt artifact is unreadable"
+                ) from exc
+            if stat.S_ISLNK(metadata.st_mode):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery refuses linked attempt artifacts"
+                )
+            if stat.S_ISREG(metadata.st_mode):
+                if metadata.st_nlink != 1:
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery refuses hard-linked attempt artifacts"
+                    )
+            elif not stat.S_ISDIR(metadata.st_mode):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery refuses special attempt artifacts"
+                )
+
+    @staticmethod
+    def _protected_path_identity_digests(
+        scope: Mapping[str, Any],
+        protected_paths: Sequence[str],
+    ) -> dict[str, str]:
+        paths = scope.get("paths")
+        if not isinstance(paths, Mapping) or set(map(str, paths)) != set(
+            protected_paths
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery snapshot population is incomplete"
+            )
+        digests: dict[str, str] = {}
+        for relative in protected_paths:
+            identity = paths.get(relative)
+            if (
+                not isinstance(identity, Mapping)
+                or identity.get("state") != "present"
+                or identity.get("kind") != "regular_file"
+                or not re.fullmatch(
+                    r"[0-9a-f]{64}", str(identity.get("sha256") or "")
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path recovery snapshot has an unsafe identity"
+                )
+            digests[relative] = f"sha256:{identity['sha256']}"
+        return digests
+
+    def _build_protected_path_recovery_intent(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove one workspace-disposal incident is not a protected edit."""
+
+        incident_path = paths.root / _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+        active_path = paths.root / _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME
+        incident = self._read_json_object(
+            incident_path,
+            noun="protected-path incident",
+        )
+        active = self._read_json_object(
+            active_path,
+            noun="protected-path active snapshot",
+        )
+        alias = str(binding.get("task_alias") or "")
+        if (
+            incident.get("schema") != "implementation-protected-path-incident-v1"
+            or incident.get("reason") != "implementation_protected_path_mutated"
+            or incident.get("requires_operator_clearance") is not True
+            or incident.get("shared_checkout_restored") is not False
+            or active.get("schema") != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+            or incident.get("task_id") != alias
+            or active.get("task_id") != alias
+            or incident.get("workspace_path") != active.get("workspace_path")
+            or incident.get("attempt") != active.get("attempt")
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path incident does not match its active attempt"
+            )
+        portal_attempt = incident.get("attempt")
+        if (
+            isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path incident has no exact Portal attempt"
+            )
+        protected = active.get("protected_paths")
+        if (
+            not isinstance(protected, list)
+            or not all(type(item) is str for item in protected)
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path active snapshot has no closed path population"
+            )
+        protected_paths = tuple(
+            sorted(_safe_repository_path(item) for item in protected)
+        )
+        if len(set(protected_paths)) != len(protected_paths):
+            raise DatabasePortalBridgeError(
+                "protected-path active snapshot contains duplicate paths"
+            )
+        if (
+            not self.implementation_protected_paths
+            or protected_paths != self.implementation_protected_paths
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path active population differs from configuration"
+            )
+        body = dict(getattr(record, "body", {}) or {})
+        repository_scope = self._validation_repository_scope(body)
+        output_paths = self._scope_outputs(
+            _output_values(record, body),
+            repository_scope,
+        )
+        for output in output_paths:
+            output_path = PurePosixPath(output)
+            for protected_path in map(PurePosixPath, protected_paths):
+                if (
+                    output_path == protected_path
+                    or output_path in protected_path.parents
+                    or protected_path in output_path.parents
+                ):
+                    raise DatabasePortalBridgeError(
+                        "task output scope intersects a protected path"
+                    )
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping):
+            raise DatabasePortalBridgeError(
+                "protected-path active snapshot has no identity map"
+            )
+        workspace_scope = snapshot.get("workspace")
+        shared_scope = snapshot.get("shared_checkout")
+        if not isinstance(workspace_scope, Mapping) or not isinstance(
+            shared_scope, Mapping
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery requires both snapshot scopes"
+            )
+        normalized_workspace = self._disposed_workspace_path(
+            incident.get("workspace_path")
+        )
+        assert self.repository_root is not None
+        if (
+            workspace_scope.get("root") != normalized_workspace
+            or shared_scope.get("root")
+            != str(self.repository_root.resolve(strict=True))
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path snapshot roots do not match the configured checkout"
+            )
+        shared_digests = self._protected_path_identity_digests(
+            shared_scope,
+            protected_paths,
+        )
+        workspace_digests = self._protected_path_identity_digests(
+            workspace_scope,
+            protected_paths,
+        )
+        if shared_digests != workspace_digests:
+            raise DatabasePortalBridgeError(
+                "protected paths differed before ephemeral workspace disposal"
+            )
+        current_digests = self._current_protected_path_digests(protected_paths)
+        if current_digests != shared_digests:
+            raise DatabasePortalBridgeError(
+                "shared protected content changed since the active snapshot"
+            )
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            raise DatabasePortalBridgeError(
+                "protected-path incident has no mutation evidence"
+            )
+        mutated_paths: list[str] = []
+        workspace_identities = workspace_scope.get("paths")
+        assert isinstance(workspace_identities, Mapping)
+        for mutation in mutations:
+            if not isinstance(mutation, Mapping):
+                raise DatabasePortalBridgeError(
+                    "protected-path incident has malformed mutation evidence"
+                )
+            relative = str(mutation.get("path") or "")
+            if (
+                mutation.get("scope") != "workspace"
+                or mutation.get("change") != "deleted"
+                or relative not in protected_paths
+                or mutation.get("after") != {"state": "missing"}
+                or mutation.get("before") != workspace_identities.get(relative)
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path incident is not a pure workspace disposal"
+                )
+            mutated_paths.append(relative)
+        incident_paths = incident.get("protected_paths")
+        if (
+            len(set(mutated_paths)) != len(mutated_paths)
+            or not isinstance(incident_paths, list)
+            or sorted(incident_paths) != sorted(mutated_paths)
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path incident mutation population is inconsistent"
+            )
+
+        events = self._verified_event_chain(paths)
+        mutation_events = [
+            event
+            for event in events
+            if event.get("type") == "implementation_protected_path_mutated"
+            and event.get("task_id") == alias
+            and event.get("attempt") == portal_attempt
+            and event.get("workspace_path") == incident.get("workspace_path")
+            and event.get("mutations") == mutations
+        ]
+        if len(mutation_events) != 1:
+            raise DatabasePortalBridgeError(
+                "protected-path incident has no unique durable mutation event"
+            )
+        event = mutation_events[0]
+        clearance_basis = {
+            "kind": "auto-clear-protected-path-stall",
+            "task_id": alias,
+            "attempt": int(portal_attempt),
+            "workspace_path": normalized_workspace,
+            "mutated_paths": sorted(mutated_paths),
+            "scopes": ["workspace"],
+            "changes": ["deleted"],
+            "class_codes": ["workspace_protected_deletion"],
+            "latched_at": str(incident.get("latched_at") or ""),
+        }
+        clearance_id = _sha256_bytes(_canonical_json(clearance_basis))
+        intent = {
+            "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": alias,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "portal_attempt": int(portal_attempt),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "workspace_path": normalized_workspace,
+            "incident_digest": _sha256_bytes(_canonical_json(incident)),
+            "active_snapshot_digest": _sha256_bytes(_canonical_json(active)),
+            "protected_paths": list(protected_paths),
+            "mutated_paths": sorted(mutated_paths),
+            "shared_path_digests": shared_digests,
+            "clearance_id": clearance_id,
+            "mutation_event_id": str(event.get("event_id") or ""),
+            "event_stream_id": str(event.get("stream_id") or ""),
+        }
+        intent["intent_id"] = _sha256_bytes(_canonical_json(intent))
+        return intent
+
+    @staticmethod
+    def _protected_path_recovery_guard(
+        intent: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        guard = {
+            "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA,
+            "task_id": str(intent.get("task_alias") or ""),
+            "attempt": int(intent.get("portal_attempt") or 0),
+            "workspace_path": str(intent.get("workspace_path") or ""),
+            "clearance_id": str(intent.get("clearance_id") or ""),
+            "incident_digest": str(intent.get("incident_digest") or ""),
+            "active_snapshot_digest": str(
+                intent.get("active_snapshot_digest") or ""
+            ),
+            "protected_paths": list(intent.get("protected_paths") or []),
+            "mutated_paths": list(intent.get("mutated_paths") or []),
+            "class_codes": ["workspace_protected_deletion"],
+            "shared_path_digests": dict(
+                intent.get("shared_path_digests") or {}
+            ),
+        }
+        guard["guard_id"] = _sha256_bytes(_canonical_json(guard))
+        return guard
+
+    def _verify_protected_path_recovery_intent(
+        self,
+        *,
+        attempt: Any,
+        binding: Mapping[str, Any],
+        intent: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "portal_attempt",
+            "binding_id",
+            "workspace_path",
+            "incident_digest",
+            "active_snapshot_digest",
+            "protected_paths",
+            "mutated_paths",
+            "shared_path_digests",
+            "clearance_id",
+            "mutation_event_id",
+            "event_stream_id",
+            "intent_id",
+        }
+        body = dict(intent)
+        intent_id = body.pop("intent_id", None)
+        protected_paths = intent.get("protected_paths")
+        mutated_paths = intent.get("mutated_paths")
+        shared_digests = intent.get("shared_path_digests")
+        if (
+            set(intent) != expected_fields
+            or intent.get("schema")
+            != DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA
+            or intent_id != _sha256_bytes(_canonical_json(body))
+            or intent.get("task_cid") != str(attempt.task_cid)
+            or intent.get("task_alias") != str(binding.get("task_alias") or "")
+            or intent.get("attempt_id") != str(attempt.attempt_id)
+            or intent.get("claim_id") != str(attempt.claim_id)
+            or intent.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or any(
+                isinstance(intent.get(field), bool)
+                or not isinstance(intent.get(field), int)
+                for field in (
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            )
+            or intent.get("attempt_number") != int(attempt.attempt_number)
+            or intent.get("fencing_token") != int(attempt.fencing_token)
+            or intent.get("fence_epoch") != int(attempt.fence_epoch)
+            or intent.get("binding_id") != str(binding.get("binding_id") or "")
+            or isinstance(intent.get("portal_attempt"), bool)
+            or not isinstance(intent.get("portal_attempt"), int)
+            or int(intent.get("portal_attempt") or 0) < 1
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(intent.get("incident_digest") or "")
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(intent.get("active_snapshot_digest") or ""),
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(intent.get("clearance_id") or "")
+            )
+            or not isinstance(protected_paths, list)
+            or not all(type(item) is str for item in protected_paths)
+            or protected_paths != sorted(set(protected_paths))
+            or not protected_paths
+            or not isinstance(mutated_paths, list)
+            or not all(type(item) is str for item in mutated_paths)
+            or not mutated_paths
+            or mutated_paths != sorted(set(mutated_paths))
+            or not set(mutated_paths).issubset(set(protected_paths))
+            or not isinstance(shared_digests, Mapping)
+            or set(map(str, shared_digests)) != set(protected_paths)
+            or any(
+                not re.fullmatch(r"sha256:[0-9a-f]{64}", str(value or ""))
+                for value in shared_digests.values()
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(intent.get("mutation_event_id") or ""),
+            )
+            or not re.fullmatch(
+                r"event-log:sha256:[0-9a-f]{64}",
+                str(intent.get("event_stream_id") or ""),
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery intent is malformed or foreign"
+            )
+        if self._disposed_workspace_path(intent.get("workspace_path")) != intent.get(
+            "workspace_path"
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery workspace identity changed"
+            )
+        current = self._current_protected_path_digests(protected_paths)
+        if current != dict(shared_digests):
+            raise DatabasePortalBridgeError(
+                "protected content changed after recovery was prepared"
+            )
+        return dict(intent)
+
+    def _finalize_protected_path_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        intent: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        verified_intent = self._verify_protected_path_recovery_intent(
+            attempt=attempt,
+            binding=binding,
+            intent=intent,
+        )
+        clearance_id = str(verified_intent["clearance_id"])
+        clearance_path = paths.root / (
+            "implementation-protected-path-auto-clearance-"
+            f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+        )
+        clearance = self._read_json_object(
+            clearance_path,
+            noun="protected-path auto-clearance receipt",
+        )
+        clearance_basis = {
+            "kind": "auto-clear-protected-path-stall",
+            "task_id": str(clearance.get("task_id") or ""),
+            "attempt": clearance.get("attempt"),
+            "workspace_path": str(clearance.get("workspace_path") or ""),
+            "mutated_paths": list(clearance.get("mutated_paths") or []),
+            "scopes": list(clearance.get("scopes") or []),
+            "changes": list(clearance.get("changes") or []),
+            "class_codes": list(clearance.get("class_codes") or []),
+            "latched_at": str(clearance.get("incident_latched_at") or ""),
+        }
+        if (
+            clearance.get("schema")
+            != "implementation-protected-path-auto-clearance-v1"
+            or clearance.get("clearance_id") != clearance_id
+            or clearance.get("reason")
+            != "ephemeral_workspace_protected_deletions_shared_intact"
+            or clearance.get("task_id") != verified_intent["task_alias"]
+            or clearance.get("attempt") != verified_intent["portal_attempt"]
+            or clearance.get("workspace_path") != verified_intent["workspace_path"]
+            or clearance.get("mutated_paths")
+            != verified_intent["mutated_paths"]
+            or clearance.get("scopes") != ["workspace"]
+            or clearance.get("changes") != ["deleted"]
+            or clearance.get("class_codes")
+            != ["workspace_protected_deletion"]
+            or clearance.get("shared_protected_paths_present")
+            != verified_intent["mutated_paths"]
+            or _sha256_bytes(_canonical_json(clearance_basis)) != clearance_id
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path auto-clearance receipt is not the prepared repair"
+            )
+        if (
+            (paths.root / _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME).exists()
+            or (paths.root / _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME).exists()
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path fence remains active after auto-clearance"
+            )
+        events = self._verified_event_chain(paths)
+        mutation_events = [
+            event
+            for event in events
+            if event.get("event_id") == verified_intent["mutation_event_id"]
+        ]
+        clearance_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_protected_path_incident_auto_cleared"
+            and event.get("clearance_id") == clearance_id
+            and event.get("task_id") == verified_intent["task_alias"]
+            and event.get("attempt") == verified_intent["portal_attempt"]
+            and event.get("mutated_paths") == verified_intent["mutated_paths"]
+            and event.get("class_codes") == ["workspace_protected_deletion"]
+        ]
+        if len(mutation_events) != 1 or len(clearance_events) != 1:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery has no unique durable event pair"
+            )
+        mutation_event = mutation_events[0]
+        event_mutations = mutation_event.get("mutations")
+        if not isinstance(event_mutations, list) or sorted(
+            str(item.get("path") or "")
+            for item in event_mutations
+            if isinstance(item, Mapping)
+        ) != verified_intent["mutated_paths"] or any(
+            not isinstance(item, Mapping)
+            or item.get("scope") != "workspace"
+            or item.get("change") != "deleted"
+            or item.get("after") != {"state": "missing"}
+            or not isinstance(item.get("before"), Mapping)
+            or (
+                f"sha256:{item['before'].get('sha256', '')}"
+                != verified_intent["shared_path_digests"].get(
+                    str(item.get("path") or "")
+                )
+            )
+            for item in event_mutations
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path mutation event is not the prepared disposal"
+            )
+        clearance_event = clearance_events[0]
+        if (
+            mutation_event.get("type") != "implementation_protected_path_mutated"
+            or mutation_event.get("stream_id")
+            != verified_intent["event_stream_id"]
+            or mutation_event.get("task_id") != verified_intent["task_alias"]
+            or mutation_event.get("attempt")
+            != verified_intent["portal_attempt"]
+            or mutation_event.get("workspace_path")
+            != verified_intent["workspace_path"]
+            or clearance_event.get("reason")
+            != "ephemeral_workspace_protected_deletions_shared_intact"
+            or clearance_event.get("cleared") is not True
+            or clearance_event.get("auto") is not True
+            or clearance_event.get("blocked") is not False
+            or clearance_event.get("workspace_path")
+            != verified_intent["workspace_path"]
+            or clearance_event.get("stream_id")
+            != verified_intent["event_stream_id"]
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path recovery event stream changed"
+            )
+        receipt = {
+            "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA,
+            "disposition": "retry",
+            "reason": "ephemeral_workspace_protected_deletions_recovered",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(binding.get("task_alias") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "portal_attempt": int(verified_intent["portal_attempt"]),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "workspace_path": str(verified_intent["workspace_path"]),
+            "incident_digest": str(verified_intent["incident_digest"]),
+            "active_snapshot_digest": str(
+                verified_intent["active_snapshot_digest"]
+            ),
+            "clearance_id": clearance_id,
+            "clearance_receipt_digest": _sha256_file(clearance_path),
+            "protected_paths": list(verified_intent["protected_paths"]),
+            "mutated_paths": list(verified_intent["mutated_paths"]),
+            "class_codes": ["workspace_protected_deletion"],
+            "shared_path_digests": dict(
+                verified_intent["shared_path_digests"]
+            ),
+            "event_stream_id": str(verified_intent["event_stream_id"]),
+            "mutation_event_id": str(verified_intent["mutation_event_id"]),
+            "clearance_event_id": str(clearance_event.get("event_id") or ""),
+            "events_digest": _sha256_file(paths.events),
+            "backoff_seconds": 0,
+            # Conservatively consume one implementation slot.  This does not
+            # assert that a remote provider ran; it prevents a cleanup race
+            # from becoming an unbounded free retry loop.
+            "attempt_consumed": True,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _verify_protected_path_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "portal_attempt",
+            "binding_id",
+            "workspace_path",
+            "incident_digest",
+            "active_snapshot_digest",
+            "clearance_id",
+            "clearance_receipt_digest",
+            "protected_paths",
+            "mutated_paths",
+            "class_codes",
+            "shared_path_digests",
+            "event_stream_id",
+            "mutation_event_id",
+            "clearance_event_id",
+            "events_digest",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        intent_path = paths.root / _PROTECTED_PATH_RECOVERY_INTENT_FILENAME
+        if set(receipt) != expected_fields or not intent_path.is_file():
+            raise DatabasePortalBridgeError(
+                "protected-path recovery receipt is malformed or foreign"
+            )
+        intent = self._read_json_object(
+            intent_path,
+            noun="protected-path recovery intent",
+        )
+        expected = self._finalize_protected_path_recovery_receipt(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+            intent=intent,
+        )
+        if dict(receipt) != expected:
+            raise DatabasePortalBridgeError(
+                "protected-path recovery receipt changed after finalization"
+            )
+        return expected
+
+    def recover_protected_path_retry(self, attempt: Any) -> Mapping[str, Any]:
+        """Automatically rearm only a proved ephemeral-workspace disposal.
+
+        The protected-path guard remains fail closed for content edits,
+        symlinks, shared-checkout mutations, output-scope overlap, missing
+        evidence, and live workspaces.  A durable intent closes the crash gap
+        between clearing the attempt-local fence and the DuckDB status CAS.
+        """
+
+        record = self._record_for_attempt(self.task_source, attempt)
+        paths = self._paths(attempt)
+        self._verify_protected_path_attempt_boundary(paths)
+        if not paths.events.is_file():
+            raise DatabasePortalBridgeError(
+                "protected-path recovery has no durable Portal event stream"
+            )
+        binding = self._verified_recovery_binding(
+            attempt=attempt,
+            record=record,
+            paths=paths,
+        )
+        final_path = paths.root / _PROTECTED_PATH_RECOVERY_FILENAME
+        if final_path.is_file():
+            return self._verify_protected_path_recovery_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                receipt=self._read_json_object(
+                    final_path,
+                    noun="protected-path recovery receipt",
+                ),
+            )
+
+        intent_path = paths.root / _PROTECTED_PATH_RECOVERY_INTENT_FILENAME
+        incident_path = paths.root / _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+        active_path = paths.root / _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME
+        if incident_path.is_file():
+            prepared = self._build_protected_path_recovery_intent(
+                attempt=attempt,
+                record=record,
+                paths=paths,
+                binding=binding,
+            )
+            if intent_path.exists():
+                observed_intent = self._read_json_object(
+                    intent_path,
+                    noun="protected-path recovery intent",
+                )
+                if observed_intent != prepared:
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery intent changed across resume"
+                    )
+            else:
+                _atomic_write(
+                    intent_path,
+                    json.dumps(prepared, indent=2, sort_keys=True).encode("utf-8")
+                    + b"\n",
+                )
+            self._verify_protected_path_attempt_boundary(paths)
+            daemon = self.portal_factory(
+                paths,
+                str(binding.get("task_alias") or attempt.task_cid),
+            )
+            reconcile = getattr(
+                daemon,
+                "_reconcile_implementation_protected_path_fence",
+                None,
+            )
+            if not callable(reconcile):
+                raise DatabasePortalBridgeError(
+                    "Portal executor has no protected-path reconciler"
+                )
+            try:
+                result = reconcile(
+                    protected_path_recovery_guard=(
+                        self._protected_path_recovery_guard(prepared)
+                    )
+                )
+            finally:
+                close = getattr(daemon, "close_event_runtime", None) or getattr(
+                    daemon, "close", None
+                )
+                if callable(close):
+                    close()
+            if (
+                not isinstance(result, Mapping)
+                or result.get("blocked") is not False
+                or result.get("auto") is not True
+                or result.get("clearance_id") != prepared["clearance_id"]
+                or result.get("class_codes")
+                != ["workspace_protected_deletion"]
+                or result.get("mutated_paths") != prepared["mutated_paths"]
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path incident was not eligible for automatic recovery"
+                )
+            intent = prepared
+        else:
+            if not intent_path.is_file():
+                raise DatabasePortalBridgeError(
+                    "protected-path incident and recovery intent are absent"
+                )
+            intent = self._read_json_object(
+                intent_path,
+                noun="protected-path recovery intent",
+            )
+            self._verify_protected_path_attempt_boundary(paths)
+            intent = self._verify_protected_path_recovery_intent(
+                attempt=attempt,
+                binding=binding,
+                intent=intent,
+            )
+            if active_path.is_file():
+                daemon = self.portal_factory(
+                    paths,
+                    str(binding.get("task_alias") or attempt.task_cid),
+                )
+                reconcile = getattr(
+                    daemon,
+                    "_reconcile_implementation_protected_path_fence",
+                    None,
+                )
+                if not callable(reconcile):
+                    raise DatabasePortalBridgeError(
+                        "Portal executor has no protected-path reconciler"
+                    )
+                try:
+                    result = reconcile(
+                        protected_path_recovery_guard=(
+                            self._protected_path_recovery_guard(intent)
+                        )
+                    )
+                finally:
+                    close = getattr(
+                        daemon, "close_event_runtime", None
+                    ) or getattr(daemon, "close", None)
+                    if callable(close):
+                        close()
+                if not isinstance(result, Mapping) or result.get("blocked") is not False:
+                    raise DatabasePortalBridgeError(
+                        "protected-path recovery could not finish fence cleanup"
+                    )
+
+        self._verify_protected_path_attempt_boundary(paths)
+        receipt = self._finalize_protected_path_recovery_receipt(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+            intent=intent,
+        )
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8") + b"\n",
+        )
+        self._verify_protected_path_attempt_boundary(paths)
+        return receipt
 
     def _preserved_commit_exists(
         self,
@@ -1812,6 +2834,8 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",
+    "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
     "DatabasePortalAttemptPaths",

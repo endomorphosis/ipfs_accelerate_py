@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import threading
@@ -2732,7 +2733,6 @@ def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
     workspace = worktrees / "workspace-ephemeral"
     repo.mkdir()
     worktrees.mkdir()
-    # Workspace is gone (typical after failed agent cleanup).
     protected = repo / POLICY_PATH
     protected.parent.mkdir(parents=True)
     protected.write_text("authoritative\n", encoding="utf-8")
@@ -2748,23 +2748,24 @@ def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
         implementation_command="implementation-command-that-must-not-run",
         implementation_protected_paths=(POLICY_PATH,),
     )
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": "EX-001",
-            "attempt": 1,
-            "workspace_path": str(workspace),
-            "mutations": [
-                {
-                    "scope": "workspace",
-                    "path": POLICY_PATH,
-                    "change": "deleted",
-                    "before": {"state": "present"},
-                    "after": {"state": "missing"},
-                }
-            ],
-        }
+    workspace_protected = workspace / POLICY_PATH
+    workspace_protected.parent.mkdir(parents=True)
+    workspace_protected.write_text("authoritative\n", encoding="utf-8")
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
     )
+    workspace_protected.unlink()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    shutil.rmtree(workspace)
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
@@ -2808,7 +2809,7 @@ def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
     assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
+def test_clean_head_does_not_authorize_shared_checkout_content_change(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -2852,10 +2853,9 @@ def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "shared_checkout_matches_head"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
 def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
@@ -2897,8 +2897,8 @@ def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
     assert result.get("reason") == "implementation_protected_path_incident_latched"
 
 
-def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
-    """Supervisor-owned board rewrites must not permanently stall lanes."""
+def test_todo_suffix_does_not_authorize_shared_content_change(tmp_path: Path) -> None:
+    """A filename convention is not durable control-plane provenance."""
 
     todo_rel = "docs/architecture/example.todo.md"
     worktrees = tmp_path / "worktrees"
@@ -2948,14 +2948,15 @@ def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "shared_todo_board_content_change_accepted"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "protected_path_recovery_guard_mismatch"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
-    """Hardlink/nlink thrash with identical content must not stall lanes."""
+def test_content_identity_alone_does_not_authorize_identity_thrash(
+    tmp_path: Path,
+) -> None:
+    """Content identity alone cannot prove mutation authority."""
 
     worktrees = tmp_path / "worktrees"
     workspace = worktrees / "workspace-ephemeral"
@@ -3006,14 +3007,13 @@ def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "content_preserving_identity_thrash_accepted"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "protected_path_recovery_guard_mismatch"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> None:
-    """Live multi-lane pattern: identity thrash on plan + board content rewrite."""
+def test_mixed_unproved_protected_changes_remain_latched(tmp_path: Path) -> None:
+    """Mixed filename and identity signals remain non-authoritative."""
 
     plan_rel = "docs/architecture/PLAN.md"
     todo_rel = "docs/architecture/board.todo.md"
@@ -3097,15 +3097,9 @@ def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> Non
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "protected_path_stall_auto_cleared"
-    assert set(result.get("class_codes") or []) == {
-        "content_preserving_identity_thrash",
-        "shared_todo_board_content_change",
-        "workspace_todo_board_content_change",
-    }
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "protected_path_recovery_guard_mismatch"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
 def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(

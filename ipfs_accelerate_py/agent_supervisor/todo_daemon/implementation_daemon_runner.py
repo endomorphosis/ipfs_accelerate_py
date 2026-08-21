@@ -1282,11 +1282,19 @@ def bind_database_portal_execution_from_args(
             ),
         )
 
+    configured_worktree_root = getattr(parsed, "worktree_root", None)
+    if configured_worktree_root is not None:
+        configured_worktree_root = Path(configured_worktree_root)
+        if not configured_worktree_root.is_absolute():
+            configured_worktree_root = repo_root / configured_worktree_root
+        configured_worktree_root = configured_worktree_root.absolute()
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
         repository_root=repo_root,
+        worktree_root=configured_worktree_root,
+        implementation_protected_paths=implementation_protected_paths,
         worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),

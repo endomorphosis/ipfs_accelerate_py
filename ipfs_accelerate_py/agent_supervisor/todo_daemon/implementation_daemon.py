@@ -1129,6 +1129,10 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-path-recovery-guard@1"
+)
 
 
 def implementation_task_claim_protected_fence_paths(
@@ -1180,9 +1184,15 @@ class CrashFenceReconciler:
         daemon: "PortalImplementationDaemon",
         *,
         max_hold_seconds: float = DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS,
+        protected_path_recovery_guard: Mapping[str, Any] | None = None,
     ) -> None:
         self._daemon = daemon
         self.max_hold_seconds = float(max_hold_seconds)
+        self._protected_path_recovery_guard = (
+            dict(protected_path_recovery_guard)
+            if isinstance(protected_path_recovery_guard, Mapping)
+            else None
+        )
 
     def reconcile(self) -> dict[str, Any]:
         daemon = self._daemon
@@ -1323,10 +1333,33 @@ class CrashFenceReconciler:
                     incident
                 )
                 if auto_plan is not None:
+                    recovery_guard = (
+                        daemon._build_protected_path_auto_clear_guard(
+                            incident=incident,
+                            active=load_json_dict(active_path),
+                            auto_plan=auto_plan,
+                        )
+                    )
+                    if recovery_guard is None or (
+                        self._protected_path_recovery_guard is not None
+                        and recovery_guard
+                        != self._protected_path_recovery_guard
+                    ):
+                        result = {
+                            "blocked": True,
+                            "reason": "protected_path_recovery_guard_mismatch",
+                            "incident_path": str(incident_path),
+                        }
+                        daemon._record_event(
+                            "implementation_protected_path_incident_blocked",
+                            result,
+                        )
+                        return {"action": "return", "result": result}
                     return {
                         "action": "auto_clear",
                         "input_generations": input_generations,
                         "auto_plan": auto_plan,
+                        "protected_path_recovery_guard": recovery_guard,
                         "incident": dict(incident),
                     }
             result = {
@@ -1356,6 +1389,32 @@ class CrashFenceReconciler:
                     "reason": "implementation_protected_path_snapshot_malformed",
                     "active_snapshot_path": str(active_path),
                 },
+            }
+
+        if self._protected_path_recovery_guard is not None:
+            guard = self._protected_path_recovery_guard
+            clearance_result = (
+                daemon._protected_path_recovery_clearance_result(guard)
+            )
+            if (
+                not daemon._protected_path_recovery_guard_matches_active(
+                    guard,
+                    active,
+                )
+                or clearance_result is None
+            ):
+                return {
+                    "action": "return",
+                    "result": {
+                        "blocked": True,
+                        "reason": "protected_path_recovery_finish_guard_mismatch",
+                    },
+                }
+            return {
+                "action": "finish_auto_clear",
+                "input_generations": input_generations,
+                "protected_path_recovery_guard": dict(guard),
+                "clearance_result": clearance_result,
             }
 
         task_id = str(active.get("task_id") or "")
@@ -1530,12 +1589,58 @@ class CrashFenceReconciler:
             return dict(deferred)
 
         action = str(plan.get("action") or "")
+        if action == "finish_auto_clear":
+            guard = plan.get("protected_path_recovery_guard")
+            active = load_json_dict(active_path)
+            result = plan.get("clearance_result")
+            if (
+                not isinstance(guard, Mapping)
+                or not isinstance(active, Mapping)
+                or not isinstance(result, Mapping)
+                or not daemon._protected_path_recovery_guard_matches_active(
+                    guard,
+                    active,
+                )
+                or daemon._protected_path_recovery_clearance_result(guard)
+                != dict(result)
+            ):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_finish_guard_changed",
+                }
+            try:
+                active_path.unlink()
+            except FileNotFoundError:
+                pass
+            return dict(result)
         if action == "auto_clear":
             auto_plan = plan.get("auto_plan")
-            if not isinstance(auto_plan, Mapping):
+            recovery_guard = plan.get("protected_path_recovery_guard")
+            if not isinstance(auto_plan, Mapping) or not isinstance(
+                recovery_guard, Mapping
+            ):
                 return {
                     "blocked": True,
                     "reason": "implementation_protected_path_incident_latched",
+                    "incident_path": str(incident_path),
+                }
+            incident = load_json_dict(incident_path)
+            active = load_json_dict(active_path)
+            revalidated_guard = (
+                daemon._build_protected_path_auto_clear_guard(
+                    incident=incident,
+                    active=active,
+                    auto_plan=auto_plan,
+                )
+                if isinstance(incident, Mapping)
+                else None
+            )
+            if revalidated_guard != dict(recovery_guard):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_guard_changed",
                     "incident_path": str(incident_path),
                 }
             return daemon._apply_auto_clear_protected_path_plan(
@@ -8127,6 +8232,360 @@ class PortalImplementationDaemon:
 
         return None
 
+    @staticmethod
+    def _protected_path_recovery_object_digest(value: Mapping[str, Any]) -> str:
+        encoded = json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def _build_protected_path_auto_clear_guard(
+        self,
+        *,
+        incident: Mapping[str, Any],
+        active: Mapping[str, Any] | None,
+        auto_plan: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind an exact disposed-worktree clearance to current identities."""
+
+        if (
+            not isinstance(active, Mapping)
+            or active.get("schema")
+            != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+            or auto_plan.get("class_codes")
+            != ["workspace_protected_deletion"]
+            or auto_plan.get("scopes") != ["workspace"]
+            or auto_plan.get("changes") != ["deleted"]
+        ):
+            return None
+        task_id = str(incident.get("task_id") or "")
+        workspace_value = str(incident.get("workspace_path") or "")
+        try:
+            attempt = int(incident.get("attempt") or 0)
+            active_attempt = int(active.get("attempt") or 0)
+            workspace = Path(workspace_value).resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return None
+        try:
+            workspace.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return None
+        else:
+            return None
+        if (
+            not task_id
+            or attempt < 1
+            or active_attempt != attempt
+            or active.get("task_id") != task_id
+            or active.get("workspace_path") != workspace_value
+            or str(workspace) != workspace_value
+            or workspace == worktree_root
+            or auto_plan.get("task_id") != task_id
+            or auto_plan.get("attempt") != attempt
+            or auto_plan.get("workspace_path") != workspace_value
+        ):
+            return None
+        configured = tuple(sorted(self.implementation_protected_paths))
+        active_paths = active.get("protected_paths")
+        mutated_paths = auto_plan.get("mutated_paths")
+        if (
+            not configured
+            or not isinstance(active_paths, list)
+            or tuple(sorted(map(str, active_paths))) != configured
+            or len(set(map(str, active_paths))) != len(active_paths)
+            or not isinstance(mutated_paths, list)
+            or mutated_paths != sorted(set(map(str, mutated_paths)))
+            or not set(mutated_paths).issubset(set(configured))
+        ):
+            return None
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping):
+            return None
+        workspace_scope = snapshot.get("workspace")
+        shared_scope = snapshot.get("shared_checkout")
+        if not isinstance(workspace_scope, Mapping) or not isinstance(
+            shared_scope, Mapping
+        ):
+            return None
+        if (
+            workspace_scope.get("root") != workspace_value
+            or shared_scope.get("root") != str(self.repo_root.resolve())
+        ):
+            return None
+        workspace_identities = workspace_scope.get("paths")
+        shared_identities = shared_scope.get("paths")
+        if (
+            not isinstance(workspace_identities, Mapping)
+            or not isinstance(shared_identities, Mapping)
+            or set(map(str, workspace_identities)) != set(configured)
+            or set(map(str, shared_identities)) != set(configured)
+        ):
+            return None
+
+        shared_digests: dict[str, str] = {}
+        stable_fields = ("state", "kind", "mode", "size", "uid", "gid", "sha256")
+        for relative in configured:
+            before_workspace = workspace_identities.get(relative)
+            before_shared = shared_identities.get(relative)
+            current_shared = self._implementation_protected_path_identity(
+                self.repo_root,
+                relative,
+            )
+            if not all(
+                isinstance(identity, Mapping)
+                and identity.get("state") == "present"
+                and identity.get("kind") == "regular_file"
+                and identity.get("links") == 1
+                and re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(identity.get("sha256") or ""),
+                )
+                for identity in (
+                    before_workspace,
+                    before_shared,
+                    current_shared,
+                )
+            ):
+                return None
+            if any(
+                before_workspace.get(field) != before_shared.get(field)
+                or current_shared.get(field) != before_shared.get(field)
+                for field in stable_fields
+            ):
+                return None
+            shared_digests[relative] = (
+                "sha256:" + str(current_shared["sha256"])
+            )
+
+        guard = {
+            "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA,
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": workspace_value,
+            "clearance_id": str(auto_plan.get("clearance_id") or ""),
+            "incident_digest": self._protected_path_recovery_object_digest(
+                incident
+            ),
+            "active_snapshot_digest": self._protected_path_recovery_object_digest(
+                active
+            ),
+            "protected_paths": list(configured),
+            "mutated_paths": list(mutated_paths),
+            "class_codes": ["workspace_protected_deletion"],
+            "shared_path_digests": shared_digests,
+        }
+        guard["guard_id"] = self._protected_path_recovery_object_digest(guard)
+        return guard
+
+    def _protected_path_recovery_guard_matches_active(
+        self,
+        guard: Mapping[str, Any],
+        active: Mapping[str, Any],
+    ) -> bool:
+        expected_fields = {
+            "schema",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "clearance_id",
+            "incident_digest",
+            "active_snapshot_digest",
+            "protected_paths",
+            "mutated_paths",
+            "class_codes",
+            "shared_path_digests",
+            "guard_id",
+        }
+        body = dict(guard)
+        guard_id = body.pop("guard_id", None)
+        protected_paths = guard.get("protected_paths")
+        mutated_paths = guard.get("mutated_paths")
+        shared_digests = guard.get("shared_path_digests")
+        if (
+            set(guard) != expected_fields
+            or guard.get("schema")
+            != DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA
+            or guard_id != self._protected_path_recovery_object_digest(body)
+            or guard.get("active_snapshot_digest")
+            != self._protected_path_recovery_object_digest(active)
+            or guard.get("class_codes") != ["workspace_protected_deletion"]
+            or not isinstance(protected_paths, list)
+            or protected_paths != sorted(set(map(str, protected_paths)))
+            or tuple(protected_paths)
+            != tuple(sorted(self.implementation_protected_paths))
+            or not isinstance(mutated_paths, list)
+            or mutated_paths != sorted(set(map(str, mutated_paths)))
+            or not mutated_paths
+            or not set(mutated_paths).issubset(set(protected_paths))
+            or not isinstance(shared_digests, Mapping)
+            or set(map(str, shared_digests)) != set(protected_paths)
+        ):
+            return False
+        workspace_value = str(guard.get("workspace_path") or "")
+        try:
+            workspace = Path(workspace_value).resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+            workspace.lstat()
+        except FileNotFoundError:
+            pass
+        except (OSError, RuntimeError, ValueError):
+            return False
+        else:
+            return False
+        if (
+            str(workspace) != workspace_value
+            or workspace == worktree_root
+            or active.get("schema")
+            != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+            or active.get("task_id") != guard.get("task_id")
+            or active.get("attempt") != guard.get("attempt")
+            or active.get("workspace_path") != workspace_value
+            or tuple(sorted(map(str, active.get("protected_paths") or [])))
+            != tuple(protected_paths)
+        ):
+            return False
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping):
+            return False
+        shared_scope = snapshot.get("shared_checkout")
+        if (
+            not isinstance(shared_scope, Mapping)
+            or shared_scope.get("root") != str(self.repo_root.resolve())
+        ):
+            return False
+        shared_identities = shared_scope.get("paths")
+        if not isinstance(shared_identities, Mapping) or set(
+            map(str, shared_identities)
+        ) != set(protected_paths):
+            return False
+        stable_fields = ("state", "kind", "mode", "size", "uid", "gid", "sha256")
+        for relative in protected_paths:
+            before = shared_identities.get(relative)
+            current = self._implementation_protected_path_identity(
+                self.repo_root,
+                relative,
+            )
+            if (
+                not isinstance(before, Mapping)
+                or before.get("links") != 1
+                or current.get("links") != 1
+                or any(current.get(field) != before.get(field) for field in stable_fields)
+                or shared_digests.get(relative)
+                != "sha256:" + str(current.get("sha256") or "")
+            ):
+                return False
+        return True
+
+    def _protected_path_recovery_clearance_result(
+        self,
+        guard: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        clearance_id = str(guard.get("clearance_id") or "")
+        receipt_path = self.state_path.parent / (
+            "implementation-protected-path-auto-clearance-"
+            f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+        )
+        receipt = load_json_dict(receipt_path)
+        expected_receipt_fields = {
+            "schema",
+            "clearance_id",
+            "cleared_at",
+            "reason",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "mutated_paths",
+            "scopes",
+            "changes",
+            "class_codes",
+            "shared_protected_paths_present",
+            "incident_latched_at",
+        }
+        clearance_basis = {
+            "kind": "auto-clear-protected-path-stall",
+            "task_id": receipt.get("task_id") if isinstance(receipt, Mapping) else None,
+            "attempt": receipt.get("attempt") if isinstance(receipt, Mapping) else None,
+            "workspace_path": (
+                receipt.get("workspace_path") if isinstance(receipt, Mapping) else None
+            ),
+            "mutated_paths": (
+                receipt.get("mutated_paths") if isinstance(receipt, Mapping) else None
+            ),
+            "scopes": receipt.get("scopes") if isinstance(receipt, Mapping) else None,
+            "changes": receipt.get("changes") if isinstance(receipt, Mapping) else None,
+            "class_codes": (
+                receipt.get("class_codes") if isinstance(receipt, Mapping) else None
+            ),
+            "latched_at": (
+                receipt.get("incident_latched_at")
+                if isinstance(receipt, Mapping)
+                else None
+            ),
+        }
+        derived_clearance_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                clearance_basis,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            not isinstance(receipt, Mapping)
+            or set(receipt) != expected_receipt_fields
+            or receipt.get("schema")
+            != "implementation-protected-path-auto-clearance-v1"
+            or receipt.get("clearance_id") != clearance_id
+            or derived_clearance_id != clearance_id
+            or not str(receipt.get("cleared_at") or "")
+            or receipt.get("reason")
+            != "ephemeral_workspace_protected_deletions_shared_intact"
+            or receipt.get("task_id") != guard.get("task_id")
+            or receipt.get("attempt") != guard.get("attempt")
+            or receipt.get("workspace_path") != guard.get("workspace_path")
+            or receipt.get("mutated_paths") != guard.get("mutated_paths")
+            or receipt.get("scopes") != ["workspace"]
+            or receipt.get("changes") != ["deleted"]
+            or receipt.get("class_codes")
+            != ["workspace_protected_deletion"]
+            or receipt.get("shared_protected_paths_present")
+            != receipt.get("mutated_paths")
+        ):
+            return None
+        result = {
+            "cleared": True,
+            "auto": True,
+            "reason": receipt["reason"],
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": receipt["task_id"],
+            "attempt": receipt["attempt"],
+            "workspace_path": receipt["workspace_path"],
+            "mutated_paths": receipt["mutated_paths"],
+            "class_codes": receipt["class_codes"],
+            "blocked": False,
+        }
+        matches = [
+            event
+            for event in self._iter_events()
+            if event.get("type")
+            == "implementation_protected_path_incident_auto_cleared"
+            and event.get("clearance_id") == clearance_id
+            and all(event.get(field) == value for field, value in result.items())
+        ]
+        return result if len(matches) == 1 else None
+
     def _plan_auto_clear_ephemeral_protected_path_deletions(
         self,
         incident: Mapping[str, Any],
@@ -8237,9 +8696,12 @@ class PortalImplementationDaemon:
             "latched_at": str(incident.get("latched_at") or ""),
         }
         clearance_id = "sha256:" + hashlib.sha256(
-            json.dumps(clearance_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
+            json.dumps(
+                clearance_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
         ).hexdigest()
 
         if class_codes == {"workspace_protected_deletion"}:
@@ -8304,15 +8766,26 @@ class PortalImplementationDaemon:
                 f"{clearance_id.removeprefix('sha256:')[:16]}.json"
             )
         )
-        write_json_atomic(receipt_path, receipt)
-        try:
-            incident_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            active_path.unlink()
-        except FileNotFoundError:
-            pass
+        if receipt_path.is_file():
+            observed_receipt = load_json_dict(receipt_path)
+            stable_fields = set(receipt).difference({"cleared_at"})
+            if (
+                not isinstance(observed_receipt, Mapping)
+                or set(observed_receipt) != set(receipt)
+                or not str(observed_receipt.get("cleared_at") or "")
+                or any(
+                    observed_receipt.get(field) != receipt.get(field)
+                    for field in stable_fields
+                )
+            ):
+                return {
+                    "blocked": True,
+                    "reason": "protected_path_auto_clear_receipt_changed",
+                    "clearance_id": clearance_id,
+                }
+            receipt = dict(observed_receipt)
+        else:
+            write_json_atomic(receipt_path, receipt)
         result = {
             "cleared": True,
             "auto": True,
@@ -8321,14 +8794,46 @@ class PortalImplementationDaemon:
             "receipt_path": str(receipt_path),
             "task_id": receipt["task_id"],
             "attempt": receipt["attempt"],
+            "workspace_path": receipt["workspace_path"],
             "mutated_paths": receipt["mutated_paths"],
             "class_codes": receipt["class_codes"],
             "blocked": False,
         }
-        self._record_event(
-            "implementation_protected_path_incident_auto_cleared",
-            result,
-        )
+        matching_events = [
+            event
+            for event in self._iter_events()
+            if event.get("type")
+            == "implementation_protected_path_incident_auto_cleared"
+            and event.get("clearance_id") == clearance_id
+        ]
+        if len(matching_events) > 1 or (
+            matching_events
+            and any(
+                matching_events[0].get(field) != result.get(field)
+                for field in result
+            )
+        ):
+            return {
+                "blocked": True,
+                "reason": "protected_path_auto_clear_event_changed",
+                "clearance_id": clearance_id,
+            }
+        if not matching_events:
+            # Publish durable clearance evidence before removing either fence.
+            # A crash at every later boundary can therefore replay without
+            # inventing an event after the evidence it describes disappeared.
+            self._record_event(
+                "implementation_protected_path_incident_auto_cleared",
+                result,
+            )
+        try:
+            incident_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            active_path.unlink()
+        except FileNotFoundError:
+            pass
         return result
 
     def _auto_clear_ephemeral_protected_path_deletions(
@@ -8739,10 +9244,17 @@ class PortalImplementationDaemon:
         )
         return result
 
-    def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
+    def _reconcile_implementation_protected_path_fence(
+        self,
+        *,
+        protected_path_recovery_guard: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
-        return CrashFenceReconciler(self).reconcile()
+        return CrashFenceReconciler(
+            self,
+            protected_path_recovery_guard=protected_path_recovery_guard,
+        ).reconcile()
 
     def _reconcile_implementation_protected_path_fence_unserialized(
         self,
@@ -70119,7 +70631,15 @@ class DatabaseImplementationDaemon:
 
     @staticmethod
     def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
-        encoded = _database_daemon_json(dict(value)).encode("utf-8")
+        # The Portal bridge is the receipt producer; preserve its UTF-8
+        # canonical JSON domain rather than Python's ASCII-escape default.
+        encoded = json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
         return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
     def _typed_deferral_receipt(
@@ -70416,8 +70936,12 @@ class DatabaseImplementationDaemon:
             or not all(
                 type(path) is str
                 and bool(path)
+                and path == PurePosixPath(path).as_posix()
+                and path != "."
                 and not PurePosixPath(path).is_absolute()
                 and ".." not in PurePosixPath(path).parts
+                and "\\" not in path
+                and all(ord(character) >= 32 for character in path)
                 for path in raw
             )
             or len(set(raw)) != len(raw)
@@ -70536,7 +71060,10 @@ class DatabaseImplementationDaemon:
                 )
                 for field in digest_fields
             )
-            or not str(raw.get("event_stream_id") or "")
+            or not re.fullmatch(
+                r"event-log:sha256:[0-9a-f]{64}",
+                str(raw.get("event_stream_id") or ""),
+            )
             or raw.get("backoff_seconds") != 0
             or raw.get("attempt_consumed") is not True
             or receipt_id != self._database_portal_evidence_digest(body)
