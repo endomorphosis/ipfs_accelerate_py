@@ -105,9 +105,20 @@
     "docs/architecture/agent_supervisor_residual_intelligence.objectives.md",
     "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
     "config/agent_supervisor_residual_intelligence_scheduler.json",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "scripts/validate_agent_supervisor_residual_intelligence_board.py",
     "scripts/run_agent_supervisor_residual_intelligence.py",
-    "test/api/residual_intelligence/test_board.py"
+    "test/api/residual_intelligence/test_board.py",
+    "test/api/residual_intelligence/test_runtime_bootstrap.py",
+    "test/api/test_agent_supervisor_quack_owner_commands.py"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/residual_intelligence_foundry",

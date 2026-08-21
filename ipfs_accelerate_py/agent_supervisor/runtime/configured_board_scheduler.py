@@ -5347,6 +5347,9 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from .process_security import harden_state_authority_process
+
+    harden_state_authority_process()
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     control_plane_pin: AgentImplementationControlPlanePin | None = None

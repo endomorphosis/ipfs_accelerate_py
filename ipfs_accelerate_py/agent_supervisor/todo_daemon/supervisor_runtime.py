@@ -285,6 +285,7 @@ def launch_process_child(
     *,
     cwd: Path | str,
     env: Optional[Mapping[str, object]] = None,
+    replace_env: bool = False,
     stdin: Any = subprocess.DEVNULL,
     stdout: Any = None,
     stderr: Any = None,
@@ -294,7 +295,7 @@ def launch_process_child(
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults."""
 
-    child_env = dict(os.environ)
+    child_env = {} if replace_env else dict(os.environ)
     if env:
         child_env.update({str(key): str(value) for key, value in env.items()})
     kwargs = {
@@ -1053,6 +1054,7 @@ def run_process_group_stream(
     stderr: Any = subprocess.STDOUT,
     input_text: Optional[str] = None,
     env: Optional[Mapping[str, object]] = None,
+    replace_env: bool = False,
     timeout_seconds: float,
     progress_timeout_seconds: float | None = None,
     max_timeout_seconds: float | None = None,
@@ -1136,6 +1138,7 @@ def run_process_group_stream(
         command,
         cwd=cwd,
         env=env,
+        replace_env=replace_env,
         stdin=subprocess.PIPE if input_text is not None else None,
         stdout=stdout,
         stderr=stderr,

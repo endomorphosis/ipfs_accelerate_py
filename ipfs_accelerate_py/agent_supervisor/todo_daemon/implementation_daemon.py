@@ -20391,6 +20391,7 @@ class PortalImplementationDaemon:
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
                             ),
+                            replace_env=True,
                             pass_fds=self._accepted_control_plane_pass_fds(
                                 command
                             ),
@@ -29985,6 +29986,7 @@ class PortalImplementationDaemon:
                                 stdout=log_fh,
                                 input_text=prompt,
                                 env=provider_environment,
+                                replace_env=True,
                                 pass_fds=self._accepted_control_plane_pass_fds(
                                     command
                                 ),
@@ -44548,7 +44550,13 @@ class PortalImplementationDaemon:
         results: list[dict[str, Any]] = []
         if not commands:
             return results
-        env = dict(os.environ)
+        from ..runtime.multi_supervisor_runner import (
+            provider_subprocess_environment,
+        )
+
+        # Materialization commands execute worktree-controlled code and are
+        # outside the trusted state-control process boundary.
+        env = provider_subprocess_environment(os.environ)
         # Match common board PYTHONPATH layout for multi-root workspaces.
         pythonpath_parts = [
             str(workspace_path / relative)
@@ -45025,6 +45033,7 @@ class PortalImplementationDaemon:
                             stdout=log_fh,
                             input_text=rescue_prompt,
                             env=provider_environment,
+                            replace_env=True,
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
@@ -61725,12 +61734,21 @@ class PortalImplementationDaemon:
         attempt: int,
         checkpoint_dir: Path,
     ) -> dict[str, str]:
-        environment = {
+        from ..runtime.multi_supervisor_runner import (
+            provider_subprocess_environment,
+        )
+
+        # ``run_process_group_stream`` overlays this mapping onto the current
+        # process environment.  Return a complete scrubbed environment so the
+        # overlay cannot leave a Quack/state-owner credential inherited from
+        # the trusted daemon process.
+        environment = provider_subprocess_environment(os.environ)
+        environment.update({
             IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
-        }
+        })
         if (
             str(
                 os.environ.get(
@@ -73098,6 +73116,9 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
+    from ..runtime.process_security import harden_state_authority_process
+
+    harden_state_authority_process()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

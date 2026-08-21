@@ -499,7 +499,6 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
         "DUCKDB_TOKEN",
         "DUCKDB_PASSWORD",
         "DUCKDB_SECRET",
-        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
         "IPFS_ACCELERATE_AGENT_QUACK_PASSWORD",
         "IPFS_ACCELERATE_AGENT_QUACK_SECRET",
         "IPFS_ACCELERATE_AGENT_STATE_TOKEN",
@@ -7997,6 +7996,9 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .process_security import harden_state_authority_process
+
+    harden_state_authority_process()
     args_list = list(sys.argv[1:] if argv is None else argv)
     if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
         return 78

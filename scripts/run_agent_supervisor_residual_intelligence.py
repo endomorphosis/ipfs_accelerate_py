@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import hmac
 import json
 import os
 import re
@@ -75,34 +74,7 @@ TERMINAL_STATUSES: Final = (
     "quarantined",
     "rejected",
 )
-OWNER_DML_PREFIXES: Final = (
-    "UPDATE ",
-    "DELETE ",
-    "MERGE ",
-    "INSERT OR REPLACE",
-    "INSERT OR IGNORE",
-)
-OWNER_MUTATION_MAX_AGE_MS: Final = 30_000
-OWNER_MUTATION_MAX_BYTES: Final = 1_048_576
-OWNER_MUTABLE_TABLES: Final = frozenset(
-    {
-        "client_sessions",
-        "goals",
-        "leases",
-        "maintenance_leases",
-        "plans",
-        "schema_migration_attempts",
-        "store_generations",
-        "task_blocks",
-        "tasks",
-    }
-)
-OWNER_MUTATION_TARGET_RE: Final = re.compile(
-    r"^(?:UPDATE|DELETE\s+FROM|MERGE\s+INTO|"
-    r"INSERT\s+OR\s+(?:REPLACE|IGNORE)\s+INTO)\s+"
-    r"(?:[A-Z_][A-Z0-9_]*\.)?[\"']?([A-Z_][A-Z0-9_]*)[\"']?\b"
-)
-OWNER_WRITER_RE: Final = re.compile(r"^supervisor-process:[1-9][0-9]{0,18}$")
+OWNER_COMMAND_ENVELOPE_MAX_BYTES: Final = 1_048_576
 
 
 class OperatorError(RuntimeError):
@@ -1139,144 +1111,90 @@ def _owner_connection(path: Path) -> Any:
     return DuckDBConnection.wrap(connection)
 
 
-def _normalized_owner_dml(sql: str, parameters: Any = None) -> str:
-    normalized = " ".join(str(sql or "").strip().upper().split())
-    if not normalized.startswith(OWNER_DML_PREFIXES):
-        raise OperatorError("mutation inbox accepts only the closed owner-DML vocabulary")
-    if not normalized or "\x00" in normalized:
-        raise OperatorError("mutation inbox SQL is empty or contains NUL")
-    if any(marker in normalized for marker in ("--", "/*", "*/")):
-        raise OperatorError("mutation inbox SQL comments are forbidden")
-    if ";" in normalized.rstrip(";"):
-        raise OperatorError("mutation inbox accepts exactly one SQL statement")
-    match = OWNER_MUTATION_TARGET_RE.match(normalized)
-    if match is None:
-        raise OperatorError("mutation inbox could not bind an exact target table")
-    table = match.group(1).lower()
-    if table not in OWNER_MUTABLE_TABLES:
-        raise OperatorError("mutation inbox target is outside the closed table set")
-    if normalized.startswith(("UPDATE ", "DELETE ")):
-        if " WHERE " not in normalized:
-            raise OperatorError("owner UPDATE/DELETE requires a bounded WHERE clause")
-        if parameters is None:
-            raise OperatorError("owner UPDATE/DELETE requires bound parameters")
-    if normalized.startswith("UPDATE TASKS "):
-        if "WHERE TASK_CID = ? AND REVISION = ?" not in normalized:
-            raise OperatorError("task mutation requires task-CID and revision CAS")
-    if normalized.startswith(("DELETE ", "MERGE ")):
-        # Destructive row removal and generic MERGE are not required by the
-        # live scheduler.  Recovery remains a separate, typed operator action.
-        raise OperatorError("DELETE/MERGE is outside the live owner vocabulary")
-    return normalized
-
-
-def _process_mutations(
-    server: Any,
-    mutation_dir: Path,
+def _process_owner_commands(
+    repository: Any,
+    command_dir: Path,
     *,
     token: str,
     expected_store_id: str,
     expected_store_generation: str,
-    seen_request_ids: set[str],
 ) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        execute_quack_owner_command,
+        quack_owner_command_error_code,
+    )
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
-        quack_owner_mutation_signature,
+        quack_owner_command_response,
+        validate_quack_owner_command_request,
     )
 
-    mutation_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(mutation_dir, 0o700)
-    for request in sorted(mutation_dir.glob("*.request.json")):
+    command_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(command_dir, 0o700)
+    for request in sorted(command_dir.glob("*.request.json")):
         done = request.with_name(request.name.replace(".request.json", ".done.json"))
+        payload: Mapping[str, Any] = {}
+        expected_request_id = request.name.removesuffix(".request.json")
         try:
             metadata = request.lstat()
             if not stat.S_ISREG(metadata.st_mode) or request.is_symlink():
-                raise OperatorError("mutation request must be a regular non-symlink file")
-            if metadata.st_uid != os.getuid() or metadata.st_size > OWNER_MUTATION_MAX_BYTES:
-                raise OperatorError("mutation request owner or size is invalid")
+                raise OperatorError("owner command must be a regular non-symlink file")
+            if (
+                metadata.st_uid != os.getuid()
+                or metadata.st_size > OWNER_COMMAND_ENVELOPE_MAX_BYTES
+            ):
+                raise OperatorError("owner command file owner or size is invalid")
             try:
-                payload = json.loads(request.read_text(encoding="utf-8"))
+                decoded = json.loads(request.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 # The client creates a tiny same-filesystem request. A partial
                 # read is retried rather than converted into a false failure.
                 continue
-            if not isinstance(payload, Mapping):
-                raise OperatorError("mutation request must be an object")
-            expected_fields = {
-                "schema",
-                "request_id",
-                "issued_at_ms",
-                "writer_identity",
-                "store_id",
-                "store_generation",
-                "sql",
-                "parameters",
-                "signature",
-            }
-            if set(payload) != expected_fields:
-                raise OperatorError("mutation request fields do not match the closed envelope")
-            request_id = str(payload.get("request_id") or "")
-            expected_request_id = request.name.removesuffix(".request.json")
-            if (
-                payload.get("schema") != QUACK_OWNER_MUTATION_REQUEST_SCHEMA
-                or not re.fullmatch(r"[0-9a-f]{32}", request_id)
-                or request_id != expected_request_id
-                or request_id in seen_request_ids
-            ):
-                raise OperatorError("mutation request identity or replay check failed")
-            issued_at_ms = payload.get("issued_at_ms")
-            if isinstance(issued_at_ms, bool) or not isinstance(issued_at_ms, int):
-                raise OperatorError("mutation request time must be an integer")
-            age_ms = int(time.time() * 1000) - issued_at_ms
-            if age_ms < -5_000 or age_ms > OWNER_MUTATION_MAX_AGE_MS:
-                raise OperatorError("mutation request is stale or future-dated")
-            writer_identity = str(payload.get("writer_identity") or "")
-            if OWNER_WRITER_RE.fullmatch(writer_identity) is None:
-                raise OperatorError("mutation writer identity is invalid")
-            if (
-                payload.get("store_id") != expected_store_id
-                or payload.get("store_generation") != expected_store_generation
-            ):
-                raise OperatorError("mutation store or generation binding is stale")
-            observed_signature = str(payload.get("signature") or "")
-            expected_signature = quack_owner_mutation_signature(payload, token=token)
-            if not hmac.compare_digest(observed_signature, expected_signature):
-                raise OperatorError("mutation authorization is invalid")
-            # Consume an authenticated identity once even when its SQL is
-            # rejected, preventing a modified replay under the same nonce.
-            seen_request_ids.add(request_id)
-            sql = str(payload.get("sql") or "")
-            parameters = payload.get("parameters")
-            if parameters is not None and (
-                isinstance(parameters, (str, bytes, bytearray))
-                or not isinstance(parameters, (Mapping, Sequence))
-            ):
-                raise OperatorError("mutation parameters must be a mapping or sequence")
-            _normalized_owner_dml(sql, parameters)
-            owner_connection = getattr(server, "_connection", None)
-            if owner_connection is None:
-                raise OperatorError("state-owner connection is unavailable")
-            result = (
-                owner_connection.execute(sql)
-                if parameters is None
-                else owner_connection.execute(sql, parameters)
+            if not isinstance(decoded, Mapping):
+                raise OperatorError("owner command request must be an object")
+            payload = decoded
+            command, command_payload = validate_quack_owner_command_request(
+                payload,
+                token=token,
+                expected_request_id=expected_request_id,
+                expected_store_id=expected_store_id,
+                expected_store_generation=expected_store_generation,
             )
-            rowcount = -1
-            try:
-                if getattr(result, "description", None):
-                    result.fetchall()
-                elif hasattr(result, "rowcount"):
-                    rowcount = int(result.rowcount)
-            except Exception:
-                pass
-            _atomic_json(done, {"ok": True, "rowcount": rowcount})
-        except Exception as exc:
+            result = execute_quack_owner_command(
+                repository,
+                command,
+                command_payload,
+                request_id=expected_request_id,
+                store_id=expected_store_id,
+                store_generation=expected_store_generation,
+            )
             _atomic_json(
                 done,
-                {
-                    "ok": False,
-                    "error": f"{type(exc).__name__}: mutation rejected",
-                },
+                quack_owner_command_response(payload, token=token, result=result),
+            )
+        except Exception as exc:
+            response_request = (
+                payload
+                if payload
+                else {
+                    "request_id": expected_request_id,
+                    "command": "invalid",
+                    "store_id": expected_store_id,
+                    "store_generation": expected_store_generation,
+                }
+            )
+            error_code = quack_owner_command_error_code(exc)
+            _atomic_json(
+                done,
+                quack_owner_command_response(
+                    response_request,
+                    token=token,
+                    error_code=error_code,
+                    error_message=(
+                        str(exc)
+                        if error_code != "owner_error"
+                        else "typed owner command rejected"
+                    ),
+                ),
             )
         try:
             request.unlink()
@@ -1285,9 +1203,15 @@ def _process_mutations(
 
 
 def state_owner(config_path: Path) -> int:
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        harden_state_authority_process,
+    )
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         ServerLifecycle,
         build_server,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentRepository,
     )
 
     board, config = _load_config(config_path)
@@ -1329,6 +1253,21 @@ def state_owner(config_path: Path) -> int:
     owner_token = _read_owner_token(
         _token_path(paths["owner"], program.endpoint_secret_handle)
     )
+    # The state owner retains the raw transport/command credential in memory.
+    # Same-UID provider processes must not be able to recover it through procfs.
+    os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = owner_token
+    harden_state_authority_process()
+    owner_connection = getattr(server, "_connection", None)
+    if owner_connection is None:
+        server.stop()
+        raise OperatorError("state-owner connection is unavailable")
+    owner_repository = IntentRepository(
+        paths["database"],
+        bound_connection=owner_connection,
+        owner_id="vrif-quack-owner",
+        session_id=f"vrif-quack-owner-{os.getpid()}",
+        install_schema=False,
+    )
     print(
         json.dumps(
             {
@@ -1337,7 +1276,9 @@ def state_owner(config_path: Path) -> int:
                 "ready": True,
                 "identity": identity.to_dict(),
                 "live": ready,
-                "mutation_dir": str((paths["owner"] / "mutations").relative_to(ROOT)),
+                "owner_command_dir": str(
+                    (paths["owner"] / "mutations").relative_to(ROOT)
+                ),
             },
             sort_keys=True,
         ),
@@ -1350,24 +1291,102 @@ def state_owner(config_path: Path) -> int:
 
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
-    mutation_dir = paths["owner"] / "mutations"
-    seen_request_ids: set[str] = set()
+    command_dir = paths["owner"] / "mutations"
     control_path = server.stop_control_path()
     while server.lifecycle is ServerLifecycle.READY and not stopped["value"]:
         if control_path.is_file():
             break
-        _process_mutations(
-            server,
-            mutation_dir,
+        _process_owner_commands(
+            owner_repository,
+            command_dir,
             token=owner_token,
             expected_store_id=program.store_id,
             expected_store_generation=program.store_generation,
-            seen_request_ids=seen_request_ids,
         )
         time.sleep(0.05)
+    owner_repository.close()
     result = server.stop()
     print(json.dumps(result, sort_keys=True), flush=True)
     return 0
+
+
+def _unlink_token_vault(path: Path) -> None:
+    """Remove one validated token file after trusted processes inherit it."""
+
+    observed = path.lstat()
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(observed.st_mode)
+        or observed.st_uid != os.getuid()
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or observed.st_nlink != 1
+    ):
+        raise OperatorError("refusing to unlink an unsafe Quack token vault")
+    path.unlink()
+    descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def launch_supervisor(
+    config_path: Path,
+    *,
+    dry_run: bool = False,
+    duration_seconds: float = float("inf"),
+) -> int:
+    """Launch the configured parallel supervisor without a credential file.
+
+    Preflight runs while the owner token is still recoverable.  For a real
+    launch, this process becomes non-dumpable, unlinks the single validated
+    token file, and passes the credential only through trusted control-process
+    memory.  Provider subprocesses use the canonical scrubbed environment.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        main as configured_board_main,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        harden_state_authority_process,
+    )
+
+    board, config = _load_config(config_path)
+    paths = _runtime_paths(board)
+    _assert_clean_current_tree(config)
+    owner_status_path = paths["owner"] / "quack-state-server.status.json"
+    if not owner_status_path.is_file():
+        raise OperatorError("Quack state owner has no current status")
+    owner_status = _json_object(owner_status_path)
+    if (
+        str(owner_status.get("lifecycle") or "") != "ready"
+        or _owner_liveness(owner_status) != "alive"
+    ):
+        raise OperatorError("Quack state owner is not live-ready")
+    program = board.resolved_database_program()
+    token_path = _token_path(paths["owner"], program.endpoint_secret_handle)
+    token = _read_owner_token(token_path)
+    os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
+    common = [
+        "--repo-root",
+        str(ROOT),
+        "--config",
+        str(config_path),
+    ]
+    preflight_result = configured_board_main([*common, "preflight"])
+    if preflight_result != 0:
+        return int(preflight_result)
+    launch_args = [*common, "launch", "--implement"]
+    if dry_run:
+        launch_args.append("--dry-run")
+        return int(configured_board_main(launch_args))
+    if duration_seconds != float("inf"):
+        if duration_seconds <= 0:
+            raise OperatorError("supervisor duration must be positive")
+        launch_args.extend(["--duration-seconds", str(duration_seconds)])
+    harden_state_authority_process()
+    _unlink_token_vault(token_path)
+    return int(configured_board_main(launch_args))
 
 
 def _owner_liveness(status_payload: Mapping[str, Any]) -> str:
@@ -1566,6 +1585,21 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="exit nonzero unless Quack is live and task authority is queryable",
     )
+    launch_parser = commands.add_parser(
+        "launch-supervisor",
+        help="preflight and launch the credential-isolated parallel supervisor",
+    )
+    launch_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="render the launch without unlinking the state credential or starting workers",
+    )
+    launch_parser.add_argument(
+        "--duration-seconds",
+        type=float,
+        default=float("inf"),
+        help="optional positive supervisor runtime bound",
+    )
     return parser
 
 
@@ -1589,6 +1623,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             ):
                 return 1
             return 0
+        if arguments.command == "launch-supervisor":
+            return launch_supervisor(
+                config_path,
+                dry_run=bool(arguments.dry_run),
+                duration_seconds=float(arguments.duration_seconds),
+            )
         raise OperatorError(f"unsupported command: {arguments.command}")
     except OperatorError as exc:
         print(
