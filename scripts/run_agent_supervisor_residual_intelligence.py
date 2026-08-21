@@ -2001,6 +2001,7 @@ def launch_supervisor(
     token_path = _token_path(paths["owner"], program.endpoint_secret_handle)
     token = _read_owner_token(token_path)
     os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
+    _probe_quack_attach(program.quack_endpoint, token)
     common = [
         "--repo-root",
         str(ROOT),
@@ -2063,6 +2064,25 @@ def _read_owner_token(path: Path) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]{8,}", token):
         raise OperatorError("Quack token vault material is malformed")
     return token
+
+
+def _probe_quack_attach(endpoint: str, token: str) -> None:
+    """Fail closed if the vault token cannot attach to the live owner."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_quack_transport_connection,
+    )
+
+    try:
+        connection = open_quack_transport_connection(endpoint, token=token)
+    except Exception as exc:
+        raise OperatorError(
+            "Quack vault token does not authenticate to the live state-owner"
+        ) from exc
+    try:
+        connection.close()
+    except Exception:
+        pass
 
 
 def _task_status(connection: Any) -> dict[str, Any]:

@@ -562,7 +562,41 @@ def is_quack_transport_target(target: object) -> bool:
 
 
 _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
+_QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+_QUACK_SECRET_HANDLE_ENV = "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
 _QUACK_CONTROL_CATALOG = "control_plane"
+
+
+def resolve_quack_attach_token(
+    token: str = "",
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    """Return the admitted attach token without logging it.
+
+    Resolution order: explicit argument, ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``,
+    then the environment variable named by an ``env://`` secret handle.
+    """
+
+    source = os.environ if environment is None else environment
+    secret = str(token or source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
+    if secret:
+        return secret
+    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
+    if handle.startswith("env://"):
+        target = handle[len("env://") :].strip()
+        if target:
+            secret = str(source.get(target, "") or "").strip()
+    return secret
+
+
+def _quack_token_fingerprint(token: str) -> str:
+    secret = str(token or "").strip()
+    if not secret:
+        return "none"
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
+
+
 QUACK_OWNER_COMMAND_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/quack-owner-command-request@1"
 )
@@ -951,7 +985,7 @@ def submit_quack_owner_command(
     request_id = uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"
-    token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
+    token = resolve_quack_attach_token()
     request_payload: dict[str, Any] = {
         "schema": QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
         "request_id": request_id,
@@ -1096,10 +1130,10 @@ def open_quack_transport_connection(
     except ImportError as exc:
         raise DuckDBConnectionPolicyError("DuckDB is required for Quack transport") from exc
     connection = duckdb.connect(":memory:")
+    secret = resolve_quack_attach_token(token)
     try:
         connection.execute("LOAD quack")
         attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
-        secret = str(token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
         if secret:
             if not _QUACK_TOKEN_RE.fullmatch(secret):
                 raise DuckDBConnectionPolicyError(
@@ -1114,11 +1148,18 @@ def open_quack_transport_connection(
         # Prove the attached control catalog is visible on this connection.
         probed = connection.execute(f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks")
         _consume_duckdb_result(probed)
-    except Exception:
+    except Exception as exc:
         try:
             connection.close()
         except Exception:
             pass
+        detail = str(exc)
+        if "Authentication failed" in detail or "authentication token" in detail.lower():
+            raise DuckDBConnectionPolicyError(
+                "quack attach authentication failed "
+                f"uri={text!r} token_present={bool(secret)} "
+                f"token_sha16={_quack_token_fingerprint(secret)}"
+            ) from exc
         raise
     wrapped = DuckDBConnection.wrap(connection)
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG

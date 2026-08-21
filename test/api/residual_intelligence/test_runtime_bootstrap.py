@@ -383,6 +383,32 @@ def test_owner_command_inbox_rejects_raw_sql_envelopes(
     assert result["error_message"] == "typed owner command rejected"
 
 
+def test_env_secret_handle_credentials_are_forwarded_not_minted() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        env_secret_handle_target,
+        forward_env_secret_handle_credentials,
+    )
+
+    assert env_secret_handle_target("env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN") == (
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+    )
+    assert env_secret_handle_target("vault://secret") == ""
+    child: dict[str, str] = {"PYTHONPATH": "/tmp"}
+    forward_env_secret_handle_credentials(
+        child,
+        secret_handle="env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        source_environment={"IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "admitted"},
+    )
+    assert child["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] == "admitted"
+    empty: dict[str, str] = {}
+    forward_env_secret_handle_credentials(
+        empty,
+        secret_handle="env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        source_environment={},
+    )
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in empty
+
+
 def test_state_credential_process_denies_same_uid_environment_probe() -> None:
     script = """
 import subprocess

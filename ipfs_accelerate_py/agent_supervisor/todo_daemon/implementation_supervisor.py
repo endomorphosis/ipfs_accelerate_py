@@ -1343,6 +1343,14 @@ def _managed_daemon_child_environment(
         env["PYTHONPATH"] = pythonpath
     if database_program is not None:
         env.update(database_program.environment())
+        from ..runtime.process_security import (
+            forward_env_secret_handle_credentials,
+        )
+
+        forward_env_secret_handle_credentials(
+            env,
+            secret_handle=database_program.endpoint_secret_handle,
+        )
     return env
 
 

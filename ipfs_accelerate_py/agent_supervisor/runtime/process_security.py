@@ -17,7 +17,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from typing import Final
 
 PR_GET_DUMPABLE: Final = 3
@@ -32,6 +32,40 @@ STATE_AUTHORITY_CREDENTIAL_NAMES: Final = frozenset(
 
 class StateAuthorityProcessIsolationError(RuntimeError):
     """A credential-bearing process could not establish its kernel boundary."""
+
+
+def env_secret_handle_target(secret_handle: str) -> str:
+    """Return the environment variable named by an ``env://`` secret handle."""
+
+    handle = str(secret_handle or "").strip()
+    if not handle.startswith("env://"):
+        return ""
+    target = handle[len("env://") :].strip()
+    if not target or not target.isidentifier():
+        return ""
+    return target
+
+
+def forward_env_secret_handle_credentials(
+    child_environment: MutableMapping[str, str],
+    *,
+    secret_handle: str,
+    source_environment: Mapping[str, str] | None = None,
+) -> MutableMapping[str, str]:
+    """Copy an already-admitted ``env://`` credential into a trusted child.
+
+    This never mints a token.  Provider children must still go through
+    ``provider_subprocess_environment``, which scrubs these names.
+    """
+
+    target = env_secret_handle_target(secret_handle)
+    if not target:
+        return child_environment
+    source = os.environ if source_environment is None else source_environment
+    value = str(source.get(target, "") or "").strip()
+    if value:
+        child_environment[target] = value
+    return child_environment
 
 
 def state_authority_credentials_present(
@@ -76,6 +110,8 @@ __all__ = (
     "PR_SET_DUMPABLE",
     "STATE_AUTHORITY_CREDENTIAL_NAMES",
     "StateAuthorityProcessIsolationError",
+    "env_secret_handle_target",
+    "forward_env_secret_handle_credentials",
     "harden_state_authority_process",
     "state_authority_credentials_present",
 )

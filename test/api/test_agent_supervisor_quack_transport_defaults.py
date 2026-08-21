@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     is_quack_transport_target,
     open_quack_transport_connection,
     quack_transport_uri,
+    resolve_quack_attach_token,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepository,
@@ -44,6 +45,37 @@ def test_absolutized_quack_path_is_still_transport() -> None:
 def test_quack_transport_rejects_non_loopback() -> None:
     with pytest.raises(DuckDBConnectionPolicyError, match="non-loopback"):
         open_quack_transport_connection("quack:10.0.0.1:45123")
+
+
+def test_resolve_quack_attach_token_follows_env_secret_handle() -> None:
+    assert (
+        resolve_quack_attach_token(
+            "",
+            environment={
+                "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": (
+                    "env://QUACK_TOKEN"
+                ),
+                "QUACK_TOKEN": "handle-target-token",
+            },
+        )
+        == "handle-target-token"
+    )
+    assert (
+        resolve_quack_attach_token(
+            "",
+            environment={
+                "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "direct-token",
+                "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": (
+                    "env://QUACK_TOKEN"
+                ),
+                "QUACK_TOKEN": "handle-target-token",
+            },
+        )
+        == "direct-token"
+    )
+    assert resolve_quack_attach_token("explicit-token", environment={}) == (
+        "explicit-token"
+    )
 
 
 def test_file_adapter_refuses_to_create_quack_named_database(tmp_path, monkeypatch) -> None:
