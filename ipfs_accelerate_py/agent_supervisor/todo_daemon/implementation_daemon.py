@@ -123,6 +123,7 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
+from ..merge.protected_recovery_fence import is_successful_worktree_merge_result
 from ..merge.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     DEFAULT_STARTUP_GRACE_SECONDS,
@@ -57655,6 +57656,28 @@ class PortalImplementationDaemon:
                     False,
                 )
             )
+            if retained and is_successful_worktree_merge_result(
+                operation,
+                result,
+                callback_completed=callback_completed,
+            ):
+                # This worktree finished merging. Do not keep the shared
+                # git-common-dir merge lock for generated-board recovery;
+                # other worktrees cannot land until it is released.
+                self._record_event(
+                    "checkout_mutation_lease_released_after_merge",
+                    {
+                        "operation": operation,
+                        "lock_path": str(lease.lock_path),
+                        "lease_id": lease.lease_id,
+                        "task_id": task_id,
+                        "reason": "worktree_merge_completed",
+                    },
+                )
+                retained = False
+                self._checkout_mutation_context.retain_until_protected_clean = (
+                    False
+                )
             if retained:
                 retained_paths = self._retained_checkout_mutation_paths()
                 dirty_paths = self._dirty_implementation_protected_paths(

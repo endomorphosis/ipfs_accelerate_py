@@ -8,7 +8,7 @@ or operator-cleared; later commits that only touch unrelated protected
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Final
 
@@ -38,6 +38,11 @@ _GENERATED_BOARD_SUFFIXES: Final[tuple[str, ...]] = (
 )
 _GENERATED_BOARD_PARTS: Final[frozenset[str]] = frozenset({"discovery"})
 FENCE_CONTENTION_BACKOFF_SECONDS: Final[int] = 30
+WORKTREE_MERGE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "merge_branch_to_main",
+    }
+)
 
 
 def is_supervisor_recovery_owner_script(owner_script: object) -> bool:
@@ -72,6 +77,33 @@ def is_generated_board_output_path(path: object) -> bool:
     if any(part.lower() in _GENERATED_BOARD_PARTS for part in parsed.parts):
         return True
     return lowered.endswith(_GENERATED_BOARD_SUFFIXES)
+
+
+def is_worktree_merge_operation(operation: object) -> bool:
+    """Return whether ``operation`` lands one worktree onto the merge target."""
+
+    return str(operation or "") in WORKTREE_MERGE_OPERATIONS
+
+
+def is_successful_worktree_merge_result(
+    operation: object,
+    result: object,
+    *,
+    callback_completed: bool,
+) -> bool:
+    """Return whether a checkout transaction finished landing a worktree.
+
+    A completed merge must release ``implementation-main-merge.lock`` so
+    another worktree can land. Generated-board recovery is a later pass and
+    must not keep the shared git-common-dir merge lock after this worktree
+    is done merging.
+    """
+
+    if not callback_completed or not is_worktree_merge_operation(operation):
+        return False
+    if not isinstance(result, Mapping):
+        return False
+    return result.get("merged") is True
 
 
 def generated_board_output_paths(paths: Sequence[object]) -> tuple[str, ...]:

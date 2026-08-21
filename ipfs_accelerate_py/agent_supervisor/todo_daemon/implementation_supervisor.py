@@ -43,7 +43,11 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
-from ..merge.protected_recovery_fence import generated_board_output_paths
+from ..merge.protected_recovery_fence import (
+    generated_board_output_paths,
+    is_protected_recovery_fence_contention,
+    is_worktree_merge_operation,
+)
 from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
     PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
@@ -16919,6 +16923,55 @@ class PortalImplementationSupervisor:
         if not self._retained_generated_checkout_lease():
             adoption = self._adopt_supervisor_protected_recovery()
             if adoption.get("required") and adoption.get("blocked"):
+                existing = read_checkout_mutation_lease(
+                    self._repo_merge_lock_path()
+                )
+                peer_merge = bool(
+                    is_protected_recovery_fence_contention(
+                        adoption.get("reason")
+                    )
+                    or (
+                        existing is not None
+                        and is_worktree_merge_operation(
+                            existing.metadata.get("operation")
+                        )
+                    )
+                )
+                if peer_merge:
+                    # Another worktree/daemon still owns the merge lock, or
+                    # that merge already completed. This is not a supervisor
+                    # generated-board recovery fence; do not freeze in
+                    # agentic_maintenance_started.
+                    released_stale_merge = False
+                    if (
+                        existing is not None
+                        and is_worktree_merge_operation(
+                            existing.metadata.get("operation")
+                        )
+                    ):
+                        try:
+                            owner_pid = int(existing.metadata.get("pid") or 0)
+                        except (TypeError, ValueError):
+                            owner_pid = 0
+                        if owner_pid <= 0 or not process_is_running(owner_pid):
+                            released_stale_merge = bool(
+                                release_checkout_mutation_lease(
+                                    existing,
+                                    timeout_seconds=2.0,
+                                )
+                            )
+                    return {
+                        **adoption,
+                        "attempted": False,
+                        "recovered": False,
+                        "retained_lease": False,
+                        "peer_merge_lock": True,
+                        "released_stale_merge_lock": released_stale_merge,
+                        "reason": str(
+                            adoption.get("reason")
+                            or "external_protected_checkout_recovery_required"
+                        ),
+                    }
                 return {
                     **adoption,
                     "attempted": False,

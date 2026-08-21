@@ -5,7 +5,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.protected_recovery_fence import (
     generated_board_output_paths,
     is_generated_board_output_path,
     is_protected_recovery_fence_contention,
+    is_successful_worktree_merge_result,
     is_supervisor_recovery_owner_script,
+    is_worktree_merge_operation,
 )
 
 
@@ -48,6 +50,31 @@ def test_fence_contention_reasons_are_wait_states() -> None:
     )
     assert not is_protected_recovery_fence_contention("portal_provider_failed")
     assert FENCE_CONTENTION_BACKOFF_SECONDS == 30
+
+
+def test_successful_worktree_merge_result_is_landed_merge() -> None:
+    assert is_worktree_merge_operation("merge_branch_to_main")
+    assert not is_worktree_merge_operation("generated_board_update")
+    assert is_successful_worktree_merge_result(
+        "merge_branch_to_main",
+        {"merged": True},
+        callback_completed=True,
+    )
+    assert not is_successful_worktree_merge_result(
+        "merge_branch_to_main",
+        {"merged": True},
+        callback_completed=False,
+    )
+    assert not is_successful_worktree_merge_result(
+        "merge_branch_to_main",
+        {"merged": False},
+        callback_completed=True,
+    )
+    assert not is_successful_worktree_merge_result(
+        "generated_board_update",
+        {"merged": True},
+        callback_completed=True,
+    )
 
 
 def test_supervisor_entry_scripts_are_recovery_owners() -> None:
