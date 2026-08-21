@@ -1,0 +1,72 @@
+# Objective Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v10
+
+Source todo: docs/architecture/self_hosting_qualification.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## SHQ-022 Close objective gap: Generate the post-merge prerequisite observation snapshot
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: prerequisite-observation
+- Depends on: SHQ-021
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
+- Board namespace: self_hosting_qualification.todo.md
+- Evidence inputs: data/agent_supervisor/self_hosting_qualification/discovery
+- Discovery evidence: data/agent_supervisor/self_hosting_qualification/discovery/2026-08-13-shq-022-objective-gap-925ecd59554c.md
+- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v10
+- Bundle shard: data/agent_supervisor/self_hosting_qualification/projections/v10/bundles/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v10.todo.md
+- Bundle strategy: explicit
+- Graph parents: SHQ-G005
+- Graph depth: 2
+- Objective heap index: 2
+- Parallel lane: prerequisite-observation-snapshot-bounded-v10
+- Conflict policy: Do not edit `.gitignore`, observer implementation, tests, prerequisite owners, release admission, policies, keys or generated supervisor state; never read arbitrary host paths.
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Changed paths:
+- Context paths: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- AST symbols: PrerequisiteObservation observation_to_json write_observation_artifact
+- Interfaces: PrerequisiteObservation@1
+- Submodules: ipfs_datasets_py, ipfs_kit_py, ipfs_accelerate_py/mcplusplus
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: SHQ-G007
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/e5a7553c9635b392da393ea582a907913651a349fa9190e2a1b753c69e73921f
+- Canonical task CID: baguqeera4wtvkpewgwzzfwrzh2syfkihse3fdi2j7kizbyvbw5j4nhttsipq
+- Semantic identity: objective-evidence-obligation/v1/2b17e60a3516287ce21a56894825629c819e5da2113bd1262eb6e0cbd8e55d83
+- Acceptance subset: Require the freshly projected exact SHQ-021 canonical task CID from the bounded-v10 index as the sole predecessor identity and attempt the complete G006 terminal-admission `S0` -> board/API observation -> isolated version probes -> exact outer Bubblewrap live focused run -> stream rehash -> direct compiler key -> `DirectExecutionObservation` -> `TestReceipt` round-trip -> production cache admit/exact reusable lookup -> `S1 == S0` chain from the clean merged predecessor, no v7, v8, or v9 display ID, key, CID, dirty worktree, implementation log, supervisor/checkpoint/runtime state, receipt, code, test, merge, or derived bytes may satisfy or seed it. Ordinary observe may publish a structurally complete deterministic ten-row snapshot containing honest nonterminal/unavailable rows, require-terminal must write nothing unless every row is terminal. Publication must open the validated parent directory by fd with `O_DIRECTORY`, `O_NOFOLLOW`, and `O_CLOEXEC` where available, create a same-directory unpredictable temp through that dirfd with `O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC`, mode 0600, whose basename still matches the final `*.json` ignore rule but not the exact target exception (for example `.prerequisite_observation.<nonce>.json`), prove the target is unignored, the temp is ignored and absent from recursive porcelain, and `S1 == S0` while its owned fd remains open, `fchmod` it to 0644, fully write canonical bytes and `fsync` the temp, revalidate all source identity and again require `S1 == S0`, use `os.link` with source and destination dirfds and `follow_symlinks=False` as the no-overwrite publish operation, `fsync` the parent, unlink the temp through the dirfd, `fsync` the parent again, reopen the target through the dirfd with `O_RDONLY|O_NOFOLLOW|O_CLOEXEC`, read it completely, and require byte-for-byte canonical readback. Reject an existing target or symlink, forbid `os.replace` and every direct target write. On any post-link failure, unlink the target through the parent dirfd and `fsync` the parent before failing, on every failure remove any temp and leave no partial artifact. The only changed path is `artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`, the task begins from the clean merged current bounded-v10 G006 successor, never a retired task worktree or rescue branch. The observer exclusively and atomically publishes one structurally complete, deterministic, repository-relative ten-row snapshot only after its final whole-source revalidation, it refuses an existing output and leaves no partial artifact on failure. The snapshot binds exactly that pre-observation outer `HEAD`/tree, recursive gitlinks and matching submodule `HEAD`/trees, tracked-content digests, and the admitted existing receipt authorities while excluding only its own artifact path, all reads stay within the disposable task worktree and its three declared gitlinks. The artifact declares that it is neither completion nor proof nor release authority, its later artifact commit is an evidence projection and never claimed as the observed source, native validation and local two-pass completion receipts independently bind the clean post-artifact tree. G007 attempts the full terminal-admission chain against the clean merged predecessor. Exact completion produces receipt authority, incomplete/degraded committed gitlink closure or any unavailable isolation/probe instead produces exact typed limitations, `terminal:false`, and no receipt authority, but does not block structurally complete deterministic nonterminal observe publication. Never initialize omitted submodules, use network access, manufacture closure, or upgrade a fixture result into current-tree evidence. Always recapture and compare the observation-level stable manifest, including identical degraded-closure reasons, before serialization. The current environment is expected to publish the truthful `terminal:false` artifact.
+- Preconditions: objective goal SHQ-G007 is schedulable
+- Effects: satisfy evidence requirement: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Evidence subset: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Resource class: cpu-small
+- Token class: small
+- Estimated tokens: 0
+- Resources: cpu-small
+- Merge fate: objective/SHQ-G007
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/2b17e60a3516287ce21a56894825629c819e5da2113bd1262eb6e0cbd8e55d83
+- Missing evidence: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Embedding query: post merge prerequisite observation snapshot clean source projection recursive gitlinks
+- AST query: PrerequisiteObservation observation_to_json write_observation_artifact
+- Surplus group: objective/SHQ-G007
+- Merge key: fee3d856a0d71724
+- Merge family: objective/SHQ-G007
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: bdca5f32aa0623f1
+- Acceptance: Objective scan filed this gap for SHQ-G007. Use evidence in data/agent_supervisor/self_hosting_qualification/discovery/2026-08-13-shq-022-objective-gap-925ecd59554c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json), and keep the supervisor-fed backlog aligned with the objective heap.  Bind the freshly projected exact SHQ-021 canonical task CID from the bounded-v10 index as the sole predecessor, never a v7, v8, or v9 display ID, alias, key, CID, dirty worktree, log, supervisor/checkpoint/runtime state, receipt, implementation, test, or merge. From that clean merged tree attempt the entire literal G006 terminal-admission branch, with the declared degraded nonterminal alternative: full clean `S0` forest/closure/content observation; exact board/API parse; separately isolated actual bwrap and Python/pytest version probes; inner logical selector bound in canonical configuration and cross-checked against the outer Bubblewrap `--` suffix; exactly one live focused `VerificationProcessRunner` result; exact stream rehash; direct outer-argv `VerificationIdentityCompiler.compile_key` with `PROCESS_RUNNER_SCHEMA`; exact `DirectExecutionObservation`; `TestReceipt.from_dict(receipt.to_record()).to_record() == receipt.to_record()`; successful production admission and exact reusable lookup; then full `S1` recapture and `S1 == S0`. Allow ordinary observe to serialize a complete deterministic ten-row nonterminal snapshot with honest unavailable rows, but make require-terminal no-write unless all ten are terminal. Atomically publish only as follows: validate and open the parent directory fd using `O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC` where available; through that dirfd create an unpredictable same-directory temp using `O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC` at mode 0600 whose basename matches the final `*.json` ignore rule but not the exact target exception, for example `.prerequisite_observation.<nonce>.json`; prove by last-rule parsing and `git check-ignore -q --no-index --` that only the target is unignored, require recursive porcelain and `S1 == S0` remain unchanged while the owned temp fd is open, and reject a nonignored or exception-matching temp; `fchmod` 0644; loop until all canonical bytes are written and reject short/zero writes; `fsync` the temp; revalidate the full observation source and `S1 == S0`; call `os.link(temp_name, target_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd, follow_symlinks=False)` so an existing target or symlink fails without overwrite; `fsync` parent; unlink temp through the dirfd; `fsync` parent; reopen target with `O_RDONLY|O_NOFOLLOW|O_CLOEXEC`, read through EOF, and require exact canonical bytes. Never use `os.replace` or direct target writes. If anything fails after link, unlink target through the dirfd and `fsync` parent before returning failure; always clean the temp and leave neither a partial nor ambiguous artifact. Test exact ignored-temp/target-unignored behavior and reject a nonignored temp; test existing-file/symlink and concurrent link races, short/zero write/read, fd/open/fchmod/fsync/link/unlink/readback failure, source mutation after temp fsync, canonical mismatch, and cleanup durability. Require the freshly projected bounded-v10 G006 canonical task CID as the sole predecessor identity; a retired v7, v8, or v9 display ID, alias, canonical key, CID, worktree, log, supervisor/checkpoint/runtime state, receipt, implementation, test, merge, or derived bytes cannot satisfy this dependency. Refuse dirty or source-raced input, any outer/tree/gitlink/submodule/tracked-content mismatch, a retired predecessor identity, an already present output, or an incomplete/non-deterministic snapshot; never read sibling worktrees or operator state, repair or upgrade a prerequisite, invent a receipt authority, or turn an observe result into terminal admission. The exact fresh predecessor is SHQ-021, not the compatibility task SHQ-020 or retired SHQ-018/SHQ-017/SHQ-015/SHQ-014/SHQ-012. Attempt the full terminal branch, but if closure or execution is unavailable persist only typed unavailable rows with no receipt authority and `terminal:false`; ordinary observe publication remains valid, while require-terminal remains no-write. Always require observation-manifest `S1 == S0`, including identical degraded reasons, and never initialize missing gitlinks or reach the network.

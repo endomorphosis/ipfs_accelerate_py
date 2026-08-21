@@ -1,0 +1,143 @@
+# Self-Hosting Qualification v3 Task History
+
+This board is read-only historical evidence. It is not a scheduler input.
+
+Disposition ledger (outside the immutable canonical task blocks):
+
+- SHQ-004: never launched; its projection exposed that lane-only changes intentionally preserve a semantic CID.
+- SHQ-005: never launched; its CID matched retired SHQ-003 until the bounded-predecessor and read-scope semantics were made explicit in G007.
+- Neither task was submitted to coordination, leased, implemented, validated, committed, merged, or counted as completion evidence.
+
+## SHQ-004 Close objective gap: Install and test the prerequisite-state observer
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: prerequisite-observation
+- Depends on:
+- Outputs: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
+- Board namespace: self_hosting_qualification.todo.md
+- Evidence inputs: data/agent_supervisor/self_hosting_qualification/discovery
+- Discovery evidence: data/agent_supervisor/self_hosting_qualification/discovery/2026-08-13-shq-004-objective-gap-c8da90812f65.md
+- Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation-bounded-v3
+- Bundle shard: data/agent_supervisor/self_hosting_qualification/projections/v3/bundles/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v3.todo.md
+- Bundle strategy: explicit
+- Graph parents: SHQ-G005
+- Graph depth: 2
+- Objective heap index: 0
+- Parallel lane: prerequisite-observer-implementation-bounded-v3
+- Conflict policy: Never modify prerequisite implementation or completion evidence from this task; never read sibling worktrees, operator state, hidden evaluator data, or arbitrary host paths.
+- Predicted files: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Changed paths:
+- Context paths: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- AST symbols: IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker ContextPackBuilder VerificationReceiptCache IncrementalVerificationPlanner ModelRoutePlanner VerifiedGuiOptimizer IncrementalProofSealer SemanticCompressionGovernor AdversarialAssuranceEngine
+- Interfaces: observe_prerequisite_releases, PrerequisiteObservation
+- Submodules: ipfs_datasets_py, ipfs_kit_py, ipfs_accelerate_py/mcplusplus
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: SHQ-G006
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/a327007501d6235cfdd2dd70b96b3c4d2c32b79af4dacd0539dcd2e4942bbf3c
+- Canonical task CID: baguqeeraumtqa5ib2yrvz7os3vyls2z4juwdfn426tnm2bjz3tjojfblx46a
+- Semantic identity: objective-evidence-obligation/v1/7c534d2f622c24baaac5c98252408f5cbb50b6fa59e35323c5c1c1be04eda68b
+- Acceptance subset: `.gitignore` contains the exact narrow exception `!artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`, ordinary observation succeeds when an upstream is incomplete, while `require-terminal` validates the complete snapshot before any output write and leaves no artifact on failure, every row binds a clean repository commit/tree, the exact superproject gitlink and matching submodule HEAD, a complete module-level API or explicit versioned compatibility resolution, current focused-test execution receipts, a fully parsed owner board, evidence time and limitations, selector presence alone is never release evidence, malformed or unreadable modules, receipts or boards are unverifiable, every recognized task block has exactly one recognized status and an unrecognized/missing/duplicate status prevents terminal classification, datasets boards `ipfs_datasets_py/docs/architecture/incremental_semantic_index.todo.md` and `ipfs_datasets_py/docs/architecture/semantic_state_contract.todo.md` are bound, no row claims release from prompt text, a branch name, path presence or a partial symbol match. All discovery and validation reads stay within the disposable task worktree and its declared submodules, recursive search of `/home`, sibling worktrees, supervisor state, or any other host path is prohibited. This goal must not create or change `prerequisite_observation.json`.
+- Preconditions: objective goal SHQ-G006 is schedulable
+- Effects: satisfy evidence requirement: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, satisfy evidence requirement: test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Evidence subset: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-small
+- Merge fate: objective/SHQ-G006
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7c534d2f622c24baaac5c98252408f5cbb50b6fa59e35323c5c1c1be04eda68b
+- Missing evidence: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Embedding query: self hosting qualification prerequisite completion release board commit API focused tests observer
+- AST query: IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker ContextPackBuilder VerificationReceiptCache IncrementalVerificationPlanner ModelRoutePlanner VerifiedGuiOptimizer IncrementalProofSealer SemanticCompressionGovernor AdversarialAssuranceEngine
+- Surplus group: objective/SHQ-G006
+- Merge key: 9ad3a4d635830842
+- Merge family: objective/SHQ-G006
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 10e4ecaca8968d25
+- Acceptance: Objective scan filed this gap for SHQ-G006. Use evidence in data/agent_supervisor/self_hosting_qualification/discovery/2026-08-13-shq-004-objective-gap-c8da90812f65.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py), and keep the supervisor-fed backlog aligned with the objective heap.  Resolve every required symbol and interface by AST/module inspection in its declared module, recognizing versioned functional interfaces such as `ContextPacker` only through an explicit compatibility map and never manufacturing missing facades. Keep the ten-name result order stable, but discover future releases of currently missing systems through constrained package exports, release manifests and declared owner-board candidates so a new released module does not require another hard-coded missing result. Work only from the current disposable checkout. As bounded prior-attempt context, inspect exactly `git show 63ea88e41227d4d2d424f41051b9e9390c1a1c32 -- scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py`; audit and repair it against this goal rather than trusting or copying it blindly. Do not enumerate unrelated refs or search outside the checkout. Tests include independent dirty-tree, gitlink/HEAD mismatch, partial/malformed API, missing/duplicate/unknown board status, stale-or-presence-only test receipt, failed `require-terminal` no-write and two-phase source-binding counterexamples.
+
+## SHQ-005 Close objective gap: Generate the post-merge prerequisite observation snapshot
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: prerequisite-observation
+- Depends on: SHQ-004
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
+- Board namespace: self_hosting_qualification.todo.md
+- Evidence inputs: data/agent_supervisor/self_hosting_qualification/discovery
+- Discovery evidence: data/agent_supervisor/self_hosting_qualification/discovery/2026-08-13-shq-005-objective-gap-925ecd59554c.md
+- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v3
+- Bundle shard: data/agent_supervisor/self_hosting_qualification/projections/v3/bundles/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v3.todo.md
+- Bundle strategy: explicit
+- Graph parents: SHQ-G005
+- Graph depth: 2
+- Objective heap index: 1
+- Parallel lane: prerequisite-observation-snapshot-bounded-v3
+- Conflict policy: Do not edit `.gitignore`, observer implementation, tests, prerequisite owners, release admission, policies, keys or generated supervisor state.
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Changed paths:
+- Context paths: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- AST symbols: PrerequisiteObservation observation_to_json write_observation_artifact
+- Interfaces: PrerequisiteObservation@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: SHQ-G007
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/39ddfb155ad4f19a8756011539209af90b6dbe5cfc444495f774c4bd348739e0
+- Canonical task CID: baguqeerahho7wfk22tyzvb2waektsie27efw3ps47rcejfpxotcl2nehhhqa
+- Semantic identity: objective-evidence-obligation/v1/2b17e60a3516287ce21a56894825629c819e5da2113bd1262eb6e0cbd8e55d83
+- Acceptance subset: The only changed path is `artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`, the task begins from a clean merged G006 commit and the snapshot binds exactly that pre-observation outer commit/tree, recursive gitlinks and matching submodule HEADs while excluding only its own artifact path, all ten rows and limitations are current and deterministic, the artifact declares that it is neither completion nor proof nor release authority, its later artifact commit is an evidence projection and never claimed as the observed source, native validation and local two-pass completion receipts independently bind the clean post-artifact tree.
+- Preconditions: objective goal SHQ-G007 is schedulable
+- Effects: satisfy evidence requirement: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Evidence subset: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Resource class: cpu-small
+- Token class: small
+- Estimated tokens: 0
+- Resources: cpu-small
+- Merge fate: objective/SHQ-G007
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/2b17e60a3516287ce21a56894825629c819e5da2113bd1262eb6e0cbd8e55d83
+- Missing evidence: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Embedding query: post merge prerequisite observation snapshot clean source projection recursive gitlinks
+- AST query: PrerequisiteObservation observation_to_json write_observation_artifact
+- Surplus group: objective/SHQ-G007
+- Merge key: fee3d856a0d71724
+- Merge family: objective/SHQ-G007
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: bdca5f32aa0623f1
+- Acceptance: Objective scan filed this gap for SHQ-G007. Use evidence in data/agent_supervisor/self_hosting_qualification/discovery/2026-08-13-shq-005-objective-gap-925ecd59554c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refuse dirty input, gitlink/HEAD mismatch or an already modified output; never repair or upgrade a prerequisite and never turn an observe result into terminal admission.

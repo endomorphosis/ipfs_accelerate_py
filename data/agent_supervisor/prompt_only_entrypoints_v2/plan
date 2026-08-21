@@ -1,0 +1,65 @@
+# ASE2-008: Canonical v2 cutover plan
+# Validate, materialize, and stage prompt-only entrypoints v2
+
+task_id: ASE2-008
+track: verification-rollout
+priority: P0
+schema: ipfs_accelerate_py/agent-supervisor/prompt-only-entrypoints-v2-plan@1
+
+## Goal
+Validate, materialize, and stage the canonical v2 cutover for agent-supervisor
+prompt-only entrypoints. No unknown dependency, duplicate ID, cycle, predicted-file
+conflict, stale completion, unauthorized effect, prompt/secret leak, duplicate
+process/effect, mutable replica authority, provider-route drift, or transport
+mismatch is accepted.
+
+## Roots
+canonical_root: data/agent_supervisor/prompt_only_entrypoints_v2
+legacy_root: data/agent_supervisor/prompt_only_entrypoints
+plan_path: data/agent_supervisor/prompt_only_entrypoints_v2/plan
+rollout_path: data/agent_supervisor/prompt_only_entrypoints_v2/rollout
+load_test_path: test/api/test_agent_supervisor_prompt_only_v2_load.py
+
+## Coordinator
+coordinator_id: agent-supervisor-prompt-only-v2-cutover
+coordinator_authority: plan+rollout (this tree)
+completion_authoritative: false
+proof_authoritative: false
+provider_semantic_authority: false
+repository_write_allowed: false
+
+## Authority
+- Plan and rollout under prompt_only_entrypoints_v2 are the sole staged authority
+  for cutover decisions for this track.
+- Mutable replica authority is rejected; only declared effect paths may change.
+- Provider proposals must declare exact paths; undeclared writes are unauthorized.
+- Baseline binding: git-commit:8f6bdbe7046687284e17f165115d96a4e6a5f3b7
+
+## Cutover steps
+1. validate: load plan + rollout; reject unknown dependency, duplicate ID, cycle,
+   predicted-file conflict, stale completion, unauthorized effect, prompt/secret
+   leak, duplicate process/effect, mutable replica authority, provider-route drift,
+   transport mismatch.
+2. materialize: ensure plan and rollout exist at canonical roots with stable IDs.
+3. stage: mark rollout state staged; freeze declared effect set to the three paths
+   in scope.write_paths for this task.
+4. gate: run validation_commands; all must pass before activate.
+5. activate: set rollout.active = true only after gate success (external trigger).
+6. rollback: set rollout.active = false; restore authority to legacy_root if present;
+   keep plan/rollout artifacts for audit.
+
+## Triggers
+validate_trigger: load-and-conformance suite
+materialize_trigger: ASE2-008 implementation proposal accepted
+stage_trigger: validation_commands green
+activate_trigger: operator or CI gate after stage
+rollback_trigger: any acceptance violation or validation_commands failure post-activate
+
+## Acceptance (echo)
+No unknown dependency, duplicate ID, cycle, predicted-file conflict, stale
+completion, unauthorized effect, prompt/secret leak, duplicate process/effect,
+mutable replica authority, provider-route drift, or transport mismatch is accepted;
+cutover and rollback name exact roots, coordinator, authority, and trigger.
+
+## Validation commands
+- python -m pytest test/api/test_agent_supervisor_prompt_only_v2_e2e.py test/api/test_agent_supervisor_prompt_only_v2_conformance.py test/api/test_agent_supervisor_prompt_only_v2_load.py test/api/test_agent_supervisor_prompt_only_security.py test/api/test_agent_supervisor_prompt_only_chaos.py -q
