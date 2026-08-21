@@ -904,19 +904,10 @@ class IntentRepository:
             if connection is None or getattr(connection, "_closed", False):
                 connection = open_duckdb_connection(self._open_target)
                 self._quack_connection = connection
-            if write:
-                connection.execute("BEGIN TRANSACTION")
-                try:
-                    yield connection
-                    connection.execute("COMMIT")
-                except BaseException:
-                    try:
-                        connection.execute("ROLLBACK")
-                    except Exception:
-                        pass
-                    raise
-            else:
-                yield connection
+            # Quack UPDATE/DELETE is applied by the exclusive state-owner
+            # through the mutation inbox, not on this ATTACH session.  A
+            # local BEGIN/COMMIT here poisons later TOKEN auths.
+            yield connection
             return
         connection = open_duckdb_connection(self._open_target)
         try:
