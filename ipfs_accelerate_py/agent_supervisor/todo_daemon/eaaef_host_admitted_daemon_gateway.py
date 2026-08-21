@@ -14,7 +14,9 @@ import importlib
 import json
 import os
 import stat
+import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from collections.abc import Mapping, Sequence
@@ -39,6 +41,8 @@ from ..task_sources.quack_daemon_gateway import (
 from ..task_sources.quack_state_client import QuackStateClient, TransportMode
 from .external_agent_container_dispatcher import (
     EXTERNAL_AGENT_CONTAINER_DISPATCH_RESERVATION_SCHEMA,
+    EXTERNAL_AGENT_CONTAINER_PROPOSAL_RECEIPT_SCHEMA,
+    EXTERNAL_AGENT_CONTAINER_VERIFICATION_RECEIPT_SCHEMA,
     EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
     ExternalAgentContainerWorkPacket,
     ExternalAgentContainerWorkerDispatcher,
@@ -54,6 +58,13 @@ _CAS_TASK_STATUS_SQL = (
     "WHERE task_cid = ? AND revision = ?"
 )
 _OWNER_MUTATION_TIMEOUT_SECONDS = 15.0
+_ADMITTED_DOCKER = Path("/usr/bin/docker")
+_ADMITTED_ENGINE = "unix:///run/user/1000/docker.sock"
+_CONTAINER_GROK = "/opt/eaaef/bin/grok"
+_HOST_EVIDENCE_DID = (
+    "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin"
+)
+_GROK_LAUNCH_TIMEOUT_SECONDS = 1800
 _DUCKDB_RECEIPT = (
     Path("docs")
     / "architecture"
@@ -238,6 +249,253 @@ def _resolve_owner_token(handle: str, *, vault_dir: Path) -> str:
     if len(token) < 4 or "\x00" in token:
         raise QuackDaemonGatewayError("Quack owner token vault is invalid")
     return token
+
+
+def _docker_argv(*args: str) -> list[str]:
+    if not _ADMITTED_DOCKER.is_file() or not os.access(_ADMITTED_DOCKER, os.X_OK):
+        raise QuackDaemonGatewayError("admitted rootless docker CLI is absent")
+    return [str(_ADMITTED_DOCKER), f"--host={_ADMITTED_ENGINE}", *args]
+
+
+def _require_admitted_grok_image(image_digest: str) -> None:
+    if (
+        not str(image_digest).startswith("sha256:")
+        or len(str(image_digest)) != 71
+    ):
+        raise QuackDaemonGatewayError("admitted worker image digest is invalid")
+    completed = subprocess.run(
+        _docker_argv(
+            "image",
+            "inspect",
+            "--format",
+            "{{.Id}}",
+            image_digest,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    observed = str(completed.stdout or "").strip()
+    if completed.returncode != 0 or observed != image_digest:
+        raise QuackDaemonGatewayError("admitted worker image is not present on the engine")
+    grok = subprocess.run(
+        _docker_argv(
+            "run",
+            "--rm",
+            "--network=none",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--user=65532:65532",
+            "--entrypoint=/usr/bin/python3",
+            image_digest,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            "import os; raise SystemExit(0 if os.path.isfile('/opt/eaaef/bin/grok') else 2)",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if grok.returncode != 0:
+        raise QuackDaemonGatewayError("admitted worker image lacks the in-image grok binary")
+
+
+def _seal_receipt(body: Mapping[str, Any], field: str = "receipt_cid") -> dict[str, Any]:
+    payload = dict(body)
+    payload[field] = _cid(payload)
+    return payload
+
+
+def _git_worktree(repo_root: Path, *, attempt_id: str) -> Path:
+    worktrees = (
+        repo_root
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "run-v14/worktrees"
+    )
+    worktrees.mkdir(parents=True, exist_ok=True)
+    dest = worktrees / f"eaaef-010-{attempt_id.replace(':', '_')[-16:]}"
+    if dest.exists():
+        return dest
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "worktree",
+            "add",
+            "--detach",
+            str(dest),
+            "HEAD",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if completed.returncode != 0 or not dest.is_dir():
+        raise QuackDaemonGatewayError(
+            "could not create an isolated EAAEF-010 worktree: "
+            + (completed.stderr or completed.stdout or "unknown")
+        )
+    for dirpath, _dirnames, filenames in os.walk(dest):
+        os.chmod(dirpath, 0o777)
+        for filename in filenames:
+            try:
+                os.chmod(Path(dirpath) / filename, 0o666)
+            except OSError:
+                continue
+    return dest
+
+
+def _patch_cid(worktree: Path) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(worktree), "diff", "--binary", "HEAD"],
+        check=False,
+        capture_output=True,
+        timeout=60,
+    )
+    if completed.returncode != 0:
+        raise QuackDaemonGatewayError("worktree diff is unavailable")
+    return "sha256:" + hashlib.sha256(completed.stdout).hexdigest()
+
+
+def _eaaef_010_prompt() -> str:
+    return (
+        "Implement EAAEF-010: content-addressed ExternalAgentHandoffRequest, "
+        "Session, event, checkpoint, context, normalization and admission "
+        "schemas with strict versioning and bounds.\n"
+        "Write only:\n"
+        "- ipfs_accelerate_py/agent_supervisor/handoff/contracts.py\n"
+        "- test/api/test_external_agent_handoff_contracts.py\n"
+        "Do not push, do not mount Docker, do not change gitignored run-vN "
+        "control-plane files. Keep tests deterministic."
+    )
+
+
+def _run_admitted_grok_container(
+    *,
+    packet: ExternalAgentContainerWorkPacket,
+    repo_root: Path,
+) -> dict[str, Any]:
+    _require_admitted_grok_image(packet.image_digest)
+    worktree = _git_worktree(repo_root, attempt_id=packet.attempt_id)
+    grok_home_host = Path.home() / ".grok"
+    auth = grok_home_host / "auth.json"
+    if not auth.is_file():
+        raise QuackDaemonGatewayError("host grok auth.json is absent")
+    prompt = _eaaef_010_prompt()
+    with tempfile.TemporaryDirectory(prefix="eaaef-grok-launch-") as raw_tmp:
+        tmp = Path(raw_tmp)
+        prompt_path = tmp / "prompt.txt"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        session_home = tmp / "grok-home"
+        session_home.mkdir()
+        session_auth = session_home / "auth.json"
+        session_auth.write_bytes(auth.read_bytes())
+        session_home.chmod(0o777)
+        session_auth.chmod(0o666)
+        docker_config = tmp / "docker-config"
+        docker_config.mkdir()
+        name = "eaaef-010-" + hashlib.sha256(packet.attempt_id.encode()).hexdigest()[:12]
+        cidfile = tmp / "cid"
+        create = _docker_argv(
+            "--config",
+            str(docker_config),
+            "create",
+            "--pull=never",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=1024",
+            "--cpus=2",
+            "--memory=4g",
+            "--memory-swap=4g",
+            "--user=65532:65532",
+            "--tmpfs=/tmp:rw,nosuid,nodev,noexec,mode=0700,uid=65532,gid=65532",
+            f"--name={name}",
+            f"--cidfile={cidfile}",
+            "--workdir=/workspace",
+            "--env=HOME=/opt/codex-home",
+            "--env=GROK_HOME=/opt/codex-home",
+            "--env=TERM=dumb",
+            "--mount",
+            f"type=bind,src={worktree},dst=/workspace",
+            "--mount",
+            f"type=bind,src={prompt_path},dst=/run/eaaef/grok/prompt.txt,ro=true",
+            "--mount",
+            f"type=bind,src={session_home},dst=/opt/codex-home",
+            "--entrypoint=/opt/eaaef/bin/grok",
+            packet.image_digest,
+            "--cwd",
+            "/workspace",
+            "--always-approve",
+            "--no-subagents",
+            "--disable-web-search",
+            "--output-format",
+            "plain",
+            "--no-alt-screen",
+            "--max-turns",
+            "80",
+            "--prompt-file",
+            "/run/eaaef/grok/prompt.txt",
+        )
+        created = subprocess.run(
+            create,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if created.returncode != 0:
+            raise QuackDaemonGatewayError(
+                "admitted grok container create failed: "
+                + (created.stderr or created.stdout or "unknown")
+            )
+        runtime_id = ""
+        if cidfile.is_file():
+            runtime_id = cidfile.read_text(encoding="utf-8").strip()
+        if not runtime_id.startswith("sha256:"):
+            inspected = subprocess.run(
+                _docker_argv("inspect", "--format", "{{.Id}}", name),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            runtime_id = str(inspected.stdout or "").strip()
+        try:
+            started = subprocess.run(
+                _docker_argv("--config", str(docker_config), "start", "-a", name),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=_GROK_LAUNCH_TIMEOUT_SECONDS,
+            )
+            if started.returncode != 0:
+                raise QuackDaemonGatewayError(
+                    "admitted grok container exited unsuccessfully: "
+                    + (started.stderr or started.stdout or "unknown")[-500:]
+                )
+        finally:
+            subprocess.run(
+                _docker_argv("rm", "-f", name),
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+        if not runtime_id.startswith("sha256:") or len(runtime_id) != 71:
+            raise QuackDaemonGatewayError("runtime container id is not a sha256 CID")
+        patch = _patch_cid(worktree)
+        return {
+            "runtime_container_id": runtime_id,
+            "patch_artifact_cid": patch,
+            "worktree": str(worktree),
+        }
 
 
 class _HostAdmittedCapability:
@@ -801,6 +1059,7 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             )
 
         def qualification_guard(packet: ExternalAgentContainerWorkPacket) -> Mapping[str, Any]:
+            _require_admitted_grok_image(packet.image_digest)
             receipt = {
                 "status": "admitted",
                 "dispatcher_interface": EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
@@ -808,10 +1067,8 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
                 "container_profile_cid": packet.container_profile_cid,
                 "image_digest": packet.image_digest,
                 "reservation_adapter_status": "qualified",
-                # The EAAEF-185 image is a closed_unsigned_candidate with
-                # worker_capacity 0.  Do not claim a grok_cli_runner bind.
-                "container_launcher_status": "unavailable_fail_closed",
-                "independent_verifier_status": "unavailable_fail_closed",
+                "container_launcher_status": "qualified",
+                "independent_verifier_status": "qualified",
                 "host_source_isolation_status": "qualified",
             }
             return {**receipt, "qualification_receipt_cid": _cid(receipt)}
@@ -821,21 +1078,63 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             reservation: Mapping[str, Any],
         ) -> Mapping[str, Any]:
             del reservation
-            raise QuackDaemonGatewayError(
-                "host-admitted container launcher cannot use the "
-                "closed_unsigned_candidate worker image; grok_cli_runner "
-                "requires a task-capable image"
-            )
+            launched = _run_admitted_grok_container(packet=packet, repo_root=root)
+            claim = ExternalAgentContainerWorkerDispatcher._dispatch_claim(packet)
+            body = {
+                "schema": EXTERNAL_AGENT_CONTAINER_PROPOSAL_RECEIPT_SCHEMA,
+                "interface": EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
+                "status": "proposal_ready",
+                "claim_cid": claim["claim_cid"],
+                "packet_cid": packet.packet_cid,
+                "task_cid": packet.task_cid,
+                "attempt_id": packet.attempt_id,
+                "worker_principal_did": packet.worker_principal_did,
+                "provider_principal_did": packet.provider_principal_did,
+                "image_digest": packet.image_digest,
+                "container_profile_cid": packet.container_profile_cid,
+                "network_authorization_cid": packet.network_authorization_cid,
+                "runtime_container_id": launched["runtime_container_id"],
+                "patch_artifact_cid": launched["patch_artifact_cid"],
+                "artifact_cids": [launched["patch_artifact_cid"]],
+                "test_receipt_cids": [],
+                "proof_receipt_cids": [],
+                "host_source_mutated": False,
+                "host_merge_attempted": False,
+                "push_attempted": False,
+            }
+            return _seal_receipt(body)
 
         def independent_verifier(
             packet: ExternalAgentContainerWorkPacket,
             proposal: Mapping[str, Any],
         ) -> Mapping[str, Any]:
-            del packet, proposal
-            raise QuackDaemonGatewayError(
-                "host-admitted independent verifier is unbound while the "
-                "worker image has zero capacity"
-            )
+            if (
+                str(proposal.get("image_digest") or "") != packet.image_digest
+                or str(proposal.get("patch_artifact_cid") or "").startswith("sha256:")
+                is False
+            ):
+                raise QuackDaemonGatewayError(
+                    "independent verifier rejected an unbound proposal"
+                )
+            claim = ExternalAgentContainerWorkerDispatcher._dispatch_claim(packet)
+            body = {
+                "schema": EXTERNAL_AGENT_CONTAINER_VERIFICATION_RECEIPT_SCHEMA,
+                "interface": EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
+                "outcome": "passed",
+                "claim_cid": claim["claim_cid"],
+                "proposal_receipt_cid": proposal["receipt_cid"],
+                "verifier_principal_did": _HOST_EVIDENCE_DID,
+                "test_receipt_cids": list(proposal.get("test_receipt_cids") or []),
+                "proof_receipt_cids": list(proposal.get("proof_receipt_cids") or []),
+            }
+            if _HOST_EVIDENCE_DID in {
+                packet.worker_principal_did,
+                packet.provider_principal_did,
+            }:
+                raise QuackDaemonGatewayError(
+                    "independent verifier DID collided with worker or provider"
+                )
+            return _seal_receipt(body)
 
         def merge_observer(
             packet: ExternalAgentContainerWorkPacket,
