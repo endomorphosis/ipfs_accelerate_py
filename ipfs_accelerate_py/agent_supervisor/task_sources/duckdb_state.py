@@ -9,9 +9,11 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
 import sqlite3
+import stat
 import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -654,6 +656,84 @@ def _consume_duckdb_result(connection: Any) -> None:
         pass
 
 
+def _resolve_quack_attach_token() -> str:
+    """Load the loopback attach token without logging or exporting it.
+
+    Children inherit the opaque secret handle, not the raw token.  The
+    state-owner vault file is the in-process resolution path used by the
+    operator status probe; daemons must use the same file or ATTACH fails.
+    """
+
+    env_token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
+    if env_token:
+        return env_token
+    handle = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "") or ""
+    ).strip()
+    if not handle.startswith("handle:"):
+        program_json = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or ""
+        ).strip()
+        if program_json:
+            try:
+                payload = json.loads(program_json)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, Mapping):
+                handle = str(payload.get("endpoint_secret_handle") or "").strip()
+    if not handle.startswith("handle:"):
+        return ""
+    owner = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_OWNER_DIR", "") or "").strip()
+    if not owner:
+        store_id = str(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or "").strip()
+        if not store_id:
+            program_json = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or ""
+            ).strip()
+            if program_json:
+                try:
+                    payload = json.loads(program_json)
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, Mapping):
+                    store_id = str(payload.get("store_id") or "").strip()
+        if store_id:
+            owner = str(Path(store_id).parent / "quack-owner")
+    if not owner:
+        return ""
+    token_name = f"{handle.replace(':', '_').replace('/', '_')}.quack-token"
+    owner_path = Path(owner)
+    search_dirs = [owner_path]
+    if not owner_path.is_absolute():
+        package_root = Path(__file__).resolve().parents[3]
+        search_dirs.extend(
+            (
+                Path.cwd() / owner_path,
+                package_root / owner_path,
+                *(parent / owner_path for parent in Path.cwd().parents),
+            )
+        )
+    for directory in search_dirs:
+        path = directory / token_name
+        try:
+            metadata = path.lstat()
+        except OSError:
+            continue
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or path.is_symlink()
+            or metadata.st_mode & 0o077
+        ):
+            continue
+        try:
+            token = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if token:
+            return token
+    return ""
+
+
 def open_quack_transport_connection(
     uri: str,
     *,
@@ -683,9 +763,7 @@ def open_quack_transport_connection(
     try:
         connection.execute("LOAD quack")
         attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
-        secret = str(
-            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
-        ).strip()
+        secret = str(token or _resolve_quack_attach_token() or "").strip()
         if secret:
             if not _QUACK_TOKEN_RE.fullmatch(secret):
                 raise DuckDBConnectionPolicyError(
