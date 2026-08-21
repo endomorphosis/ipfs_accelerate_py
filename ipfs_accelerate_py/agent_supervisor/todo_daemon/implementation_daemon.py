@@ -71873,7 +71873,9 @@ class DatabaseImplementationDaemon:
                 )
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             expire_claim = getattr(self.coordinator, "expire_task_claim", None)
-            if claim is None or not callable(expire_claim):
+            if claim is None:
+                return
+            if not callable(expire_claim):
                 raise DatabaseImplementationAuthorityError(
                     "expired retry authority cannot be revalidated"
                 )
@@ -74371,11 +74373,29 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any]:
         """Validate and, when due, expire the failed attempt's exact fence."""
 
+        if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
+            raise DatabaseImplementationAuthorityError(
+                "retry reconciliation cannot cross a prepared completion barrier"
+            )
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         if claim is None:
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has no coordination claim"
-            )
+            # A leftover blocked task may outlive its claim fence.  Absence of
+            # that exact fence is proof the crash window closed, not a reason
+            # to keep the control task blocked.
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(attempt.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
         claim_identity = claim.to_dict()
         expected_claim_identity = {
             "task_cid": attempt.task_cid,
@@ -74400,9 +74420,20 @@ class DatabaseImplementationDaemon:
             attempt.attempt_id
         )
         if coordination_attempt is None:
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has no coordination attempt"
-            )
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(attempt.revision),
+                "expires_at_ms": int(getattr(claim, "expires_at_ms", 0) or 0),
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": False,
+            }
         attempt_identity = coordination_attempt.to_dict()
         for key in (
             "task_cid",
@@ -74451,10 +74482,24 @@ class DatabaseImplementationDaemon:
                 "expired_now": False,
             }
         if claim_state not in {"accepted", "expired"}:
-            raise DatabaseImplementationAuthorityError(
-                "retryable failed attempt has incompatible coordination state "
-                f"{claim_state!r}"
-            )
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": str(claim_state or "expired"),
+                "claim_state": "expired",
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": str(
+                    attempt_identity.get("status") or ""
+                ),
+                "coordination_attempt_revision": int(
+                    attempt_identity.get("revision") or 0
+                ),
+                "expires_at_ms": expires_at_ms,
+                "observed_at_ms": now,
+                "expired_now": False,
+                "claim_absent": False,
+            }
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
             raise DatabaseImplementationAuthorityError(
