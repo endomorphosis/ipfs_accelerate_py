@@ -1129,41 +1129,54 @@ def open_quack_transport_connection(
         import duckdb
     except ImportError as exc:
         raise DuckDBConnectionPolicyError("DuckDB is required for Quack transport") from exc
-    connection = duckdb.connect(":memory:")
     secret = resolve_quack_attach_token(token)
-    try:
-        connection.execute("LOAD quack")
-        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
-        if secret:
-            if not _QUACK_TOKEN_RE.fullmatch(secret):
-                raise DuckDBConnectionPolicyError(
-                    "quack attach token must be an opaque url-safe secret"
-                )
-            attach += f", TOKEN '{secret}'"
-        attach += ")"
-        attached = connection.execute(attach)
-        _consume_duckdb_result(attached)
-        used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
-        _consume_duckdb_result(used)
-        # Prove the attached control catalog is visible on this connection.
-        probed = connection.execute(f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks")
-        _consume_duckdb_result(probed)
-    except Exception as exc:
+    if secret and not _QUACK_TOKEN_RE.fullmatch(secret):
+        raise DuckDBConnectionPolicyError(
+            "quack attach token must be an opaque url-safe secret"
+        )
+    attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
+    if secret:
+        attach += f", TOKEN '{secret}'"
+    attach += ")"
+    last_error: Exception | None = None
+    for attempt in range(4):
+        connection = duckdb.connect(":memory:")
         try:
-            connection.close()
-        except Exception:
-            pass
-        detail = str(exc)
-        if "Authentication failed" in detail or "authentication token" in detail.lower():
-            raise DuckDBConnectionPolicyError(
-                "quack attach authentication failed "
-                f"uri={text!r} token_present={bool(secret)} "
-                f"token_sha16={_quack_token_fingerprint(secret)}"
-            ) from exc
-        raise
-    wrapped = DuckDBConnection.wrap(connection)
-    wrapped._default_catalog = _QUACK_CONTROL_CATALOG
-    return wrapped
+            connection.execute("LOAD quack")
+            attached = connection.execute(attach)
+            _consume_duckdb_result(attached)
+            used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+            _consume_duckdb_result(used)
+            probed = connection.execute(
+                f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+            )
+            _consume_duckdb_result(probed)
+            wrapped = DuckDBConnection.wrap(connection)
+            wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+            return wrapped
+        except Exception as exc:
+            last_error = exc
+            try:
+                connection.close()
+            except Exception:
+                pass
+            detail = str(exc)
+            auth_failed = (
+                "Authentication failed" in detail
+                or "authentication token" in detail.lower()
+            )
+            if not auth_failed or attempt == 3:
+                break
+            time.sleep(0.4 * (attempt + 1))
+    assert last_error is not None
+    detail = str(last_error)
+    if "Authentication failed" in detail or "authentication token" in detail.lower():
+        raise DuckDBConnectionPolicyError(
+            "quack attach authentication failed "
+            f"uri={text!r} token_present={bool(secret)} "
+            f"token_sha16={_quack_token_fingerprint(secret)}"
+        ) from last_error
+    raise last_error
 
 
 def open_duckdb_connection(
