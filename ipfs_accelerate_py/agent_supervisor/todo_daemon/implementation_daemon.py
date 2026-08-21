@@ -71460,6 +71460,89 @@ class DatabaseImplementationDaemon:
         )
         return updated
 
+    def _retire_stale_running_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        claim: Any | None = None,
+    ) -> DatabaseTaskAttempt:
+        """Retire a local running cursor after control left in_progress."""
+
+        now = self._now_ms()
+        if claim is None:
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is not None:
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+            )
+            if claim_state == "accepted":
+                if int(claim.expires_at_ms) > now:
+                    lease = self._protect_attempt_claim(attempt, claim)
+                    try:
+                        self.coordinator.release(
+                            lease,
+                            reason="control_task_left_in_progress",
+                            expected_fencing_token=int(attempt.fencing_token),
+                            expected_fence_epoch=int(attempt.fence_epoch),
+                            now_ms=now,
+                        )
+                    except Exception:
+                        refreshed_claim = self.coordinator.get_task_claim(
+                            attempt.claim_id
+                        )
+                        refreshed_state = str(
+                            getattr(
+                                getattr(refreshed_claim, "state", ""),
+                                "value",
+                                getattr(refreshed_claim, "state", ""),
+                            )
+                            or ""
+                        )
+                        if refreshed_state not in {"released", "expired"}:
+                            raise
+                else:
+                    expire_claim = getattr(
+                        self.coordinator, "expire_task_claim", None
+                    )
+                    if callable(expire_claim):
+                        expire_claim(claim, now_ms=now)
+        identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "lease_id": attempt.lease_id,
+        }
+        outcome = {
+            "task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "reason": "control_task_left_in_progress",
+        }
+        settled = self._commit_reconciled_attempt_terminal(
+            identity,
+            succeeded=False,
+            reconciliation=outcome,
+        )
+        if settled is None:
+            raise DatabaseImplementationDaemonError(
+                "attempt disappeared after stale running retirement"
+            )
+        self._record_event(
+            "stale_running_attempt_retired",
+            attempt_id=settled.attempt_id,
+            task_cid=settled.task_cid,
+            body={
+                "control_status": str(getattr(task, "status", "") or ""),
+                "previous_status": "running",
+            },
+        )
+        return settled
+
     def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
         """Retire exact local attempts whose coordination authority expired.
 
@@ -71644,26 +71727,62 @@ class DatabaseImplementationDaemon:
                     and int(claim.expires_at_ms) > now
                 )
             ):
-                settled = self._quarantine_expired_provider_callback_intent(
-                    attempt,
-                    claim,
-                    provider_intent,
+                task_status = str(
+                    getattr(task, "status", "") or ""
+                ).strip().lower()
+                if (
+                    task is not None
+                    and task_status == "in_progress"
+                    and self._shared_claim_binding_matches_attempt(task, attempt)
+                ):
+                    settled = self._quarantine_expired_provider_callback_intent(
+                        attempt,
+                        claim,
+                        provider_intent,
+                    )
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                            "status": settled.status,
+                            "retry_required": False,
+                            "provider_evidence_reused": False,
+                            "effect_evidence_reused": False,
+                            "reason": "portal_neutral_failure",
+                            "disposition": "quarantined",
+                            "replayed": True,
+                        }
+                    )
+                    continue
+                if task is not None and task_status not in {
+                    "in_progress",
+                    "claimed",
+                    "running",
+                }:
+                    settled = self._retire_stale_running_attempt(
+                        attempt,
+                        task,
+                        claim=claim,
+                    )
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                            "status": settled.status,
+                            "retry_required": True,
+                            "provider_evidence_reused": False,
+                            "effect_evidence_reused": False,
+                            "reason": "control_task_left_in_progress",
+                            "disposition": "retired",
+                            "replayed": False,
+                        }
+                    )
+                    continue
+                raise DatabaseImplementationAuthorityError(
+                    "expired callback quarantine lacks exact shared claim binding"
                 )
-                outcomes.append(
-                    {
-                        "task_cid": attempt.task_cid,
-                        "claim_id": attempt.claim_id,
-                        "attempt_id": attempt.attempt_id,
-                        "status": settled.status,
-                        "retry_required": False,
-                        "provider_evidence_reused": False,
-                        "effect_evidence_reused": False,
-                        "reason": "portal_neutral_failure",
-                        "disposition": "quarantined",
-                        "replayed": True,
-                    }
-                )
-                continue
             completion = self.coordinator.get_prepared_task_completion(
                 attempt.task_cid
             )
@@ -72693,24 +72812,52 @@ class DatabaseImplementationDaemon:
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
-            result = self._resume_attempt_without_process_crash(running[0])
-            return {
-                "unchanged": False,
-                "write_count": 1 + reconciliation_write_count,
-                "active_task_id": running[0].task_alias or running[0].task_cid,
-                "implementation_result": result,
-                "authority_mode": self.authority_mode,
-                "task_source_kind": self.task_source_kind,
-                "markdown_status_writes": self._markdown_status_writes,
-                "projections_required": False,
-                "control_schema_evidence": dict(self.control_schema_evidence),
-                "completion_reconciliations": completion_reconciliations,
-                "expired_attempt_reconciliations": (
-                    expired_attempt_reconciliations
-                ),
-                "landed_merge_reconciliations": landed_merge_reconciliations,
-                "unknown_callback_reopens": unknown_callback_reopens,
-            }
+            current = running[0]
+            control = self.task_source.get(current.task_cid)
+            control_status = str(
+                getattr(control, "status", "") or ""
+            ).strip().lower()
+            if control is not None and control_status not in {
+                "in_progress",
+                "claimed",
+                "running",
+            }:
+                retired = self._retire_stale_running_attempt(current, control)
+                expired_attempt_reconciliations = [
+                    *expired_attempt_reconciliations,
+                    {
+                        "task_cid": current.task_cid,
+                        "claim_id": current.claim_id,
+                        "attempt_id": current.attempt_id,
+                        "status": retired.status,
+                        "retry_required": True,
+                        "provider_evidence_reused": False,
+                        "effect_evidence_reused": False,
+                        "reason": "control_task_left_in_progress",
+                        "disposition": "retired",
+                        "replayed": False,
+                    },
+                ]
+                reconciliation_write_count += 1
+            else:
+                result = self._resume_attempt_without_process_crash(current)
+                return {
+                    "unchanged": False,
+                    "write_count": 1 + reconciliation_write_count,
+                    "active_task_id": current.task_alias or current.task_cid,
+                    "implementation_result": result,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "markdown_status_writes": self._markdown_status_writes,
+                    "projections_required": False,
+                    "control_schema_evidence": dict(self.control_schema_evidence),
+                    "completion_reconciliations": completion_reconciliations,
+                    "expired_attempt_reconciliations": (
+                        expired_attempt_reconciliations
+                    ),
+                    "landed_merge_reconciliations": landed_merge_reconciliations,
+                    "unknown_callback_reopens": unknown_callback_reopens,
+                }
 
         attempt = self.claim_next()
         if attempt is None:

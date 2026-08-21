@@ -1327,6 +1327,85 @@ def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_reopened_task_retires_stale_running_unknown_callback(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected leftover running crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:stale-running-reopen",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="injected leftover running crash",
+        ):
+            first._resume_attempt_without_process_crash(attempt)
+        running = first.get_attempt(attempt.attempt_id)
+        assert running is not None and running.status == "running"
+        task = first.task_source.get(attempt.task_cid)
+        assert task is not None
+        first.task_source.compare_and_set_status(
+            attempt.task_cid,
+            int(task.revision),
+            "todo",
+            receipt={
+                "operation": "reopen_unimplemented_unknown_callback_quarantine",
+                "unknown_callback_reopen_count": 1,
+            },
+        )
+    finally:
+        first.close()
+
+    def success_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:stale-running-reopen",
+        provider_fn=success_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        replay = restarted.run_once()
+        retired = [
+            item
+            for item in replay["expired_attempt_reconciliations"]
+            if item.get("reason") == "control_task_left_in_progress"
+        ]
+        assert retired
+        assert retired[0]["attempt_id"] == attempt.attempt_id
+        stale = restarted.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+        current = restarted.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        assert attempt.attempt_id not in provider_calls[1:]
+    finally:
+        restarted.close()
+
+
 def test_consumed_no_progress_quarantine_replays_after_commit_crash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
