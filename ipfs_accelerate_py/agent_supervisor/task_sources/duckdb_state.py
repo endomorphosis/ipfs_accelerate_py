@@ -706,13 +706,9 @@ def _resolve_quack_attach_token() -> str:
     search_dirs = [owner_path]
     if not owner_path.is_absolute():
         package_root = Path(__file__).resolve().parents[3]
-        search_dirs.extend(
-            (
-                Path.cwd() / owner_path,
-                package_root / owner_path,
-                *(parent / owner_path for parent in Path.cwd().parents),
-            )
-        )
+        # Do not walk arbitrary parents: a sibling checkout can contain a
+        # stale vault with the same handle name.
+        search_dirs.extend((Path.cwd() / owner_path, package_root / owner_path))
     for directory in search_dirs:
         path = directory / token_name
         try:

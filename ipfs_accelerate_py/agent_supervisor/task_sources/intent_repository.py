@@ -28,7 +28,7 @@ import json
 import re
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -805,6 +805,7 @@ class IntentRepository:
         )
         self._open = False
         self._closed = False
+        self._quack_connection: Any | None = None
         if self._quack_transport:
             # Schema is owned by the Quack state-owner / trusted materializer.
             install_schema = False
@@ -853,6 +854,13 @@ class IntentRepository:
     def close(self) -> None:
         self._closed = True
         self._open = False
+        connection = self._quack_connection
+        self._quack_connection = None
+        if connection is not None:
+            close = getattr(connection, "close", None)
+            if callable(close):
+                with suppress(Exception):
+                    close()
 
     def __enter__(self) -> IntentRepository:
         self._require_open()
@@ -890,6 +898,25 @@ class IntentRepository:
                         raise
                 finally:
                     connection.close()
+            return
+        if self._quack_transport:
+            connection = self._quack_connection
+            if connection is None or getattr(connection, "_closed", False):
+                connection = open_duckdb_connection(self._open_target)
+                self._quack_connection = connection
+            if write:
+                connection.execute("BEGIN TRANSACTION")
+                try:
+                    yield connection
+                    connection.execute("COMMIT")
+                except BaseException:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+            else:
+                yield connection
             return
         connection = open_duckdb_connection(self._open_target)
         try:
