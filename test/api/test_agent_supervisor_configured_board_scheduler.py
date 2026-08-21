@@ -98,6 +98,13 @@ def _isolated_local_profile_lifecycle_registry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Any:
+    monkeypatch.delenv(multi_runner_module.TRUSTED_DUCKDB_HOME_ENV, raising=False)
+    monkeypatch.delenv(
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV,
+        raising=False,
+    )
+    for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
         local_profile_module,
         "_LIFECYCLE_REGISTRY_ROOT_OVERRIDE",

@@ -26,6 +26,19 @@ IMAGE_ID = "sha256:" + "4" * 64
 CODEX_SHA256 = "7" * 64
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ambient_trusted_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Require each test to opt into trusted control-plane runtime bindings."""
+
+    monkeypatch.delenv(multi_runner_module.TRUSTED_DUCKDB_HOME_ENV, raising=False)
+    monkeypatch.delenv(
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV,
+        raising=False,
+    )
+    for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
+
 def _isolation_payload(credential: Path) -> dict[str, object]:
     return {
         "schema": daemon_module.PROVIDER_EXTERNAL_ISOLATION_SCHEMA,
@@ -994,6 +1007,7 @@ def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(
             multi_runner_module.TRUSTED_DUCKDB_HOME_ENV,
             multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV,
             multi_runner_module.REPOSITORY_ROOT_ENV,
+            *multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES,
         )
     }
     try:
