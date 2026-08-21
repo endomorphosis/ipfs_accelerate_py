@@ -25,6 +25,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    SUPERVISED_CHILD_IDENTITY_PATH_ENV,
+    SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+    supervised_child_identity_path,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import (
     WORKTREE_POOL_SCHEMA,
 )
@@ -152,7 +157,7 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
             state_prefix="vrif_lane_2",
             repo_root=repo,
             worktree_root=worktree_root,
-            database_program=SimpleNamespace(),
+            database_program=SimpleNamespace(environment=lambda: {}),
         )
     )
     child = SimpleNamespace(
@@ -175,6 +180,52 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "branch": branch,
         "lifecycle": lifecycle,
     }
+
+
+def test_supervisor_loop_config_binds_managed_child_identity_to_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    monkeypatch.setattr(
+        supervisor,
+        "_build_daemon_command",
+        lambda: ["python", "-m", "managed-daemon"],
+    )
+
+    loop_config = supervisor.build_supervisor_loop_config()
+
+    identity_path = Path(loop_config.child_env[SUPERVISED_CHILD_IDENTITY_PATH_ENV])
+    assert identity_path == supervised_child_identity_path(loop_config.spec.child_pid_path)
+    owner_scope = json.loads(loop_config.child_env[SUPERVISED_CHILD_OWNER_SCOPE_ENV])
+    assert owner_scope == supervisor._managed_daemon_owner_scope()
+    assert owner_scope["repo_root"] == str(fixture["repo"].resolve())
+    assert owner_scope["state_dir"] == str(fixture["state_path"].parent.resolve())
+    assert owner_scope["state_prefix"] == "vrif_lane_2"
+
+
+def test_database_pool_lease_accepts_adopted_parent_pid_drift(
+    tmp_path: Path,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    observed = fixture["child"].identity_process_birth
+    adopted_parent = observed.parent_pid + 1
+    fixture["child"].identity_process_birth = ProcessBirthIdentity(
+        pid=observed.pid,
+        start_time_ticks=observed.start_time_ticks,
+        boot_id=observed.boot_id,
+        parent_pid=adopted_parent,
+    )
+    lifecycle = json.loads(fixture["lifecycle_path"].read_text(encoding="utf-8"))
+    lifecycle["owner"]["parent_pid"] = adopted_parent
+    _write_json(fixture["lifecycle_path"], lifecycle)
+
+    activity = fixture["supervisor"]._active_managed_database_pool_lease(fixture["child"])
+
+    assert activity is not None
+    assert activity["task_id"] == "VRIF-010"
+    assert activity["lease_pid"] == str(os.getpid())
 
 
 def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
@@ -255,6 +306,7 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
         "dead_child",
         "missing_child_birth_identity",
         "mismatched_child_birth_identity",
+        "mismatched_lifecycle_stable_identity",
         "malformed_pool",
         "foreign_root",
         "pid_only",
@@ -297,6 +349,10 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
             boot_id=observed.boot_id,
             parent_pid=observed.parent_pid,
         )
+    elif case == "mismatched_lifecycle_stable_identity":
+        lifecycle = json.loads(fixture["lifecycle_path"].read_text(encoding="utf-8"))
+        lifecycle["owner"]["boot_id"] = "foreign-boot-id"
+        _write_json(fixture["lifecycle_path"], lifecycle)
     elif case == "malformed_pool":
         fixture["pool_path"].write_text("{", encoding="utf-8")
     elif case == "foreign_root":
