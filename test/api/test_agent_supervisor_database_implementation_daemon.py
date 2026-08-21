@@ -429,6 +429,52 @@ def test_materialization_projects_completed_prerequisites_into_coordination(
         daemon.close()
 
 
+def test_fresh_coordination_sidecar_projects_canonical_completed_dependencies(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["status"] = "completed"
+    tasks[1]["dependencies"] = ["task:cid:001"]
+
+    seed = _open_daemon(tmp_path, session="session:materializer")
+    try:
+        seed.materialize_population(population)
+    finally:
+        seed.close()
+
+    # Runtime lanes intentionally use fresh, disposable coordination stores.
+    # Their claimability must be reconstructed from the canonical ready
+    # frontier rather than depending on materializer-local completion rows.
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "fresh-coordination.duckdb",
+        execution_path=tmp_path / "fresh-execution.duckdb",
+        owner_session_id="session:fresh-sidecar",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+        before_claim = daemon.coordinator.coordination_registry_projection()
+        assert before_claim["counts"]["logical_completions"] == 1
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:002"
+        projection = daemon.coordinator.coordination_registry_projection()
+        completions = {
+            item["task_cid"]: item["status"]
+            for item in projection["logical_completions"]
+        }
+        assert completions == {"task:cid:001": "succeeded"}
+    finally:
+        daemon.close()
+
+
 def test_claim_next_preserves_canonical_ready_order_for_late_task(
     tmp_path: Path,
 ) -> None:

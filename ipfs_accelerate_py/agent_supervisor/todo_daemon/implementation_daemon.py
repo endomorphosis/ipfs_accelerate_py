@@ -68908,8 +68908,63 @@ class DatabaseImplementationDaemon:
         """Ensure ready tasks from the intent repository are claimable."""
 
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        ready_tasks = tuple(ready.tasks)
+        # A Quack lane owns a disposable, lane-local coordination sidecar.  It
+        # can therefore start after the canonical task board was materialized
+        # and after prerequisite tasks were completed.  ``ready_tasks`` has
+        # already resolved those dependencies against the canonical source,
+        # but a fresh sidecar has neither their task rows nor their completion
+        # facts.  Project the bounded prerequisite facts before registering
+        # the ready successors; otherwise the local coordinator correctly but
+        # permanently reports every successor as unready.
+        dependency_evidence: dict[str, list[str]] = {}
+        for task in ready_tasks:
+            for dependency_task_cid in task.dependencies:
+                dependency_evidence.setdefault(
+                    str(dependency_task_cid), []
+                ).append(str(task.task_cid))
+
+        if dependency_evidence:
+            registry_projection = self.coordinator.coordination_registry_projection()
+            registered_task_cids = {
+                str(item.get("task_cid") or "")
+                for item in registry_projection.get("tasks", ())
+                if isinstance(item, Mapping)
+            }
+            completed_task_cids = {
+                str(item.get("task_cid") or "")
+                for item in registry_projection.get("logical_completions", ())
+                if isinstance(item, Mapping)
+                and str(item.get("status") or "") == "succeeded"
+            }
+            for dependency_task_cid, successor_task_cids in sorted(
+                dependency_evidence.items()
+            ):
+                if dependency_task_cid not in registered_task_cids:
+                    self.coordinator.register_task(
+                        task_cid=dependency_task_cid,
+                        task_id=dependency_task_cid,
+                        body={
+                            "authority": "canonical_ready_frontier",
+                            "projected_as": "completed_prerequisite",
+                        },
+                    )
+                    registered_task_cids.add(dependency_task_cid)
+                if dependency_task_cid not in completed_task_cids:
+                    self.coordinator.mark_task_complete(
+                        dependency_task_cid,
+                        status="succeeded",
+                        body={
+                            "authority": "canonical_ready_frontier",
+                            "successor_task_cids": sorted(
+                                set(successor_task_cids)
+                            ),
+                        },
+                    )
+                    completed_task_cids.add(dependency_task_cid)
+
         registered: list[str] = []
-        for task in ready.tasks:
+        for task in ready_tasks:
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
                 continue
