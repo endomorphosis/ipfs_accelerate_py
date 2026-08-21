@@ -453,3 +453,39 @@ def test_policy_and_decision_round_trip_and_unknown_fields() -> None:
             reason_codes=("below_group_threshold",),
             candidate_only=False,
         )
+
+
+def test_exact_group_threshold_accepts_and_unevaluated_threshold_cas_rejected() -> None:
+    target = group()
+    record = evidence(target, thresholds=(THRESHOLD, 650_000))
+    current = policy(record)
+    assert (
+        selectively_predict(current, request_for(target, score_ppm=THRESHOLD)).disposition
+        is ExpertDisposition.ACCEPT
+    )
+    with pytest.raises(ResidualIntelligenceError, match="not evaluated"):
+        current.apply_threshold_cas(
+            group=target,
+            proposed_threshold_ppm=500_000,
+            origin=ThresholdChangeOrigin.OPERATOR_CAS,
+            cas_identity="cas:operator:unevaluated",
+            expected_binding_id=current.bindings[0].binding_id,
+        )
+
+
+def test_evidence_and_bindings_remain_isolated_by_group_key() -> None:
+    target = group()
+    record = evidence(target)
+    with pytest.raises(ResidualIntelligenceError, match="group-key"):
+        policy(record, record)
+    other = evidence(group(repository="other-repo"))
+    with pytest.raises(ResidualIntelligenceError, match="group-key"):
+        policy(record, bindings=(binding(record=other),))
+    payload = record.to_dict()
+    payload["precision_ppm"] = 500_000
+    with pytest.raises(ResidualIntelligenceError, match="precision_ppm"):
+        CalibrationEvidence.from_dict(payload)
+    mismatched = group().to_dict()
+    mismatched["group_key"] = "group:not-the-axes"
+    with pytest.raises(ResidualIntelligenceError, match="group-key"):
+        CalibrationGroup.from_dict(mismatched)
