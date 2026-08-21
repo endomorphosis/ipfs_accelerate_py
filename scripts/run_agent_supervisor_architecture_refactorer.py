@@ -1140,29 +1140,35 @@ def _task_status(connection: Any) -> dict[str, Any]:
         "SELECT status, COUNT(*) FROM tasks GROUP BY status ORDER BY status"
     ).fetchall()
     counts = {str(row[0]): int(row[1]) for row in rows}
-    placeholders = ", ".join("?" for _ in READY_STATUSES)
-    completed = ", ".join("?" for _ in COMPLETED_STATUSES)
-    ready_rows = connection.execute(
-        f"""
-        SELECT t.task_alias
-        FROM tasks AS t
-        WHERE t.status IN ({placeholders})
-          AND NOT EXISTS (
-              SELECT 1 FROM task_blocks AS b
-              WHERE b.task_cid = t.task_cid AND b.state = 'active'
-          )
-          AND NOT EXISTS (
-              SELECT 1
-              FROM task_dependencies AS td
-              JOIN tasks AS dependency ON dependency.task_cid = td.dependency_task_cid
-              WHERE td.task_cid = t.task_cid
-                AND dependency.status NOT IN ({completed})
-          )
-        ORDER BY t.ordinal, t.task_alias
-        LIMIT 100
-        """,
-        [*READY_STATUSES, *COMPLETED_STATUSES],
+    # The current Quack table transport supports simple scans but can reject a
+    # correlated NOT EXISTS plan as unimplemented.  Read the three canonical
+    # relations separately and calculate this read-only projection locally;
+    # task/dependency/block rows remain authoritative in DuckDB.
+    task_rows = connection.execute(
+        "SELECT task_cid, task_alias, ordinal, status "
+        "FROM tasks ORDER BY ordinal, task_alias"
     ).fetchall()
+    dependency_rows = connection.execute(
+        "SELECT task_cid, dependency_task_cid FROM task_dependencies"
+    ).fetchall()
+    blocked_rows = connection.execute(
+        "SELECT task_cid FROM task_blocks WHERE state = 'active'"
+    ).fetchall()
+    status_by_cid = {str(row[0]): str(row[3]) for row in task_rows}
+    dependencies_by_cid: dict[str, list[str]] = {}
+    for row in dependency_rows:
+        dependencies_by_cid.setdefault(str(row[0]), []).append(str(row[1]))
+    actively_blocked = {str(row[0]) for row in blocked_rows}
+    ready_ids = [
+        str(row[1])
+        for row in task_rows
+        if str(row[3]) in READY_STATUSES
+        and str(row[0]) not in actively_blocked
+        and all(
+            status_by_cid.get(dependency) in COMPLETED_STATUSES
+            for dependency in dependencies_by_cid.get(str(row[0]), ())
+        )
+    ][:100]
     active_rows = connection.execute(
         "SELECT task_alias FROM tasks WHERE status IN (?, ?, ?) "
         "ORDER BY ordinal, task_alias LIMIT 100",
@@ -1170,7 +1176,7 @@ def _task_status(connection: Any) -> dict[str, Any]:
     ).fetchall()
     return {
         "status_counts": counts,
-        "dependency_ready_task_ids": [str(row[0]) for row in ready_rows],
+        "dependency_ready_task_ids": ready_ids,
         "active_task_ids": [str(row[0]) for row in active_rows],
         "blocked_count": int(counts.get("blocked", 0)),
         "terminal_count": sum(counts.get(item, 0) for item in TERMINAL_STATUSES),
