@@ -6,6 +6,7 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -3987,6 +3988,41 @@ def _inferred_supervisor_status_path(track: SupervisorTrack) -> Path | None:
     return None
 
 
+def _track_supervisor_status_startup_grace_seconds(
+    track: SupervisorTrack,
+    *,
+    common_args: Sequence[str],
+    fallback_seconds: float,
+) -> float:
+    """Resolve the current launch generation's declared startup grace."""
+
+    launch_args = (
+        tuple(track.extra_args)
+        if track.module_name
+        else (*common_args, *track.extra_args)
+    )
+    configured = _profile_option_values(
+        launch_args,
+        "--watchdog-startup-grace-seconds",
+    )
+    if len(configured) > 1:
+        raise ValueError(
+            "supervisor status startup grace must be declared at most once"
+        )
+    raw = configured[0] if configured else fallback_seconds
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "supervisor status startup grace must be a finite non-negative number"
+        ) from exc
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError(
+            "supervisor status startup grace must be a finite non-negative number"
+        )
+    return seconds
+
+
 def _relative_or_absolute_path(repo_root: Path, value: object) -> Path | None:
     text = str(value or "").strip()
     if not text:
@@ -4117,30 +4153,160 @@ def terminal_task_state_fields(
     }
 
 
+def _pending_supervisor_generation_fields(
+    *,
+    status_path: Path,
+    observed_at: datetime,
+    expected_supervisor_pid: int,
+    generation_started_at_epoch_seconds: float,
+    startup_grace_seconds: float,
+    reason: str,
+    observed_supervisor_pid: int | None = None,
+    status_age_seconds: float | None = None,
+) -> dict[str, object]:
+    """Return bounded startup health until this process generation reports."""
+
+    startup_age_seconds = max(
+        0.0,
+        observed_at.timestamp() - generation_started_at_epoch_seconds,
+    )
+    within_startup_grace = startup_age_seconds <= startup_grace_seconds
+    fields: dict[str, object] = {
+        "supervisor_status": "starting" if within_startup_grace else "stale",
+        "supervisor_status_generation": "pending",
+        "supervisor_status_generation_reason": reason,
+        "supervisor_status_path": str(status_path),
+        "supervisor_startup_age_seconds": round(startup_age_seconds, 1),
+        "supervisor_startup_grace_seconds": startup_grace_seconds,
+        "supervisor_within_startup_grace": within_startup_grace,
+        "expected_supervisor_pid": expected_supervisor_pid,
+        "restart_supervisor": not within_startup_grace,
+    }
+    if observed_supervisor_pid is not None:
+        fields["observed_supervisor_pid"] = observed_supervisor_pid
+    if status_age_seconds is not None:
+        fields["supervisor_status_age_seconds"] = round(
+            status_age_seconds,
+            1,
+        )
+    return fields
+
+
 def supervisor_status_health_fields(
     track: SupervisorTrack,
     *,
     repo_root: Path,
     stale_seconds: float,
+    expected_supervisor_pid: int | None = None,
+    generation_started_at_epoch_seconds: float | None = None,
+    startup_grace_seconds: float = 0.0,
 ) -> dict[str, object]:
-    """Return heartbeat fields for the wrapper supervisor status file."""
+    """Return generation-bound health for the wrapper supervisor status file."""
 
     status_path = _inferred_supervisor_status_path(track)
     if status_path is None:
         return {"supervisor_status": "untracked"}
+    generation_bound = (
+        expected_supervisor_pid is not None
+        or generation_started_at_epoch_seconds is not None
+    )
+    if generation_bound and (
+        expected_supervisor_pid is None
+        or expected_supervisor_pid <= 0
+        or generation_started_at_epoch_seconds is None
+    ):
+        raise ValueError(
+            "supervisor status generation requires a positive PID and spawn epoch"
+        )
+    observed_at = datetime.now(timezone.utc)
+    generation_started_at = (
+        float(generation_started_at_epoch_seconds)
+        if generation_started_at_epoch_seconds is not None
+        else None
+    )
+    grace = float(startup_grace_seconds)
+    if (
+        generation_started_at is not None
+        and (
+            not math.isfinite(generation_started_at)
+            or generation_started_at <= 0
+            or not math.isfinite(grace)
+            or grace < 0
+        )
+    ):
+        raise ValueError("supervisor status generation bounds are invalid")
     payload = _read_json_dict(status_path)
     if not payload:
+        if generation_bound:
+            return _pending_supervisor_generation_fields(
+                status_path=status_path,
+                observed_at=observed_at,
+                expected_supervisor_pid=int(expected_supervisor_pid),
+                generation_started_at_epoch_seconds=float(
+                    generation_started_at
+                ),
+                startup_grace_seconds=grace,
+                reason="status_missing",
+            )
         return {
             "supervisor_status": "missing",
             "supervisor_status_path": str(status_path),
         }
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
+        if generation_bound:
+            return _pending_supervisor_generation_fields(
+                status_path=status_path,
+                observed_at=observed_at,
+                expected_supervisor_pid=int(expected_supervisor_pid),
+                generation_started_at_epoch_seconds=float(
+                    generation_started_at
+                ),
+                startup_grace_seconds=grace,
+                reason="status_timestamp_missing_or_invalid",
+            )
         return {
             "supervisor_status": "unknown",
             "supervisor_status_path": str(status_path),
         }
-    age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
+    age_seconds = max(0.0, (observed_at - updated_at).total_seconds())
+    observed_pid_value = payload.get("supervisor_pid")
+    observed_pid = (
+        observed_pid_value
+        if isinstance(observed_pid_value, int)
+        and not isinstance(observed_pid_value, bool)
+        and observed_pid_value > 0
+        else None
+    )
+    if generation_bound and observed_pid != expected_supervisor_pid:
+        return _pending_supervisor_generation_fields(
+            status_path=status_path,
+            observed_at=observed_at,
+            expected_supervisor_pid=int(expected_supervisor_pid),
+            generation_started_at_epoch_seconds=float(generation_started_at),
+            startup_grace_seconds=grace,
+            reason=(
+                "supervisor_pid_missing"
+                if observed_pid is None
+                else "supervisor_pid_mismatch"
+            ),
+            observed_supervisor_pid=observed_pid,
+            status_age_seconds=age_seconds,
+        )
+    if (
+        generation_bound
+        and updated_at.timestamp() + 1e-6 < float(generation_started_at)
+    ):
+        return _pending_supervisor_generation_fields(
+            status_path=status_path,
+            observed_at=observed_at,
+            expected_supervisor_pid=int(expected_supervisor_pid),
+            generation_started_at_epoch_seconds=float(generation_started_at),
+            startup_grace_seconds=grace,
+            reason="status_predates_process_generation",
+            observed_supervisor_pid=observed_pid,
+            status_age_seconds=age_seconds,
+        )
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
             "supervisor_status": "live",
@@ -4173,12 +4339,25 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     if not status or status == "untracked":
         return ""
     parts = [f"supervisor_status={status}"]
+    generation = fields.get("supervisor_status_generation")
+    if generation:
+        parts.append(f"supervisor_status_generation={generation}")
+    generation_reason = fields.get("supervisor_status_generation_reason")
+    if generation_reason:
+        parts.append(
+            f"supervisor_status_generation_reason={generation_reason}"
+        )
     age = fields.get("supervisor_status_age_seconds")
     if age is not None:
         parts.append(f"supervisor_status_age_seconds={age}")
     active_task_id = fields.get("supervisor_active_task_id")
     if active_task_id:
         parts.append(f"supervisor_active_task_id={active_task_id}")
+    startup_age = fields.get("supervisor_startup_age_seconds")
+    if startup_age is not None:
+        parts.append(f"supervisor_startup_age_seconds={startup_age}")
+    if fields.get("supervisor_within_startup_grace"):
+        parts.append("supervisor_within_startup_grace=true")
     if fields.get("restart_supervisor"):
         parts.append("restart_supervisor=true")
     return " ".join(parts)
@@ -6922,6 +7101,32 @@ def run_supervisor_tracks(
     scope_drift_receipts: list[dict[str, Any]] = []
     replan_required = False
     run_started_at = time.time()
+    track_generation_started_at: dict[str, float] = {}
+    track_startup_grace_seconds: dict[str, float] = {}
+
+    def start_generation(track: SupervisorTrack) -> subprocess.Popen[bytes]:
+        """Start one track and retain the lower bound for its status generation."""
+
+        startup_grace = _track_supervisor_status_startup_grace_seconds(
+            track,
+            common_args=common_args,
+            fallback_seconds=float(supervisor_status_stale_seconds),
+        )
+        generation_started_at = time.time()
+        process = start_track(
+            track,
+            repo_root=resolved_repo_root,
+            common_args=common_args,
+            python_executable=python_executable,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            accepted_control_plane_descriptor=(
+                accepted_control_plane_descriptor
+            ),
+            output=output,
+        )
+        track_generation_started_at[track.name] = generation_started_at
+        track_startup_grace_seconds[track.name] = startup_grace
+        return process
 
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
@@ -6979,17 +7184,7 @@ def run_supervisor_tracks(
                     raise ValueError("reassigned track name is not unique")
                 managed_tracks.append(adopted_track)
                 plan_children_by_name[adopted.name] = adopted
-                processes[adopted_track.name] = start_track(
-                    adopted_track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    output=output,
-                )
+                processes[adopted_track.name] = start_generation(adopted_track)
                 reassignment_count += 1
                 _emit(
                     output,
@@ -7043,17 +7238,7 @@ def run_supervisor_tracks(
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
         for track in managed_tracks:
-            processes[track.name] = start_track(
-                track,
-                repo_root=resolved_repo_root,
-                common_args=common_args,
-                python_executable=python_executable,
-                accepted_control_plane_pin=accepted_control_plane_pin,
-                accepted_control_plane_descriptor=(
-                    accepted_control_plane_descriptor
-                ),
-                output=output,
-            )
+            processes[track.name] = start_generation(track)
 
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
@@ -7076,6 +7261,16 @@ def run_supervisor_tracks(
                     resolved,
                     repo_root=resolved_repo_root,
                     stale_seconds=float(supervisor_status_stale_seconds),
+                    expected_supervisor_pid=(
+                        None if process is None else int(process.pid)
+                    ),
+                    generation_started_at_epoch_seconds=(
+                        track_generation_started_at.get(track.name)
+                    ),
+                    startup_grace_seconds=track_startup_grace_seconds.get(
+                        track.name,
+                        0.0,
+                    ),
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
@@ -7112,17 +7307,7 @@ def run_supervisor_tracks(
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
                             pass
-                        processes[track.name] = start_track(
-                            track,
-                            repo_root=resolved_repo_root,
-                            common_args=common_args,
-                            python_executable=python_executable,
-                            accepted_control_plane_pin=accepted_control_plane_pin,
-                            accepted_control_plane_descriptor=(
-                                accepted_control_plane_descriptor
-                            ),
-                            output=output,
-                        )
+                        processes[track.name] = start_generation(track)
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
                             resolved,
@@ -7318,19 +7503,7 @@ def run_supervisor_tracks(
                                 blocked = blocker
                     if recover_execution and not blocked:
                         try:
-                            processes[track.name] = start_track(
-                                track,
-                                repo_root=resolved_repo_root,
-                                common_args=common_args,
-                                python_executable=python_executable,
-                                accepted_control_plane_pin=(
-                                    accepted_control_plane_pin
-                                ),
-                                accepted_control_plane_descriptor=(
-                                    accepted_control_plane_descriptor
-                                ),
-                                output=output,
-                            )
+                            processes[track.name] = start_generation(track)
                         except Exception as exc:  # noqa: BLE001
                             blocker = (
                                 "cannot restart recoverable plan-bound handoff: "
@@ -7371,17 +7544,7 @@ def run_supervisor_tracks(
                         raise SupervisorRunInterrupted(
                             f"could not fence exited {track.name} descendants"
                         )
-                processes[track.name] = start_track(
-                    track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    output=output,
-                )
+                processes[track.name] = start_generation(track)
             dispatch_pending_reassignments()
             if replan_required:
                 _emit(
