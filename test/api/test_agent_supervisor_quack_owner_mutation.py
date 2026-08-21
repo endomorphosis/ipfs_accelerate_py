@@ -43,12 +43,20 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_MUTATION_COMPLETION_RECEIPT_INSERT,
     DuckDBConnectionPolicyError,
     QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+    QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+    QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+    QUACK_MUTATION_QUEUE_BACKOFF,
     QUACK_MUTATION_TASK_REVISION_INSERT,
     QUACK_MUTATION_TASK_STATUS_CAS,
     QUACK_MUTATION_TASK_STATUS_TRANSITION,
+    QUACK_OWNER_MUTATION_MAX_PARAMETERS,
     QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
     QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
+    _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE,
+    _normalize_quack_mutation_sql,
+    _quack_mutation_operation,
+    _validate_quack_mutation_parameters,
     exclusive_file_lock,
     open_duckdb_connection,
     quack_owner_mutation_write_lock_path,
@@ -58,6 +66,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
+    QUEUE_ENTRY_SCHEMA,
     IntentRepository,
     open_intent_repository,
 )
@@ -445,6 +454,148 @@ def _completion_request(
         server,
         token,
         operation=QUACK_MUTATION_TASK_STATUS_TRANSITION,
+        steps=steps,
+    )
+
+
+_QUEUE_BACKOFF_INSERT_SQL = """
+    INSERT INTO leases (
+        task_cid, claim_cid, resolution_cid, claimant_did,
+        logical_epoch, fencing_token, expires_at_ms, attempt,
+        state, started_at_ms, release_reason, retry_not_before_ms,
+        owner_session_id, fence_epoch, revision, extension_schema,
+        extension_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+_QUEUE_BACKOFF_UPDATE_SQL = """
+    UPDATE leases SET
+        attempt = ?, retry_not_before_ms = ?,
+        release_reason = ?, state = 'released',
+        extension_schema = ?, extension_json = ?,
+        revision = revision + 1
+    WHERE task_cid = ?
+"""
+
+
+def _queue_backoff_request(
+    server: Any,
+    token: str,
+    *,
+    session_id: str,
+    owner_id: str,
+    delay_ms: int = 60_000,
+    reason: str = "backoff",
+    selection_penalty: int = 0,
+    now_ms: int = 1_700_000_000_000,
+    recorded_at: str = "2026-08-20T20:00:00Z",
+) -> dict[str, Any]:
+    connection = server._connection  # noqa: SLF001
+    task = connection.execute(
+        "SELECT 1 FROM tasks WHERE task_cid = 'task:test'"
+    ).fetchone()
+    lease = connection.execute(
+        "SELECT attempt FROM leases WHERE task_cid = 'task:test'"
+    ).fetchone()
+    head = connection.execute(
+        "SELECT COALESCE(MAX(sequence), 0), COALESCE(MAX(global_sequence), 0) "
+        "FROM domain_events WHERE stream_id = 'stream:intent'"
+    ).fetchone()
+    assert task is not None and head is not None
+    inserting = lease is None
+    attempt = 1 if inserting else int(lease[0]) + 1
+    retry_not_before_ms = now_ms + delay_ms
+    extension = canonical_json_bytes(
+        {
+            "consecutive_failures": attempt,
+            "reason": reason,
+            "selection_penalty": selection_penalty,
+        }
+    ).decode("utf-8")
+    inner = {
+        "attempt": attempt,
+        "delay_ms": delay_ms,
+        "reason": reason,
+        "retry_not_before_ms": retry_not_before_ms,
+        "revision": attempt,
+        "selection_penalty": selection_penalty,
+        "task_cid": "task:test",
+    }
+    event_body = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.queue_backoff",
+        "subject_id": "task:test",
+        "body": inner,
+        "recorded_at": recorded_at,
+        "owner_id": owner_id,
+    }
+    sequence = int(head[0]) + 1
+    global_sequence = int(head[1]) + 1
+    event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": sequence,
+            "global_sequence": global_sequence,
+            "event_type": "intent.queue_backoff",
+            "body": event_body,
+        }
+    )
+    if inserting:
+        lease_step = {
+            "template_id": QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+            "parameters": [
+                "task:test",
+                "claim:queue:task:test",
+                "resolution:queue:task:test",
+                owner_id,
+                1,
+                1,
+                0,
+                attempt,
+                "released",
+                now_ms,
+                reason,
+                retry_not_before_ms,
+                session_id,
+                1,
+                1,
+                QUEUE_ENTRY_SCHEMA,
+                extension,
+            ],
+        }
+    else:
+        lease_step = {
+            "template_id": QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+            "parameters": [
+                attempt,
+                retry_not_before_ms,
+                reason,
+                QUEUE_ENTRY_SCHEMA,
+                extension,
+                "task:test",
+            ],
+        }
+    steps = [
+        lease_step,
+        {
+            "template_id": QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+            "parameters": [
+                event_id,
+                "stream:intent",
+                sequence,
+                global_sequence,
+                "intent.queue_backoff",
+                "task:test",
+                "",
+                session_id,
+                recorded_at,
+                canonical_json_bytes(event_body).decode("utf-8"),
+            ],
+        },
+    ]
+    return _signed_request(
+        server,
+        token,
+        operation=QUACK_MUTATION_QUEUE_BACKOFF,
         steps=steps,
     )
 
@@ -964,6 +1115,192 @@ def test_connection_commit_dispatches_buffer_and_nested_begin_preserves_it(
     assert attached.statements[-1] == "ROLLBACK"
     assert connection.in_transaction is False
     assert connection._quack_pending_mutations == []  # noqa: SLF001
+
+
+def test_queue_backoff_sql_is_in_closed_catalog_and_forms_admitted_bundle() -> None:
+    insert_id = _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE[
+        _normalize_quack_mutation_sql(_QUEUE_BACKOFF_INSERT_SQL)
+    ]
+    update_id = _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE[
+        _normalize_quack_mutation_sql(_QUEUE_BACKOFF_UPDATE_SQL)
+    ]
+    assert insert_id == QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT
+    assert update_id == QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE
+    assert (
+        _quack_mutation_operation(
+            [
+                {"template_id": insert_id, "parameters": []},
+                {"template_id": QUACK_MUTATION_DOMAIN_EVENT_INSERT, "parameters": []},
+            ]
+        )
+        == QUACK_MUTATION_QUEUE_BACKOFF
+    )
+    assert (
+        _quack_mutation_operation(
+            [
+                {"template_id": update_id, "parameters": []},
+                {"template_id": QUACK_MUTATION_DOMAIN_EVENT_INSERT, "parameters": []},
+            ]
+        )
+        == QUACK_MUTATION_QUEUE_BACKOFF
+    )
+    seventeen = ["task:test"] * 11 + [1, 1, 0, 1, 1, 1]
+    assert len(seventeen) == QUACK_OWNER_MUTATION_MAX_PARAMETERS
+    _validate_quack_mutation_parameters(seventeen)
+    with pytest.raises(
+        DuckDBConnectionPolicyError, match="parameter count exceeds its bound"
+    ):
+        _validate_quack_mutation_parameters(seventeen + ["overflow"])
+    unknown = _normalize_quack_mutation_sql(
+        "UPDATE leases SET state = ? WHERE task_cid = ?"
+    )
+    assert unknown not in _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE
+
+
+def test_queue_backoff_insert_and_update_are_atomic_and_replay_idempotent(
+    tmp_path: Path,
+) -> None:
+    server, _identity, token, database = _server(tmp_path)
+    try:
+        insert = _queue_backoff_request(
+            server, token, session_id="lane:backoff", owner_id="backoff"
+        )
+        _publish(server, insert)
+        assert server.service_mutation_inbox() == 1
+        first = _done(server, insert)
+        assert first["ok"] is True, first
+        lease = server._connection.execute(  # noqa: SLF001
+            "SELECT attempt, state, retry_not_before_ms FROM leases "
+            "WHERE task_cid = 'task:test'"
+        ).fetchone()
+        assert lease is not None
+        assert (lease[0], lease[1], lease[2]) == (1, "released", 1_700_000_060_000)
+
+        _publish(server, insert)
+        assert server.service_mutation_inbox() == 1
+        assert _done(server, insert) == first
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM leases WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM domain_events WHERE event_id = ?",
+            [insert["steps"][-1]["parameters"][0]],
+        ).fetchone()[0] == 1
+
+        update = _queue_backoff_request(
+            server,
+            token,
+            session_id="lane:backoff-2",
+            owner_id="backoff",
+            recorded_at="2026-08-20T20:00:01Z",
+        )
+        _publish(server, update)
+        assert server.service_mutation_inbox() == 1
+        second = _done(server, update)
+        assert second["ok"] is True, second
+        lease_after = server._connection.execute(  # noqa: SLF001
+            "SELECT attempt, state, retry_not_before_ms FROM leases "
+            "WHERE task_cid = 'task:test'"
+        ).fetchone()
+        assert lease_after is not None
+        assert (lease_after[0], lease_after[1], lease_after[2]) == (
+            2,
+            "released",
+            1_700_000_060_000,
+        )
+
+        _publish(server, update)
+        assert server.service_mutation_inbox() == 1
+        assert _done(server, update) == second
+    finally:
+        server.stop()
+    with DatabaseTaskSource(database, install_schema=False) as source:
+        assert source.projection_matches_events() is True
+
+
+def test_connection_commit_dispatches_queue_backoff_insert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class AttachedConnection:
+        description = None
+
+        def __init__(self) -> None:
+            self.statements: list[str] = []
+
+        def execute(self, sql: str, _parameters: Any = None) -> AttachedConnection:
+            self.statements.append(" ".join(sql.strip().upper().split()))
+            self.description = None
+            return self
+
+        def fetchall(self) -> list[Any]:
+            return []
+
+    attached = AttachedConnection()
+    connection = DuckDBConnection.wrap(attached)
+    connection._default_catalog = "control_plane"  # noqa: SLF001
+    connection._quack_mutation_binding = {"store_id": "/state/control.duckdb"}  # noqa: SLF001
+    connection._quack_mutation_token = "test-token"  # noqa: SLF001
+    dispatched: list[list[dict[str, Any]]] = []
+
+    def dispatch(steps: Any, *, binding: Any, token: str) -> Any:
+        assert binding == {"store_id": "/state/control.duckdb"}
+        assert token == "test-token"
+        dispatched.append([dict(step) for step in steps])
+        assert _quack_mutation_operation(steps) == QUACK_MUTATION_QUEUE_BACKOFF
+        return duckdb_state_module._empty_duckdb_cursor(rowcount=1)  # noqa: SLF001
+
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "_execute_quack_owner_mutation_bundle",
+        dispatch,
+    )
+    connection.execute("BEGIN TRANSACTION")
+    connection.execute(
+        _QUEUE_BACKOFF_INSERT_SQL,
+        [
+            "task:test",
+            "claim:queue:task:test",
+            "resolution:queue:task:test",
+            "owner",
+            1,
+            1,
+            0,
+            1,
+            "released",
+            1_700_000_000_000,
+            "backoff",
+            1_700_000_060_000,
+            "lane:one",
+            1,
+            1,
+            QUEUE_ENTRY_SCHEMA,
+            "{}",
+        ],
+    )
+    connection.execute(
+        """
+        INSERT INTO domain_events (
+            event_id, stream_id, sequence, global_sequence, event_type,
+            task_cid, attempt_id, session_id, recorded_at, body_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "event:1",
+            "stream:intent",
+            1,
+            1,
+            "intent.queue_backoff",
+            "task:test",
+            "",
+            "lane:one",
+            "2026-08-20T20:00:00Z",
+            "{}",
+        ],
+    )
+    connection.commit()
+    assert len(dispatched) == 1
+    assert dispatched[0][0]["template_id"] == QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT
+    assert dispatched[0][1]["template_id"] == QUACK_MUTATION_DOMAIN_EVENT_INSERT
 
 
 def test_truthful_looking_receipt_cannot_self_admit_outside_observed_container(
@@ -1500,3 +1837,96 @@ def test_ops_start_serve_loop_services_owner_inbox(tmp_path: Path) -> None:
     server = Server()
     assert module._serve_until_stop(server) == {"stopped": True}
     assert server.serviced == 1
+
+
+def test_remote_database_task_source_record_queue_backoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The retry cooldown write must land through the closed Quack owner."""
+
+    database = tmp_path / "control" / "control.duckdb"
+    _seed(database)
+    receipt_path, _receipt = _isolation_receipt(tmp_path)
+    server = build_server(
+        database_path=database,
+        state_dir=receipt_path.parent,
+        **_isolation_server_kwargs(_receipt),
+        store_id=str(database),
+        repository_id="repository:test",
+        isolation_receipt_path=receipt_path,
+        isolation_observer=_admitted_observation,
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
+        identity.secret_handle,
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
+        str(identity.generation),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
+        str(identity.schema_revision),
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
+    stopping = threading.Event()
+
+    def consume() -> None:
+        while not stopping.is_set():
+            server.service_mutation_inbox(max_requests=8)
+            stopping.wait(0.01)
+
+    consumer = threading.Thread(target=consume, daemon=True)
+    consumer.start()
+    source = DatabaseTaskSource(
+        identity.listen_uri, install_schema=False, owner_id="lane:backoff"
+    )
+    try:
+        first = source.record_queue_backoff(
+            task_cid="task:test",
+            delay_ms=60_000,
+            reason="database_portal_retry:attempt:empty_or_no_change",
+            selection_penalty=100,
+        )
+        assert first.changed is True
+        entry = source.get_queue_entry("task:test")
+        assert entry is not None
+        assert entry.attempt == 1
+        assert entry.reason == "database_portal_retry:attempt:empty_or_no_change"
+        assert entry.selection_penalty == 100
+        assert _raw_quack_query(
+            identity.listen_uri,
+            token,
+            "SELECT attempt, state FROM leases WHERE task_cid = 'task:test'",
+        ) == [(1, "released")]
+
+        second = source.record_queue_backoff(
+            task_cid="task:test",
+            delay_ms=30_000,
+            reason="database_portal_retry:attempt:empty_or_no_change",
+            selection_penalty=200,
+        )
+        assert second.changed is True
+        updated = source.get_queue_entry("task:test")
+        assert updated is not None
+        assert updated.attempt == 2
+        assert updated.selection_penalty == 200
+        assert _raw_quack_query(
+            identity.listen_uri,
+            token,
+            "SELECT attempt, state FROM leases WHERE task_cid = 'task:test'",
+        ) == [(2, "released")]
+    finally:
+        stopping.set()
+        consumer.join(timeout=5)
+        source.close()
+        server.stop()
+    with DatabaseTaskSource(database, install_schema=False) as local:
+        assert local.projection_matches_events() is True

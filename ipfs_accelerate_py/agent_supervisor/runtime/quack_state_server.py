@@ -82,6 +82,9 @@ from ..task_sources.duckdb_state import (
     QUACK_MUTATION_DOMAIN_EVENT_INSERT,
     QUACK_MUTATION_EVIDENCE_DELETE,
     QUACK_MUTATION_EVIDENCE_INSERT,
+    QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+    QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+    QUACK_MUTATION_QUEUE_BACKOFF,
     QUACK_MUTATION_TASK_REVISION_INSERT,
     QUACK_MUTATION_TASK_STATUS_CAS,
     QUACK_MUTATION_TASK_STATUS_TRANSITION,
@@ -103,6 +106,7 @@ from ..task_sources.duckdb_state import (
 from ..task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    QUEUE_ENTRY_SCHEMA,
     missing_current_evidence_on,
 )
 from ..task_sources.quack_capabilities import (
@@ -235,6 +239,21 @@ _MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
             "INSERT INTO evidence_nodes "
             "(evidence_id, parent_evidence_id, task_cid, evidence_kind, "
             "digest, created_at, body_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT: (
+            "INSERT INTO leases "
+            "(task_cid, claim_cid, resolution_cid, claimant_did, "
+            "logical_epoch, fencing_token, expires_at_ms, attempt, "
+            "state, started_at_ms, release_reason, retry_not_before_ms, "
+            "owner_session_id, fence_epoch, revision, extension_schema, "
+            "extension_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE: (
+            "UPDATE leases SET attempt = ?, retry_not_before_ms = ?, "
+            "release_reason = ?, state = 'released', "
+            "extension_schema = ?, extension_json = ?, "
+            "revision = revision + 1 WHERE task_cid = ?"
         ),
     }
 )
@@ -2356,15 +2375,10 @@ class QuackStateServer:
             self._assert_live_identity_observation(observed)
             if verify_request is not None:
                 steps = verify_request["steps"]
-                effects_present = (
-                    self._task_effects_present(
-                        steps, connection=replica_connection
-                    )
-                    if verify_request["operation"]
-                    == QUACK_MUTATION_TASK_STATUS_TRANSITION
-                    else self._validation_effects_present(
-                        steps, connection=replica_connection
-                    )
+                effects_present = self._mutation_effects_present(
+                    verify_request["operation"],
+                    steps,
+                    connection=replica_connection,
                 )
                 if not effects_present:
                     raise QuackStateServerReadyError(
@@ -2641,6 +2655,7 @@ class QuackStateServer:
             operation not in {
                 QUACK_MUTATION_TASK_STATUS_TRANSITION,
                 QUACK_MUTATION_VALIDATION_RECORD,
+                QUACK_MUTATION_QUEUE_BACKOFF,
             }
             or not isinstance(binding, dict)
             or binding != self._mutation_binding()
@@ -2936,6 +2951,92 @@ class QuackStateServer:
             raise QuackStateServerMutationError("replay_integrity_failure")
         return True
 
+    def _mutation_effects_present(
+        self,
+        operation: object,
+        steps: Sequence[Mapping[str, Any]],
+        *,
+        connection: Any | None = None,
+    ) -> bool:
+        if operation == QUACK_MUTATION_TASK_STATUS_TRANSITION:
+            return self._task_effects_present(steps, connection=connection)
+        if operation == QUACK_MUTATION_VALIDATION_RECORD:
+            return self._validation_effects_present(steps, connection=connection)
+        if operation == QUACK_MUTATION_QUEUE_BACKOFF:
+            return self._queue_backoff_effects_present(
+                steps, connection=connection
+            )
+        raise QuackStateServerMutationError("operation_not_allowlisted")
+
+    def _queue_backoff_effects_present(
+        self,
+        steps: Sequence[Mapping[str, Any]],
+        *,
+        connection: Any | None = None,
+    ) -> bool:
+        active = connection if connection is not None else self._connection
+        assert active is not None
+        templates = [step.get("template_id") for step in steps]
+        inserting = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        updating = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        if not inserting and not updating:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        lease = _mutation_parameters(steps[0], 17 if inserting else 6)
+        event = _mutation_parameters(steps[-1], 10)
+        event_row = active.execute(
+            "SELECT event_id, stream_id, sequence, global_sequence, event_type, "
+            "task_cid, attempt_id, session_id, recorded_at, body_json "
+            "FROM domain_events WHERE event_id = ?",
+            [event[0]],
+        ).fetchone()
+        if inserting:
+            lease_row = active.execute(
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, "
+                "state, started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases WHERE task_cid = ?",
+                [lease[0]],
+            ).fetchone()
+            lease_matches = lease_row is not None and tuple(
+                lease_row[index] for index in range(17)
+            ) == tuple(lease)
+        else:
+            lease_row = active.execute(
+                "SELECT attempt, retry_not_before_ms, release_reason, state, "
+                "extension_schema, extension_json FROM leases WHERE task_cid = ?",
+                [lease[5]],
+            ).fetchone()
+            lease_matches = lease_row is not None and (
+                int(lease_row[0]),
+                int(lease_row[1]),
+                lease_row[2],
+                lease_row[3],
+                lease_row[4],
+                lease_row[5],
+            ) == (
+                lease[0],
+                lease[1],
+                lease[2],
+                "released",
+                lease[3],
+                lease[4],
+            )
+        event_matches = event_row is not None and tuple(
+            event_row[index] for index in range(10)
+        ) == tuple(event)
+        if event_row is None:
+            return False
+        if not event_matches or not lease_matches:
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        return True
+
     def _validate_task_transition(
         self, steps: Sequence[Mapping[str, Any]]
     ) -> tuple[dict[str, Any], bool]:
@@ -3149,6 +3250,138 @@ class QuackStateServer:
             "outcome": run[5],
         }
 
+    def _validate_queue_backoff(
+        self, steps: Sequence[Mapping[str, Any]]
+    ) -> dict[str, Any]:
+        templates = [step.get("template_id") for step in steps]
+        inserting = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        updating = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        if not inserting and not updating:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        lease = _mutation_parameters(steps[0], 17 if inserting else 6)
+        event = _mutation_parameters(steps[-1], 10)
+        event_body = self._validate_domain_event(event)
+        inner = event_body["body"]
+        if not isinstance(inner, dict):
+            raise QuackStateServerMutationError("event_body_invalid")
+        if inserting:
+            task_cid = lease[0]
+            attempt = lease[7]
+            started_at_ms = lease[9]
+            reason = lease[10]
+            retry_not_before_ms = lease[11]
+            owner_session_id = lease[12]
+            extension_schema = lease[15]
+            extension_json = lease[16]
+            if (
+                not isinstance(task_cid, str)
+                or not task_cid
+                or lease[1] != f"claim:queue:{task_cid}"
+                or lease[2] != f"resolution:queue:{task_cid}"
+                or not isinstance(lease[3], str)
+                or lease[4] != 1
+                or lease[5] != 1
+                or lease[6] != 0
+                or type(attempt) is not int
+                or attempt < 1
+                or lease[8] != "released"
+                or type(started_at_ms) is not int
+                or not isinstance(reason, str)
+                or type(retry_not_before_ms) is not int
+                or not isinstance(owner_session_id, str)
+                or lease[13] != 1
+                or lease[14] != 1
+            ):
+                raise QuackStateServerMutationError("lease_binding_invalid")
+        else:
+            task_cid = lease[5]
+            attempt = lease[0]
+            retry_not_before_ms = lease[1]
+            reason = lease[2]
+            extension_schema = lease[3]
+            extension_json = lease[4]
+            owner_session_id = event[7]
+            started_at_ms = None
+            if (
+                type(attempt) is not int
+                or attempt < 1
+                or type(retry_not_before_ms) is not int
+                or not isinstance(reason, str)
+                or not isinstance(task_cid, str)
+                or not task_cid
+                or not isinstance(owner_session_id, str)
+            ):
+                raise QuackStateServerMutationError("lease_binding_invalid")
+        extension = _canonical_object(extension_json, code="lease_binding_invalid")
+        delay_ms = inner.get("delay_ms")
+        selection_penalty = inner.get("selection_penalty")
+        if (
+            extension_schema != QUEUE_ENTRY_SCHEMA
+            or set(extension) != {"selection_penalty", "consecutive_failures", "reason"}
+            or extension.get("reason") != reason
+            or extension.get("consecutive_failures") != attempt
+            or extension.get("selection_penalty") != selection_penalty
+            or type(delay_ms) is not int
+            or delay_ms < 0
+            or type(selection_penalty) is not int
+            or selection_penalty < 0
+            or (
+                inserting
+                and started_at_ms is not None
+                and retry_not_before_ms != started_at_ms + delay_ms
+            )
+        ):
+            raise QuackStateServerMutationError("lease_binding_invalid")
+        if (
+            event[1] != "stream:intent"
+            or event[4] != "intent.queue_backoff"
+            or event[5] != task_cid
+            or event[7] != owner_session_id
+            or event_body["subject_id"] != task_cid
+            or inner.get("task_cid") != task_cid
+            or inner.get("attempt") != attempt
+            or inner.get("retry_not_before_ms") != retry_not_before_ms
+            or inner.get("reason") != reason
+            or inner.get("revision") != attempt
+            or set(inner)
+            != {
+                "task_cid",
+                "attempt",
+                "retry_not_before_ms",
+                "delay_ms",
+                "selection_penalty",
+                "reason",
+                "revision",
+            }
+        ):
+            raise QuackStateServerMutationError("event_binding_invalid")
+        self._validate_event_head(event)
+        assert self._connection is not None
+        if self._connection.execute(
+            "SELECT 1 FROM tasks WHERE task_cid = ?", [task_cid]
+        ).fetchone() is None:
+            raise QuackStateServerMutationError("task_missing")
+        existing = self._connection.execute(
+            "SELECT 1 FROM leases WHERE task_cid = ?", [task_cid]
+        ).fetchone()
+        if inserting and existing is not None:
+            raise QuackStateServerMutationError("lease_conflict")
+        if updating and existing is None:
+            raise QuackStateServerMutationError("lease_missing")
+        return {
+            "task_cid": task_cid,
+            "attempt": attempt,
+            "retry_not_before_ms": retry_not_before_ms,
+            "event_id": event[0],
+            "inserted": inserting,
+        }
+
     def _execute_mutation_request(
         self, request: Mapping[str, Any]
     ) -> tuple[list[int], dict[str, Any]]:
@@ -3180,6 +3413,24 @@ class QuackStateServer:
                         request, observed=observed
                     )
                 observed = self._validate_validation_record(steps)
+            elif request["operation"] == QUACK_MUTATION_QUEUE_BACKOFF:
+                if self._queue_backoff_effects_present(steps):
+                    self._connection.execute("ROLLBACK")
+                    event = _mutation_parameters(steps[-1], 10)
+                    inserting = (
+                        steps[0].get("template_id")
+                        == QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT
+                    )
+                    lease = _mutation_parameters(steps[0], 17 if inserting else 6)
+                    observed = {
+                        "task_cid": lease[0] if inserting else lease[5],
+                        "event_id": event[0],
+                        "idempotent_replay": True,
+                    }
+                    return [1] * len(steps), self._settle_mutation_replica(
+                        request, observed=observed
+                    )
+                observed = self._validate_queue_backoff(steps)
             else:
                 raise QuackStateServerMutationError("operation_not_allowlisted")
             rowcounts: list[int] = []
@@ -3262,10 +3513,8 @@ class QuackStateServer:
                     path.unlink(missing_ok=True)
                     continue
                 done.unlink(missing_ok=True)
-                effects = (
-                    self._task_effects_present(request["steps"])
-                    if request["operation"] == QUACK_MUTATION_TASK_STATUS_TRANSITION
-                    else self._validation_effects_present(request["steps"])
+                effects = self._mutation_effects_present(
+                    request["operation"], request["steps"]
                 )
                 observed = {"reconciled_after_interruption": True}
                 if effects:

@@ -635,6 +635,7 @@ QUACK_OWNER_MUTATION_PROTOCOL_REVISION = 2
 QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES = 1_048_576
 QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES = 262_144
 QUACK_OWNER_MUTATION_MAX_STEPS = 5
+QUACK_OWNER_MUTATION_MAX_PARAMETERS = 17
 QUACK_OWNER_MUTATION_REQUEST_TTL_MS = 30_000
 QUACK_OWNER_MUTATION_SETTLEMENT_MS = 30_000
 QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS = 5_000
@@ -648,9 +649,12 @@ QUACK_MUTATION_VALIDATION_RUN_INSERT = "validation_run_insert@1"
 QUACK_MUTATION_VALIDATION_RESULT_INSERT = "validation_result_insert@1"
 QUACK_MUTATION_EVIDENCE_DELETE = "evidence_delete@1"
 QUACK_MUTATION_EVIDENCE_INSERT = "evidence_insert@1"
+QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT = "lease_queue_backoff_insert@1"
+QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE = "lease_queue_backoff_update@1"
 
 QUACK_MUTATION_TASK_STATUS_TRANSITION = "task_status_transition@1"
 QUACK_MUTATION_VALIDATION_RECORD = "validation_record@1"
+QUACK_MUTATION_QUEUE_BACKOFF = "queue_backoff@1"
 
 
 def _normalize_quack_mutation_sql(sql: str) -> str:
@@ -715,6 +719,27 @@ _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE = {
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """
     ): QUACK_MUTATION_EVIDENCE_INSERT,
+    _normalize_quack_mutation_sql(
+        """
+        INSERT INTO leases (
+            task_cid, claim_cid, resolution_cid, claimant_did,
+            logical_epoch, fencing_token, expires_at_ms, attempt,
+            state, started_at_ms, release_reason, retry_not_before_ms,
+            owner_session_id, fence_epoch, revision, extension_schema,
+            extension_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+    ): QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+    _normalize_quack_mutation_sql(
+        """
+        UPDATE leases SET
+            attempt = ?, retry_not_before_ms = ?,
+            release_reason = ?, state = 'released',
+            extension_schema = ?, extension_json = ?,
+            revision = revision + 1
+        WHERE task_cid = ?
+        """
+    ): QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
 }
 
 
@@ -825,7 +850,7 @@ def _empty_duckdb_cursor(*, rowcount: int = -1) -> DuckDBCursor:
 
 
 def _validate_quack_mutation_parameters(parameters: Sequence[Any]) -> None:
-    if len(parameters) > 16:
+    if len(parameters) > QUACK_OWNER_MUTATION_MAX_PARAMETERS:
         raise DuckDBConnectionPolicyError(
             "quack owner mutation parameter count exceeds its bound"
         )
@@ -880,6 +905,17 @@ def _quack_mutation_operation(steps: Sequence[Mapping[str, Any]]) -> str:
         ),
     }:
         return QUACK_MUTATION_VALIDATION_RECORD
+    if templates in {
+        (
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ),
+        (
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ),
+    }:
+        return QUACK_MUTATION_QUEUE_BACKOFF
     raise DuckDBConnectionPolicyError(
         "quack owner mutation bundle does not match an admitted operation"
     )
