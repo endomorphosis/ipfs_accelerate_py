@@ -1295,6 +1295,7 @@ def bind_database_portal_execution_from_args(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
+        protected_path_recovery_fn=bridge.recover_protected_path_retry,
     )
     return bridge
 
@@ -1481,6 +1482,7 @@ def build_database_implementation_daemon_from_args(
     provider_fn: Callable[..., Any] | None = None,
     effect_fn: Callable[..., Any] | None = None,
     validation_fn: Callable[..., Any] | None = None,
+    protected_path_recovery_fn: Callable[..., Any] | None = None,
 ) -> object:
     """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
 
@@ -1517,6 +1519,7 @@ def build_database_implementation_daemon_from_args(
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,
+        protected_path_recovery_fn=protected_path_recovery_fn,
         require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,
