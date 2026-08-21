@@ -9,6 +9,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
@@ -18,6 +21,43 @@ pytestmark = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for database readiness reconciliation tests",
 )
+
+
+def test_runtime_receipt_schemas_and_wire_bounds_are_defined() -> None:
+    """Receipt consumers retain the exact closed schemas and byte ceilings."""
+
+    assert implementation_daemon_module.PROOF_REUSE_STATE_ROOT_ENV == (
+        "IPFS_PROOF_REUSE_STATE_ROOT"
+    )
+    assert implementation_daemon_module.PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/provider-filesystem-boundary@1"
+    )
+    assert implementation_daemon_module.PROVIDER_ROUTE_RECEIPT_SCHEMA == (
+        "ipfs_accelerate_py/provider-route@1"
+    )
+    assert implementation_daemon_module.MAX_PROVIDER_ROUTE_RECEIPT_BYTES == (
+        16 * 1_024
+    )
+    assert implementation_daemon_module.ACTIONABLE_RETRY_EVIDENCE_SCHEMA == (
+        "ptr/actionable-retry-evidence@1"
+    )
+    assert implementation_daemon_module.MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES == (
+        16 * 1_024
+    )
+    assert implementation_daemon_module.MAX_ACTIONABLE_RETRY_TEXT_BYTES == 2_048
+    assert (
+        implementation_daemon_module.MAX_ACTIONABLE_RETRY_TEXT_BYTES
+        < implementation_daemon_module.MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+    )
+    assert implementation_daemon_module.RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "reconciliation-proposal-admission@1"
+    )
+    assert (
+        implementation_daemon_module.RECONCILIATION_LIFECYCLE_AUTHORITY_SCHEMA
+        == "ipfs_accelerate_py/agent-supervisor/"
+        "reconciliation-lifecycle-authority@1"
+    )
 
 
 def _population(*, prerequisite_status: str = "ready") -> dict[str, object]:
