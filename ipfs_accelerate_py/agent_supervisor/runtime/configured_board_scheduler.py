@@ -966,6 +966,11 @@ def _configured_board_task_state_snapshots(
                     f"task-state projection entry is unreadable: {entry.path}"
                 ) from exc
             if stat.S_ISLNK(metadata.st_mode):
+                # Daemon log aliases such as managed_daemon.latest.log are not
+                # task-state projections.  A symlink posing as task state is
+                # still fail-closed.
+                if not entry.name.endswith("_task_state.json"):
+                    continue
                 raise ConfiguredBoardError(
                     f"task-state projection entry is a symbolic link: {entry.path}"
                 )
