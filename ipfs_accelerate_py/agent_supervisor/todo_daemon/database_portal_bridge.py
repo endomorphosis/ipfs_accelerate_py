@@ -79,10 +79,63 @@ _POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-declared-output-repair@1"
 )
+_POST_MERGE_DECLARED_OUTPUT_REPAIR_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_ids",
+        "candidate_commit",
+        "candidate_tree",
+        "baseline_commit",
+        "failed_integration_commit",
+        "repair_parent_commit",
+        "repair_commit",
+        "repair_tree",
+        "entries",
+        "validation",
+        "rollback_target",
+        "receipt_id",
+    }
+)
+_POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-declared-output-requalification@1"
+)
+_POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "schema",
+            "task_ids",
+            "candidate_commit",
+            "source_repair_receipt_id",
+            "source_repair_commit",
+            "source_repair_receipt",
+            "current_target_commit",
+            "current_target_tree",
+            "entries",
+            "validation",
+            "receipt_id",
+        }
+    )
+)
 _DATABASE_POST_MERGE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery@1"
 )
+_DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-requalification-recovery@1"
+)
+_POST_MERGE_RECOVERY_CURSOR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-declared-output-recovery-cursor@1"
+)
+_POST_MERGE_RECOVERY_CURSOR_STAGES: Final[tuple[str, ...]] = (
+    "completed_requests",
+    "pending_requests",
+    "quarantined_requests",
+    "processing_requests",
+)
+_MAX_POST_MERGE_RECOVERY_CURSOR_BYTES: Final[int] = 64 * 1024
 _POST_MERGE_COMPLETION_STATUSES: Final[frozenset[str]] = frozenset(
     {"merged", "already_merged", "deduplicated", "completed"}
 )
@@ -236,6 +289,36 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+    finally:
+        with suppress(FileNotFoundError):
+            temporary.unlink()
+
+
+def _atomic_write_once(path: Path, payload: bytes) -> bool:
+    """Publish immutable evidence atomically without replacing a first writer."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            return False
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return True
     finally:
         with suppress(FileNotFoundError):
             temporary.unlink()
@@ -889,12 +972,119 @@ class DatabasePortalExecutionBridge:
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
         self.max_task_attempts = int(max_task_attempts)
-        self._completed_recovery_cursor = ""
-        self._active_recovery_cursors = {
-            "pending_requests": "",
-            "quarantined_requests": "",
-            "processing_requests": "",
+
+    def _post_merge_recovery_cursor_path(self) -> Path:
+        if self.merge_queue is None:
+            raise DatabasePortalBridgeError("post-merge recovery queue is unavailable")
+        binding = {
+            "target_repository_id": str(
+                getattr(self.merge_queue, "target_repository_id", "") or ""
+            ),
+            "target_branch": self.merge_target_branch,
+            "attempt_root": str(self.attempt_root),
         }
+        key = hashlib.sha256(_canonical_json(binding)).hexdigest()
+        return (
+            Path(self.merge_queue.queue_dir)
+            / "train"
+            / "post-merge-recovery-cursors"
+            / f"{key}.json"
+        )
+
+    def _empty_post_merge_recovery_cursors(self) -> dict[str, str]:
+        return {stage: "" for stage in _POST_MERGE_RECOVERY_CURSOR_STAGES}
+
+    def _load_post_merge_recovery_cursors(self) -> dict[str, str]:
+        """Load non-authoritative keyset progress, resetting invalid state."""
+
+        if self.merge_queue is None:
+            return self._empty_post_merge_recovery_cursors()
+        path = self._post_merge_recovery_cursor_path()
+        try:
+            if path.stat().st_size > _MAX_POST_MERGE_RECOVERY_CURSOR_BYTES:
+                return self._empty_post_merge_recovery_cursors()
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+            return self._empty_post_merge_recovery_cursors()
+        if not isinstance(raw, Mapping):
+            return self._empty_post_merge_recovery_cursors()
+        value = dict(raw)
+        state_id = str(value.pop("state_id", "") or "")
+        cursors = value.get("cursors")
+        expected_fields = {
+            "schema",
+            "target_repository_id",
+            "target_branch",
+            "attempt_root",
+            "cursors",
+        }
+        if (
+            set(value) != expected_fields
+            or value.get("schema") != _POST_MERGE_RECOVERY_CURSOR_SCHEMA
+            or value.get("target_repository_id")
+            != str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            or value.get("target_branch") != self.merge_target_branch
+            or value.get("attempt_root") != str(self.attempt_root)
+            or not isinstance(cursors, Mapping)
+            or set(cursors) != set(_POST_MERGE_RECOVERY_CURSOR_STAGES)
+            or any(
+                type(cursor) is not str
+                or len(cursor.encode("utf-8", errors="surrogatepass")) > 4096
+                or any(ord(character) < 32 for character in cursor)
+                for cursor in cursors.values()
+            )
+        ):
+            return self._empty_post_merge_recovery_cursors()
+        from ..proof.formal_verification_contracts import content_identity
+
+        if state_id != content_identity(value):
+            return self._empty_post_merge_recovery_cursors()
+        return {stage: str(cursors[stage]) for stage in _POST_MERGE_RECOVERY_CURSOR_STAGES}
+
+    def _save_post_merge_recovery_cursors(
+        self,
+        cursors: Mapping[str, str],
+    ) -> None:
+        if self.merge_queue is None:
+            return
+        from ..proof.formal_verification_contracts import content_identity
+
+        normalized = {
+            stage: str(cursors.get(stage) or "")
+            for stage in _POST_MERGE_RECOVERY_CURSOR_STAGES
+        }
+        body: dict[str, Any] = {
+            "schema": _POST_MERGE_RECOVERY_CURSOR_SCHEMA,
+            "target_repository_id": str(
+                getattr(self.merge_queue, "target_repository_id", "") or ""
+            ),
+            "target_branch": self.merge_target_branch,
+            "attempt_root": str(self.attempt_root),
+            "cursors": normalized,
+        }
+        body["state_id"] = content_identity(body)
+        _atomic_write(
+            self._post_merge_recovery_cursor_path(),
+            json.dumps(body, indent=2, sort_keys=True).encode("utf-8") + b"\n",
+        )
+
+    def _advance_post_merge_recovery_cursor(
+        self,
+        cursors: dict[str, str],
+        stage: str,
+        page: Sequence[Any],
+    ) -> None:
+        next_cursor = (
+            str(getattr(page[-1], "request_id", "") or "") if page else ""
+        )
+        # The cursor is non-authoritative bookkeeping.  An idle maintenance
+        # tick must not create durable filesystem churn while reporting zero
+        # writes; preserve the write only for real progress or end-of-scan
+        # wrap (non-empty -> empty).
+        if cursors.get(stage, "") == next_cursor:
+            return
+        cursors[stage] = next_cursor
+        self._save_post_merge_recovery_cursors(cursors)
 
     def _validation_repository_scope(self, body: Mapping[str, Any]) -> str:
         """Return the checked nested repository namespace for this task.
@@ -1245,18 +1435,19 @@ class DatabasePortalExecutionBridge:
             or not str(repair_receipt.get("receipt_id") or "")
         ):
             return None
-        if not self._repair_receipt_matches_current_target(repair_receipt):
+        qualification_receipt = self._repair_receipt_for_current_target(
+            repair_receipt,
+            request=request,
+            projection=projection,
+        )
+        if qualification_receipt is None:
             return None
         binding = projection.binding
         evidence: dict[str, Any] = {
-            "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
             "request_id": str(getattr(request, "request_id", "") or ""),
             "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
             "task_alias": task_alias,
             "candidate_commit": str(completion["candidate_commit"]),
-            "repair_commit": target_commit,
-            "repair_receipt_id": str(repair_receipt["receipt_id"]),
-            "repair_receipt": dict(repair_receipt),
             "source_attempt_id": str(binding.get("attempt_id") or ""),
             "source_claim_id": str(binding.get("claim_id") or ""),
             "source_lease_id": str(binding.get("lease_id") or ""),
@@ -1267,6 +1458,36 @@ class DatabasePortalExecutionBridge:
                 binding.get("projection_immutable_digest") or ""
             ),
         }
+        qualification_schema = str(
+            qualification_receipt.get("schema") or ""
+        )
+        if qualification_schema == _POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA:
+            evidence.update(
+                schema=_DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                repair_commit=str(
+                    qualification_receipt.get("repair_commit") or ""
+                ),
+                repair_receipt_id=str(
+                    qualification_receipt.get("receipt_id") or ""
+                ),
+                repair_receipt=dict(qualification_receipt),
+            )
+        elif (
+            qualification_schema
+            == _POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA
+        ):
+            evidence.update(
+                schema=_DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
+                qualified_target_commit=str(
+                    qualification_receipt.get("current_target_commit") or ""
+                ),
+                requalification_receipt_id=str(
+                    qualification_receipt.get("receipt_id") or ""
+                ),
+                requalification_receipt=dict(qualification_receipt),
+            )
+        else:
+            return None
         if (
             not evidence["request_id"]
             or not evidence["source_attempt_id"]
@@ -1292,21 +1513,20 @@ class DatabasePortalExecutionBridge:
         evidence["evidence_id"] = str(evidence_id)
         return evidence
 
-    def _repair_receipt_matches_current_target(
+    def _repair_receipt_current_target_identity(
         self,
         repair_receipt: Mapping[str, Any],
-    ) -> bool:
-        """Require repair evidence to describe the exact live target tree.
+    ) -> tuple[str, str, bool] | None:
+        """Verify source lineage and exact declared blobs at the live target.
 
-        Queue completion can precede the DuckDB retry CAS.  A later target
-        mutation must not promote a once-valid repair receipt into current
-        completion evidence.  Recovery is deliberately conservative: another
-        target commit requires a new current-tree validation receipt, even if
-        the recorded output blobs happen to survive unchanged.
+        The returned boolean is true only when the live target is the recorded
+        repair commit itself.  A descendant is merely eligible for fresh,
+        uncached declared validation; ancestry and preserved output blobs do
+        not by themselves authorize database recovery.
         """
 
         if self.repository_root is None or not self.merge_target_branch:
-            return False
+            return None
         repair_commit = str(repair_receipt.get("repair_commit") or "")
         repair_tree = str(repair_receipt.get("repair_tree") or "")
         candidate_commit = str(
@@ -1323,7 +1543,7 @@ class DatabasePortalExecutionBridge:
             or not entries
             or len(entries) > 4096
         ):
-            return False
+            return None
 
         def git(*arguments: str) -> subprocess.CompletedProcess[str]:
             return subprocess.run(
@@ -1348,51 +1568,607 @@ class DatabasePortalExecutionBridge:
                 candidate_commit,
                 repair_commit,
             )
+            current_ancestry = git(
+                "merge-base",
+                "--is-ancestor",
+                repair_commit,
+                head.stdout.strip(),
+            )
+            current_tree = git(
+                "rev-parse",
+                "--verify",
+                f"{head.stdout.strip()}^{{tree}}",
+            )
         except (OSError, subprocess.SubprocessError):
-            return False
+            return None
+        current_head = head.stdout.strip()
+        current_tree_id = current_tree.stdout.strip()
         if (
             head.returncode != 0
-            or head.stdout.strip() != repair_commit
+            or re.fullmatch(r"[0-9a-f]{40}", current_head) is None
             or tree.returncode != 0
             or tree.stdout.strip() != repair_tree
             or ancestry.returncode != 0
+            or current_ancestry.returncode != 0
+            or current_tree.returncode != 0
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                current_tree_id,
+            )
+            is None
         ):
-            return False
+            return None
 
         observed_paths: set[str] = set()
         for raw_entry in entries:
             if not isinstance(raw_entry, Mapping):
-                return False
+                return None
             path = str(raw_entry.get("path") or "")
             if not path or path in observed_paths:
-                return False
+                return None
             try:
                 safe_path = _safe_output_path(path)
-                item = subprocess.run(
-                    [
-                        "git",
-                        "ls-tree",
-                        "-z",
-                        repair_commit,
-                        "--",
-                        safe_path,
-                    ],
-                    cwd=self.repository_root,
-                    capture_output=True,
-                    check=False,
-                    timeout=10,
-                )
+                observed_items = [
+                    subprocess.run(
+                        [
+                            "git",
+                            "ls-tree",
+                            "-z",
+                            commit,
+                            "--",
+                            safe_path,
+                        ],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    for commit in (repair_commit, current_head)
+                ]
             except (OSError, subprocess.SubprocessError):
-                return False
+                return None
             expected = (
                 f"{raw_entry.get('mode')} "
                 f"{raw_entry.get('object_type')} "
                 f"{raw_entry.get('object_id')}\t{safe_path}\0"
             ).encode("utf-8")
-            if item.returncode != 0 or item.stdout != expected:
-                return False
+            if any(
+                item.returncode != 0 or item.stdout != expected
+                for item in observed_items
+            ):
+                return None
             observed_paths.add(path)
-        return True
+        return current_head, current_tree_id, current_head == repair_commit
+
+    @staticmethod
+    def _post_merge_requalification_receipt_path(
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        source_receipt_id: str,
+        current_head: str,
+        current_tree: str,
+    ) -> Path:
+        key = hashlib.sha256(
+            _canonical_json(
+                {
+                    "source_repair_receipt_id": source_receipt_id,
+                    "current_target_commit": current_head,
+                    "current_target_tree": current_tree,
+                }
+            )
+        ).hexdigest()
+        return (
+            projection.paths.root
+            / "post-merge-declared-output-requalification"
+            / f"{key}.json"
+        )
+
+    @staticmethod
+    def _verified_post_merge_requalification_receipt(
+        raw: Any,
+        *,
+        source_repair_receipt: Mapping[str, Any],
+        task_alias: str,
+        current_head: str,
+        current_tree: str,
+    ) -> dict[str, Any] | None:
+        from ..proof.formal_verification_contracts import content_identity
+
+        if not isinstance(raw, Mapping):
+            return None
+        value = dict(raw)
+        receipt_id = str(value.pop("receipt_id", "") or "")
+        source_receipt_id = str(
+            source_repair_receipt.get("receipt_id") or ""
+        )
+        validations = value.get("validation")
+        expected_validation_fields = {
+            "task_id",
+            "passed",
+            "returncode",
+            "validation_result_digests",
+            "command_count",
+            "log_sha256",
+        }
+        if (
+            set(raw) != _POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_FIELDS
+            or value.get("schema")
+            != _POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA
+            or value.get("task_ids") != [task_alias]
+            or value.get("candidate_commit")
+            != source_repair_receipt.get("candidate_commit")
+            or value.get("source_repair_receipt_id") != source_receipt_id
+            or value.get("source_repair_commit")
+            != source_repair_receipt.get("repair_commit")
+            or value.get("source_repair_receipt")
+            != dict(source_repair_receipt)
+            or value.get("current_target_commit") != current_head
+            or value.get("current_target_tree") != current_tree
+            or value.get("entries") != source_repair_receipt.get("entries")
+            or not isinstance(validations, list)
+            or len(validations) != 1
+            or receipt_id != content_identity(value)
+        ):
+            return None
+        validation = validations[0]
+        digests = (
+            validation.get("validation_result_digests")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        command_count = (
+            validation.get("command_count")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if (
+            not isinstance(validation, Mapping)
+            or set(validation) != expected_validation_fields
+            or validation.get("task_id") != task_alias
+            or validation.get("passed") is not True
+            or validation.get("returncode") != 0
+            or isinstance(command_count, bool)
+            or not isinstance(command_count, int)
+            or command_count < 1
+            or not isinstance(digests, list)
+            or len(digests) != command_count
+            or any(
+                re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(item)) is None
+                for item in digests
+            )
+            or re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(validation.get("log_sha256") or ""),
+            )
+            is None
+        ):
+            return None
+        return {**value, "receipt_id": receipt_id}
+
+    def _load_post_merge_requalification_receipt(
+        self,
+        path: Path,
+        *,
+        source_repair_receipt: Mapping[str, Any],
+        task_alias: str,
+        current_head: str,
+        current_tree: str,
+    ) -> dict[str, Any] | None:
+        try:
+            if path.stat().st_size > _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+                return None
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        return self._verified_post_merge_requalification_receipt(
+            raw,
+            source_repair_receipt=source_repair_receipt,
+            task_alias=task_alias,
+            current_head=current_head,
+            current_tree=current_tree,
+        )
+
+    def _requalify_descendant_repair_receipt(
+        self,
+        repair_receipt: Mapping[str, Any],
+        *,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        current_head: str,
+        current_tree: str,
+    ) -> dict[str, Any] | None:
+        """Run the sealed task's declared validations at an exact descendant.
+
+        Requalification is proposal-tier evidence for reopening the database
+        task.  It runs no provider and grants no completion authority.  The
+        canonical checkout lease guards creation of the detached validation
+        worktree, while the merge-train consumer lease held by the caller
+        prevents a competing queue integration from advancing the target.
+        """
+
+        if self.repository_root is None or self.merge_queue is None:
+            return None
+        task_alias = str(getattr(request, "task_id", "") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        receipt_task_ids = repair_receipt.get("task_ids")
+        if (
+            not task_alias
+            or not task_cid
+            or not isinstance(receipt_task_ids, list)
+            or receipt_task_ids != [task_alias]
+        ):
+            # A database attempt projects exactly one task.  It cannot
+            # revalidate additional receipt members it does not own.
+            return None
+        source_receipt_id = str(repair_receipt.get("receipt_id") or "")
+        receipt_path = self._post_merge_requalification_receipt_path(
+            projection,
+            source_receipt_id=source_receipt_id,
+            current_head=current_head,
+            current_tree=current_tree,
+        )
+        if receipt_path.exists():
+            # Immutable current-tree evidence is replayed verbatim.  Never run
+            # a second validation (whose log identity could change the CAS
+            # evidence) once the first valid receipt has been published.
+            return self._load_post_merge_requalification_receipt(
+                receipt_path,
+                source_repair_receipt=repair_receipt,
+                task_alias=task_alias,
+                current_head=current_head,
+                current_tree=current_tree,
+            )
+
+        portal = self.portal_factory(projection.paths, task_alias)
+        if portal is None:
+            raise DatabasePortalBridgeError(
+                "portal_factory did not return a Portal-compatible daemon"
+            )
+        close = getattr(portal, "close_event_runtime", None) or getattr(
+            portal,
+            "close",
+            None,
+        )
+        try:
+            portal_queue = getattr(portal, "merge_queue", None)
+            portal_repo_root = getattr(portal, "repo_root", None)
+            portal_target = str(
+                getattr(portal, "resolved_merge_target_branch", "") or ""
+            )
+            load_tasks = getattr(portal, "_load_tasks", None)
+            run_validation = getattr(portal, "_run_validation_commands", None)
+            run_mutation = getattr(
+                portal,
+                "_run_checkout_mutation_transaction",
+                None,
+            )
+            cleanup_workspace = getattr(
+                portal,
+                "_cleanup_main_merge_workspace",
+                None,
+            )
+            if (
+                portal_queue is not self.merge_queue
+                or portal_repo_root is None
+                or Path(portal_repo_root).absolute() != self.repository_root
+                or portal_target != self.merge_target_branch
+                or not callable(load_tasks)
+                or not callable(run_validation)
+                or not callable(run_mutation)
+                or not callable(cleanup_workspace)
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal recovery daemon lacks current-tree validation authority"
+                )
+            try:
+                tasks = list(load_tasks())
+            except Exception:
+                return None
+            if (
+                [str(getattr(task, "task_id", "") or "") for task in tasks]
+                != [task_alias]
+                or str(getattr(tasks[0], "canonical_task_cid", "") or "")
+                != task_cid
+                or not tuple(getattr(tasks[0], "validation", ()) or ())
+            ):
+                return None
+
+            def validate_current_tree() -> dict[str, Any]:
+                result: dict[str, Any] = {
+                    "passed": False,
+                    "reason": "current_tree_requalification_failed",
+                    "validation": [],
+                }
+                validation_root = (
+                    projection.paths.root
+                    / "post-merge-declared-output-requalification"
+                )
+                validation_root.mkdir(parents=True, exist_ok=True)
+                temporary = Path(
+                    tempfile.mkdtemp(
+                        prefix="worktree-",
+                        dir=validation_root,
+                    )
+                )
+                temporary.rmdir()
+                workspace_added = False
+                try:
+                    before = subprocess.run(
+                        [
+                            "git",
+                            "rev-parse",
+                            "--verify",
+                            f"refs/heads/{self.merge_target_branch}^{{commit}}",
+                        ],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                    if before.returncode != 0 or before.stdout.strip() != current_head:
+                        result["reason"] = "requalification_target_advanced"
+                        return result
+                    added = subprocess.run(
+                        [
+                            "git",
+                            "worktree",
+                            "add",
+                            "--detach",
+                            str(temporary),
+                            current_head,
+                        ],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=30,
+                    )
+                    if added.returncode != 0:
+                        result["reason"] = (
+                            "requalification_validation_worktree_unavailable"
+                        )
+                        return result
+                    workspace_added = True
+                    summaries: list[dict[str, Any]] = []
+                    log_root = projection.paths.implementation_logs / (
+                        "post-merge-declared-output-requalification"
+                    )
+                    log_root.mkdir(parents=True, exist_ok=True)
+                    for task in tasks:
+                        log_path = log_root / (
+                            f"{task_alias}-{current_head[:16]}.log"
+                        )
+                        validation = run_validation(
+                            temporary,
+                            task,
+                            log_path,
+                            force_uncached=True,
+                        )
+                        command_results = (
+                            validation.get("results")
+                            if isinstance(validation, Mapping)
+                            else None
+                        )
+                        if (
+                            not isinstance(validation, Mapping)
+                            or validation.get("passed") is not True
+                            or validation.get("returncode") != 0
+                            or not isinstance(command_results, list)
+                            or not command_results
+                            or not log_path.is_file()
+                        ):
+                            result["reason"] = (
+                                "requalification_declared_validation_failed"
+                            )
+                            return result
+                        result_digests = [
+                            str(item.get("validation_result_digest") or "")
+                            for item in command_results
+                            if isinstance(item, Mapping)
+                        ]
+                        if (
+                            len(result_digests) != len(command_results)
+                            or any(
+                                re.fullmatch(
+                                    r"(?:sha256:)?[0-9a-f]{64}",
+                                    item,
+                                )
+                                is None
+                                for item in result_digests
+                            )
+                        ):
+                            result["reason"] = (
+                                "requalification_validation_evidence_invalid"
+                            )
+                            return result
+                        summaries.append(
+                            {
+                                "task_id": task_alias,
+                                "passed": True,
+                                "returncode": 0,
+                                "validation_result_digests": result_digests,
+                                "command_count": len(command_results),
+                                "log_sha256": hashlib.sha256(
+                                    log_path.read_bytes()
+                                ).hexdigest(),
+                            }
+                        )
+
+                    workspace_head = subprocess.run(
+                        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                        cwd=temporary,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                    workspace_tree = subprocess.run(
+                        ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                        cwd=temporary,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                    workspace_status = subprocess.run(
+                        [
+                            "git",
+                            "status",
+                            "--porcelain=v1",
+                            "-z",
+                            "--untracked-files=all",
+                        ],
+                        cwd=temporary,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    after = subprocess.run(
+                        [
+                            "git",
+                            "rev-parse",
+                            "--verify",
+                            f"refs/heads/{self.merge_target_branch}^{{commit}}",
+                        ],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                    if (
+                        workspace_head.returncode != 0
+                        or workspace_head.stdout.strip() != current_head
+                        or workspace_tree.returncode != 0
+                        or workspace_tree.stdout.strip() != current_tree
+                        or workspace_status.returncode != 0
+                        or workspace_status.stdout
+                        or after.returncode != 0
+                        or after.stdout.strip() != current_head
+                    ):
+                        result["reason"] = (
+                            "requalification_validation_tree_changed"
+                        )
+                        return result
+                    result.update(
+                        passed=True,
+                        reason="current_tree_requalified",
+                        validation=summaries,
+                    )
+                    return result
+                except (OSError, subprocess.SubprocessError):
+                    result["reason"] = "requalification_validation_unavailable"
+                    return result
+                finally:
+                    if workspace_added:
+                        cleanup = cleanup_workspace(temporary, ephemeral=True)
+                        if (
+                            not isinstance(cleanup, Mapping)
+                            or cleanup.get("cleaned") is not True
+                        ):
+                            result.update(
+                                passed=False,
+                                reason=(
+                                    "requalification_validation_workspace_cleanup_failed"
+                                ),
+                            )
+
+            transaction = run_mutation(
+                task_id=task_alias,
+                branch=self.merge_target_branch,
+                operation="requalify_post_merge_declared_outputs",
+                callback=validate_current_tree,
+                failure_fields={"passed": False},
+                extra={
+                    "current_target_commit": current_head,
+                    "source_repair_commit": str(
+                        repair_receipt.get("repair_commit") or ""
+                    ),
+                },
+            )
+            validations = (
+                transaction.get("validation")
+                if isinstance(transaction, Mapping)
+                else None
+            )
+            if (
+                not isinstance(transaction, Mapping)
+                or transaction.get("passed") is not True
+                or not isinstance(validations, list)
+                or len(validations) != len(tasks)
+            ):
+                return None
+        finally:
+            if callable(close):
+                close()
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        qualified: dict[str, Any] = {
+            "schema": _POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
+            "task_ids": [task_alias],
+            "candidate_commit": str(
+                repair_receipt.get("candidate_commit") or ""
+            ),
+            "source_repair_receipt_id": source_receipt_id,
+            "source_repair_commit": str(
+                repair_receipt.get("repair_commit") or ""
+            ),
+            "source_repair_receipt": dict(repair_receipt),
+            "current_target_commit": current_head,
+            "current_target_tree": current_tree,
+            "entries": list(repair_receipt.get("entries") or ()),
+            "validation": [dict(item) for item in validations],
+        }
+        qualified["receipt_id"] = content_identity(qualified)
+        _atomic_write_once(
+            receipt_path,
+            json.dumps(qualified, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return self._load_post_merge_requalification_receipt(
+            receipt_path,
+            source_repair_receipt=repair_receipt,
+            task_alias=task_alias,
+            current_head=current_head,
+            current_tree=current_tree,
+        )
+
+    def _repair_receipt_for_current_target(
+        self,
+        repair_receipt: Mapping[str, Any],
+        *,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+    ) -> dict[str, Any] | None:
+        """Return exact or freshly requalified current-tree repair evidence."""
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        if set(repair_receipt) != _POST_MERGE_DECLARED_OUTPUT_REPAIR_FIELDS:
+            return None
+        source = dict(repair_receipt)
+        source_receipt_id = str(source.pop("receipt_id", "") or "")
+        if (
+            repair_receipt.get("schema")
+            != _POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA
+            or source_receipt_id != content_identity(source)
+        ):
+            return None
+        identity = self._repair_receipt_current_target_identity(repair_receipt)
+        if identity is None:
+            return None
+        current_head, current_tree, exact = identity
+        if exact:
+            return dict(repair_receipt)
+        return self._requalify_descendant_repair_receipt(
+            repair_receipt,
+            request=request,
+            projection=projection,
+            current_head=current_head,
+            current_tree=current_tree,
+        )
 
     @staticmethod
     def _record_for_attempt(task_source: Any, attempt: Any) -> Any:
@@ -2514,10 +3290,12 @@ class DatabasePortalExecutionBridge:
             ),
         )
 
-        # Queue completion precedes the database CAS.  Replaying its compact
-        # metadata is therefore the first operation after every restart.  The
-        # page is filtered before LIMIT and the cursor advances across ticks,
-        # so unrelated or stale history cannot crowd out an older repair.
+        # Queue completion precedes the database CAS.  Replay at most one
+        # keyset page per stage and tick.  Durable, target-and-lane-bound
+        # non-authoritative cursors let reconstructed --once bridges continue
+        # without an unbounded scan under the canonical consumer lease.
+        cursors = self._load_post_merge_recovery_cursors()
+
         def completion_recovery_page(cursor: str) -> Sequence[Any]:
             return self.merge_queue.completed_requests(
                 limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
@@ -2531,14 +3309,16 @@ class DatabasePortalExecutionBridge:
             )
 
         completion_page = completion_recovery_page(
-            self._completed_recovery_cursor
+            cursors["completed_requests"]
         )
-        if not completion_page and self._completed_recovery_cursor:
-            self._completed_recovery_cursor = ""
-            completion_page = completion_recovery_page("")
 
         def replay_completed_page() -> Mapping[str, Any] | None:
             for snapshot in completion_page:
+                snapshot_projection = (
+                    self._owned_post_merge_recovery_projection(snapshot)
+                )
+                if snapshot_projection is None:
+                    continue
                 completed = self.merge_queue.get(
                     str(getattr(snapshot, "request_id", "") or "")
                 )
@@ -2573,12 +3353,19 @@ class DatabasePortalExecutionBridge:
             )
             if not acquired:
                 return None
-            self._completed_recovery_cursor = str(
-                getattr(completion_page[-1], "request_id", "") or ""
+            self._advance_post_merge_recovery_cursor(
+                cursors,
+                "completed_requests",
+                completion_page,
             )
             if replay_result is not None:
-                self._completed_recovery_cursor = ""
                 return dict(replay_result)
+        else:
+            self._advance_post_merge_recovery_cursor(
+                cursors,
+                "completed_requests",
+                (),
+            )
 
         selected: Any = None
         selected_projection: _DatabasePortalRecoveryProjection | None = None
@@ -2588,29 +3375,26 @@ class DatabasePortalExecutionBridge:
             "processing_requests",
         ):
             snapshot = getattr(self.merge_queue, snapshot_name)
-            cursor = self._active_recovery_cursors[snapshot_name]
             page = snapshot(
                 limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
-                after_request_id=cursor,
+                after_request_id=cursors[snapshot_name],
             )
-            if not page and cursor:
-                self._active_recovery_cursors[snapshot_name] = ""
-                page = snapshot(
-                    limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
-                    after_request_id="",
-                )
             for request in page:
-                projection = self._owned_post_merge_recovery_projection(request)
+                projection = self._owned_post_merge_recovery_projection(
+                    request
+                )
                 if projection is not None:
                     selected = request
                     selected_projection = projection
                     break
+            if selected is None:
+                self._advance_post_merge_recovery_cursor(
+                    cursors,
+                    snapshot_name,
+                    page,
+                )
             if selected is not None:
                 break
-            if page:
-                self._active_recovery_cursors[snapshot_name] = str(
-                    getattr(page[-1], "request_id", "") or ""
-                )
         if selected is None or selected_projection is None:
             return None
 

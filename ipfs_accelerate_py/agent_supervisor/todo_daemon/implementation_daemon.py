@@ -2931,6 +2931,10 @@ POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-declared-output-repair@1"
 )
+POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-declared-output-requalification@1"
+)
 POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS = frozenset(
     {
         "repair_declared_output_paths_invalid",
@@ -69848,6 +69852,10 @@ DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery@1"
 )
+DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-requalification-recovery@1"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -70487,6 +70495,12 @@ class DatabaseImplementationDaemon:
         try:
             raw = callback()
         except Exception as exc:
+            # The callback spans the file-backed merge queue and the
+            # database control plane.  An exception may therefore arrive
+            # after either authority durably committed its half of the
+            # recovery transition (including a lost response).  Treat the
+            # pass as changed conservatively so an idle runner never reports
+            # a potentially partial recovery as unchanged.
             return {
                 "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
                 "attempted": True,
@@ -70494,7 +70508,8 @@ class DatabaseImplementationDaemon:
                 "reason": "post_merge_recovery_callback_failed",
                 "error_type": type(exc).__name__,
                 "error": str(exc)[-2000:],
-                "write_count": 0,
+                "durable_state_uncertain": True,
+                "write_count": 1,
             }
         if raw is None:
             return {
@@ -70510,25 +70525,43 @@ class DatabaseImplementationDaemon:
                 "attempted": True,
                 "recovered": False,
                 "reason": "post_merge_recovery_result_invalid",
-                "write_count": 0,
+                "durable_state_uncertain": True,
+                "write_count": 1,
             }
         result = dict(raw)
         raw_write_count = result.get("write_count", 0)
-        if (
+        envelope_invalid = (
+            result.get("schema") != DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            or result.get("attempted") is not True
+            or not isinstance(result.get("recovered"), bool)
+            or (
+                result.get("recovered") is True
+                and not isinstance(result.get("changed"), bool)
+            )
+            or (
+                result.get("recovered") is False
+                and not str(result.get("reason") or "").strip()
+            )
+        )
+        write_count_invalid = (
             isinstance(raw_write_count, bool)
             or not isinstance(raw_write_count, int)
             or raw_write_count < 0
             or raw_write_count > 1024
-        ):
+        )
+        if envelope_invalid or write_count_invalid:
             return {
                 "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
                 "attempted": True,
                 "recovered": False,
-                "reason": "post_merge_recovery_write_count_invalid",
-                "write_count": 0,
+                "reason": (
+                    "post_merge_recovery_result_invalid"
+                    if envelope_invalid
+                    else "post_merge_recovery_write_count_invalid"
+                ),
+                "durable_state_uncertain": True,
+                "write_count": 1,
             }
-        result.setdefault("schema", DATABASE_POST_MERGE_RECOVERY_SCHEMA)
-        result.setdefault("attempted", True)
         result["write_count"] = raw_write_count
         return result
 
@@ -73392,6 +73425,131 @@ class DatabaseImplementationDaemon:
             )
         return {**value, "receipt_id": str(receipt_id)}
 
+    def _verified_post_merge_declared_output_requalification_receipt(
+        self,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify an immutable current-tree qualification and its source repair."""
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output requalification is malformed"
+            )
+        value = dict(raw)
+        receipt_id = value.pop("receipt_id", None)
+        expected_fields = {
+            "schema",
+            "task_ids",
+            "candidate_commit",
+            "source_repair_receipt_id",
+            "source_repair_commit",
+            "source_repair_receipt",
+            "current_target_commit",
+            "current_target_tree",
+            "entries",
+            "validation",
+        }
+        task_ids = value.get("task_ids")
+        entries = value.get("entries")
+        validations = value.get("validation")
+        source_repair = (
+            self._verified_post_merge_declared_output_repair_receipt(
+                value.get("source_repair_receipt")
+            )
+        )
+        git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
+        if (
+            set(value) != expected_fields
+            or value.get("schema")
+            != POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA
+            or not isinstance(task_ids, list)
+            or not task_ids
+            or any(
+                not isinstance(task_id, str) or not task_id.strip()
+                for task_id in task_ids
+            )
+            or len(set(task_ids)) != len(task_ids)
+            or any(
+                re.fullmatch(git_id, str(value.get(field) or "")) is None
+                for field in (
+                    "candidate_commit",
+                    "source_repair_commit",
+                    "current_target_commit",
+                    "current_target_tree",
+                )
+            )
+            or value.get("current_target_commit")
+            == value.get("source_repair_commit")
+            or value.get("source_repair_receipt_id")
+            != source_repair.get("receipt_id")
+            or value.get("source_repair_commit")
+            != source_repair.get("repair_commit")
+            or value.get("candidate_commit")
+            != source_repair.get("candidate_commit")
+            or task_ids != source_repair.get("task_ids")
+            or entries != source_repair.get("entries")
+            or not isinstance(entries, list)
+            or not entries
+            or not isinstance(validations, list)
+            or len(validations) != len(task_ids)
+            or receipt_id != content_identity(value)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output requalification is invalid"
+            )
+        validation_task_ids: list[str] = []
+        for validation in validations:
+            digests = (
+                validation.get("validation_result_digests")
+                if isinstance(validation, Mapping)
+                else None
+            )
+            command_count = (
+                validation.get("command_count")
+                if isinstance(validation, Mapping)
+                else None
+            )
+            if (
+                not isinstance(validation, Mapping)
+                or set(validation)
+                != {
+                    "task_id",
+                    "passed",
+                    "returncode",
+                    "validation_result_digests",
+                    "command_count",
+                    "log_sha256",
+                }
+                or not isinstance(validation.get("task_id"), str)
+                or not str(validation.get("task_id") or "").strip()
+                or validation.get("passed") is not True
+                or validation.get("returncode") != 0
+                or isinstance(command_count, bool)
+                or not isinstance(command_count, int)
+                or command_count < 0
+                or not isinstance(digests, list)
+                or len(digests) != command_count
+                or any(
+                    re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(item))
+                    is None
+                    for item in digests
+                )
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(validation.get("log_sha256") or ""),
+                )
+                is None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge requalification validation is invalid"
+                )
+            validation_task_ids.append(str(validation["task_id"]))
+        if validation_task_ids != task_ids:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge requalification task identities do not match"
+            )
+        return {**value, "receipt_id": str(receipt_id)}
+
     def recover_blocked_post_merge_declared_outputs(
         self,
         evidence: Mapping[str, Any],
@@ -73411,15 +73569,12 @@ class DatabaseImplementationDaemon:
         )
         raw = dict(evidence)
         evidence_id = str(raw.pop("evidence_id", "") or "")
-        required_fields = {
+        common_fields = {
             "schema",
             "request_id",
             "task_cid",
             "task_alias",
             "candidate_commit",
-            "repair_commit",
-            "repair_receipt_id",
-            "repair_receipt",
             "source_attempt_id",
             "source_claim_id",
             "source_lease_id",
@@ -73428,14 +73583,74 @@ class DatabaseImplementationDaemon:
             "source_binding_id",
             "source_projection_immutable_digest",
         }
-        repair_receipt = (
-            self._verified_post_merge_declared_output_repair_receipt(
-                raw.get("repair_receipt")
+        evidence_schema = str(raw.get("schema") or "")
+        if evidence_schema == DATABASE_POST_MERGE_RECOVERY_SCHEMA:
+            required_fields = common_fields | {
+                "repair_commit",
+                "repair_receipt_id",
+                "repair_receipt",
+            }
+            qualification_receipt = (
+                self._verified_post_merge_declared_output_repair_receipt(
+                    raw.get("repair_receipt")
+                )
             )
-        )
+            qualified_target_commit = str(raw.get("repair_commit") or "")
+            qualification_receipt_id = str(
+                raw.get("repair_receipt_id") or ""
+            )
+            qualification_kind = "repair"
+            receipt_matches_evidence = (
+                qualification_receipt.get("schema")
+                == POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA
+                and qualification_receipt.get("candidate_commit")
+                == raw.get("candidate_commit")
+                and qualification_receipt.get("repair_commit")
+                == raw.get("repair_commit")
+                and raw.get("task_alias")
+                in (qualification_receipt.get("task_ids") or ())
+                and qualification_receipt.get("receipt_id")
+                == qualification_receipt_id
+            )
+        elif (
+            evidence_schema
+            == DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA
+        ):
+            required_fields = common_fields | {
+                "qualified_target_commit",
+                "requalification_receipt_id",
+                "requalification_receipt",
+            }
+            qualification_receipt = (
+                self._verified_post_merge_declared_output_requalification_receipt(
+                    raw.get("requalification_receipt")
+                )
+            )
+            qualified_target_commit = str(
+                raw.get("qualified_target_commit") or ""
+            )
+            qualification_receipt_id = str(
+                raw.get("requalification_receipt_id") or ""
+            )
+            qualification_kind = "requalification"
+            receipt_matches_evidence = (
+                qualification_receipt.get("schema")
+                == POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA
+                and qualification_receipt.get("candidate_commit")
+                == raw.get("candidate_commit")
+                and qualification_receipt.get("current_target_commit")
+                == raw.get("qualified_target_commit")
+                and raw.get("task_alias")
+                in (qualification_receipt.get("task_ids") or ())
+                and qualification_receipt.get("receipt_id")
+                == qualification_receipt_id
+            )
+        else:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery schema is invalid"
+            )
         if (
             set(raw) != required_fields
-            or raw.get("schema") != DATABASE_POST_MERGE_RECOVERY_SCHEMA
             or not str(raw.get("request_id") or "")
             or not str(raw.get("task_cid") or "")
             or not str(raw.get("task_alias") or "")
@@ -73464,27 +73679,18 @@ class DatabaseImplementationDaemon:
             )
             or not re.fullmatch(
                 r"[0-9a-f]{40}",
-                str(raw.get("repair_commit") or ""),
+                qualified_target_commit,
             )
-            or not isinstance(repair_receipt, Mapping)
-            or repair_receipt.get("schema")
-            != POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA
-            or repair_receipt.get("candidate_commit")
-            != raw.get("candidate_commit")
-            or repair_receipt.get("repair_commit")
-            != raw.get("repair_commit")
-            or raw.get("task_alias")
-            not in (repair_receipt.get("task_ids") or ())
-            or repair_receipt.get("receipt_id")
-            != raw.get("repair_receipt_id")
+            or not isinstance(qualification_receipt, Mapping)
+            or not receipt_matches_evidence
             or content_identity(
                 {
                     key: value
-                    for key, value in repair_receipt.items()
+                    for key, value in qualification_receipt.items()
                     if key != "receipt_id"
                 }
             )
-            != raw.get("repair_receipt_id")
+            != qualification_receipt_id
             or evidence_id != self._database_portal_evidence_digest(raw)
         ):
             raise DatabaseImplementationAuthorityError(
@@ -73535,10 +73741,12 @@ class DatabaseImplementationDaemon:
             )
         status = str(task.status or "").strip().lower()
         queue_reason = (
-            "database_post_merge_declared_outputs_repair:"
+            "database_post_merge_declared_outputs_"
+            + qualification_kind
+            + ":"
             + str(raw["request_id"])
             + ":"
-            + str(raw["repair_receipt_id"])
+            + qualification_receipt_id
         )[:2048]
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
         record_queue_backoff = getattr(
@@ -73565,7 +73773,17 @@ class DatabaseImplementationDaemon:
                 "task_cid": task_cid,
                 "task_alias": str(raw["task_alias"]),
                 "request_id": str(raw["request_id"]),
-                "repair_commit": str(raw["repair_commit"]),
+                "qualified_target_commit": qualified_target_commit,
+                "qualification_kind": qualification_kind,
+                "qualification_receipt_id": qualification_receipt_id,
+                **(
+                    {
+                        "repair_commit": qualified_target_commit,
+                        "repair_receipt_id": qualification_receipt_id,
+                    }
+                    if qualification_kind == "repair"
+                    else {}
+                ),
                 "evidence_id": evidence_id,
                 "write_count": 0,
             }
@@ -73577,12 +73795,22 @@ class DatabaseImplementationDaemon:
 
         coordination = self._reconcile_failed_attempt_coordination(latest)
         self._protect_retry_transition_authority(latest, coordination)
-        queue_receipt = record_queue_backoff(
-            task_cid=task_cid,
-            delay_ms=0,
-            reason=queue_reason,
-        )
         queue_entry = get_queue_entry(task_cid)
+        queue_reused = (
+            queue_entry is not None
+            and str(getattr(queue_entry, "reason", "") or "")
+            == queue_reason
+        )
+        if queue_reused:
+            queue_receipt_dict: dict[str, Any] = {}
+        else:
+            queue_receipt = record_queue_backoff(
+                task_cid=task_cid,
+                delay_ms=0,
+                reason=queue_reason,
+            )
+            queue_receipt_dict = queue_receipt.to_dict()
+            queue_entry = get_queue_entry(task_cid)
         if (
             queue_entry is None
             or str(getattr(queue_entry, "reason", "") or "") != queue_reason
@@ -73591,13 +73819,34 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery queue write did not reproduce"
             )
         self._protect_retry_transition_authority(latest, coordination)
+        qualification_control_fields = (
+            {
+                "repair_commit": qualified_target_commit,
+                "repair_receipt_id": qualification_receipt_id,
+                "repair_evidence_id": evidence_id,
+            }
+            if qualification_kind == "repair"
+            else {
+                "source_repair_commit": str(
+                    qualification_receipt["source_repair_commit"]
+                ),
+                "source_repair_receipt_id": str(
+                    qualification_receipt["source_repair_receipt_id"]
+                ),
+                "qualified_target_commit": qualified_target_commit,
+                "requalification_receipt_id": qualification_receipt_id,
+                "requalification_evidence_id": evidence_id,
+            }
+        )
         cas_result = self._cas_task_status_database(
             task_cid,
             expected_revision=int(task.revision),
             new_status="retrying",
             receipt={
                 "operation": (
-                    "database_post_merge_declared_outputs_repair_recovery"
+                    "database_post_merge_declared_outputs_"
+                    + qualification_kind
+                    + "_recovery"
                 ),
                 "attempt_id": latest.attempt_id,
                 "attempt_number": int(latest.attempt_number),
@@ -73611,21 +73860,19 @@ class DatabaseImplementationDaemon:
                 "execution_finished_at_ms": latest.finished_at_ms,
                 "request_id": str(raw["request_id"]),
                 "candidate_commit": str(raw["candidate_commit"]),
-                "repair_commit": str(raw["repair_commit"]),
-                "repair_receipt_id": str(raw["repair_receipt_id"]),
-                "repair_evidence_id": evidence_id,
+                **qualification_control_fields,
                 "source_binding_id": str(raw["source_binding_id"]),
                 "source_projection_immutable_digest": str(
                     raw["source_projection_immutable_digest"]
                 ),
                 "queue_reason": queue_reason,
-                "queue_receipt": queue_receipt.to_dict(),
+                "queue_receipt": queue_receipt_dict,
                 "coordination": coordination,
                 "control_expected_status": "blocked",
                 "control_expected_revision": int(task.revision),
             },
             evidence_digests=[
-                str(raw["repair_receipt_id"]),
+                qualification_receipt_id,
                 evidence_id,
             ],
         )
@@ -73644,13 +73891,23 @@ class DatabaseImplementationDaemon:
             "task_alias": str(raw["task_alias"]),
             "request_id": str(raw["request_id"]),
             "candidate_commit": str(raw["candidate_commit"]),
-            "repair_commit": str(raw["repair_commit"]),
-            "repair_receipt_id": str(raw["repair_receipt_id"]),
+            "qualified_target_commit": qualified_target_commit,
+            "qualification_kind": qualification_kind,
+            "qualification_receipt_id": qualification_receipt_id,
+            **(
+                {
+                    "repair_commit": qualified_target_commit,
+                    "repair_receipt_id": qualification_receipt_id,
+                }
+                if qualification_kind == "repair"
+                else {}
+            ),
             "evidence_id": evidence_id,
             "coordination": coordination,
-            "queue_receipt": queue_receipt.to_dict(),
+            "queue_reused": queue_reused,
+            "queue_receipt": queue_receipt_dict,
             "control_receipt": dict(to_dict()),
-            "write_count": 2,
+            "write_count": 1 if queue_reused else 2,
         }
 
     def _verified_post_merge_declared_output_recovery_state(
@@ -73672,7 +73929,7 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
-        expected_fields = {
+        common_fields = {
             "operation",
             "attempt_id",
             "attempt_number",
@@ -73686,9 +73943,6 @@ class DatabaseImplementationDaemon:
             "execution_finished_at_ms",
             "request_id",
             "candidate_commit",
-            "repair_commit",
-            "repair_receipt_id",
-            "repair_evidence_id",
             "source_binding_id",
             "source_projection_immutable_digest",
             "queue_reason",
@@ -73697,6 +73951,51 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
+        operation = str(
+            receipt.get("operation") if isinstance(receipt, Mapping) else ""
+        )
+        if (
+            operation
+            == "database_post_merge_declared_outputs_repair_recovery"
+        ):
+            expected_fields = common_fields | {
+                "repair_commit",
+                "repair_receipt_id",
+                "repair_evidence_id",
+            }
+            qualification_kind = "repair"
+            qualified_target_commit = str(receipt.get("repair_commit") or "")
+            qualification_receipt_id = str(
+                receipt.get("repair_receipt_id") or ""
+            )
+            evidence_id = str(receipt.get("repair_evidence_id") or "")
+        elif (
+            operation
+            == "database_post_merge_declared_outputs_requalification_recovery"
+        ):
+            expected_fields = common_fields | {
+                "source_repair_commit",
+                "source_repair_receipt_id",
+                "qualified_target_commit",
+                "requalification_receipt_id",
+                "requalification_evidence_id",
+            }
+            qualification_kind = "requalification"
+            qualified_target_commit = str(
+                receipt.get("qualified_target_commit") or ""
+            )
+            qualification_receipt_id = str(
+                receipt.get("requalification_receipt_id") or ""
+            )
+            evidence_id = str(
+                receipt.get("requalification_evidence_id") or ""
+            )
+        else:
+            expected_fields = common_fields
+            qualification_kind = ""
+            qualified_target_commit = ""
+            qualification_receipt_id = ""
+            evidence_id = ""
         task_revision = getattr(task, "revision", None)
         if (
             not isinstance(receipt, Mapping)
@@ -73708,19 +74007,18 @@ class DatabaseImplementationDaemon:
                 "post-merge declared-output recovery receipt is malformed"
             )
         request_id = str(receipt.get("request_id") or "")
-        repair_receipt_id = str(receipt.get("repair_receipt_id") or "")
-        evidence_id = str(receipt.get("repair_evidence_id") or "")
         queue_reason = (
-            "database_post_merge_declared_outputs_repair:"
+            "database_post_merge_declared_outputs_"
+            + qualification_kind
+            + ":"
             + request_id
             + ":"
-            + repair_receipt_id
+            + qualification_receipt_id
         )[:2048]
         coordination = receipt.get("coordination")
         queue_receipt = receipt.get("queue_receipt")
         identity_mismatch = (
-            receipt.get("operation")
-            != "database_post_merge_declared_outputs_repair_recovery"
+            not qualification_kind
             or receipt.get("attempt_id") != attempt.attempt_id
             or receipt.get("attempt_number") != int(attempt.attempt_number)
             or receipt.get("claim_id") != attempt.claim_id
@@ -73740,11 +74038,22 @@ class DatabaseImplementationDaemon:
             is None
             or re.fullmatch(
                 r"[0-9a-f]{40}",
-                str(receipt.get("repair_commit") or ""),
+                qualified_target_commit,
             )
             is None
-            or not repair_receipt_id
+            or not qualification_receipt_id
             or re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id) is None
+            or (
+                qualification_kind == "requalification"
+                and (
+                    re.fullmatch(
+                        r"[0-9a-f]{40}",
+                        str(receipt.get("source_repair_commit") or ""),
+                    )
+                    is None
+                    or not str(receipt.get("source_repair_receipt_id") or "")
+                )
+            )
             or re.fullmatch(
                 r"sha256:[0-9a-f]{64}",
                 str(receipt.get("source_binding_id") or ""),
@@ -73782,16 +74091,50 @@ class DatabaseImplementationDaemon:
             )
         if expected_evidence is not None:
             expected = dict(expected_evidence)
+            expected_schema = (
+                DATABASE_POST_MERGE_RECOVERY_SCHEMA
+                if qualification_kind == "repair"
+                else DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA
+            )
+            expected_target_commit = str(
+                expected.get(
+                    "repair_commit"
+                    if qualification_kind == "repair"
+                    else "qualified_target_commit"
+                )
+                or ""
+            )
+            expected_receipt_id = str(
+                expected.get(
+                    "repair_receipt_id"
+                    if qualification_kind == "repair"
+                    else "requalification_receipt_id"
+                )
+                or ""
+            )
             if (
-                expected.get("evidence_id") != evidence_id
+                expected.get("schema") != expected_schema
+                or expected.get("evidence_id") != evidence_id
                 or expected.get("request_id") != request_id
                 or expected.get("task_cid") != attempt.task_cid
                 or expected.get("task_alias") != attempt.task_alias
                 or expected.get("candidate_commit")
                 != receipt.get("candidate_commit")
-                or expected.get("repair_commit")
-                != receipt.get("repair_commit")
-                or expected.get("repair_receipt_id") != repair_receipt_id
+                or expected_target_commit != qualified_target_commit
+                or expected_receipt_id != qualification_receipt_id
+                or (
+                    qualification_kind == "requalification"
+                    and (
+                        expected.get("requalification_receipt", {}).get(
+                            "source_repair_commit"
+                        )
+                        != receipt.get("source_repair_commit")
+                        or expected.get("requalification_receipt", {}).get(
+                            "source_repair_receipt_id"
+                        )
+                        != receipt.get("source_repair_receipt_id")
+                    )
+                )
                 or expected.get("source_attempt_id") != attempt.attempt_id
                 or expected.get("source_claim_id") != attempt.claim_id
                 or expected.get("source_lease_id") != attempt.lease_id
@@ -73823,8 +74166,9 @@ class DatabaseImplementationDaemon:
         return {
             "receipt": dict(receipt),
             "request_id": request_id,
-            "repair_receipt_id": repair_receipt_id,
-            "repair_evidence_id": evidence_id,
+            "qualification_kind": qualification_kind,
+            "qualification_receipt_id": qualification_receipt_id,
+            "qualification_evidence_id": evidence_id,
             "queue_reason": queue_reason,
         }
 
