@@ -66,6 +66,9 @@ PROGRAM: Final = "agent-supervisor-proof-carrying-procedure-compiler-v1"
 CONFIG_RELATIVE: Final = "config/agent_supervisor_proof_carrying_procedure_compiler_scheduler.json"
 MATERIALIZER_RELATIVE: Final = "scripts/materialize_agent_supervisor_procedure_compiler_program.py"
 SCHEDULER_RELATIVE: Final = "scripts/ops/agent_supervisor/configured_board_scheduler.py"
+IMPLEMENTATION_ENTRY_RELATIVE: Final = (
+    "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
+)
 OWNER_CONTAINER_NAME: Final = "ipfs-accelerate-pcpc-quack-owner-v1"
 OWNER_CONTAINER_HOSTNAME: Final = "ipfs-accelerate-pcpc-quack-owner-v1"
 OWNER_ISOLATION_FILENAME: Final = "isolation.json"
@@ -1638,9 +1641,16 @@ def _configured_lane_process_ready(
     ):
         return False
 
-    lane_name = f"{config.board_namespace}-lane-{lane_index}"
+    # Ordinary PCPC shards are "{namespace}-{index}" with the reusable
+    # implementation-supervisor entry.  The sealed "-lane-" / "-I -c" shape is
+    # the v3 plan-bound child, not this board.
+    max_lanes = bindings.get("max_lanes")
+    if type(max_lanes) is not int or max_lanes < 1:
+        return False
+    lane_name = f"{config.board_namespace}-{lane_index}"
     state_relative = Path(bindings["state_relative"]) / f"lane-{lane_index}"
     state_dir = (config.repo_root / state_relative).resolve(strict=False)
+    entry = (config.repo_root / IMPLEMENTATION_ENTRY_RELATIVE).resolve(strict=False)
     state_prefix = f"pcpc_lane_{lane_index}"
     expected_run_id = "multi-supervisor:" + hashlib.sha256(
         f"{config.repo_root.resolve()}:{lane_name}".encode()
@@ -1660,18 +1670,10 @@ def _configured_lane_process_ready(
         and start_ticks >= coordinator_start_ticks
         and cwd == config.repo_root.resolve()
         and executable == Path(sys.executable).resolve()
-        and len(argv) > 9
+        and len(argv) > 2
         and Path(argv[0]).resolve(strict=False)
         == Path(sys.executable).resolve(strict=False)
-        and argv[1:3] == ("-I", "-c")
-        and argv[6]
-        == (
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_supervisor"
-        )
-        and argv[7]
-        == "sha256:" + hashlib.sha256(argv[3].encode("utf-8")).hexdigest()
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", argv[8]) is not None
+        and Path(argv[1]).resolve(strict=False) == entry
         and any(environment.get(name) != value for name, value in expected_markers.items())
         is False
         and re.fullmatch(r"sha256:[0-9a-f]{64}", environment.get(PROFILE_ID_ENV, ""))
@@ -1687,19 +1689,10 @@ def _configured_lane_process_ready(
         and _lane_process_option(
             argv, "--task-prefix", str(bindings["task_header_prefix"])
         )
-        and _lane_process_option(argv, "--state-dir", state_relative.as_posix())
+        and _lane_process_option(argv, "--state-dir", str(state_dir))
         and _lane_process_option(argv, "--state-prefix", state_prefix)
-        and _lane_process_option(
-            argv, "--plan-bound-accepted-tree-root", str(config.repo_root)
-        )
-        and _lane_process_option(
-            argv, "--plan-bound-source-head", repository_commit
-        )
-        and _lane_process_option(
-            argv, "--plan-bound-source-tree", repository_tree
-        )
-        and _lane_process_option(argv, "--task-shard-count", "1")
-        and _lane_process_option(argv, "--task-shard-index", "0")
+        and _lane_process_option(argv, "--task-shard-count", str(max_lanes))
+        and _lane_process_option(argv, "--task-shard-index", str(lane_index))
     )
 
 
@@ -3352,8 +3345,12 @@ class ProcedureCompilerProgramLauncher:
             env=_qualification_environment(self.config),
         )
         if result.returncode:
+            detail = (result.stdout or result.stderr or "").strip()
             raise ProgramLaunchError(
-                "supervisor_launch_failed", "configured scheduler launch failed"
+                "supervisor_launch_failed",
+                "configured scheduler launch failed"
+                if not detail
+                else f"configured scheduler launch failed: {detail[-2000:]}",
             )
         plan = _decode_json_object(result.stdout, noun="configured scheduler launch receipt")
         (

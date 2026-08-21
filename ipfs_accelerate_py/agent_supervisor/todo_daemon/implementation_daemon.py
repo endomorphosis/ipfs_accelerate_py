@@ -61717,6 +61717,17 @@ class PortalImplementationDaemon:
             and automatic_family_allowed("copilot")
         )
         if force_codex:
+            if external_isolation:
+                isolation_config = validate_external_provider_isolation_config(
+                    external_isolation,
+                    verify_host=False,
+                )
+                return _codex_implementation_command(
+                    codex=str(isolation_config.container_executable),
+                    workspace_path=workspace_path,
+                    repository_root=self.repo_root,
+                    codex_context_window=codex_context_window,
+                )
             if not codex:
                 raise RuntimeError(
                     f"Implementation provider {provider!r} requires Codex CLI"

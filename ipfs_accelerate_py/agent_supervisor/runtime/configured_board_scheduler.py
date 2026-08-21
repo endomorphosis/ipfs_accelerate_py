@@ -5151,7 +5151,13 @@ def _configured_lane_process_ready(
         return False
 
     plan_bound = _plan_bound_profile(board)
-    lane_name = f"{board.board_namespace}-lane-{lane_index}"
+    # Plan-bound v3 children keep the explicit "-lane-" token.  Ordinary
+    # configured boards expand shards as "{namespace}-{index}".
+    lane_name = (
+        f"{board.board_namespace}-lane-{lane_index}"
+        if plan_bound
+        else f"{board.board_namespace}-{lane_index}"
+    )
     state_relative = Path(board.runtime_paths["state"]) / f"lane-{lane_index}"
     state_dir = board.path(state_relative.as_posix()).resolve(strict=False)
     expected_state_arg = state_relative.as_posix() if plan_bound else str(state_dir)

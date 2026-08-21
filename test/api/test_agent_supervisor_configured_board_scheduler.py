@@ -2739,6 +2739,83 @@ def test_receipt_coordinator_admits_exact_lifecycle_marked_lane_process(
         process.wait(timeout=5.0)
 
 
+def test_receipt_coordinator_admits_non_plan_bound_sharded_lane_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scheduler_module, "_plan_bound_profile", lambda _board: False)
+    entry = tmp_path / scheduler_module.IMPLEMENTATION_ENTRY_PATH
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text("import time; time.sleep(30)\n", encoding="utf-8")
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        payload={"watchdog_startup_grace_seconds": 300},
+        runtime_paths={"state": "state"},
+        task_prefix="PCPC-",
+        task_header_prefix="## PCPC-",
+        taskboard_path="board.md",
+        board_namespace="agent-supervisor-proof-carrying-procedure-compiler-v1",
+        max_lanes=4,
+        path=lambda relative: tmp_path / relative,
+    )
+    lane_name = "agent-supervisor-proof-carrying-procedure-compiler-v1-0"
+    state_dir = board.path("state/lane-0").resolve(strict=False)
+    command = [
+        sys.executable,
+        str(board.path(scheduler_module.IMPLEMENTATION_ENTRY_PATH.as_posix())),
+        "--todo-path",
+        str(board.path(board.taskboard_path)),
+        "--task-prefix",
+        "## PCPC-",
+        "--state-dir",
+        str(state_dir),
+        "--state-prefix",
+        "pcpc_lane_0",
+        "--task-shard-count",
+        "4",
+        "--task-shard-index",
+        "0",
+    ]
+    environment = dict(os.environ)
+    environment.update(
+        {
+            scheduler_module.RUN_ID_ENV: (
+                "multi-supervisor:"
+                + hashlib.sha256(f"{tmp_path.resolve()}:{lane_name}".encode()).hexdigest()
+            ),
+            scheduler_module.PROFILE_ID_ENV: "sha256:" + "5" * 64,
+            scheduler_module.TARGET_ID_ENV: f"supervisor-track:{lane_name}",
+            scheduler_module.REPOSITORY_ROOT_ENV: str(tmp_path.resolve()),
+            scheduler_module.STATE_ROOT_ENV: str(state_dir),
+            scheduler_module.RUN_ROOT_ENV: str(
+                state_dir / "lifecycle-runs" / lane_name
+            ),
+            scheduler_module.FENCING_EPOCH_ENV: "0",
+            scheduler_module.CONFIGURATION_ROOT_ENV: "sha256:" + "6" * 64,
+        }
+    )
+    coordinator_ticks = scheduler_module.LinuxProcessAdapter._stat(os.getpid())[3]
+    process = subprocess.Popen(
+        command,
+        cwd=str(tmp_path.resolve()),
+        env=environment,
+        start_new_session=True,
+    )
+    try:
+        assert scheduler_module._configured_lane_process_ready(
+            board,
+            lane_index=0,
+            supervisor_pid=process.pid,
+            coordinator_pid=os.getpid(),
+            coordinator_start_ticks=coordinator_ticks,
+            repository_commit="1" * 40,
+            repository_tree="2" * 40,
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=5.0)
+
+
 def test_receipt_coordinator_uses_admitted_startup_grace_horizon() -> None:
     board = SimpleNamespace(payload={"watchdog_startup_grace_seconds": 300})
 

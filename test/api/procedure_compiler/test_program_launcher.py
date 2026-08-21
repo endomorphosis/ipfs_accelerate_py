@@ -984,46 +984,36 @@ def test_supervisor_launch_admits_exact_lifecycle_marked_lane_process(
     tmp_path: Path,
 ) -> None:
     module = _load()
-    config = _with_hermetic_extensions(module, _config(module), tmp_path)
-    payload = json.loads(config.config_path.read_text(encoding="utf-8"))
+    config = replace(
+        _with_hermetic_extensions(module, _config(module), tmp_path),
+        repo_root=tmp_path,
+    )
+    payload = json.loads(CONFIG.read_text(encoding="utf-8"))
     state_relative = Path(payload["runtime_paths"]["state"])
+    entry = tmp_path / module.IMPLEMENTATION_ENTRY_RELATIVE
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text("import time; time.sleep(30)\n", encoding="utf-8")
     bindings = {
         "state_relative": state_relative,
         "taskboard_path": config.repo_root / payload["taskboard_path"],
         "task_header_prefix": "## PCPC-",
+        "max_lanes": 4,
     }
-    bootstrap = "import time; time.sleep(30)"
-    lane_name = f"{module.PROGRAM}-lane-0"
-    state_dir = config.repo_root / state_relative / "lane-0"
+    lane_name = f"{module.PROGRAM}-0"
+    state_dir = (config.repo_root / state_relative / "lane-0").resolve()
     command = [
         sys.executable,
-        "-I",
-        "-c",
-        bootstrap,
-        "9",
-        "{}",
-        (
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_supervisor"
-        ),
-        "sha256:" + hashlib.sha256(bootstrap.encode()).hexdigest(),
-        "sha256:" + "4" * 64,
+        str(entry),
         "--todo-path",
         str(bindings["taskboard_path"]),
         "--task-prefix",
         "## PCPC-",
         "--state-dir",
-        (state_relative / "lane-0").as_posix(),
+        str(state_dir),
         "--state-prefix",
         "pcpc_lane_0",
-        "--plan-bound-accepted-tree-root",
-        str(config.repo_root),
-        "--plan-bound-source-head",
-        "1" * 40,
-        "--plan-bound-source-tree",
-        "2" * 40,
         "--task-shard-count",
-        "1",
+        "4",
         "--task-shard-index",
         "0",
     ]
