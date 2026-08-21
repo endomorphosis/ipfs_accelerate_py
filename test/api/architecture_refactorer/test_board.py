@@ -88,6 +88,23 @@ def test_generic_scheduler_accepts_quack_database_program() -> None:
     assert program.failover_policy == "fail_closed"
 
 
+def test_provider_route_is_the_current_reviewed_quota_fallback() -> None:
+    payload = json.loads(CONFIG.read_text(encoding="utf-8"))
+    provider = payload["provider"]
+
+    assert provider == {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 3,
+        "secrets_from_environment_only": True,
+        "secrets_in_argv_prompts_logs_or_receipts": False,
+    }
+
+
 def test_production_parsers_preserve_goal_and_task_dags() -> None:
     tasks = parse_task_text(
         TODO.read_text(encoding="utf-8"),

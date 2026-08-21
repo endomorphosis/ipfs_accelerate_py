@@ -992,13 +992,20 @@ def validate_program(
                 )
     provider = config.get("provider")
     if not isinstance(provider, dict) or (
-        provider.get("provider_id") != "codex"
-        or provider.get("model_id") != "gpt-5.6-terra"
+        provider.get("primary_provider_id") != "grok_cli"
+        or provider.get("primary_model_id") != "grok-4.6"
+        or provider.get("fallback_provider_id") != "codex"
+        or provider.get("fallback_model_id") != "gpt-5.6-terra"
+        or provider.get("fallback_trigger") != "primary_quota_exhausted"
+        or provider.get("fallback_reasoning_effort") != "high"
         or provider.get("max_concurrency") != 3
         or provider.get("secrets_from_environment_only") is not True
         or provider.get("secrets_in_argv_prompts_logs_or_receipts") is not False
     ):
-        errors.append("provider must be bounded direct Codex gpt-5.6-terra concurrency 3")
+        errors.append(
+            "provider must be the reviewed bounded Grok 4.6 quota route with "
+            "Codex gpt-5.6-terra/high fallback and concurrency 3"
+        )
     autonomy = config.get("autonomy_ceiling")
     if not isinstance(autonomy, dict) or (
         autonomy.get("candidate_may_raise_ceiling") is not False
