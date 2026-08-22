@@ -1364,6 +1364,17 @@ def bind_database_portal_execution_from_args(
         recovery_binder(
             lambda: bridge.recover_post_merge_declared_outputs(daemon)
         )
+        merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)
+        if not callable(merge_train_binder):
+            raise RuntimeError(
+                "production database daemon does not expose merge-train "
+                "recovery binding"
+            )
+        merge_train_binder(
+            merge_queue=recovery_queue,
+            repo_root=repo_root,
+            merge_target_branch=configured_merge_target_branch,
+        )
     return bridge
 
 

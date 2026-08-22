@@ -70136,6 +70136,17 @@ class DatabaseTaskAttempt:
         return _phase_rank(self.committed_phase) >= _phase_rank(phase)
 
 
+def _is_quack_attach_error(exc: BaseException) -> bool:
+    """Return whether a control-plane error is a Quack ATTACH failure."""
+
+    detail = str(exc)
+    return (
+        "Authentication failed" in detail
+        or "quack attach authentication failed" in detail
+        or type(exc).__name__ == "DuckDBConnectionPolicyError"
+    )
+
+
 class DatabaseImplementationDaemon:
     """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
 
@@ -70306,6 +70317,9 @@ class DatabaseImplementationDaemon:
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
         self._post_merge_recovery_fn = post_merge_recovery_fn
+        self._merge_queue: Any = None
+        self._merge_repo_root: Path | None = None
+        self._merge_target_branch = ""
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -70628,6 +70642,101 @@ class DatabaseImplementationDaemon:
                     "post-merge recovery callback is already bound"
                 )
             self._post_merge_recovery_fn = callback
+
+    def bind_merge_train_recovery(
+        self,
+        *,
+        merge_queue: Any,
+        repo_root: Path | str,
+        merge_target_branch: str,
+    ) -> None:
+        """Bind the shared merge queue for invalid-metadata quarantine settlement.
+
+        Database lanes do not otherwise consume the merge train.  Leftover
+        portal-projection rows quarantined for empty cross-board authority
+        metadata must still be settled when their declared outputs are
+        already on the target, even if a later Quack attach fails.
+        """
+
+        self._require_execution_authority("bind merge-train recovery")
+        branch = str(merge_target_branch or "").strip()
+        if merge_queue is None or not branch:
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery requires a bound queue and target branch"
+            )
+        with self._lock:
+            if self._merge_queue is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "merge-train recovery is already bound"
+                )
+            self._merge_queue = merge_queue
+            self._merge_repo_root = Path(repo_root)
+            self._merge_target_branch = branch
+
+    def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
+        """Settle leftover invalid-metadata portal quarantines before DuckDB work."""
+
+        schema = (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-invalid-metadata-merge-settlement@1"
+        )
+        if self._merge_queue is None or self._merge_repo_root is None:
+            return {
+                "schema": schema,
+                "attempted": False,
+                "settled": 0,
+                "reason": "merge_train_recovery_not_configured",
+                "write_count": 0,
+            }
+        try:
+            from ..merge.merge_train import MergeTrain
+
+            train = MergeTrain(
+                repo_root=self._merge_repo_root,
+                queue=self._merge_queue,
+                target_branch=self._merge_target_branch,
+                max_attempts=int(
+                    getattr(self._merge_queue, "max_attempts", 3)
+                ),
+            )
+            settled = 0
+            results: list[dict[str, Any]] = []
+            while settled < 8:
+                result = train.recover_one_integrated_quarantine(
+                    request_filter=(
+                        train._portal_projection_invalid_metadata_already_on_target
+                    ),
+                )
+                if not isinstance(result, Mapping):
+                    break
+                settled += 1
+                results.append(
+                    {
+                        "request_id": str(result.get("request_id") or ""),
+                        "status": str(result.get("status") or ""),
+                        "reason": str(result.get("reason") or ""),
+                    }
+                )
+                if str(result.get("status") or "") != "already_merged":
+                    break
+            return {
+                "schema": schema,
+                "attempted": True,
+                "settled": settled,
+                "results": results,
+                "write_count": settled,
+            }
+        except Exception as exc:
+            return {
+                "schema": schema,
+                "attempted": True,
+                "settled": 0,
+                "reason": "merge_train_settlement_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
 
     def _run_post_merge_recovery(self) -> dict[str, Any]:
         callback = self._post_merge_recovery_fn
@@ -76214,20 +76323,50 @@ class DatabaseImplementationDaemon:
 
         if not self.require_real_execution:
             return self._execution_disabled_observation()
-        completion_reconciliations = self.reconcile_prepared_task_completions()
-        expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
-        terminal_portal_reconciliations = (
-            self.reconcile_terminal_portal_failures()
+        merge_quarantine_settlement = (
+            self._settle_invalid_metadata_portal_quarantines()
         )
-        terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
-        post_merge_recovery_reconciliation = (
-            self._run_post_merge_recovery()
+        merge_quarantine_write_count = int(
+            merge_quarantine_settlement.get("write_count", 0) or 0
         )
+        try:
+            completion_reconciliations = self.reconcile_prepared_task_completions()
+            expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+            terminal_portal_reconciliations = (
+                self.reconcile_terminal_portal_failures()
+            )
+            terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
+            post_merge_recovery_reconciliation = (
+                self._run_post_merge_recovery()
+            )
+        except Exception as exc:
+            if merge_quarantine_write_count <= 0 or not _is_quack_attach_error(
+                exc
+            ):
+                raise
+            return {
+                "unchanged": False,
+                "write_count": merge_quarantine_write_count,
+                "active_task_id": "",
+                "selection_idle_reason": "quack_attach_failed",
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "merge_quarantine_settlement": merge_quarantine_settlement,
+                "control_plane_error": {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-2000:],
+                },
+            }
         post_merge_recovery_write_count = int(
             post_merge_recovery_reconciliation.get("write_count", 0) or 0
         )
         reconciliation_write_count = (
-            len(completion_reconciliations)
+            merge_quarantine_write_count
+            + len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
@@ -76257,6 +76396,7 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "merge_quarantine_settlement": merge_quarantine_settlement,
                 "post_merge_recovery_reconciliation": (
                     post_merge_recovery_reconciliation
                 ),
@@ -76285,6 +76425,7 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "merge_quarantine_settlement": merge_quarantine_settlement,
                 "post_merge_recovery_reconciliation": (
                     post_merge_recovery_reconciliation
                 ),
@@ -76305,6 +76446,7 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
+            "merge_quarantine_settlement": merge_quarantine_settlement,
             "post_merge_recovery_reconciliation": (
                 post_merge_recovery_reconciliation
             ),

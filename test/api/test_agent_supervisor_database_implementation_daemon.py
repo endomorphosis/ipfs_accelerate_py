@@ -22,9 +22,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_repository_id,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
@@ -2737,6 +2741,106 @@ def test_idle_run_once_invokes_bound_post_merge_recovery_before_claim(
         reported = result["post_merge_recovery_reconciliation"]
         assert reported == reconciliation
         assert reported["results"][0]["status"] == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_settles_invalid_metadata_portal_quarantine_before_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Merge Train Test")
+    git("config", "user.email", "merge-train@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", "base.txt")
+    git("commit", "-m", "base")
+    git("switch", "-c", "implementation/side")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    git("add", "side.txt")
+    git("commit", "-m", "side")
+    candidate = git("rev-parse", "HEAD")
+    git("switch", "main")
+    head_before = git("rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/side",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {"task_id": "REF-040", "outputs": ["base.txt"]},
+            "changed_submodule_paths": [],
+        },
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="cross_board_manual_completion_authority_metadata_invalid",
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:invalid-metadata-merge-settle",
+    )
+    calls: list[str] = []
+
+    def no_ready_task() -> None:
+        calls.append("claim")
+        return None
+
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        monkeypatch.setattr(daemon, "claim_next", no_ready_task)
+        result = daemon.run_once()
+        assert calls == ["claim"]
+        settlement = result["merge_quarantine_settlement"]
+        assert settlement["attempted"] is True
+        assert settlement["settled"] == 1
+        assert settlement["results"][0]["status"] == "already_merged"
+        assert git("rev-parse", "HEAD") == head_before
+        completed = queue.get(request.request_id)
+        assert completed is not None
+        assert completed.status == "completed"
+        side_probe = subprocess.run(
+            ["git", "cat-file", "-e", "HEAD:side.txt"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert side_probe.returncode != 0
     finally:
         daemon.close()
 
