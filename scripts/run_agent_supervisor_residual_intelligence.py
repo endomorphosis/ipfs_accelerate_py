@@ -1685,6 +1685,34 @@ def _verify_control_plane(path: Path) -> Any:
     )
 
 
+def _drop_fragile_task_status_indexes(connection: Any) -> None:
+    """Drop ART indexes that fatally fail when ``tasks.status`` is updated.
+
+    DuckDB 1.5 can abort the exclusive owner with
+    ``Failed to delete all rows from index`` while CAS-ing ``blocked`` to
+    ``retrying``. The VRIF board is 33 rows; status scans without these
+    indexes remain exact.
+    """
+
+    for name in ("tasks_status_idx", "tasks_goal_idx"):
+        try:
+            connection.execute(f"DROP INDEX IF EXISTS {name}")
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "schema": OPERATOR_SCHEMA,
+                        "event": "task_status_index_drop_failed",
+                        "index": name,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:300],
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+
+
 def _owner_connection(path: Path) -> Any:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -1865,6 +1893,7 @@ def state_owner(config_path: Path) -> int:
         owner_connection = getattr(server, "_connection", None)
         if owner_connection is None:
             raise OperatorError("state-owner connection is unavailable")
+        _drop_fragile_task_status_indexes(owner_connection)
         database_verification = _owner_database_verification(
             owner_connection,
             restart_admission,
