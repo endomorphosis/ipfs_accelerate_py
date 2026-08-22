@@ -380,7 +380,7 @@ def test_owner_command_inbox_rejects_raw_sql_envelopes(
     result = json.loads((tmp_path / f"{request_id}.done.json").read_text())
     assert result["ok"] is False
     assert result["error_code"] == "owner_error"
-    assert result["error_message"] == "typed owner command rejected"
+    assert result["error_message"].startswith("typed owner command rejected")
 
 
 def test_env_secret_handle_credentials_are_forwarded_not_minted() -> None:

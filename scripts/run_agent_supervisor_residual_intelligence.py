@@ -1772,6 +1772,22 @@ def _process_owner_commands(
                 }
             )
             error_code = quack_owner_command_error_code(exc)
+            if error_code == "owner_error":
+                print(
+                    json.dumps(
+                        {
+                            "schema": OPERATOR_SCHEMA,
+                            "event": "owner_command_error",
+                            "command": str(
+                                (payload or {}).get("command") or "invalid"
+                            ),
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:500],
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
             _atomic_json(
                 done,
                 quack_owner_command_response(
@@ -1781,7 +1797,10 @@ def _process_owner_commands(
                     error_message=(
                         str(exc)
                         if error_code != "owner_error"
-                        else "typed owner command rejected"
+                        else (
+                            "typed owner command rejected "
+                            f"({type(exc).__name__}: {str(exc)[:240]})"
+                        )
                     ),
                 ),
             )
