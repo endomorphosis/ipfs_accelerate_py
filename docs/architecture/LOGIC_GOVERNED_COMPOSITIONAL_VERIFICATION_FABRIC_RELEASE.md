@@ -3,11 +3,11 @@
 ## Evidence
 
 - Formal plan CID: baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq
-- Qualification result CID: baguqeerarasg52dwwmyjmggr2e3apulcgz4d6flaycfljav7b52i5upwogxa
-- Qualification authority CID: baguqeerac73jebs3yuwc3cbp4adttcutq7foxpvhs3qfl37hmiors3rtbncq
+- Qualification result CID: baguqeeraspgepzggkrge5oldkbrfjp373awn7dcov277tiedxnetkmhx7vmq
+- Qualification authority CID: baguqeerabesacj5ta45r7effwhw6rjzcqv5lbbez3xu4pocyrmv42bqgcmbq
 - Qualification suite node IDs: ["baguqeera3zvgtvi5l3llqyyo7wr2nzz5cx2zuovoduqrza77vyzgoxy57ksq","baguqeerawyxjp67p656suousq2s2yoqpnagcljminuhw6ooto6mz23zec7ma","baguqeeraynd5gnhnlb7gfytao7zvmjsaxqk3zt3bbpx5ma7e3mzgv6wdohya","baguqeerar533oighzztc5b5bazgduez2ksn66mzh2vu6c6a6gchquvkqlf2a"]
-- Benchmark result CID: baguqeeraxb5qc5hrscn3pgs6kgps2iui3sctd4v3uu5tc4nduokuqyg2y7kq
-- Benchmark authority CID: baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa
+- Benchmark result CID: baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza
+- Benchmark authority CID: baguqeera6yzqqcs2dod46s7h5jnean7axorhbju34wamwksin5ez7nkoynra
 - Evidence cohort: hermetic_local_execution
 
 ## Disposition
@@ -18,7 +18,7 @@
 - Objective completion: incomplete
 - Release qualification: not_qualified
 - Production authorization: not_authorized
-- Threshold comparison: [{"comparison":"equal","disposition":"met","observed":0,"reason":"","target":0,"threshold_id":"zero_safety_floor_violations"},{"comparison":"equal","disposition":"met","observed":0,"reason":"","target":0,"threshold_id":"zero_critical_omissions_accepted"},{"comparison":"at_least","disposition":"missed","observed":0,"reason":"","target":5000,"threshold_id":"median_context_reduction_bps"},{"comparison":"at_least","disposition":"not_evaluated","observed":null,"reason":"both fixture routes made zero model calls; a repeated task with a nonzero baseline is required to measure displacement","target":5000,"threshold_id":"warm_cache_model_call_reduction_bps"},{"comparison":"at_least","disposition":"met","observed":10000,"reason":"","target":2500,"threshold_id":"symbolically_closable_deterministic_route_share_bps"},{"comparison":"at_least","disposition":"met","observed":10000,"reason":"","target":8000,"threshold_id":"unaffected_proof_test_reuse_bps"},{"comparison":"equal","disposition":"met","observed":true,"reason":"","target":true,"threshold_id":"accepted_patch_quality_not_lower"},{"comparison":"at_least","disposition":"missed","observed":3,"reason":"","target":12,"threshold_id":"representative_task_class_coverage"}]
+- Threshold comparison: [{"comparison":"equal","disposition":"met","observed":0,"reason":"","target":0,"threshold_id":"zero_safety_floor_violations"},{"comparison":"equal","disposition":"met","observed":0,"reason":"","target":0,"threshold_id":"zero_critical_omissions_accepted"},{"comparison":"at_least","disposition":"met","observed":5452,"reason":"","target":5000,"threshold_id":"median_context_reduction_bps"},{"comparison":"at_least","disposition":"not_evaluated","observed":null,"reason":"both fixture routes made zero model calls; a repeated task with a nonzero baseline is required to measure displacement","target":5000,"threshold_id":"warm_cache_model_call_reduction_bps"},{"comparison":"at_least","disposition":"met","observed":10000,"reason":"","target":2500,"threshold_id":"symbolically_closable_deterministic_route_share_bps"},{"comparison":"at_least","disposition":"met","observed":10000,"reason":"","target":8000,"threshold_id":"unaffected_proof_test_reuse_bps"},{"comparison":"equal","disposition":"met","observed":true,"reason":"","target":true,"threshold_id":"accepted_patch_quality_not_lower"},{"comparison":"at_least","disposition":"met","observed":12,"reason":"","target":12,"threshold_id":"representative_task_class_coverage"}]
 
 ## Blockers
 

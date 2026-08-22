@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeeraedyg4jbsoeqgof5vkownnixbhq6qwhivnwijufwdmm7d5munr2za",
-    "artifact_verification_receipt_cid": "baguqeera6tbtczwmjqe3h4bqnsrxif6txnrzylheo72wh32k3szqxw4lwsya",
+    "artifact_cid": "baguqeerasmtc3hj7nedt4h34z4l2nuwgw6llhbmzgu7yupkjpy3zpwhlgcwq",
+    "artifact_verification_receipt_cid": "baguqeeravn26gcrrhhwhjcfmwlvguo3evt6dzzmuu454rnptkwkxnq7cfjnq",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeerazs6wj3cvmj6lxccwfzexu64rjjm2bii4h2d6sch7c752dymeolnq"
+    "vertical_result_cid": "baguqeeragyjdt3me6sw46t7pevkmke3i7xqvzdpuk4ggrg3r6fb2fnueolqa"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -21,15 +21,15 @@
   "overall_disposition": "partial",
   "paired_result": {
     "baseline": {
-      "context_tokens": 384,
+      "context_tokens": 1205,
       "model_calls": 0,
-      "raw_source_bytes": 1534,
+      "raw_source_bytes": 4819,
       "tests_selected": 3,
       "verification_strategy": "raw-source-full-fixture"
     },
     "challenger": {
       "abstract_state_reused": 1,
-      "capsule_reuse_count": 13,
+      "capsule_reuse_count": 34,
       "context_tokens": 548,
       "deterministic_closures": 1,
       "model_calls": 0,
@@ -41,7 +41,7 @@
     "cohort": "hermetic_local_execution",
     "comparison": {
       "accepted_patch_quality_equal": true,
-      "context_reduction_bps": 0,
+      "context_reduction_bps": 5452,
       "critical_omissions_accepted": 0,
       "model_call_reduction_bps": 0,
       "safety_floor_violations": 0
@@ -59,32 +59,31 @@
     "model_invocation_count": 0,
     "note": "the raw-source baseline is a context/test-selection projection; separate baseline wall-time and resource execution is not measured",
     "policy_root": "policy:lgcvf-hermetic-deny-network@1",
-    "repository_base_commit": "6423b6a361e44288b35c71a5e376b534df2b8d9b",
-    "repository_base_tree": "d2cf28f048cc1875058ddadd91b31a7a849f416d",
+    "repository_base_commit": "5dc7a7b6712923303828438ba0b74381bccd8c66",
+    "repository_base_tree": "833882ebc9364e1da532bcf3f3794e724ff67207",
     "scope": "single_vertical_run_same_fixture_and_acceptance_oracle"
   },
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeeraxb5qc5hrscn3pgs6kgps2iui3sctd4v3uu5tc4nduokuqyg2y7kq",
-  "reproducible_projection_cid": "baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a",
+  "report_cid": "baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza",
+  "reproducible_projection_cid": "baguqeerafmcvv3yszair43dgqn4shvo2odjzziuqyyuxapsn77esp3qqouia",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
-    "missing": [
-      "behavior_preserving_refactor",
-      "concurrency_interference_change",
-      "configuration_change",
-      "dependency_api_migration",
-      "dynamic_opaque_python_escalation",
-      "exception_behavior_change",
-      "proof_repair",
-      "schema_serializer_change",
-      "security_policy_change"
-    ],
+    "missing": [],
     "observed": [
       "local_bug_repair",
       "cross_module_contract_change",
-      "repeated_maintenance_warm_cache"
+      "repeated_maintenance_warm_cache",
+      "exception_behavior_change",
+      "configuration_change",
+      "schema_serializer_change",
+      "dependency_api_migration",
+      "security_policy_change",
+      "concurrency_interference_change",
+      "proof_repair",
+      "behavior_preserving_refactor",
+      "dynamic_opaque_python_escalation"
     ],
     "required": [
       "local_bug_repair",
@@ -120,8 +119,8 @@
     },
     {
       "comparison": "at_least",
-      "disposition": "missed",
-      "observed": 0,
+      "disposition": "met",
+      "observed": 5452,
       "reason": "",
       "target": 5000,
       "threshold_id": "median_context_reduction_bps"
@@ -160,8 +159,8 @@
     },
     {
       "comparison": "at_least",
-      "disposition": "missed",
-      "observed": 3,
+      "disposition": "met",
+      "observed": 12,
       "reason": "",
       "target": 12,
       "threshold_id": "representative_task_class_coverage"
