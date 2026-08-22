@@ -70994,6 +70994,91 @@ class DatabaseImplementationDaemon:
                     "outputs": list(paths),
                 }
             )
+        seen = {str(item.get("task_cid") or "") for item in results}
+        getter = getattr(self.task_source, "get", None) or getattr(
+            self.task_source, "get_task", None
+        )
+        completed = getattr(self._merge_queue, "completed_requests", None)
+        if callable(getter) and callable(completed):
+            try:
+                snapshots = completed(limit=32)
+            except Exception as exc:
+                if _is_quack_attach_error(exc):
+                    raise
+                snapshots = ()
+            for snapshot in snapshots:
+                metadata = getattr(snapshot, "metadata", None)
+                if not isinstance(metadata, Mapping):
+                    continue
+                completion = metadata.get("completion")
+                if (
+                    not isinstance(completion, Mapping)
+                    or completion.get("reason")
+                    != "post_merge_declared_outputs_repaired"
+                ):
+                    continue
+                receipt = completion.get("repair_receipt")
+                if not isinstance(receipt, Mapping):
+                    continue
+                paths = tuple(
+                    str(entry.get("path") or "").strip()
+                    for entry in (receipt.get("entries") or ())
+                    if isinstance(entry, Mapping) and str(entry.get("path") or "").strip()
+                )
+                if not self._head_contains_declared_outputs(paths):
+                    continue
+                alias = str(getattr(snapshot, "task_id", "") or "")
+                try:
+                    task = getter(alias)
+                except Exception as exc:
+                    if _is_quack_attach_error(exc):
+                        raise
+                    continue
+                if task is None:
+                    continue
+                task_cid = str(getattr(task, "task_cid", "") or "")
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                if not task_cid or task_cid in seen or status != "blocked":
+                    continue
+                try:
+                    self._cas_task_status_database(
+                        task_cid,
+                        expected_revision=int(getattr(task, "revision", 0) or 0),
+                        new_status="retrying",
+                        receipt={
+                            "operation": "database_declared_outputs_on_head_rearm",
+                            "task_alias": alias,
+                            "repair_commit": str(
+                                completion.get("candidate_commit") or ""
+                            ),
+                        },
+                    )
+                except Exception as exc:
+                    if _is_quack_attach_error(exc):
+                        raise
+                    results.append(
+                        {
+                            "task_cid": task_cid,
+                            "task_alias": alias,
+                            "changed": False,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[-500:],
+                        }
+                    )
+                    seen.add(task_cid)
+                    continue
+                rearmed += 1
+                seen.add(task_cid)
+                results.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": alias,
+                        "changed": True,
+                        "previous_status": "blocked",
+                        "status": "retrying",
+                        "outputs": list(paths),
+                    }
+                )
         return {
             "schema": schema,
             "attempted": True,
