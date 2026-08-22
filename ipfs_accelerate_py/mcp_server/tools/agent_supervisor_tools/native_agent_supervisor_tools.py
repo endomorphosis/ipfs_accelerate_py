@@ -21,6 +21,16 @@ from types import MappingProxyType
 from typing import Any
 
 from ....agent_supervisor.control.control_contracts import (
+    SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY,
+    SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY,
+    SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID,
+    SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION,
+    SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY,
+    SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY,
+    SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY,
+    SUPERVISOR_AUTONOMY_POLICY_AUTHORITY,
+    SUPERVISOR_AUTONOMY_READ_AUTHORITY,
+    SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY,
     SUPERVISOR_USAGE_ADMIN_AUTHORITY,
     SUPERVISOR_USAGE_BUDGET_AUTHORITY,
     SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
@@ -40,14 +50,17 @@ from ....agent_supervisor.control.control_contracts import (
     PROMPT_CONTROL_OPERATIONS,
     SupervisorUsageControlOperation,
     decode_operation_request,
+    discover_autonomy_control_catalog,
     discover_usage_control_catalog,
     get_operation_catalog,
     operation_request_json_schema,
     operation_result_json_schema,
+    autonomy_control_operations,
     usage_control_operations,
 )
 from ....agent_supervisor.control.control_plane import (
     DIRECT_CONTROL_SERVICE_DISPATCHER_ID,
+    AutonomyControl,
     ControlSurfacePublication,
     ProviderUsageControl,
     SupervisorControlService,
@@ -68,6 +81,7 @@ _configuration_lock = RLock()
 _configured_service: SupervisorControlService | None = None
 _configured_factory: ServiceFactory | None = None
 _configured_usage_control: ProviderUsageControl | None = None
+_configured_autonomy_control: AutonomyControl | None = None
 _service_resolution_count = 0
 
 
@@ -80,12 +94,14 @@ def configure_agent_supervisor_control(
     service: SupervisorControlService | None = None,
     service_factory: ServiceFactory | None = None,
     usage_control: ProviderUsageControl | None = None,
+    autonomy_control: AutonomyControl | None = None,
 ) -> None:
     """Configure the service used by later tool invocations.
 
     Passing neither argument resets the adapter to its environment-backed,
     fail-closed configuration.  Supplying both is rejected so there is only
-    one authority source.
+    one authority source.  Adapters never mint allowlists, authority, or
+    confirmation from caller text.
     """
 
     if service is not None and service_factory is not None:
@@ -96,14 +112,27 @@ def configure_agent_supervisor_control(
         raise TypeError("service_factory must be callable")
     if usage_control is not None and not isinstance(usage_control, ProviderUsageControl):
         raise TypeError("usage_control must be a ProviderUsageControl")
-    global _configured_service, _configured_factory, _configured_usage_control
+    if autonomy_control is not None and not isinstance(autonomy_control, AutonomyControl):
+        raise TypeError("autonomy_control must be an AutonomyControl")
+    global _configured_service, _configured_factory
+    global _configured_usage_control, _configured_autonomy_control
     with _configuration_lock:
         _configured_service = service
         _configured_factory = service_factory
-        if service is None and service_factory is None and usage_control is None:
+        reset = (
+            service is None
+            and service_factory is None
+            and usage_control is None
+            and autonomy_control is None
+        )
+        if reset:
             _configured_usage_control = None
-        elif usage_control is not None:
-            _configured_usage_control = usage_control
+            _configured_autonomy_control = None
+        else:
+            if usage_control is not None:
+                _configured_usage_control = usage_control
+            if autonomy_control is not None:
+                _configured_autonomy_control = autonomy_control
 
 
 def set_provider_usage_control_service(service: ProviderUsageControl | None) -> None:
@@ -125,6 +154,28 @@ def get_provider_usage_control_service() -> ProviderUsageControl | None:
         service = _configured_service
     if service is not None:
         return service.usage_control
+    return None
+
+
+def set_autonomy_control_service(service: AutonomyControl | None) -> None:
+    """Inject the process-local AutonomyControl for MCP autonomy tools."""
+
+    global _configured_autonomy_control
+    if service is not None and not isinstance(service, AutonomyControl):
+        raise TypeError("service must be an AutonomyControl")
+    with _configuration_lock:
+        _configured_autonomy_control = service
+
+
+def get_autonomy_control_service() -> AutonomyControl | None:
+    """Return the injected autonomy-control service, if any."""
+
+    with _configuration_lock:
+        if _configured_autonomy_control is not None:
+            return _configured_autonomy_control
+        service = _configured_service
+    if service is not None:
+        return service.autonomy_control
     return None
 
 
@@ -514,6 +565,186 @@ def usage_mcp_discovery_manifest() -> dict[str, Any]:
     return catalog
 
 
+def _autonomy_authorities_for_mcp(
+    *,
+    authorities: list[str] | None = None,
+    lifecycle: bool = False,
+    level: bool = False,
+    policy: bool = False,
+    repair: bool = False,
+    cancel: bool = False,
+    escalation: bool = False,
+    admin: bool = False,
+) -> list[str]:
+    if authorities is not None:
+        return [str(item) for item in authorities if isinstance(item, str) and item]
+    granted = [SUPERVISOR_AUTONOMY_READ_AUTHORITY]
+    if lifecycle:
+        granted.append(SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY)
+    if level:
+        granted.append(SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY)
+    if policy:
+        granted.append(SUPERVISOR_AUTONOMY_POLICY_AUTHORITY)
+    if repair:
+        granted.append(SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY)
+    if cancel:
+        granted.append(SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY)
+    if escalation:
+        granted.append(SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY)
+    if admin:
+        granted.append(SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY)
+    return granted
+
+
+async def agent_supervisor_autonomy(
+    operation: str,
+    *,
+    target_id: str | None = None,
+    authorities: list[str] | None = None,
+    lifecycle: bool = False,
+    level: bool = False,
+    policy: bool = False,
+    repair: bool = False,
+    cancel: bool = False,
+    escalation: bool = False,
+    admin: bool = False,
+    limit: int = 50,
+    cursor: str | None = None,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bounded autonomy-control adapter shared with Python and CLI.
+
+    Discovery and reads are lazy and side-effect free.  Mutations require
+    distinct caller-supplied authority, expected revision/effects, lease,
+    fence, and (when catalogued) a one-use confirmation.  This adapter never
+    shells out and never mints confirmation or mutation authority.
+    """
+
+    controller = get_autonomy_control_service()
+    if controller is None:
+        return {
+            "status": "error",
+            "success": False,
+            "tool_schema_version": SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION,
+            "requirement_id": SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID,
+            "error": {
+                "code": "autonomy_unavailable",
+                "detail": "AutonomyControl is not configured.",
+            },
+            "error_code": "autonomy_unavailable",
+            "error_type": "autonomy_unavailable",
+            "reason_codes": ["autonomy_unavailable"],
+            "completion_authoritative": False,
+            "operational_evidence_only": True,
+        }
+    op = str(operation or "").strip()
+    if op in {"discover", "autonomy_discover"}:
+        record = dict(controller.discover())
+        record["success"] = True
+        record["status"] = "success"
+        return record
+    granted = _autonomy_authorities_for_mcp(
+        authorities=authorities,
+        lifecycle=lifecycle,
+        level=level,
+        policy=policy,
+        repair=repair,
+        cancel=cancel,
+        escalation=escalation,
+        admin=admin,
+    )
+    kwargs: dict[str, Any] = dict(parameters or {})
+    if target_id:
+        kwargs.setdefault("target_id", target_id)
+    if limit is not None:
+        kwargs.setdefault("limit", limit)
+    if cursor is not None:
+        kwargs.setdefault("cursor", cursor)
+    return controller.execute(op, authorities=granted, **kwargs)
+
+
+def autonomy_mcp_discovery_manifest() -> dict[str, Any]:
+    """Static MCP discovery for autonomy-control operations."""
+
+    catalog = dict(discover_autonomy_control_catalog())
+    catalog["surface"] = "mcp"
+    catalog["tool"] = "agent_supervisor_autonomy"
+    catalog["operations"] = list(autonomy_control_operations())
+    catalog["dispatch_mode"] = "direct_service"
+    catalog["shells_out"] = False
+    catalog["mints_permission"] = False
+    return catalog
+
+
+def register_native_agent_supervisor_autonomy_tools(manager: Any) -> None:
+    """Register the autonomy MCP tool without widening Operation tools.
+
+    Kept separate from :func:`register_native_agent_supervisor_tools` so the
+    closed Operation catalog tool population remains exact for control-plane
+    conformance.  Registration is static: it does not resolve a service,
+    start a process, or import an optional provider.
+    """
+
+    manager.register_tool(
+        category=AGENT_SUPERVISOR_MCP_CATEGORY,
+        name="agent_supervisor_autonomy",
+        func=agent_supervisor_autonomy,
+        description=(
+            "Execute a bounded supervisor autonomy-control operation through "
+            "the shared typed AutonomyControl service.  Reads are side-effect "
+            "free; mutations require distinct caller-supplied authority, "
+            "expected revision, lease, fence, expected effects, and one-use "
+            "confirmation when catalogued.  This tool never shells out and "
+            "never mints permission."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": [
+                        "discover",
+                        *list(autonomy_control_operations()),
+                    ],
+                },
+                "target_id": {"type": "string"},
+                "authorities": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "lifecycle": {"type": "boolean", "default": False},
+                "level": {"type": "boolean", "default": False},
+                "policy": {"type": "boolean", "default": False},
+                "repair": {"type": "boolean", "default": False},
+                "cancel": {"type": "boolean", "default": False},
+                "escalation": {"type": "boolean", "default": False},
+                "admin": {"type": "boolean", "default": False},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50,
+                },
+                "cursor": {"type": "string"},
+                "parameters": {"type": "object"},
+            },
+            "required": ["operation"],
+            "additionalProperties": False,
+            "x-agent-supervisor-autonomy-contract": {
+                "requirement_id": SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID,
+                "tool_schema_version": SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION,
+                "operations": list(autonomy_control_operations()),
+                "dispatch_mode": AGENT_SUPERVISOR_MCP_DISPATCH_MODE,
+                "shells_out": False,
+                "mints_permission": False,
+                "completion_authoritative": False,
+            },
+        },
+        runtime="fastapi",
+        tags=["policy-controlled", "autonomy-control", "operational-evidence"],
+    )
+
+
 def register_native_agent_supervisor_tools(manager: Any) -> None:
     """Register all closed-vocabulary operations without resolving a service."""
 
@@ -638,13 +869,18 @@ __all__ = [
     "agent_supervisor_service_resolution_count",
     "agent_supervisor_control",
     "agent_supervisor_usage",
+    "agent_supervisor_autonomy",
+    "autonomy_mcp_discovery_manifest",
     "configure_agent_supervisor_control",
     "execute_agent_supervisor_operation",
+    "get_autonomy_control_service",
     "get_provider_usage_control_service",
     "mcp_control_surface_publication",
     "mcp_v2_control_surface_publication",
+    "register_native_agent_supervisor_autonomy_tools",
     "register_native_agent_supervisor_tools",
     "register_native_agent_supervisor_usage_tools",
+    "set_autonomy_control_service",
     "set_provider_usage_control_service",
     "usage_mcp_discovery_manifest",
     "validate_agent_supervisor_mcp_catalog",

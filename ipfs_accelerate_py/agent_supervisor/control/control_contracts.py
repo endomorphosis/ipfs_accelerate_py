@@ -8757,6 +8757,307 @@ OperationEffectClaim = EffectClaim
 ControlContractValidationError = ControlContractError
 
 
+# ---------------------------------------------------------------------------
+# APMC-017 supervisor autonomy control contracts
+# ---------------------------------------------------------------------------
+#
+# Autonomy controls are a discoverable, transport-neutral surface bound to the
+# shared supervisor control revisions.  They deliberately do not widen the
+# closed Operation catalog; Python, CLI, and MCP adapters project the same
+# schema/result/error vocabulary through AutonomyControl.  Adapters cannot mint
+# authority or confirmation, and reads never start providers or mutate state.
+
+SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID: Final[str] = (
+    "requirement:supervisor-autonomy-control-conformance.v1"
+)
+SUPERVISOR_AUTONOMY_CONTROL_GOAL_ID: Final[str] = "APMC-G090"
+SUPERVISOR_AUTONOMY_CONTROL_SCHEMA_VERSION: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy-control@1"
+)
+SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy-control-tool@1"
+)
+SUPERVISOR_AUTONOMY_CONTROL_CATALOG_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy-control-catalog@1"
+)
+
+SUPERVISOR_AUTONOMY_READ_AUTHORITY: Final[str] = "agent_supervisor.autonomy/read"
+SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY: Final[str] = (
+    "agent_supervisor.autonomy/lifecycle"
+)
+SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY: Final[str] = "agent_supervisor.autonomy/level"
+SUPERVISOR_AUTONOMY_POLICY_AUTHORITY: Final[str] = (
+    "agent_supervisor.autonomy/policy"
+)
+SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY: Final[str] = (
+    "agent_supervisor.autonomy/repair"
+)
+SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY: Final[str] = (
+    "agent_supervisor.autonomy/cancel"
+)
+SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY: Final[str] = (
+    "agent_supervisor.autonomy/escalation"
+)
+SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY: Final[str] = "agent_supervisor.autonomy/admin"
+
+MAX_AUTONOMY_CONTROL_PAGE_SIZE: Final[int] = 100
+MAX_AUTONOMY_CONTROL_RECEIPTS: Final[int] = 256
+MAX_AUTONOMY_CONTROL_AUDIT: Final[int] = 512
+MAX_AUTONOMY_CONTROL_REASON_CODES: Final[int] = 32
+MAX_AUTONOMY_CONTROL_STRING: Final[int] = 256
+MAX_AUTONOMY_CONTROL_IDEMPOTENCY_KEY: Final[int] = 128
+MAX_AUTONOMY_CONTROL_EXPECTED_EFFECTS: Final[int] = 32
+
+AUTONOMY_CONTROL_LEVELS: Final[tuple[str, ...]] = (
+    "observe_only",
+    "recommend",
+    "dry_run",
+    "execute_reversible",
+    "execute_bounded_mutation",
+    "self_repair_isolated",
+)
+
+SUPERVISOR_AUTONOMY_REASON_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "ok",
+        "unauthorized",
+        "read_denied",
+        "admin_denied",
+        "lifecycle_authority_denied",
+        "level_authority_denied",
+        "policy_authority_denied",
+        "repair_authority_denied",
+        "cancel_authority_denied",
+        "escalation_authority_denied",
+        "invalid_request",
+        "invalid_cursor",
+        "cursor_revision_mismatch",
+        "stale_snapshot",
+        "stale_fence",
+        "revision_mismatch",
+        "idempotency_conflict",
+        "idempotency_replay",
+        "expected_effects_exceeded",
+        "lease_required",
+        "fence_required",
+        "confirmation_required",
+        "confirmation_mismatch",
+        "confirmation_replay",
+        "confirmation_consumed",
+        "confirmation_unknown",
+        "level_rejected",
+        "policy_rejected",
+        "repair_rejected",
+        "action_not_found",
+        "escalation_not_found",
+        "escalation_expired",
+        "option_rejected",
+        "self_authorization_denied",
+        "mutation_denied_model_output",
+        "mutation_denied_remote_peer",
+        "side_effect_forbidden",
+        "unbounded_page",
+        "autonomy_unavailable",
+        "paused",
+        "already_paused",
+        "already_running",
+        "dry_run_preview",
+        "completion_not_authoritative",
+    }
+)
+
+
+class AutonomyControlOperation(str, Enum):
+    """Closed autonomy operations (not Operation catalog members)."""
+
+    CAPABILITIES = "autonomy_capabilities"
+    STATUS = "autonomy_status"
+    METRICS = "autonomy_metrics"
+    GRAPH = "autonomy_graph"
+    UNRESOLVED_QUESTIONS = "autonomy_unresolved_questions"
+    BUDGET = "autonomy_budget"
+    EXPERIENCE_SUMMARY = "autonomy_experience_summary"
+    ROUTE_POLICY = "autonomy_route_policy"
+    DISTILLATION_CANDIDATES = "autonomy_distillation_candidates"
+    REPAIR_HISTORY = "autonomy_repair_history"
+    ESCALATIONS = "autonomy_escalations"
+    SHADOW_RESULTS = "autonomy_shadow_results"
+    PAUSE = "autonomy_pause"
+    RESUME = "autonomy_resume"
+    SET_LEVEL = "autonomy_set_level"
+    APPROVE_POLICY_CANDIDATE = "autonomy_approve_policy_candidate"
+    REJECT_POLICY_CANDIDATE = "autonomy_reject_policy_candidate"
+    ROLLBACK_POLICY_CANDIDATE = "autonomy_rollback_policy_candidate"
+    APPROVE_REPAIR = "autonomy_approve_repair"
+    CANCEL_ACTION = "autonomy_cancel_action"
+    BIND_ESCALATION_ANSWER = "autonomy_bind_escalation_answer"
+
+
+AUTONOMY_CONTROL_READ_OPERATIONS: Final[frozenset[AutonomyControlOperation]] = (
+    frozenset(
+        {
+            AutonomyControlOperation.CAPABILITIES,
+            AutonomyControlOperation.STATUS,
+            AutonomyControlOperation.METRICS,
+            AutonomyControlOperation.GRAPH,
+            AutonomyControlOperation.UNRESOLVED_QUESTIONS,
+            AutonomyControlOperation.BUDGET,
+            AutonomyControlOperation.EXPERIENCE_SUMMARY,
+            AutonomyControlOperation.ROUTE_POLICY,
+            AutonomyControlOperation.DISTILLATION_CANDIDATES,
+            AutonomyControlOperation.REPAIR_HISTORY,
+            AutonomyControlOperation.ESCALATIONS,
+            AutonomyControlOperation.SHADOW_RESULTS,
+        }
+    )
+)
+AUTONOMY_CONTROL_MUTATION_OPERATIONS: Final[
+    frozenset[AutonomyControlOperation]
+] = frozenset(
+    {
+        AutonomyControlOperation.PAUSE,
+        AutonomyControlOperation.RESUME,
+        AutonomyControlOperation.SET_LEVEL,
+        AutonomyControlOperation.APPROVE_POLICY_CANDIDATE,
+        AutonomyControlOperation.REJECT_POLICY_CANDIDATE,
+        AutonomyControlOperation.ROLLBACK_POLICY_CANDIDATE,
+        AutonomyControlOperation.APPROVE_REPAIR,
+        AutonomyControlOperation.CANCEL_ACTION,
+        AutonomyControlOperation.BIND_ESCALATION_ANSWER,
+    }
+)
+AUTONOMY_CONTROL_CONFIRMATION_OPERATIONS: Final[
+    frozenset[AutonomyControlOperation]
+] = frozenset(
+    {
+        AutonomyControlOperation.APPROVE_POLICY_CANDIDATE,
+        AutonomyControlOperation.REJECT_POLICY_CANDIDATE,
+        AutonomyControlOperation.ROLLBACK_POLICY_CANDIDATE,
+        AutonomyControlOperation.APPROVE_REPAIR,
+        AutonomyControlOperation.BIND_ESCALATION_ANSWER,
+    }
+)
+AUTONOMY_CONTROL_MUTATION_AUTHORITIES: Final[
+    Mapping[AutonomyControlOperation, str]
+] = MappingProxyType(
+    {
+        AutonomyControlOperation.PAUSE: SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY,
+        AutonomyControlOperation.RESUME: SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY,
+        AutonomyControlOperation.SET_LEVEL: SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY,
+        AutonomyControlOperation.APPROVE_POLICY_CANDIDATE: (
+            SUPERVISOR_AUTONOMY_POLICY_AUTHORITY
+        ),
+        AutonomyControlOperation.REJECT_POLICY_CANDIDATE: (
+            SUPERVISOR_AUTONOMY_POLICY_AUTHORITY
+        ),
+        AutonomyControlOperation.ROLLBACK_POLICY_CANDIDATE: (
+            SUPERVISOR_AUTONOMY_POLICY_AUTHORITY
+        ),
+        AutonomyControlOperation.APPROVE_REPAIR: SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY,
+        AutonomyControlOperation.CANCEL_ACTION: SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY,
+        AutonomyControlOperation.BIND_ESCALATION_ANSWER: (
+            SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY
+        ),
+    }
+)
+
+
+def autonomy_control_authorities() -> dict[str, str]:
+    """Stable authority vocabulary for Python / CLI / MCP parity."""
+
+    return {
+        "read": SUPERVISOR_AUTONOMY_READ_AUTHORITY,
+        "lifecycle": SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY,
+        "level": SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY,
+        "policy": SUPERVISOR_AUTONOMY_POLICY_AUTHORITY,
+        "repair": SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY,
+        "cancel": SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY,
+        "escalation": SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY,
+        "admin": SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY,
+    }
+
+
+def autonomy_control_reason_codes() -> tuple[str, ...]:
+    return tuple(sorted(SUPERVISOR_AUTONOMY_REASON_CODES))
+
+
+def autonomy_control_operations() -> tuple[str, ...]:
+    return tuple(sorted(item.value for item in AutonomyControlOperation))
+
+
+def autonomy_control_mutation_operations() -> tuple[str, ...]:
+    return tuple(sorted(item.value for item in AUTONOMY_CONTROL_MUTATION_OPERATIONS))
+
+
+def autonomy_control_read_operations() -> tuple[str, ...]:
+    return tuple(sorted(item.value for item in AUTONOMY_CONTROL_READ_OPERATIONS))
+
+
+def discover_autonomy_control_catalog() -> dict[str, Any]:
+    """Side-effect-free discovery of the autonomy control operation surface.
+
+    Returns schema/result/error-equivalent operation descriptors bound to the
+    supervisor autonomy control requirement.  Does not resolve a service,
+    start a process, import an optional provider, or mutate state.
+    """
+
+    operations: list[dict[str, Any]] = []
+    for operation in sorted(
+        AutonomyControlOperation, key=lambda item: item.value
+    ):
+        mutating = operation in AUTONOMY_CONTROL_MUTATION_OPERATIONS
+        confirmation = operation in AUTONOMY_CONTROL_CONFIRMATION_OPERATIONS
+        authority = (
+            AUTONOMY_CONTROL_MUTATION_AUTHORITIES[operation]
+            if mutating
+            else SUPERVISOR_AUTONOMY_READ_AUTHORITY
+        )
+        operations.append(
+            {
+                "operation": operation.value,
+                "authority": authority,
+                "mutating": mutating,
+                "side_effect_free": not mutating,
+                "requires_idempotency": mutating,
+                "requires_lease": mutating,
+                "requires_fence": mutating,
+                "requires_expected_revision": mutating,
+                "requires_expected_effects": mutating,
+                "requires_confirmation": confirmation,
+                "supports_dry_run": mutating,
+                "pagination": operation
+                in {
+                    AutonomyControlOperation.UNRESOLVED_QUESTIONS,
+                    AutonomyControlOperation.DISTILLATION_CANDIDATES,
+                    AutonomyControlOperation.REPAIR_HISTORY,
+                    AutonomyControlOperation.ESCALATIONS,
+                    AutonomyControlOperation.SHADOW_RESULTS,
+                    AutonomyControlOperation.ROUTE_POLICY,
+                },
+                "completion_authoritative": False,
+            }
+        )
+    payload = {
+        "schema": SUPERVISOR_AUTONOMY_CONTROL_CATALOG_SCHEMA,
+        "schema_version": SUPERVISOR_AUTONOMY_CONTROL_SCHEMA_VERSION,
+        "tool_schema_version": SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION,
+        "requirement_id": SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID,
+        "goal_id": SUPERVISOR_AUTONOMY_CONTROL_GOAL_ID,
+        "control_catalog_version": CONTROL_CATALOG_VERSION,
+        "operations": operations,
+        "authorities": autonomy_control_authorities(),
+        "reason_codes": list(autonomy_control_reason_codes()),
+        "levels": list(AUTONOMY_CONTROL_LEVELS),
+        "completion_authoritative": False,
+        "operational_evidence_only": True,
+        "provider_free": True,
+        "process_free": True,
+        "adapters_cannot_mint_permission": True,
+        "mcp_never_shells_out": True,
+    }
+    return MappingProxyType(payload)  # type: ignore[return-value]
+
+
 __all__ = [
     "AUTHORIZATION_DECISION_SCHEMA",
     "CAPABILITY_REPORT_SCHEMA",
@@ -8979,4 +9280,31 @@ __all__ = [
     "usage_control_mutation_operations",
     "usage_control_read_operations",
     "usage_headroom_band",
+    "SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID",
+    "SUPERVISOR_AUTONOMY_CONTROL_GOAL_ID",
+    "SUPERVISOR_AUTONOMY_CONTROL_SCHEMA_VERSION",
+    "SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION",
+    "SUPERVISOR_AUTONOMY_CONTROL_CATALOG_SCHEMA",
+    "SUPERVISOR_AUTONOMY_READ_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_POLICY_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY",
+    "SUPERVISOR_AUTONOMY_REASON_CODES",
+    "AUTONOMY_CONTROL_LEVELS",
+    "AUTONOMY_CONTROL_READ_OPERATIONS",
+    "AUTONOMY_CONTROL_MUTATION_OPERATIONS",
+    "AUTONOMY_CONTROL_CONFIRMATION_OPERATIONS",
+    "AUTONOMY_CONTROL_MUTATION_AUTHORITIES",
+    "MAX_AUTONOMY_CONTROL_PAGE_SIZE",
+    "AutonomyControlOperation",
+    "autonomy_control_authorities",
+    "autonomy_control_reason_codes",
+    "autonomy_control_operations",
+    "autonomy_control_mutation_operations",
+    "autonomy_control_read_operations",
+    "discover_autonomy_control_catalog",
 ]

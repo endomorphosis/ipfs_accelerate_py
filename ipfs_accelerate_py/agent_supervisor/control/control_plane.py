@@ -40,6 +40,17 @@ from .control_contracts import (
     CONTROL_CONTRACT_VERSION,
     DEFAULT_CONTROL_CATALOG,
     DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS,
+    AUTONOMY_CONTROL_CONFIRMATION_OPERATIONS,
+    AUTONOMY_CONTROL_LEVELS,
+    AUTONOMY_CONTROL_MUTATION_AUTHORITIES,
+    AutonomyControlOperation,
+    MAX_AUTONOMY_CONTROL_AUDIT,
+    MAX_AUTONOMY_CONTROL_EXPECTED_EFFECTS,
+    MAX_AUTONOMY_CONTROL_IDEMPOTENCY_KEY,
+    MAX_AUTONOMY_CONTROL_PAGE_SIZE,
+    MAX_AUTONOMY_CONTROL_REASON_CODES,
+    MAX_AUTONOMY_CONTROL_RECEIPTS,
+    MAX_AUTONOMY_CONTROL_STRING,
     MAX_USAGE_CONTROL_AUDIT,
     MAX_USAGE_CONTROL_EXPECTED_EFFECTS,
     MAX_USAGE_CONTROL_IDEMPOTENCY_KEY,
@@ -50,6 +61,17 @@ from .control_contracts import (
     MUTATION_OPERATIONS,
     PROPOSAL_OPERATIONS,
     READ_OPERATIONS,
+    SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY,
+    SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY,
+    SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID,
+    SUPERVISOR_AUTONOMY_CONTROL_SCHEMA_VERSION,
+    SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION,
+    SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY,
+    SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY,
+    SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY,
+    SUPERVISOR_AUTONOMY_POLICY_AUTHORITY,
+    SUPERVISOR_AUTONOMY_READ_AUTHORITY,
+    SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY,
     SUPERVISOR_USAGE_ADMIN_AUTHORITY,
     SUPERVISOR_USAGE_BUDGET_AUTHORITY,
     SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID,
@@ -99,6 +121,7 @@ from .control_contracts import (
     UnsupportedCapabilityError,
     canonical_control_json_bytes,
     decode_operation_request,
+    discover_autonomy_control_catalog,
     discover_usage_control_catalog,
     usage_control_authorities,
     usage_control_operations,
@@ -4410,6 +4433,7 @@ class SupervisorControlService:
         clock_ms: Callable[[], int] = _now_ms,
         usage_control: Union["ProviderUsageControl", None] = None,
         usage_coordinator: Any = None,
+        autonomy_control: Union["AutonomyControl", None] = None,
     ) -> None:
         repositories = (
             repository_allowlist
@@ -4477,6 +4501,19 @@ class SupervisorControlService:
             raise TypeError("usage_control must be a ProviderUsageControl")
         self._usage_control = usage_control or ProviderUsageControl(
             coordinator=usage_coordinator,
+            catalog_revision_provider=lambda: (
+                getattr(self._catalog, "catalog_id", None)
+                or f"catalog-revision:{CONTROL_CATALOG_VERSION}"
+            ),
+            supervisor_revision_provider=lambda: (
+                f"supervisor:{self._service_id}:{self._service_version}"
+            ),
+        )
+        if autonomy_control is not None and not isinstance(
+            autonomy_control, AutonomyControl
+        ):
+            raise TypeError("autonomy_control must be an AutonomyControl")
+        self._autonomy_control = autonomy_control or AutonomyControl(
             catalog_revision_provider=lambda: (
                 getattr(self._catalog, "catalog_id", None)
                 or f"catalog-revision:{CONTROL_CATALOG_VERSION}"
@@ -5764,6 +5801,149 @@ class SupervisorControlService:
 
         return self._usage_control.execute(
             operation, authorities=authorities, **kwargs
+        )
+
+    @property
+    def autonomy_control(self) -> "AutonomyControl":
+        """Bound autonomy control surface (operational evidence only)."""
+
+        return self._autonomy_control
+
+    def autonomy_discover(self) -> Mapping[str, Any]:
+        """Side-effect-free discovery of autonomy control operations."""
+
+        return self._autonomy_control.discover()
+
+    def autonomy_execute(
+        self,
+        operation: Union["AutonomyControlOperation", str],
+        *,
+        authorities: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Dispatch one autonomy control operation through the shared service."""
+
+        return self._autonomy_control.execute(
+            operation, authorities=authorities, **kwargs
+        )
+
+    def autonomy_capabilities(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.capabilities(authorities=authorities, **kwargs)
+
+    def autonomy_status(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.status(authorities=authorities, **kwargs)
+
+    def autonomy_metrics(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.metrics(authorities=authorities, **kwargs)
+
+    def autonomy_graph(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.graph(authorities=authorities, **kwargs)
+
+    def autonomy_unresolved_questions(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.unresolved_questions(
+            authorities=authorities, **kwargs
+        )
+
+    def autonomy_budget(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.budget(authorities=authorities, **kwargs)
+
+    def autonomy_experience_summary(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.experience_summary(
+            authorities=authorities, **kwargs
+        )
+
+    def autonomy_route_policy(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.route_policy(authorities=authorities, **kwargs)
+
+    def autonomy_distillation_candidates(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.distillation_candidates(
+            authorities=authorities, **kwargs
+        )
+
+    def autonomy_repair_history(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.repair_history(authorities=authorities, **kwargs)
+
+    def autonomy_escalations(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.escalations(authorities=authorities, **kwargs)
+
+    def autonomy_shadow_results(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.shadow_results(authorities=authorities, **kwargs)
+
+    def autonomy_pause(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.pause(authorities=authorities, **kwargs)
+
+    def autonomy_resume(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.resume(authorities=authorities, **kwargs)
+
+    def autonomy_set_level(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.set_level(authorities=authorities, **kwargs)
+
+    def autonomy_approve_policy_candidate(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.approve_policy_candidate(
+            authorities=authorities, **kwargs
+        )
+
+    def autonomy_reject_policy_candidate(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.reject_policy_candidate(
+            authorities=authorities, **kwargs
+        )
+
+    def autonomy_rollback_policy_candidate(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.rollback_policy_candidate(
+            authorities=authorities, **kwargs
+        )
+
+    def autonomy_approve_repair(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.approve_repair(authorities=authorities, **kwargs)
+
+    def autonomy_cancel_action(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.cancel_action(authorities=authorities, **kwargs)
+
+    def autonomy_bind_escalation_answer(
+        self, *, authorities: Sequence[str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._autonomy_control.bind_escalation_answer(
+            authorities=authorities, **kwargs
         )
 
 
@@ -7570,6 +7750,1969 @@ class ProviderUsageControl:
             return self._error(exc, authorities=granted)
 
 
+# ---------------------------------------------------------------------------
+# APMC-017 AutonomyControl — autonomy read/mutation surface
+# ---------------------------------------------------------------------------
+
+
+class AutonomyControlError(Exception):
+    """Typed autonomy-control failure with a stable reason code."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "invalid_request",
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.code = str(code)
+        self.reason_codes = tuple(
+            str(item)[:64] for item in (reason_codes or (self.code,))
+        )[:MAX_AUTONOMY_CONTROL_REASON_CODES]
+
+
+@dataclass(frozen=True)
+class _AutonomyAuditReceipt:
+    operation: str
+    target_id: str
+    actor: str | None
+    idempotency_key: str
+    expected_revision: str
+    result_revision: str | None
+    fence: int
+    lease_id: str
+    confirmation_cid: str
+    reason_codes: tuple[str, ...]
+    effects: tuple[str, ...]
+    created_at: str
+    audit_id: str
+    catalog_revision: str
+    policy_revision: str
+    supervisor_revision: str
+    success: bool = True
+    dry_run: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "operation": self.operation,
+            "target_id": self.target_id,
+            "actor": self.actor,
+            "idempotency_key": self.idempotency_key,
+            "expected_revision": self.expected_revision,
+            "result_revision": self.result_revision,
+            "fence": self.fence,
+            "lease_id": self.lease_id,
+            "confirmation_cid": self.confirmation_cid,
+            "reason_codes": list(self.reason_codes),
+            "effects": list(self.effects),
+            "created_at": self.created_at,
+            "audit_id": self.audit_id,
+            "catalog_revision": self.catalog_revision,
+            "policy_revision": self.policy_revision,
+            "supervisor_revision": self.supervisor_revision,
+            "success": self.success,
+            "dry_run": self.dry_run,
+            "completion_authoritative": False,
+        }
+
+
+@dataclass
+class _AutonomyIdempotencyRecord:
+    key: str
+    operation: str
+    target_id: str
+    request_digest: str
+    response: dict[str, Any]
+    created_at: str
+
+
+def _autonomy_now_rfc3339(now: datetime | None = None) -> str:
+    value = now or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _autonomy_require_text(
+    value: Any, field: str, *, maximum: int = MAX_AUTONOMY_CONTROL_STRING
+) -> str:
+    if not isinstance(value, str) or not value or len(value) > maximum:
+        raise AutonomyControlError(
+            f"{field} must be non-empty text within {maximum} bytes",
+            code="invalid_request",
+            reason_codes=("invalid_request", field),
+        )
+    return value
+
+
+def _autonomy_bounded_page(limit: Any, *, default: int = 50) -> int:
+    if limit is None:
+        return default
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise AutonomyControlError(
+            "limit must be an integer",
+            code="unbounded_page",
+            reason_codes=("unbounded_page",),
+        )
+    if not 1 <= limit <= MAX_AUTONOMY_CONTROL_PAGE_SIZE:
+        raise AutonomyControlError(
+            f"limit must be between 1 and {MAX_AUTONOMY_CONTROL_PAGE_SIZE}",
+            code="unbounded_page",
+            reason_codes=("unbounded_page",),
+        )
+    return limit
+
+
+def _autonomy_authorities(granted: Sequence[str] | frozenset | None) -> frozenset[str]:
+    if granted is None:
+        return frozenset()
+    if isinstance(granted, (str, bytes)):
+        raise AutonomyControlError(
+            "authorities must be a sequence of strings",
+            code="invalid_request",
+            reason_codes=("invalid_request",),
+        )
+    return frozenset(str(item) for item in granted if str(item))
+
+
+def _autonomy_has_authority(granted: Sequence[str] | frozenset, required: str) -> bool:
+    return required in frozenset(str(item) for item in granted)
+
+
+def _autonomy_require_read(granted: Sequence[str] | frozenset) -> None:
+    if not _autonomy_has_authority(granted, SUPERVISOR_AUTONOMY_READ_AUTHORITY):
+        raise AutonomyControlError(
+            f"autonomy read requires {SUPERVISOR_AUTONOMY_READ_AUTHORITY}",
+            code="read_denied",
+            reason_codes=("read_denied",),
+        )
+
+
+def _autonomy_require_mutation_authority(
+    granted: Sequence[str] | frozenset,
+    operation: AutonomyControlOperation,
+) -> None:
+    required = AUTONOMY_CONTROL_MUTATION_AUTHORITIES[operation]
+    if _autonomy_has_authority(granted, required) or _autonomy_has_authority(
+        granted, SUPERVISOR_AUTONOMY_ADMIN_AUTHORITY
+    ):
+        return
+    code = {
+        SUPERVISOR_AUTONOMY_LIFECYCLE_AUTHORITY: "lifecycle_authority_denied",
+        SUPERVISOR_AUTONOMY_LEVEL_AUTHORITY: "level_authority_denied",
+        SUPERVISOR_AUTONOMY_POLICY_AUTHORITY: "policy_authority_denied",
+        SUPERVISOR_AUTONOMY_REPAIR_AUTHORITY: "repair_authority_denied",
+        SUPERVISOR_AUTONOMY_CANCEL_AUTHORITY: "cancel_authority_denied",
+        SUPERVISOR_AUTONOMY_ESCALATION_AUTHORITY: "escalation_authority_denied",
+    }.get(required, "admin_denied")
+    raise AutonomyControlError(
+        f"autonomy mutation requires {required}",
+        code=code,
+        reason_codes=(code, "admin_denied"),
+    )
+
+
+def _autonomy_content_cid(payload: Mapping[str, Any]) -> str:
+    body = canonical_control_json_bytes(dict(payload))
+    return "sha256:" + hashlib.sha256(body).hexdigest()
+
+
+def _autonomy_copy_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(key): (
+            _autonomy_copy_mapping(item)
+            if isinstance(item, Mapping)
+            else list(item)
+            if isinstance(item, (list, tuple))
+            else item
+        )
+        for key, item in value.items()
+    }
+
+
+class AutonomyControl:
+    """Bounded autonomy control surface shared by Python, CLI, and MCP.
+
+    Read paths are side-effect free: they never start a provider, open a
+    database, refill a budget, or mutate durable state.  Mutations require a
+    distinct authority, expected revision, lease, fence, expected effects, and
+    (for policy/repair/escalation) a one-use externally issued confirmation.
+    Adapters cannot mint those permissions.  Results are operational evidence
+    only — never completion authority.
+    """
+
+    requirement_id = SUPERVISOR_AUTONOMY_CONTROL_REQUIREMENT_ID
+
+    def __init__(
+        self,
+        *,
+        catalog_revision_provider: Callable[[], str] | None = None,
+        supervisor_revision_provider: Callable[[], str] | None = None,
+        policy_revision_provider: Callable[[], str] | None = None,
+        default_authorities: Sequence[str] | None = None,
+        max_receipts: int = MAX_AUTONOMY_CONTROL_RECEIPTS,
+        max_audit: int = MAX_AUTONOMY_CONTROL_AUDIT,
+        questions: Sequence[Mapping[str, Any]] | None = None,
+        graph: Mapping[str, Any] | None = None,
+        budget: Mapping[str, Any] | None = None,
+        experience: Mapping[str, Any] | None = None,
+        route_policies: Sequence[Mapping[str, Any]] | None = None,
+        distillation_candidates: Sequence[Mapping[str, Any]] | None = None,
+        repairs: Sequence[Mapping[str, Any]] | None = None,
+        escalations: Sequence[Mapping[str, Any]] | None = None,
+        shadow_results: Sequence[Mapping[str, Any]] | None = None,
+        active_actions: Sequence[Mapping[str, Any]] | None = None,
+        metrics: Mapping[str, Any] | None = None,
+        level: str = "observe_only",
+        clock_ms: Callable[[], int] | None = None,
+    ) -> None:
+        if (
+            isinstance(max_receipts, bool)
+            or not isinstance(max_receipts, int)
+            or not 1 <= max_receipts <= MAX_AUTONOMY_CONTROL_RECEIPTS
+        ):
+            raise ValueError("max_receipts is invalid")
+        if (
+            isinstance(max_audit, bool)
+            or not isinstance(max_audit, int)
+            or not 1 <= max_audit <= MAX_AUTONOMY_CONTROL_AUDIT
+        ):
+            raise ValueError("max_audit is invalid")
+        selected_level = str(level or "observe_only")
+        if selected_level not in AUTONOMY_CONTROL_LEVELS:
+            raise ValueError("level is not a closed autonomy level")
+        self._catalog_revision_provider = catalog_revision_provider
+        self._supervisor_revision_provider = supervisor_revision_provider
+        self._policy_revision_provider = policy_revision_provider
+        self._default_authorities = _autonomy_authorities(default_authorities)
+        self._max_receipts = max_receipts
+        self._max_audit = max_audit
+        self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+        self._lock = threading.RLock()
+        self._paused = False
+        self._level = selected_level
+        self._revision = 0
+        self._policy_revision = 0
+        self._fence = 1
+        self._read_count = 0
+        self._mutation_count = 0
+        self._provider_start_count = 0
+        self._database_write_count = 0
+        self._graph = _autonomy_copy_mapping(
+            graph
+            or {
+                "nodes": [],
+                "edges": [],
+                "unresolved_count": 0,
+            }
+        )
+        self._questions = [_autonomy_copy_mapping(item) for item in (questions or ())]
+        self._budget = _autonomy_copy_mapping(
+            budget
+            or {
+                "max_total_model_calls": 0,
+                "committed_total_model_calls": 0,
+                "remaining_total_model_calls": 0,
+                "max_human_questions": 0,
+                "committed_human_questions": 0,
+                "status": "idle",
+            }
+        )
+        self._experience = _autonomy_copy_mapping(
+            experience
+            or {
+                "episode_count": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "last_episode_id": "",
+            }
+        )
+        self._route_policies = [
+            _autonomy_copy_mapping(item) for item in (route_policies or ())
+        ]
+        self._active_policy_id = ""
+        self._policy_history: list[str] = []
+        self._distillation = [
+            _autonomy_copy_mapping(item) for item in (distillation_candidates or ())
+        ]
+        self._repairs = [_autonomy_copy_mapping(item) for item in (repairs or ())]
+        self._escalations = [
+            _autonomy_copy_mapping(item) for item in (escalations or ())
+        ]
+        self._shadow_results = [
+            _autonomy_copy_mapping(item) for item in (shadow_results or ())
+        ]
+        self._active_actions = [
+            _autonomy_copy_mapping(item) for item in (active_actions or ())
+        ]
+        self._metrics = _autonomy_copy_mapping(
+            metrics
+            or {
+                "admitted_model_actions": 0,
+                "durable_writes": 0,
+                "graph_scans": 0,
+                "budget_refills": 0,
+                "idle_cycles": 0,
+            }
+        )
+        self._confirmations: dict[str, dict[str, Any]] = {}
+        self._consumed_confirmations: set[str] = set()
+        self._idempotency: dict[str, _AutonomyIdempotencyRecord] = {}
+        self._audits: list[_AutonomyAuditReceipt] = []
+        self._receipts: list[dict[str, Any]] = []
+
+    def catalog_revision(self) -> str:
+        if self._catalog_revision_provider is None:
+            return f"catalog-revision:{CONTROL_CATALOG_VERSION}"
+        value = self._catalog_revision_provider()
+        if not isinstance(value, str) or not value:
+            return f"catalog-revision:{CONTROL_CATALOG_VERSION}"
+        return value
+
+    def supervisor_revision(self) -> str:
+        if self._supervisor_revision_provider is None:
+            return f"supervisor-revision:{self._revision}"
+        value = self._supervisor_revision_provider()
+        if not isinstance(value, str) or not value:
+            return f"supervisor-revision:{self._revision}"
+        return value
+
+    def policy_revision(self) -> str:
+        if self._policy_revision_provider is not None:
+            value = self._policy_revision_provider()
+            if isinstance(value, str) and value:
+                return value
+        return f"policy-revision:{self._policy_revision}"
+
+    def autonomy_revision(self) -> str:
+        return f"autonomy-revision:{self._revision}"
+
+    def discover(self) -> Mapping[str, Any]:
+        """Lazy, side-effect-free discovery of autonomy operations."""
+
+        catalog = dict(discover_autonomy_control_catalog())
+        catalog["catalog_revision"] = self.catalog_revision()
+        catalog["autonomy_revision"] = self.autonomy_revision()
+        catalog["policy_revision"] = self.policy_revision()
+        catalog["supervisor_revision"] = self.supervisor_revision()
+        return catalog
+
+    def runtime_observation(self) -> dict[str, Any]:
+        """Return counters proving reads do not start providers or write."""
+
+        with self._lock:
+            return {
+                "read_count": self._read_count,
+                "mutation_count": self._mutation_count,
+                "provider_start_count": self._provider_start_count,
+                "database_write_count": self._database_write_count,
+                "revision": self._revision,
+                "paused": self._paused,
+                "level": self._level,
+            }
+
+    def register_external_authorization(
+        self,
+        *,
+        confirmation_cid: str,
+        operation: AutonomyControlOperation | str,
+        target_id: str,
+        option: str = "",
+        actor: str = "operator",
+        source: str = "operator",
+    ) -> dict[str, Any]:
+        """Record a one-use confirmation issued by an external authority.
+
+        CLI and MCP adapters must not call this.  Confirmation is minted only
+        by an already-authorized Python caller, never by a transport adapter.
+        """
+
+        cid = _autonomy_require_text(confirmation_cid, "confirmation_cid")
+        target = _autonomy_require_text(target_id, "target_id")
+        selected = (
+            operation
+            if isinstance(operation, AutonomyControlOperation)
+            else AutonomyControlOperation(str(operation))
+        )
+        if source in {"model_output", "model", "completion", "self", "adapter"}:
+            raise AutonomyControlError(
+                "adapters and models cannot mint confirmation",
+                code="self_authorization_denied",
+                reason_codes=("self_authorization_denied",),
+            )
+        with self._lock:
+            if cid in self._confirmations or cid in self._consumed_confirmations:
+                raise AutonomyControlError(
+                    "confirmation_cid has already been issued",
+                    code="confirmation_replay",
+                    reason_codes=("confirmation_replay",),
+                )
+            record = {
+                "confirmation_cid": cid,
+                "operation": selected.value,
+                "target_id": target,
+                "option": str(option or ""),
+                "actor": str(actor or "operator"),
+                "source": str(source or "operator"),
+                "consumed": False,
+                "issued_at_ms": int(self._clock_ms()),
+            }
+            self._confirmations[cid] = record
+        return dict(record)
+
+    def deliver_escalation(self, packet: Mapping[str, Any]) -> dict[str, Any]:
+        """Accept a compiled human-escalation packet for later answer binding."""
+
+        if not isinstance(packet, Mapping):
+            raise AutonomyControlError(
+                "escalation packet must be an object",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        packet_id = str(
+            packet.get("packet_id")
+            or packet.get("content_id")
+            or packet.get("id")
+            or ""
+        )
+        if not packet_id:
+            packet_id = _autonomy_content_cid(dict(packet))
+        stored = _autonomy_copy_mapping(packet)
+        stored["packet_id"] = packet_id
+        stored.setdefault("status", "pending")
+        stored.setdefault("bound_option", "")
+        stored.setdefault("answer_bound", False)
+        with self._lock:
+            existing = [
+                item
+                for item in self._escalations
+                if str(item.get("packet_id") or "") == packet_id
+            ]
+            if existing:
+                return dict(existing[0])
+            self._escalations.append(stored)
+        return dict(stored)
+
+    def seed_action(self, action: Mapping[str, Any]) -> dict[str, Any]:
+        """Inject a cancellable in-flight action (Python/runtime only)."""
+
+        if not isinstance(action, Mapping):
+            raise AutonomyControlError(
+                "action must be an object",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        stored = _autonomy_copy_mapping(action)
+        action_id = str(stored.get("action_id") or stored.get("id") or "")
+        if not action_id:
+            action_id = _autonomy_content_cid(stored)
+        stored["action_id"] = action_id
+        stored.setdefault("status", "running")
+        with self._lock:
+            self._active_actions.append(stored)
+        return dict(stored)
+
+    def seed_policy_candidate(self, candidate: Mapping[str, Any]) -> dict[str, Any]:
+        if not isinstance(candidate, Mapping):
+            raise AutonomyControlError(
+                "candidate must be an object",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        stored = _autonomy_copy_mapping(candidate)
+        candidate_id = str(
+            stored.get("candidate_id") or stored.get("id") or ""
+        )
+        if not candidate_id:
+            candidate_id = _autonomy_content_cid(stored)
+        stored["candidate_id"] = candidate_id
+        stored.setdefault("status", "candidate")
+        stored.setdefault("shadow_only", True)
+        with self._lock:
+            self._route_policies.append(stored)
+        return dict(stored)
+
+    def seed_repair(self, repair: Mapping[str, Any]) -> dict[str, Any]:
+        if not isinstance(repair, Mapping):
+            raise AutonomyControlError(
+                "repair must be an object",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        stored = _autonomy_copy_mapping(repair)
+        repair_id = str(
+            stored.get("repair_id") or stored.get("plan_id") or stored.get("id") or ""
+        )
+        if not repair_id:
+            repair_id = _autonomy_content_cid(stored)
+        stored["repair_id"] = repair_id
+        stored.setdefault("status", "proposed")
+        with self._lock:
+            self._repairs.append(stored)
+        return dict(stored)
+
+    def _bind_revisions(
+        self,
+        *,
+        autonomy_revision: str | None = None,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": SUPERVISOR_AUTONOMY_CONTROL_SCHEMA_VERSION,
+            "tool_schema_version": SUPERVISOR_AUTONOMY_CONTROL_TOOL_SCHEMA_VERSION,
+            "requirement_id": self.requirement_id,
+            "catalog_revision": self.catalog_revision(),
+            "autonomy_revision": autonomy_revision or self.autonomy_revision(),
+            "policy_revision": self.policy_revision(),
+            "supervisor_revision": self.supervisor_revision(),
+            "completion_authoritative": False,
+            "operational_evidence_only": True,
+            "provider_started": False,
+            "database_mutated": False,
+        }
+        if extra:
+            payload.update(dict(extra))
+        return payload
+
+    def _success(
+        self,
+        *,
+        authorities: Sequence[str] | frozenset,
+        autonomy_revision: str | None = None,
+        **payload: Any,
+    ) -> dict[str, Any]:
+        del authorities
+        return self._bind_revisions(
+            autonomy_revision=autonomy_revision,
+            extra={"status": "success", "success": True, **payload},
+        )
+
+    def _error(
+        self,
+        exc: BaseException,
+        *,
+        authorities: Sequence[str] | frozenset = (),
+        autonomy_revision: str | None = None,
+    ) -> dict[str, Any]:
+        del authorities
+        if isinstance(exc, AutonomyControlError):
+            code = exc.code
+            message = str(exc)
+            reasons = list(exc.reason_codes)
+        elif isinstance(exc, ValueError) and "AutonomyControlOperation" in type(
+            exc
+        ).__name__ or (
+            isinstance(exc, ValueError)
+            and "is not a valid" in str(exc)
+        ):
+            code = "invalid_request"
+            message = "unknown autonomy operation"
+            reasons = ["invalid_request"]
+        else:
+            code = "invalid_request"
+            message = "autonomy control request failed"
+            reasons = ["invalid_request"]
+        return self._bind_revisions(
+            autonomy_revision=autonomy_revision,
+            extra={
+                "status": "error",
+                "success": False,
+                "error": {"code": code, "detail": message},
+                "error_code": code,
+                "error_type": code,
+                "reason_codes": reasons[:MAX_AUTONOMY_CONTROL_REASON_CODES],
+            },
+        )
+
+    def _resolve_authorities(
+        self, authorities: Sequence[str] | None
+    ) -> frozenset[str]:
+        if authorities is None:
+            return self._default_authorities
+        return _autonomy_authorities(authorities)
+
+    def _bump_revision(self) -> str:
+        with self._lock:
+            self._revision += 1
+            return self.autonomy_revision()
+
+    def _note_read(self) -> None:
+        with self._lock:
+            self._read_count += 1
+
+    def _page_items(
+        self,
+        items: Sequence[Any],
+        *,
+        limit: int,
+        cursor: str | None,
+        cursor_key: Callable[[Any], str],
+    ) -> tuple[list[Any], str | None]:
+        ordered = list(items)
+        start = 0
+        if cursor is not None:
+            if not isinstance(cursor, str) or not cursor:
+                raise AutonomyControlError(
+                    "cursor must be non-empty text",
+                    code="invalid_cursor",
+                    reason_codes=("invalid_cursor",),
+                )
+            for idx, item in enumerate(ordered):
+                if cursor_key(item) == cursor:
+                    start = idx + 1
+                    break
+            else:
+                raise AutonomyControlError(
+                    "cursor does not match this result set",
+                    code="invalid_cursor",
+                    reason_codes=("invalid_cursor", "cursor_revision_mismatch"),
+                )
+        page = ordered[start : start + limit]
+        next_cursor = None
+        if start + limit < len(ordered) and page:
+            next_cursor = cursor_key(page[-1])
+        return page, next_cursor
+
+    def _mutation_preflight(
+        self,
+        *,
+        operation: AutonomyControlOperation,
+        authorities: frozenset[str],
+        target_id: str,
+        expected_revision: str | None,
+        idempotency_key: str | None,
+        lease_id: str | None,
+        fence: int | None,
+        expected_effects: Sequence[str] | None,
+        confirmation_cid: str | None,
+        request_body: Mapping[str, Any],
+        source: str | None = None,
+        dry_run: bool = False,
+        option: str = "",
+    ) -> dict[str, Any] | None:
+        _autonomy_require_mutation_authority(authorities, operation)
+        _autonomy_require_text(target_id, "target_id")
+        if source in {"model_output", "model", "completion", "self"}:
+            raise AutonomyControlError(
+                "model output cannot mutate autonomy state",
+                code="mutation_denied_model_output",
+                reason_codes=("mutation_denied_model_output",),
+            )
+        if source in {"remote_peer", "federated", "peer", "adapter"}:
+            raise AutonomyControlError(
+                "adapters cannot mint autonomy permission",
+                code="self_authorization_denied",
+                reason_codes=("self_authorization_denied", "mutation_denied_remote_peer"),
+            )
+        if expected_revision is None:
+            raise AutonomyControlError(
+                "expected_revision is required for mutations",
+                code="revision_mismatch",
+                reason_codes=("revision_mismatch",),
+            )
+        _autonomy_require_text(expected_revision, "expected_revision")
+        if not idempotency_key:
+            raise AutonomyControlError(
+                "idempotency_key is required for mutations",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        key = _autonomy_require_text(
+            idempotency_key,
+            "idempotency_key",
+            maximum=MAX_AUTONOMY_CONTROL_IDEMPOTENCY_KEY,
+        )
+        if not lease_id:
+            raise AutonomyControlError(
+                "lease_id is required for mutations",
+                code="lease_required",
+                reason_codes=("lease_required",),
+            )
+        _autonomy_require_text(lease_id, "lease_id")
+        if fence is None:
+            raise AutonomyControlError(
+                "fence is required for mutations",
+                code="fence_required",
+                reason_codes=("fence_required",),
+            )
+        if isinstance(fence, bool) or not isinstance(fence, int) or fence < 0:
+            raise AutonomyControlError(
+                "fence must be a non-negative integer",
+                code="fence_required",
+                reason_codes=("fence_required",),
+            )
+        if int(fence) < int(self._fence):
+            raise AutonomyControlError(
+                "caller fence is stale",
+                code="stale_fence",
+                reason_codes=("stale_fence",),
+            )
+        effects = tuple(str(item)[:64] for item in (expected_effects or ()))
+        if not effects:
+            raise AutonomyControlError(
+                "expected_effects are required for mutations",
+                code="invalid_request",
+                reason_codes=("invalid_request",),
+            )
+        if len(effects) > MAX_AUTONOMY_CONTROL_EXPECTED_EFFECTS:
+            raise AutonomyControlError(
+                "expected_effects exceeds bound",
+                code="expected_effects_exceeded",
+                reason_codes=("expected_effects_exceeded",),
+            )
+        body_text = json.dumps(dict(request_body), sort_keys=True, default=str)
+        for token in ("prompt", "api_key", "bearer", "authorization:", "sk-"):
+            if token in body_text.casefold():
+                raise AutonomyControlError(
+                    "mutation body must not contain prompt/media/credential material",
+                    code="invalid_request",
+                    reason_codes=("invalid_request", "side_effect_forbidden"),
+                )
+        requires_confirmation = (
+            operation in AUTONOMY_CONTROL_CONFIRMATION_OPERATIONS
+        )
+        if requires_confirmation and not confirmation_cid:
+            raise AutonomyControlError(
+                "confirmation_cid is required for this mutation",
+                code="confirmation_required",
+                reason_codes=("confirmation_required",),
+            )
+        if confirmation_cid:
+            cid = _autonomy_require_text(confirmation_cid, "confirmation_cid")
+            if cid in self._consumed_confirmations:
+                raise AutonomyControlError(
+                    "confirmation has already been consumed",
+                    code="confirmation_replay",
+                    reason_codes=("confirmation_replay", "confirmation_consumed"),
+                )
+            issued = self._confirmations.get(cid)
+            if issued is None:
+                raise AutonomyControlError(
+                    "confirmation_cid is not registered",
+                    code="confirmation_unknown",
+                    reason_codes=("confirmation_unknown",),
+                )
+            if issued.get("consumed"):
+                raise AutonomyControlError(
+                    "confirmation has already been consumed",
+                    code="confirmation_replay",
+                    reason_codes=("confirmation_replay", "confirmation_consumed"),
+                )
+            if issued.get("operation") != operation.value:
+                raise AutonomyControlError(
+                    "confirmation is bound to a different operation",
+                    code="confirmation_mismatch",
+                    reason_codes=("confirmation_mismatch",),
+                )
+            if issued.get("target_id") != target_id:
+                raise AutonomyControlError(
+                    "confirmation is bound to a different target",
+                    code="confirmation_mismatch",
+                    reason_codes=("confirmation_mismatch",),
+                )
+            issued_option = str(issued.get("option") or "")
+            if issued_option and option and issued_option != option:
+                raise AutonomyControlError(
+                    "confirmation option does not match the requested option",
+                    code="confirmation_mismatch",
+                    reason_codes=("confirmation_mismatch", "option_rejected"),
+                )
+        digest = _autonomy_content_cid(
+            {
+                "operation": operation.value,
+                "target_id": target_id,
+                "expected_revision": expected_revision,
+                "confirmation_cid": confirmation_cid or "",
+                "body": dict(request_body),
+            }
+        )
+        if not dry_run:
+            with self._lock:
+                existing = self._idempotency.get(key)
+                if existing is not None:
+                    if (
+                        existing.operation != operation.value
+                        or existing.target_id != target_id
+                        or existing.request_digest != digest
+                    ):
+                        raise AutonomyControlError(
+                            "idempotency key reused with different request",
+                            code="idempotency_conflict",
+                            reason_codes=("idempotency_conflict",),
+                        )
+                    replay = dict(existing.response)
+                    reasons = list(replay.get("reason_codes") or [])
+                    if "idempotency_replay" not in reasons:
+                        reasons.append("idempotency_replay")
+                    replay["reason_codes"] = reasons[
+                        :MAX_AUTONOMY_CONTROL_REASON_CODES
+                    ]
+                    return replay
+        if expected_revision != self.autonomy_revision():
+            raise AutonomyControlError(
+                "expected_revision does not match current revision",
+                code="stale_snapshot",
+                reason_codes=("stale_snapshot", "revision_mismatch"),
+            )
+        return None
+
+    def _finish_mutation(
+        self,
+        *,
+        operation: AutonomyControlOperation,
+        authorities: frozenset[str],
+        target_id: str,
+        expected_revision: str,
+        idempotency_key: str,
+        lease_id: str,
+        fence: int,
+        effects: Sequence[str],
+        actor: str | None,
+        response_body: Mapping[str, Any],
+        result_revision: str | None,
+        request_body: Mapping[str, Any],
+        confirmation_cid: str = "",
+        dry_run: bool = False,
+        extra_reasons: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        if confirmation_cid and not dry_run:
+            with self._lock:
+                issued = self._confirmations.get(confirmation_cid)
+                if issued is not None:
+                    issued["consumed"] = True
+                self._consumed_confirmations.add(confirmation_cid)
+        reasons = ["ok", operation.value, *tuple(extra_reasons)]
+        if dry_run:
+            reasons.append("dry_run_preview")
+        audit = _AutonomyAuditReceipt(
+            operation=operation.value,
+            target_id=target_id,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            expected_revision=expected_revision,
+            result_revision=result_revision,
+            fence=fence,
+            lease_id=lease_id,
+            confirmation_cid=confirmation_cid,
+            reason_codes=tuple(reasons)[:MAX_AUTONOMY_CONTROL_REASON_CODES],
+            effects=tuple(str(item)[:64] for item in effects)[
+                :MAX_AUTONOMY_CONTROL_EXPECTED_EFFECTS
+            ],
+            created_at=_autonomy_now_rfc3339(),
+            audit_id=_autonomy_content_cid(
+                {
+                    "operation": operation.value,
+                    "target_id": target_id,
+                    "idempotency_key": idempotency_key,
+                    "result": result_revision or "",
+                    "dry_run": dry_run,
+                }
+            ),
+            catalog_revision=self.catalog_revision(),
+            policy_revision=self.policy_revision(),
+            supervisor_revision=self.supervisor_revision(),
+            success=True,
+            dry_run=dry_run,
+        )
+        with self._lock:
+            self._audits.append(audit)
+            if len(self._audits) > self._max_audit:
+                self._audits = self._audits[-self._max_audit :]
+            if not dry_run:
+                self._mutation_count += 1
+                self._receipts.append(audit.to_dict())
+                if len(self._receipts) > self._max_receipts:
+                    self._receipts = self._receipts[-self._max_receipts :]
+        response = self._success(
+            authorities=authorities,
+            autonomy_revision=result_revision or self.autonomy_revision(),
+            operation=operation.value,
+            target_id=target_id,
+            audit=audit.to_dict(),
+            dry_run=dry_run,
+            changed=not dry_run,
+            reason_codes=list(audit.reason_codes),
+            **dict(response_body),
+        )
+        if dry_run:
+            return response
+        digest = _autonomy_content_cid(
+            {
+                "operation": operation.value,
+                "target_id": target_id,
+                "expected_revision": expected_revision,
+                "confirmation_cid": confirmation_cid or "",
+                "body": dict(request_body),
+            }
+        )
+        with self._lock:
+            self._idempotency[idempotency_key] = _AutonomyIdempotencyRecord(
+                key=idempotency_key,
+                operation=operation.value,
+                target_id=target_id,
+                request_digest=digest,
+                response=dict(response),
+                created_at=_autonomy_now_rfc3339(),
+            )
+        return response
+
+    def _run_mutation(
+        self,
+        operation: AutonomyControlOperation,
+        *,
+        target_id: str,
+        authorities: Sequence[str] | None,
+        expected_revision: str | None,
+        idempotency_key: str | None,
+        lease_id: str | None,
+        fence: int | None,
+        expected_effects: Sequence[str] | None,
+        confirmation_cid: str | None,
+        actor: str | None,
+        source: str,
+        dry_run: bool,
+        request_body: Mapping[str, Any],
+        apply: Callable[[], Mapping[str, Any]],
+        option: str = "",
+        extra_reasons: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            replay = self._mutation_preflight(
+                operation=operation,
+                authorities=granted,
+                target_id=target_id,
+                expected_revision=expected_revision,
+                idempotency_key=idempotency_key,
+                lease_id=lease_id,
+                fence=fence,
+                expected_effects=expected_effects,
+                confirmation_cid=confirmation_cid,
+                request_body=request_body,
+                source=source,
+                dry_run=dry_run,
+                option=option,
+            )
+            if replay is not None:
+                return replay
+            if dry_run:
+                preview = dict(apply()) if False else dict(request_body)
+                return self._finish_mutation(
+                    operation=operation,
+                    authorities=granted,
+                    target_id=target_id,
+                    expected_revision=str(expected_revision),
+                    idempotency_key=str(idempotency_key),
+                    lease_id=str(lease_id),
+                    fence=int(fence),  # type: ignore[arg-type]
+                    effects=expected_effects or (operation.value,),
+                    actor=actor,
+                    response_body={
+                        "preview": preview,
+                        "would_change": True,
+                    },
+                    result_revision=self.autonomy_revision(),
+                    request_body=request_body,
+                    confirmation_cid=str(confirmation_cid or ""),
+                    dry_run=True,
+                    extra_reasons=extra_reasons,
+                )
+            body = dict(apply())
+            revision = self._bump_revision()
+            return self._finish_mutation(
+                operation=operation,
+                authorities=granted,
+                target_id=target_id,
+                expected_revision=str(expected_revision),
+                idempotency_key=str(idempotency_key),
+                lease_id=str(lease_id),
+                fence=int(fence),  # type: ignore[arg-type]
+                effects=expected_effects or (operation.value,),
+                actor=actor,
+                response_body=body,
+                result_revision=revision,
+                request_body=request_body,
+                confirmation_cid=str(confirmation_cid or ""),
+                extra_reasons=extra_reasons,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def execute(
+        self,
+        operation: AutonomyControlOperation | str,
+        *,
+        authorities: Sequence[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Dispatch one autonomy-control operation by name."""
+
+        try:
+            selected = (
+                operation
+                if isinstance(operation, AutonomyControlOperation)
+                else AutonomyControlOperation(str(operation))
+            )
+        except ValueError:
+            granted = self._resolve_authorities(authorities)
+            return self._error(
+                AutonomyControlError(
+                    "unknown autonomy operation",
+                    code="invalid_request",
+                    reason_codes=("invalid_request",),
+                ),
+                authorities=granted,
+            )
+        method = {
+            AutonomyControlOperation.CAPABILITIES: self.capabilities,
+            AutonomyControlOperation.STATUS: self.status,
+            AutonomyControlOperation.METRICS: self.metrics,
+            AutonomyControlOperation.GRAPH: self.graph,
+            AutonomyControlOperation.UNRESOLVED_QUESTIONS: self.unresolved_questions,
+            AutonomyControlOperation.BUDGET: self.budget,
+            AutonomyControlOperation.EXPERIENCE_SUMMARY: self.experience_summary,
+            AutonomyControlOperation.ROUTE_POLICY: self.route_policy,
+            AutonomyControlOperation.DISTILLATION_CANDIDATES: (
+                self.distillation_candidates
+            ),
+            AutonomyControlOperation.REPAIR_HISTORY: self.repair_history,
+            AutonomyControlOperation.ESCALATIONS: self.escalations,
+            AutonomyControlOperation.SHADOW_RESULTS: self.shadow_results,
+            AutonomyControlOperation.PAUSE: self.pause,
+            AutonomyControlOperation.RESUME: self.resume,
+            AutonomyControlOperation.SET_LEVEL: self.set_level,
+            AutonomyControlOperation.APPROVE_POLICY_CANDIDATE: (
+                self.approve_policy_candidate
+            ),
+            AutonomyControlOperation.REJECT_POLICY_CANDIDATE: (
+                self.reject_policy_candidate
+            ),
+            AutonomyControlOperation.ROLLBACK_POLICY_CANDIDATE: (
+                self.rollback_policy_candidate
+            ),
+            AutonomyControlOperation.APPROVE_REPAIR: self.approve_repair,
+            AutonomyControlOperation.CANCEL_ACTION: self.cancel_action,
+            AutonomyControlOperation.BIND_ESCALATION_ANSWER: (
+                self.bind_escalation_answer
+            ),
+        }[selected]
+        signature = inspect.signature(method)
+        allowed = {
+            name
+            for name, parameter in signature.parameters.items()
+            if parameter.kind
+            in {
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            }
+        }
+        filtered = {key: value for key, value in kwargs.items() if key in allowed}
+        return method(authorities=authorities, **filtered)
+
+    def capabilities(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            catalog = dict(discover_autonomy_control_catalog())
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.CAPABILITIES.value,
+                levels=list(AUTONOMY_CONTROL_LEVELS),
+                operations=list(catalog["operations"]),
+                authorities_granted=sorted(granted),
+                paused=self._paused,
+                level=self._level,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def status(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        target_id: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            with self._lock:
+                running = [
+                    item
+                    for item in self._active_actions
+                    if str(item.get("status") or "") == "running"
+                ]
+                pending = [
+                    item
+                    for item in self._escalations
+                    if not item.get("answer_bound")
+                ]
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.STATUS.value,
+                target_id=target_id or "autonomy",
+                paused=self._paused,
+                level=self._level,
+                running_action_count=len(running),
+                pending_escalation_count=len(pending),
+                fence=self._fence,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def metrics(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            with self._lock:
+                snapshot = dict(self._metrics)
+                snapshot["control_reads"] = self._read_count + 1
+                snapshot["control_mutations"] = self._mutation_count
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.METRICS.value,
+                metrics=snapshot,
+                provider_started=False,
+            )
+        except Exception as ext:  # noqa: BLE001
+            return self._error(ext, authorities=granted)
+
+    def graph(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            with self._lock:
+                snapshot = _autonomy_copy_mapping(self._graph)
+                snapshot["unresolved_count"] = len(
+                    [
+                        item
+                        for item in self._questions
+                        if str(item.get("disposition") or "unresolved")
+                        == "unresolved"
+                    ]
+                )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.GRAPH.value,
+                graph=snapshot,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def unresolved_questions(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            page_limit = _autonomy_bounded_page(limit)
+            with self._lock:
+                items = [
+                    dict(item)
+                    for item in self._questions
+                    if str(item.get("disposition") or "unresolved") == "unresolved"
+                ]
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(
+                    item.get("question_id") or item.get("id") or ""
+                ),
+            )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.UNRESOLVED_QUESTIONS.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def budget(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        target_id: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            with self._lock:
+                snapshot = dict(self._budget)
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.BUDGET.value,
+                target_id=target_id or "autonomy",
+                budget=snapshot,
+                refilled=False,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def experience_summary(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            with self._lock:
+                snapshot = dict(self._experience)
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.EXPERIENCE_SUMMARY.value,
+                summary=snapshot,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def route_policy(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            page_limit = _autonomy_bounded_page(limit)
+            with self._lock:
+                items = [dict(item) for item in self._route_policies]
+                active = self._active_policy_id
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item.get("candidate_id") or ""),
+            )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.ROUTE_POLICY.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+                active_policy_id=active,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def distillation_candidates(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            page_limit = _autonomy_bounded_page(limit)
+            with self._lock:
+                items = [dict(item) for item in self._distillation]
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item.get("candidate_id") or ""),
+            )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.DISTILLATION_CANDIDATES.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def repair_history(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            page_limit = _autonomy_bounded_page(limit)
+            with self._lock:
+                items = [dict(item) for item in self._repairs]
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(
+                    item.get("repair_id") or item.get("plan_id") or ""
+                ),
+            )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.REPAIR_HISTORY.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def escalations(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            page_limit = _autonomy_bounded_page(limit)
+            with self._lock:
+                items = [dict(item) for item in self._escalations]
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(item.get("packet_id") or ""),
+            )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.ESCALATIONS.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def shadow_results(
+        self,
+        *,
+        authorities: Sequence[str] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        granted = self._resolve_authorities(authorities)
+        try:
+            _autonomy_require_read(granted)
+            self._note_read()
+            page_limit = _autonomy_bounded_page(limit)
+            with self._lock:
+                items = [dict(item) for item in self._shadow_results]
+            page, next_cursor = self._page_items(
+                items,
+                limit=page_limit,
+                cursor=cursor,
+                cursor_key=lambda item: str(
+                    item.get("result_id") or item.get("id") or ""
+                ),
+            )
+            return self._success(
+                authorities=granted,
+                operation=AutonomyControlOperation.SHADOW_RESULTS.value,
+                items=page,
+                count=len(page),
+                total=len(items),
+                next_cursor=next_cursor,
+                provider_started=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._error(exc, authorities=granted)
+
+    def pause(
+        self,
+        target_id: str = "autonomy",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        reason: str = "operator_pause",
+    ) -> dict[str, Any]:
+        request_body = {"reason": reason, "source": source}
+
+        def apply() -> Mapping[str, Any]:
+            with self._lock:
+                already = self._paused
+                self._paused = True
+            return {"paused": True, "already_paused": already, "reason": reason}
+
+        return self._run_mutation(
+            AutonomyControlOperation.PAUSE,
+            target_id=target_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+        )
+
+    def resume(
+        self,
+        target_id: str = "autonomy",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        reason: str = "operator_resume",
+    ) -> dict[str, Any]:
+        request_body = {"reason": reason, "source": source}
+
+        def apply() -> Mapping[str, Any]:
+            with self._lock:
+                already = not self._paused
+                self._paused = False
+            return {"paused": False, "already_running": already, "reason": reason}
+
+        return self._run_mutation(
+            AutonomyControlOperation.RESUME,
+            target_id=target_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+        )
+
+    def set_level(
+        self,
+        target_id: str = "autonomy",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        level: str | None = None,
+    ) -> dict[str, Any]:
+        request_body = {"level": level, "source": source}
+
+        def apply() -> Mapping[str, Any]:
+            selected = str(level or "")
+            if selected not in AUTONOMY_CONTROL_LEVELS:
+                raise AutonomyControlError(
+                    "level is not a closed autonomy level",
+                    code="level_rejected",
+                    reason_codes=("level_rejected",),
+                )
+            with self._lock:
+                previous = self._level
+                self._level = selected
+            return {"level": selected, "previous_level": previous}
+
+        return self._run_mutation(
+            AutonomyControlOperation.SET_LEVEL,
+            target_id=target_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+        )
+
+    def _mutate_policy_candidate(
+        self,
+        operation: AutonomyControlOperation,
+        *,
+        target_id: str,
+        status: str,
+        activate: bool,
+        rollback: bool,
+        authorities: Sequence[str] | None,
+        expected_revision: str | None,
+        idempotency_key: str | None,
+        lease_id: str | None,
+        fence: int | None,
+        expected_effects: Sequence[str] | None,
+        confirmation_cid: str | None,
+        actor: str | None,
+        source: str,
+        dry_run: bool,
+        candidate_id: str | None,
+    ) -> dict[str, Any]:
+        selected_id = candidate_id or target_id
+        request_body = {
+            "candidate_id": selected_id,
+            "status": status,
+            "source": source,
+        }
+
+        def apply() -> Mapping[str, Any]:
+            with self._lock:
+                if rollback:
+                    if not self._policy_history:
+                        raise AutonomyControlError(
+                            "no previous policy candidate to roll back",
+                            code="policy_rejected",
+                            reason_codes=("policy_rejected",),
+                        )
+                    previous = self._policy_history.pop()
+                    current = self._active_policy_id
+                    self._active_policy_id = previous
+                    for item in self._route_policies:
+                        if str(item.get("candidate_id") or "") == current:
+                            item["status"] = "rolled_back"
+                        if str(item.get("candidate_id") or "") == previous:
+                            item["status"] = "active"
+                    self._policy_revision += 1
+                    return {
+                        "candidate_id": current or selected_id,
+                        "status": "rolled_back",
+                        "active_policy_id": previous,
+                    }
+                match = None
+                for item in self._route_policies:
+                    if str(item.get("candidate_id") or "") == selected_id:
+                        match = item
+                        break
+                if match is None:
+                    raise AutonomyControlError(
+                        "policy candidate not found",
+                        code="policy_rejected",
+                        reason_codes=("policy_rejected",),
+                    )
+                if not match.get("external_authorization_id") and not confirmation_cid:
+                    raise AutonomyControlError(
+                        "policy candidate lacks external authorization",
+                        code="self_authorization_denied",
+                        reason_codes=("self_authorization_denied",),
+                    )
+                match["status"] = status
+                if activate:
+                    if self._active_policy_id:
+                        self._policy_history.append(self._active_policy_id)
+                    self._active_policy_id = selected_id
+                    match["shadow_only"] = False
+                self._policy_revision += 1
+                return {
+                    "candidate_id": selected_id,
+                    "status": status,
+                    "active_policy_id": self._active_policy_id,
+                }
+
+        return self._run_mutation(
+            operation,
+            target_id=selected_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+        )
+
+    def approve_policy_candidate(
+        self,
+        target_id: str = "",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        candidate_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._mutate_policy_candidate(
+            AutonomyControlOperation.APPROVE_POLICY_CANDIDATE,
+            target_id=target_id,
+            status="approved",
+            activate=True,
+            rollback=False,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            candidate_id=candidate_id,
+        )
+
+    def reject_policy_candidate(
+        self,
+        target_id: str = "",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        candidate_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._mutate_policy_candidate(
+            AutonomyControlOperation.REJECT_POLICY_CANDIDATE,
+            target_id=target_id,
+            status="rejected",
+            activate=False,
+            rollback=False,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            candidate_id=candidate_id,
+        )
+
+    def rollback_policy_candidate(
+        self,
+        target_id: str = "",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        candidate_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._mutate_policy_candidate(
+            AutonomyControlOperation.ROLLBACK_POLICY_CANDIDATE,
+            target_id=target_id or self._active_policy_id or "autonomy",
+            status="rolled_back",
+            activate=False,
+            rollback=True,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            candidate_id=candidate_id,
+        )
+
+    def approve_repair(
+        self,
+        target_id: str = "",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        repair_id: str | None = None,
+    ) -> dict[str, Any]:
+        selected_id = repair_id or target_id
+        request_body = {"repair_id": selected_id, "source": source}
+
+        def apply() -> Mapping[str, Any]:
+            with self._lock:
+                match = None
+                for item in self._repairs:
+                    if str(item.get("repair_id") or item.get("plan_id") or "") == selected_id:
+                        match = item
+                        break
+                if match is None:
+                    raise AutonomyControlError(
+                        "repair plan not found",
+                        code="repair_rejected",
+                        reason_codes=("repair_rejected",),
+                    )
+                match["status"] = "approved"
+                match["approved_at"] = _autonomy_now_rfc3339()
+                return {
+                    "repair_id": selected_id,
+                    "status": "approved",
+                    "authorizes_merge": False,
+                }
+
+        return self._run_mutation(
+            AutonomyControlOperation.APPROVE_REPAIR,
+            target_id=selected_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+        )
+
+    def cancel_action(
+        self,
+        target_id: str = "",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        action_id: str | None = None,
+        reason: str = "operator_cancel",
+    ) -> dict[str, Any]:
+        selected_id = action_id or target_id
+        request_body = {"action_id": selected_id, "reason": reason, "source": source}
+
+        def apply() -> Mapping[str, Any]:
+            with self._lock:
+                match = None
+                for item in self._active_actions:
+                    if str(item.get("action_id") or "") == selected_id:
+                        match = item
+                        break
+                if match is None:
+                    raise AutonomyControlError(
+                        "action not found",
+                        code="action_not_found",
+                        reason_codes=("action_not_found",),
+                    )
+                match["status"] = "cancelled"
+                match["cancel_reason"] = reason
+                return {
+                    "action_id": selected_id,
+                    "status": "cancelled",
+                    "reason": reason,
+                }
+
+        return self._run_mutation(
+            AutonomyControlOperation.CANCEL_ACTION,
+            target_id=selected_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+        )
+
+    def bind_escalation_answer(
+        self,
+        target_id: str = "",
+        *,
+        authorities: Sequence[str] | None = None,
+        expected_revision: str | None = None,
+        idempotency_key: str | None = None,
+        lease_id: str | None = None,
+        fence: int | None = None,
+        expected_effects: Sequence[str] | None = None,
+        confirmation_cid: str | None = None,
+        actor: str | None = None,
+        source: str = "operator",
+        dry_run: bool = False,
+        packet_id: str | None = None,
+        option: str | None = None,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        selected_id = packet_id or target_id
+        selected_option = str(option or "")
+        request_body = {
+            "packet_id": selected_id,
+            "option": selected_option,
+            "source": source,
+        }
+
+        def apply() -> Mapping[str, Any]:
+            clock = int(now_ms) if isinstance(now_ms, int) and not isinstance(now_ms, bool) else int(self._clock_ms())
+            with self._lock:
+                match = None
+                for item in self._escalations:
+                    if str(item.get("packet_id") or "") == selected_id:
+                        match = item
+                        break
+                if match is None:
+                    raise AutonomyControlError(
+                        "escalation packet not found",
+                        code="escalation_not_found",
+                        reason_codes=("escalation_not_found",),
+                    )
+                if match.get("answer_bound"):
+                    raise AutonomyControlError(
+                        "escalation answer has already been bound",
+                        code="confirmation_replay",
+                        reason_codes=("confirmation_replay",),
+                    )
+                expires = match.get("expires_at_ms")
+                if (
+                    isinstance(expires, int)
+                    and not isinstance(expires, bool)
+                    and expires > 0
+                    and clock > expires
+                ):
+                    raise AutonomyControlError(
+                        "escalation packet has expired",
+                        code="escalation_expired",
+                        reason_codes=("escalation_expired",),
+                    )
+                options = match.get("options") or ()
+                if selected_option not in {str(item) for item in options}:
+                    raise AutonomyControlError(
+                        "option is not one of the packet options",
+                        code="option_rejected",
+                        reason_codes=("option_rejected",),
+                    )
+                match["answer_bound"] = True
+                match["bound_option"] = selected_option
+                match["status"] = "answered"
+                match["bound_at_ms"] = clock
+                return {
+                    "packet_id": selected_id,
+                    "option": selected_option,
+                    "answer_bound": True,
+                    "status": "answered",
+                }
+
+        return self._run_mutation(
+            AutonomyControlOperation.BIND_ESCALATION_ANSWER,
+            target_id=selected_id,
+            authorities=authorities,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            lease_id=lease_id,
+            fence=fence,
+            expected_effects=expected_effects,
+            confirmation_cid=confirmation_cid,
+            actor=actor,
+            source=source,
+            dry_run=dry_run,
+            request_body=request_body,
+            apply=apply,
+            option=selected_option,
+        )
+
+
 # Module-level alias matching evidence path provider_usage_controls.*
 provider_usage_controls = type(
     "provider_usage_controls",
@@ -7901,6 +10044,8 @@ __all__ = [
     "BackendNotFoundError",
     "BackendResponse",
     "BackendTimeoutError",
+    "AutonomyControl",
+    "AutonomyControlError",
     "AuthorizationValidator",
     "ControlCatalogConformanceError",
     "ControlCatalogConformanceEvidence",
