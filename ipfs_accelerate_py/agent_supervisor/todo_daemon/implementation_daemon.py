@@ -72497,6 +72497,7 @@ class DatabaseImplementationDaemon:
             from .database_portal_bridge import (
                 DatabasePortalBridgeConsumedNoProgressError,
                 DatabasePortalBridgeDeferred,
+                DatabasePortalBridgeError,
             )
 
             from ..merge.database_coordination import (
@@ -72539,6 +72540,27 @@ class DatabaseImplementationDaemon:
                     "resumed": True,
                     "retryable": True,
                     "reason": "control_task_claim_not_accepted",
+                    "attempt_id": attempt.attempt_id,
+                    "task_alias": attempt.task_alias,
+                    "status": "failed",
+                }
+            if isinstance(exc, DatabasePortalBridgeError) and not isinstance(
+                exc, DatabasePortalBridgeDeferred
+            ):
+                # Typed Portal setup/recovery failures (for example
+                # external_protected_checkout_recovery_required) are raised
+                # after callback intent is recorded.  Killing --once then
+                # quarantines unknown-callback and can cap reopen forever.
+                task = self.task_source.get(attempt.task_cid)
+                if task is None:
+                    raise
+                self._retire_stale_running_attempt(attempt, task)
+                self._requeue_unimplemented_control_task(task)
+                return {
+                    "resumed": True,
+                    "retryable": True,
+                    "portal_retryable_failure": True,
+                    "reason": str(exc).replace(" ", "_") or "portal_setup_retryable",
                     "attempt_id": attempt.attempt_id,
                     "task_alias": attempt.task_alias,
                     "status": "failed",
@@ -72899,6 +72921,9 @@ class DatabaseImplementationDaemon:
 
         The exact crashed callback stays unrepatched.  A later pass may claim a
         fresh attempt.  Consumed-no-progress and output-less tasks stay closed.
+        Missing declared outputs keep reopening even after
+        ``_DATABASE_UNKNOWN_CALLBACK_REOPEN_LIMIT`` so a typed Portal setup
+        crash cannot permanently ``retry_suppressed`` the board.
         """
 
         if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
@@ -72919,8 +72944,6 @@ class DatabaseImplementationDaemon:
         if self._task_outputs_landed_on_target(task):
             return None
         reopen_count = self._unknown_callback_reopen_count(task)
-        if reopen_count >= _DATABASE_UNKNOWN_CALLBACK_REOPEN_LIMIT:
-            return None
         next_count = reopen_count + 1
         reopen_receipt = {
             "schema": (

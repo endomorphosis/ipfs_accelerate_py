@@ -41,6 +41,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
     DatabasePortalBridgeConsumedNoProgressError,
     DatabasePortalBridgeDeferred,
+    DatabasePortalBridgeError,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
 )
@@ -1471,7 +1472,46 @@ def test_unaccepted_unknown_callback_is_retired_not_quarantined(
         restarted.close()
 
 
-def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
+def test_portal_setup_error_requeues_instead_of_unknown_callback_quarantine(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        provider_fn=lambda attempt: (_ for _ in ()).throw(
+            DatabasePortalBridgeError(
+                "external_protected_checkout_recovery_required"
+            )
+        ),
+        strict_task_sharding=True,
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        result = daemon._resume_attempt_without_process_crash(attempt)
+        assert result["retryable"] is True
+        assert "external_protected_checkout_recovery_required" in str(
+            result.get("reason") or ""
+        )
+        current = daemon.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        stale = daemon.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status != "running"
+    finally:
+        daemon.close()
+
+
+def test_unknown_callback_reopen_continues_while_outputs_are_missing(
+    tmp_path: Path,
+) -> None:
     repo = _git_repo(tmp_path)
     daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
     try:
@@ -1501,10 +1541,12 @@ def test_unknown_callback_reopen_stops_at_limit(tmp_path: Path) -> None:
             receipt=receipt,
         )
         result = daemon.run_once()
-        assert result["unknown_callback_reopens"] == []
+        reopened = result["unknown_callback_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status == "quarantined"
+        assert current.status != "quarantined"
     finally:
         daemon.close()
 
