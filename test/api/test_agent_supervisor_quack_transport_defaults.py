@@ -77,7 +77,7 @@ def test_quack_attach_lock_path_follows_store_id(tmp_path: Path, monkeypatch) ->
     )
 
 
-def test_quack_attach_retries_transient_authentication_failed(
+def test_quack_attach_does_not_retry_authentication_failed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -96,8 +96,7 @@ def test_quack_attach_retries_transient_authentication_failed(
         def execute(self, sql: str) -> _Result:
             if str(sql).startswith("ATTACH"):
                 type(self).attaches += 1
-                if type(self).attaches < 3:
-                    raise RuntimeError("Invalid Input Error: Authentication failed")
+                raise RuntimeError("Invalid Input Error: Authentication failed")
             return _Result()
 
         def close(self) -> None:
@@ -114,9 +113,9 @@ def test_quack_attach_retries_transient_authentication_failed(
             return _FakeConnection()
 
     monkeypatch.setitem(__import__("sys").modules, "duckdb", _FakeDuckDB())
-    wrapped = open_quack_transport_connection("quack:127.0.0.1:41327")
-    assert _FakeConnection.attaches == 3
-    assert wrapped._default_catalog == "control_plane"
+    with pytest.raises(DuckDBConnectionPolicyError, match="authentication failed"):
+        open_quack_transport_connection("quack:127.0.0.1:41327")
+    assert _FakeConnection.attaches == 1
 
 
 def test_quack_attach_releases_lock_before_retry_sleep(
@@ -163,7 +162,7 @@ def test_quack_attach_releases_lock_before_retry_sleep(
             if str(sql).startswith("ATTACH"):
                 type(self).attaches += 1
                 if type(self).attaches < 3:
-                    raise RuntimeError("Invalid Input Error: Authentication failed")
+                    raise RuntimeError("Could not connect to Quack server")
             return _Result()
 
         def close(self) -> None:

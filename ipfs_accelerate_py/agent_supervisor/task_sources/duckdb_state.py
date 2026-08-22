@@ -914,12 +914,20 @@ def quack_attach_lock_path(uri: str = "") -> Path:
 
 
 def _is_transient_quack_attach_error(detail: str) -> bool:
+    """Return whether ATTACH may retry without wedging the exclusive owner.
+
+    ``Authentication failed`` is not transient: eight retries from each lane
+    fill Quack's small listen backlog and turn a live token into a board-wide
+    stall. Retry only connect-time transport failures while the owner is
+    still binding its port.
+    """
+
     text = str(detail or "")
     lowered = text.lower()
+    if "Authentication failed" in text or "authentication token" in lowered:
+        return False
     return (
-        "Authentication failed" in text
-        or "authentication token" in lowered
-        or "connection refused" in lowered
+        "connection refused" in lowered
         or "connection reset" in lowered
         or "timed out" in lowered
         or "timeout" in lowered
@@ -1275,7 +1283,12 @@ def open_quack_transport_connection(
             time.sleep(0.5 * (attempt + 1) + random.random() * 0.4)
     assert last_error is not None
     detail = str(last_error)
-    if _is_transient_quack_attach_error(detail):
+    lowered = detail.lower()
+    if (
+        _is_transient_quack_attach_error(detail)
+        or "Authentication failed" in detail
+        or "authentication token" in lowered
+    ):
         raise DuckDBConnectionPolicyError(
             "quack attach authentication failed "
             f"uri={text!r} token_present={bool(secret)} "
