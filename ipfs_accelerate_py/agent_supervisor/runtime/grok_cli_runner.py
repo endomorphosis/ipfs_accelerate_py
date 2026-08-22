@@ -331,7 +331,45 @@ GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
+_SEALED_PROVIDER_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
+)
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
+
+
+def _sealed_provider_isolation_image_id() -> str:
+    """Prefer the PCPC sealed isolation image when the daemon pinned one."""
+
+    raw = os.environ.get(_SEALED_PROVIDER_ISOLATION_ENV, "").strip()
+    if not raw:
+        return ""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    image = str(payload.get("image_id") or "").strip()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+        return image
+    return ""
+
+
+def _docker_isolation_host() -> str:
+    raw = os.environ.get(_SEALED_PROVIDER_ISOLATION_ENV, "").strip()
+    if raw:
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            endpoint = str(payload.get("runtime_endpoint") or "").strip()
+            if endpoint in {
+                "unix:///var/run/docker.sock",
+                f"unix:///run/user/{os.getuid()}/docker.sock",
+            }:
+                return endpoint
+    return _DOCKER_LOCAL_HOST
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_AUTH_PATH = _CODEX_CONTAINER_HOME / "auth.json"
@@ -1678,15 +1716,15 @@ def _docker_isolation_image_id(
 ) -> str:
     """Resolve the configured cached tag to an immutable local image ID."""
 
-    # The quota route never accepts an environment-selected execution image.
-    # Resolve the shipped local tag, then launch its exact immutable image ID.
+    # Prefer the sealed PCPC isolation image when the daemon pinned one; the
+    # ubuntu:24.04 tag remains the standalone Grok-runner default.
     del base_env
-    image = DEFAULT_GROK_ISOLATION_IMAGE
+    image = _sealed_provider_isolation_image_id() or DEFAULT_GROK_ISOLATION_IMAGE
     try:
         completed = subprocess.run(
             [
                 docker_bin,
-                f"--host={_DOCKER_LOCAL_HOST}",
+                f"--host={_docker_isolation_host()}",
                 "--config",
                 str(docker_config),
                 "image",
@@ -2575,7 +2613,7 @@ def _docker_grok_command(
     container_grok = Path("/opt/ipfs-accelerate/grok")
     command = [
         docker,
-        f"--host={_DOCKER_LOCAL_HOST}",
+        f"--host={_docker_isolation_host()}",
         "--config",
         str(docker_config),
         "create",

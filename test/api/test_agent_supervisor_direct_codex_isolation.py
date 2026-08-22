@@ -1174,6 +1174,183 @@ def test_host_validation_hashes_image_codex_bytes_and_rejects_mismatch(
     assert digest_command[-2:] == [IMAGE_ID, "/usr/local/bin/codex"]
 
 
+def _configure_host_cli_isolation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    binary_name: str,
+) -> tuple[object, Path, Path]:
+    credential = _credential(tmp_path)
+    repository, workspace = _linked_workspace(tmp_path)
+    fake_cli = tmp_path / binary_name
+    fake_cli.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_cli.chmod(0o755)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setenv(
+        daemon_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        config.environment_json(),
+    )
+    monkeypatch.setenv(
+        daemon_module._LIFECYCLE_REPOSITORY_ROOT_ENV,
+        str(repository),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_host_cli_binary",
+        lambda name, _expected=binary_name, _path=str(fake_cli): (
+            _path if name == _expected else None
+        ),
+    )
+    return config, workspace, fake_cli
+
+
+def _assert_host_cli_docker_wrap(
+    command: list[str],
+    *,
+    config: object,
+    family: str,
+    workspace: Path,
+) -> None:
+    assert command[4:8] == [
+        "/usr/bin/docker",
+        "--host=unix:///run/user/1000/docker.sock",
+        "run",
+        "--pull=never",
+    ]
+    assert config.image_id in command
+    assert f"HOME={daemon_module._CLI_CONTAINER_HOME}" in command
+    assert f"--user" in command
+    assert f"{os.getuid()}:{os.getgid()}" in command
+    mount_specs = _mounts(command)
+    assert any(
+        spec.startswith("type=bind,src=/usr,dst=/usr,")
+        or ",src=/usr,dst=/usr," in spec
+        for spec in mount_specs
+    )
+    assert any(f"dst={workspace}" in spec or spec.endswith(f"dst={workspace},readonly=false") for spec in mount_specs)
+    assert f"PATH={daemon_module._CLI_CONTAINER_BIN}:" in " ".join(
+        item for item in command if item.startswith("PATH=")
+    )
+    del family
+
+
+def test_isolation_wraps_claude_host_cli_in_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace, _fake = _configure_host_cli_isolation(
+        tmp_path, monkeypatch, binary_name="claude"
+    )
+    command = daemon_module._claude_implementation_command(
+        workspace_path=workspace,
+    )
+    _assert_host_cli_docker_wrap(
+        command, config=config, family="claude", workspace=workspace
+    )
+    assert "ipfs_accelerate_py.agent_supervisor.cli_implement_runner" in command
+    assert "--provider" in command
+    assert "claude" in command
+
+
+def test_isolation_wraps_gemini_host_cli_in_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace, _fake = _configure_host_cli_isolation(
+        tmp_path, monkeypatch, binary_name="gemini"
+    )
+    command = daemon_module._gemini_implementation_command(
+        workspace_path=workspace,
+    )
+    _assert_host_cli_docker_wrap(
+        command, config=config, family="gemini", workspace=workspace
+    )
+    assert "gemini" in command
+
+
+def test_isolation_wraps_mistral_vibe_host_cli_in_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace, _fake = _configure_host_cli_isolation(
+        tmp_path, monkeypatch, binary_name="vibe"
+    )
+    command = daemon_module._mistral_implementation_command(
+        workspace_path=workspace,
+    )
+    _assert_host_cli_docker_wrap(
+        command, config=config, family="mistral", workspace=workspace
+    )
+    assert "mistral" in command
+
+
+def test_isolation_wraps_goose_host_cli_in_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace, fake = _configure_host_cli_isolation(
+        tmp_path, monkeypatch, binary_name="goose"
+    )
+    monkeypatch.setattr(daemon_module, "_goose_binary", lambda: str(fake))
+    monkeypatch.setattr(
+        daemon_module, "_resolve_meta_spark_api_key", lambda: "test-key"
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    command = daemon_module._goose_meta_spark_command(workspace_path=workspace)
+    _assert_host_cli_docker_wrap(
+        command, config=config, family="goose", workspace=workspace
+    )
+    assert "ipfs_accelerate_py.agent_supervisor.integrations.meta_spark_goose_runner" in command
+    assert any(item.startswith("OPENAI_API_KEY=") for item in command)
+
+
+def test_isolation_wraps_copilot_host_cli_in_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace, fake = _configure_host_cli_isolation(
+        tmp_path, monkeypatch, binary_name="copilot"
+    )
+    command = daemon_module._copilot_fallback_command(
+        codex=None,
+        copilot=str(fake),
+        workspace_path=workspace,
+    )
+    _assert_host_cli_docker_wrap(
+        command, config=config, family="copilot", workspace=workspace
+    )
+    assert str(fake) in command
+
+
+def test_sealed_grok_isolation_prefers_pcpc_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    monkeypatch.delenv(grok_cli_runner._SEALED_PROVIDER_ISOLATION_ENV, raising=False)
+    assert grok_cli_runner._sealed_provider_isolation_image_id() == ""
+    payload = {
+        "schema": daemon_module.PROVIDER_EXTERNAL_ISOLATION_SCHEMA,
+        "image_id": IMAGE_ID,
+        "runtime_endpoint": "unix:///run/user/1000/docker.sock",
+    }
+    monkeypatch.setenv(
+        grok_cli_runner._SEALED_PROVIDER_ISOLATION_ENV,
+        json.dumps(payload),
+    )
+    assert grok_cli_runner._sealed_provider_isolation_image_id() == IMAGE_ID
+    assert grok_cli_runner._docker_isolation_host() == (
+        "unix:///run/user/1000/docker.sock"
+    )
+
+
 def _implementation_daemon(
     repository: Path,
     *,

@@ -2006,6 +2006,317 @@ def _resolve_meta_spark_api_key() -> str:
         return ""
 
 
+def _operator_home_dir() -> Path:
+    """Return the uid home even when ``HOME`` is a sealed qualification directory."""
+
+    try:
+        import pwd
+
+        return Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except Exception:
+        return Path.home()
+
+
+def _host_cli_credential_paths(family: str) -> tuple[Path, ...]:
+    """Operator credential paths projected into isolated CLI homes."""
+
+    home = _operator_home_dir()
+    mapping: dict[str, tuple[Path, ...]] = {
+        "claude": (
+            home / ".claude.json",
+            home / ".claude",
+            home / ".config" / "claude",
+        ),
+        "gemini": (
+            home / ".gemini",
+            home / ".config" / "gemini",
+        ),
+        "mistral": (
+            home / ".vibe",
+            home / ".mistral",
+            home / ".config" / "mistral",
+            home / ".config" / "vibe",
+        ),
+        "goose": (
+            home / ".config" / "goose",
+            home / ".local" / "share" / "goose",
+        ),
+        "copilot": (
+            home / ".copilot",
+            home / ".config" / "github-copilot",
+            home / ".config" / "gh",
+        ),
+        "grok": (home / ".grok" / "auth.json",),
+    }
+    return mapping.get(family, ())
+
+
+_HOST_CLI_CREDENTIAL_SKIP_NAMES = frozenset(
+    {
+        "logs",
+        "log",
+        "ide",
+        "session-state",
+        "session-store.db",
+        "session-store.db-shm",
+        "session-store.db-wal",
+        "cache.toml",
+        "vscode.session.metadata.cache.json",
+    }
+)
+_HOST_CLI_CREDENTIAL_FILE_SUFFIXES = (
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".env",
+)
+_HOST_CLI_ENV_NAMES: dict[str, tuple[str, ...]] = {
+    "claude": (
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "CLAUDE_API_KEY",
+    ),
+    "gemini": (
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_GENAI_API_KEY",
+    ),
+    "mistral": ("MISTRAL_API_KEY", "MISTRAL_API_TOKEN"),
+    "goose": (
+        "OPENAI_API_KEY",
+        "META_AI_API_KEY",
+        "MODEL_API_KEY",
+        "GOOSE_PROVIDER",
+        "GOOSE_MODEL",
+        "OPENAI_HOST",
+        "OPENAI_BASE_PATH",
+    ),
+    "copilot": ("GITHUB_TOKEN", "GH_TOKEN", "COPILOT_GITHUB_TOKEN"),
+    "grok": ("XAI_API_KEY", "GROK_API_KEY"),
+}
+
+
+def _host_cli_relative_credential(path: Path) -> str:
+    try:
+        return str(path.relative_to(_operator_home_dir()))
+    except ValueError:
+        return path.name
+
+
+def _host_cli_credential_file_allowed(path: Path) -> bool:
+    name = path.name
+    if name in _HOST_CLI_CREDENTIAL_SKIP_NAMES:
+        return False
+    if name in {".env", "auth.json", "config.json", "config.yaml", "config.yml", "config.toml", "credentials.json", ".credentials.json"}:
+        return True
+    return name.endswith(_HOST_CLI_CREDENTIAL_FILE_SUFFIXES)
+
+
+def _host_cli_projected_credentials(family: str) -> tuple[tuple[Path, str], ...]:
+    """Config/auth files only — skip CLI session caches and logs."""
+
+    projected: list[tuple[Path, str]] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            return
+        if resolved in seen or not path.is_file():
+            return
+        try:
+            if path.stat().st_size > _MAX_PROVIDER_CREDENTIAL_BYTES:
+                return
+        except OSError:
+            return
+        seen.add(resolved)
+        projected.append((path, _host_cli_relative_credential(path)))
+
+    for credential in _host_cli_credential_paths(family):
+        try:
+            if credential.is_file():
+                add(credential)
+                continue
+            if not credential.is_dir():
+                continue
+            for child in credential.iterdir():
+                if child.name in _HOST_CLI_CREDENTIAL_SKIP_NAMES:
+                    continue
+                if child.is_file() and _host_cli_credential_file_allowed(child):
+                    add(child)
+                    continue
+                if not child.is_dir() or child.name in _HOST_CLI_CREDENTIAL_SKIP_NAMES:
+                    continue
+                try:
+                    grandchildren = child.iterdir()
+                except OSError:
+                    continue
+                for grandchild in grandchildren:
+                    if (
+                        grandchild.is_file()
+                        and _host_cli_credential_file_allowed(grandchild)
+                    ):
+                        add(grandchild)
+        except OSError:
+            continue
+    return tuple(projected)
+
+
+def _host_cli_admitted_environment(family: str) -> list[str]:
+    """Closed credential/config env projected into the isolation image."""
+
+    admitted: list[str] = []
+    for name in _HOST_CLI_ENV_NAMES.get(family, ()):
+        value = str(os.environ.get(name, "") or "")
+        if (
+            not value
+            or len(value.encode("utf-8")) > 8192
+            or "\x00" in value
+            or "\n" in value
+            or "\r" in value
+        ):
+            continue
+        admitted.append(f"{name}={value}")
+    return admitted
+
+
+def _follow_host_cli_runtime_paths(
+    path: Path,
+    *,
+    seen: set[Path] | None = None,
+) -> tuple[Path, ...]:
+    """Resolve a CLI binary plus the interpreter/venv it actually needs."""
+
+    if seen is None:
+        seen = set()
+    try:
+        if not path.exists():
+            return ()
+    except OSError:
+        return ()
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        return (path,)
+    if resolved in seen:
+        return ()
+    seen.add(resolved)
+    paths: list[Path] = [path, resolved]
+    if (
+        resolved.parent.name == "bin"
+        and (resolved.parent.parent / "pyvenv.cfg").is_file()
+    ):
+        paths.append(resolved.parent.parent)
+    try:
+        with resolved.open("rb") as handle:
+            header = handle.read(128)
+    except OSError:
+        header = b""
+    if header.startswith(b"#!"):
+        line = header.split(b"\n", 1)[0][2:].decode("ascii", "replace").strip()
+        tokens = line.split()
+        if tokens:
+            interpreter = (
+                tokens[-1]
+                if tokens[0].endswith("env") and len(tokens) > 1
+                else tokens[0]
+            )
+            interp = Path(interpreter)
+            if interp.is_absolute() and interp != resolved:
+                paths.extend(_follow_host_cli_runtime_paths(interp, seen=seen))
+    unique: list[Path] = []
+    unique_seen: set[Path] = set()
+    for item in paths:
+        try:
+            key = item.resolve()
+        except OSError:
+            key = item
+        if key in unique_seen:
+            continue
+        unique_seen.add(key)
+        unique.append(item)
+    return tuple(unique)
+
+
+def _host_cli_runtime_roots(
+    family: str,
+    inner_command: Sequence[str],
+    *,
+    workspace: Path,
+) -> tuple[Path, ...]:
+    """Host trees the isolation image must see for shebang/dynamic CLIs."""
+
+    roots: list[Path] = []
+    for candidate in (Path("/usr"), Path("/lib"), Path("/lib64")):
+        try:
+            if candidate.exists():
+                roots.append(candidate)
+        except OSError:
+            continue
+    for binary_name in _HOST_CLI_BINARIES.get(family, ()):
+        located = _host_cli_binary(binary_name)
+        if located:
+            roots.extend(_follow_host_cli_runtime_paths(Path(located)))
+            break
+    for item in inner_command:
+        host_path = Path(item)
+        try:
+            if (
+                not host_path.is_absolute()
+                or host_path == workspace
+                or workspace in host_path.parents
+                or host_path == Path("/")
+            ):
+                continue
+            if host_path.is_file():
+                roots.extend(_follow_host_cli_runtime_paths(host_path))
+            elif host_path.is_dir():
+                roots.append(host_path)
+        except OSError:
+            continue
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        try:
+            key = root.resolve()
+        except OSError:
+            key = root
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(root)
+    return tuple(unique)
+
+
+def _extend_unique_bind_mounts(mounts: list[str], extra: Sequence[str]) -> None:
+    seen = set()
+    for index, item in enumerate(mounts[:-1]):
+        if item != "--mount":
+            continue
+        spec = mounts[index + 1]
+        for part in spec.split(","):
+            if part.startswith("dst="):
+                seen.add(part[4:])
+                break
+    index = 0
+    while index < len(extra):
+        if extra[index] == "--mount" and index + 1 < len(extra):
+            spec = extra[index + 1]
+            destination = spec
+            for part in spec.split(","):
+                if part.startswith("dst="):
+                    destination = part[4:]
+                    break
+            if destination not in seen:
+                mounts.extend([extra[index], spec])
+                seen.add(destination)
+            index += 2
+            continue
+        index += 1
+
+
 def _host_cli_binary(name: str) -> str | None:
     """Locate a host CLI when sealed PATH is ``/usr/bin:/bin``."""
 
@@ -2109,14 +2420,10 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
         or "v1/chat/completions"
     )
     goose = _goose_binary() or "goose"
-    runner_path = (
-        Path(__file__).resolve().parents[1] / "meta_spark_goose_runner.py"
-    )
-    if not runner_path.is_file():
-        raise RuntimeError(f"meta_spark_goose_runner missing at {runner_path}")
-    return [
+    command = [
         sys.executable,
-        str(runner_path),
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.integrations.meta_spark_goose_runner",
         "--workspace",
         str(workspace_path.resolve()),
         "--goose-bin",
@@ -2132,6 +2439,12 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
         "--max-tokens",
         max_tokens,
     ]
+    return _maybe_wrap_host_cli_implementation_command(
+        command,
+        workspace_path=workspace_path,
+        repository_root=None,
+        family="goose",
+    )
 
 
 def _grok_binary() -> str | None:
@@ -2309,6 +2622,16 @@ _DOCKER_LOCAL_ENDPOINTS = frozenset(
 )
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_EXECUTABLE = Path("/usr/local/bin/codex")
+_CLI_CONTAINER_HOME = Path("/opt/cli-home")
+_CLI_CONTAINER_BIN = Path("/opt/cli-bin")
+_HOST_CLI_BINARIES: dict[str, tuple[str, ...]] = {
+    "claude": ("claude",),
+    "gemini": ("gemini",),
+    "mistral": ("vibe", "mistral-vibe"),
+    "goose": ("goose",),
+    "copilot": ("copilot",),
+    "grok": ("grok",),
+}
 _CODEX_CONTAINER_CODE_MODE_HOST = Path("/usr/local/bin/codex-code-mode-host")
 _ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE: dict[str, bool] = {}
 _VALIDATION_CONTAINER_HOME = Path("/opt/validation-home")
@@ -3387,6 +3710,191 @@ def _docker_codex_implementation_command(
     return docker_command
 
 
+def _docker_host_cli_implementation_command(
+    *,
+    inner_command: Sequence[str],
+    workspace_path: Path,
+    repository_root: Path | None,
+    config: ExternalProviderIsolationConfig,
+    family: str,
+) -> list[str]:
+    """Run a host CLI (Claude, Gemini, Goose, Mistral, Copilot) in Docker.
+
+    Codex keeps the sealed image executable.  Other CLIs are bind-mounted from
+    the operator host into the same isolation image, with operator credentials
+    projected into an ephemeral CLI home.  Grok stays on ``grok_cli_runner`` so
+    its inner Docker wrap is not nested.
+    """
+
+    config = validate_external_provider_isolation_config(config.to_dict())
+    workspace = workspace_path.resolve(strict=True)
+    if not workspace.is_dir() or workspace == Path("/"):
+        raise ValueError("external isolation workspace is not a bounded directory")
+    container_command = [str(item) for item in inner_command]
+    if not container_command:
+        raise ValueError("external isolation host CLI command is empty")
+    if Path(container_command[0]).name.startswith("python"):
+        container_command[0] = str(_VALIDATION_CONTAINER_PYTHON)
+    if str(workspace) not in container_command and family != "copilot":
+        raise ValueError("external isolation host CLI command lost its workspace binding")
+
+    mounts: list[str] = [
+        *_external_isolation_mount(workspace, read_only=False),
+        *_external_isolation_git_mounts(
+            workspace,
+            repository_root=repository_root,
+        ),
+    ]
+    for binary_name in _HOST_CLI_BINARIES.get(family, ()):
+        located = _host_cli_binary(binary_name)
+        if not located:
+            continue
+        try:
+            _extend_unique_bind_mounts(
+                mounts,
+                _external_isolation_mount(
+                    Path(located),
+                    destination=_CLI_CONTAINER_BIN / binary_name,
+                    read_only=True,
+                ),
+            )
+        except (OSError, ValueError):
+            continue
+        break
+    for root in _host_cli_runtime_roots(
+        family,
+        container_command,
+        workspace=workspace,
+    ):
+        try:
+            destination = root if root.is_absolute() else root.resolve()
+            _extend_unique_bind_mounts(
+                mounts,
+                _external_isolation_mount(
+                    root,
+                    destination=destination,
+                    read_only=True,
+                ),
+            )
+        except (OSError, ValueError):
+            continue
+    for credential, relative in _host_cli_projected_credentials(family):
+        try:
+            _extend_unique_bind_mounts(
+                mounts,
+                _external_isolation_mount(
+                    credential,
+                    destination=_CLI_CONTAINER_HOME / relative,
+                    read_only=True,
+                ),
+            )
+        except (OSError, ValueError):
+            continue
+
+    uid = os.getuid()
+    gid = os.getgid()
+    cpus = format(config.cpus, ".3f").rstrip("0").rstrip(".")
+    docker_command = [
+        "/usr/bin/env",
+        "-i",
+        "HOME=/nonexistent",
+        "PATH=/usr/bin:/bin",
+        config.runtime_executable,
+        f"--host={config.runtime_endpoint}",
+        "run",
+        "--pull=never",
+        "--rm",
+        "-i",
+        "--read-only",
+        "--network=bridge",
+        "--ipc=private",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        f"--pids-limit={config.pids_limit}",
+        f"--memory={config.memory_bytes}",
+        f"--memory-swap={config.memory_bytes}",
+        f"--cpus={cpus}",
+        "--ulimit=nofile=4096:4096",
+        "--user",
+        f"{uid}:{gid}",
+        "--workdir",
+        str(workspace),
+        "--entrypoint=/usr/bin/env",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={uid},gid={gid},size={config.tmpfs_size_bytes}"
+        ),
+        "--tmpfs",
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={uid},gid={gid},size={config.tmpfs_size_bytes}"
+        ),
+        "--tmpfs",
+        (
+            f"{_CLI_CONTAINER_HOME}:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={uid},gid={gid},size={config.tmpfs_size_bytes}"
+        ),
+        *mounts,
+        config.image_id,
+        "-i",
+        "BASH_ENV=",
+        "ENV=",
+        "GIT_CONFIG_COUNT=1",
+        "GIT_CONFIG_GLOBAL=/dev/null",
+        "GIT_CONFIG_KEY_0=safe.directory",
+        "GIT_CONFIG_NOSYSTEM=1",
+        f"GIT_CONFIG_VALUE_0={workspace}",
+        "GIT_TERMINAL_PROMPT=0",
+        f"HOME={_CLI_CONTAINER_HOME}",
+        f"XDG_CONFIG_HOME={_CLI_CONTAINER_HOME / '.config'}",
+        f"XDG_DATA_HOME={_CLI_CONTAINER_HOME / '.local' / 'share'}",
+        "LANG=C.UTF-8",
+        "LC_ALL=C.UTF-8",
+        (
+            "PATH="
+            f"{_CLI_CONTAINER_BIN}:/opt/pcpc-runtime/bin:"
+            "/usr/local/bin:/usr/bin:/bin"
+        ),
+        "PYTHONDONTWRITEBYTECODE=1",
+        "PYTHONNOUSERSITE=1",
+        f"PYTHONPATH={workspace}",
+        "TERM=dumb",
+        *_host_cli_admitted_environment(family),
+        *container_command,
+    ]
+    return docker_command
+
+
+def _maybe_wrap_host_cli_implementation_command(
+    command: list[str],
+    *,
+    workspace_path: Path,
+    repository_root: Path | None,
+    family: str,
+) -> list[str]:
+    """Wrap a host CLI in the sealed Docker image when isolation is required."""
+
+    raw = os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "").strip()
+    if not raw:
+        return command
+    config = validate_external_provider_isolation_config(
+        raw,
+        verify_host=False,
+    )
+    if repository_root is None:
+        lifecycle_root = os.environ.get(_LIFECYCLE_REPOSITORY_ROOT_ENV, "").strip()
+        if lifecycle_root:
+            repository_root = Path(lifecycle_root)
+    return _docker_host_cli_implementation_command(
+        inner_command=command,
+        workspace_path=workspace_path,
+        repository_root=repository_root,
+        config=config,
+        family=family,
+    )
+
+
 def _external_validation_child_environment(
     environment: Mapping[str, str],
     *,
@@ -3931,7 +4439,12 @@ def _claude_implementation_command(
     ]
     if model:
         command.extend(["--model", model])
-    return command
+    return _maybe_wrap_host_cli_implementation_command(
+        command,
+        workspace_path=workspace_path,
+        repository_root=None,
+        family="claude",
+    )
 
 
 def _gemini_implementation_command(
@@ -3957,7 +4470,12 @@ def _gemini_implementation_command(
     ]
     if model:
         command.extend(["--model", model])
-    return command
+    return _maybe_wrap_host_cli_implementation_command(
+        command,
+        workspace_path=workspace_path,
+        repository_root=None,
+        family="gemini",
+    )
 
 
 def _mistral_implementation_command(
@@ -3983,7 +4501,12 @@ def _mistral_implementation_command(
     ]
     if model:
         command.extend(["--model", model])
-    return command
+    return _maybe_wrap_host_cli_implementation_command(
+        command,
+        workspace_path=workspace_path,
+        repository_root=None,
+        family="mistral",
+    )
 
 
 def _copilot_fallback_command(
@@ -4022,7 +4545,7 @@ def _copilot_fallback_command(
     copilot_context = os.environ.get(_COPILOT_CONTEXT_TIER_ENV, "long_context").strip()
     copilot_max_continues = os.environ.get(_COPILOT_MAX_CONTINUES_ENV, "30").strip()
 
-    return [
+    command = [
         "bash",
         "-lc",
         """
@@ -4088,6 +4611,12 @@ exec "$copilot_bin" "${copilot_args[@]}"
         copilot_context,
         copilot_max_continues,
     ]
+    return _maybe_wrap_host_cli_implementation_command(
+        command,
+        workspace_path=workspace_path,
+        repository_root=None,
+        family="copilot",
+    )
 
 
 def split_csv(value: str) -> list[str]:

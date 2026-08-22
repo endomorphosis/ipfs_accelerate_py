@@ -1331,6 +1331,27 @@ def test_failed_owner_attempt_is_exactly_removed_quarantined_and_retryable(
     assert state_dir.is_dir()
 
 
+def test_bootstrap_owner_state_dir_admits_materialize_lock(
+    tmp_path: Path,
+) -> None:
+    module = _load()
+    state_dir = tmp_path / "quack-owner"
+    module._admit_bootstrap_owner_state_dir(state_dir)
+    assert state_dir.is_dir()
+
+    lock = state_dir / "write-transaction.lock"
+    lock.write_bytes(b"")
+    lock.chmod(0o600)
+    mutations = state_dir / "mutations"
+    mutations.mkdir(mode=0o700)
+    module._admit_bootstrap_owner_state_dir(state_dir)
+
+    (state_dir / "isolation.json").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(module.ProgramLaunchError) as raised:
+        module._admit_bootstrap_owner_state_dir(state_dir)
+    assert raised.value.code == "orphaned_owner_state"
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(
     os.environ.get("IPFS_ACCELERATE_PCPC_RUN_DOCKER_E2E") != "1",

@@ -1147,6 +1147,73 @@ def validate_owner_container_inspect(
     return observed_id
 
 
+_BOOTSTRAP_OWNER_STATE_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "write-transaction.lock",
+        "mutations",
+    }
+)
+
+
+def _admit_bootstrap_owner_state_dir(state_dir: Path) -> None:
+    """Create the owner write root, or admit materialize bootstrap leftovers.
+
+    Materialize opens the control DuckDB next to ``quack-owner`` and may leave
+    an empty write-transaction lock (and empty mutations inbox) before the
+    live owner container exists.  That is not a live owner; refusing it with
+    ``exist_ok=False`` makes rematerialize-then-start fail closed forever.
+    Isolation receipts and any other owner artifacts still refuse takeover.
+    """
+
+    try:
+        info = os.lstat(state_dir)
+    except FileNotFoundError:
+        state_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
+        return
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise ProgramLaunchError(
+            "orphaned_owner_state",
+            "owner state directory exists and is not a private bootstrap leftover",
+        )
+    try:
+        names = {entry.name for entry in state_dir.iterdir()}
+    except OSError as exc:
+        raise ProgramLaunchError(
+            "orphaned_owner_state",
+            "owner state directory cannot be inspected",
+        ) from exc
+    leftover = names - _BOOTSTRAP_OWNER_STATE_NAMES
+    if leftover:
+        raise ProgramLaunchError(
+            "orphaned_owner_state",
+            "owner state directory already has live owner artifacts; refusing takeover",
+        )
+    mutations = state_dir / "mutations"
+    if mutations.exists():
+        try:
+            mutation_info = os.lstat(mutations)
+            mutation_names = tuple(mutations.iterdir()) if mutations.is_dir() else ("file",)
+        except OSError as exc:
+            raise ProgramLaunchError(
+                "orphaned_owner_state",
+                "owner mutation inbox cannot be inspected",
+            ) from exc
+        if (
+            not stat.S_ISDIR(mutation_info.st_mode)
+            or stat.S_ISLNK(mutation_info.st_mode)
+            or mutation_names
+        ):
+            raise ProgramLaunchError(
+                "orphaned_owner_state",
+                "owner mutation inbox is not an empty bootstrap leftover",
+            )
+
+
 def _atomic_create(path: Path, payload: Mapping[str, Any], *, canonical: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     data = (
@@ -3102,7 +3169,7 @@ class ProcedureCompilerProgramLauncher:
                     "endpoint_in_use", "configured Quack endpoint is already in use"
                 )
         self.config.owner_write_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.config.state_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
+        _admit_bootstrap_owner_state_dir(self.config.state_dir)
         attempt_identity = f"attempt-{uuid.uuid4().hex}"
         container_id = ""
         try:
