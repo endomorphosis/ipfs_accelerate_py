@@ -22,6 +22,7 @@ import signal
 import stat
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -231,6 +232,43 @@ def _client(
     return client
 
 
+def _bounded_error_atom(value: Any) -> str:
+    text = str(value or "").strip()
+    if (
+        not text
+        or len(text) > 128
+        or any(not (character.isalnum() or character in "._:-") for character in text)
+    ):
+        return ""
+    return text
+
+
+def _failure_observation(error: BaseException) -> dict[str, Any]:
+    """Project a bounded, message-free exception identity chain.
+
+    Remote owner errors deliberately omit exception messages because a driver
+    can echo SQL or credential-bearing connection text.  Closed error codes
+    and class identities are sufficient to distinguish an authorization,
+    protocol, conflict, or transport blocker without persisting those bodies.
+    """
+
+    chain: list[dict[str, str]] = []
+    current: BaseException | None = error
+    while current is not None and len(chain) < 4:
+        item = {"error_class": type(current).__name__}
+        for attribute in ("error_code", "error_type", "kind"):
+            value = getattr(current, attribute, "")
+            if hasattr(value, "value"):
+                value = value.value
+            admitted = _bounded_error_atom(value)
+            if admitted:
+                item[attribute] = admitted
+        chain.append(item)
+        cause = current.__cause__
+        current = cause if isinstance(cause, BaseException) else None
+    return {"chain": chain}
+
+
 def _write_runtime_projection(
     credentials: SupervisorRuntimeCredentials,
     *,
@@ -248,6 +286,7 @@ def _write_runtime_projection(
     first_acknowledgement_id: str = "",
     first_delivery_attempt_id: str = "",
     error_class: str = "",
+    error_observation: Mapping[str, Any] | None = None,
 ) -> None:
     observed = utc_now()
     task_state = {
@@ -307,6 +346,7 @@ def _write_runtime_projection(
         "task_execution_admitted": False,
         "execution_scope": "first_tranche_event_coordination_only",
         "error_class": error_class,
+        "error_observation": dict(error_observation or {}),
         "current_status_path": str(credentials.task_state_path),
     }
     _atomic_json(credentials.task_state_path, task_state)
@@ -595,6 +635,7 @@ def run_supervisor_runtime(descriptor: int) -> int:
             first_acknowledgement_id=first_acknowledgement_id,
             first_delivery_attempt_id=first_delivery_attempt_id,
             error_class=type(exc).__name__,
+            error_observation=_failure_observation(exc),
         )
         return 1
     finally:

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.federation import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.federation.bootstrap_runtime import (
     admit_bootstrap_federation,
 )
@@ -46,6 +47,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+    TransactionConflictKind,
+    TransactionError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
@@ -60,6 +65,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_TOKEN_ENV,
     TypedStateOwnerAuthorizationError,
     TypedStateOwnerConnection,
+    TypedStateOwnerRemoteError,
     build_control_plane_operation_catalog,
     catalog_fingerprint,
 )
@@ -126,6 +132,37 @@ def _write_pipe(descriptor: int, payload: bytes) -> None:
     offset = 0
     while offset < len(payload):
         offset += os.write(descriptor, payload[offset:])
+
+
+def test_failure_observation_is_bounded_and_message_free() -> None:
+    remote = TypedStateOwnerRemoteError(
+        "authorization_denied",
+        "TypedStateOwnerAuthorizationError",
+    )
+    try:
+        raise TransactionError(
+            "driver text that must not be persisted",
+            kind=TransactionConflictKind.UNKNOWN,
+        ) from remote
+    except TransactionError as error:
+        observation = supervisor_runtime._failure_observation(error)
+
+    assert observation == {
+        "chain": [
+            {
+                "error_class": "TransactionError",
+                "kind": "unknown",
+            },
+            {
+                "error_class": "TypedStateOwnerRemoteError",
+                "error_code": "authorization_denied",
+                "error_type": "TypedStateOwnerAuthorizationError",
+            },
+        ]
+    }
+    encoded = json.dumps(observation)
+    assert "driver text" not in encoded
+    assert "typed state-owner" not in encoded
 
 
 @pytest.mark.timeout(45)
