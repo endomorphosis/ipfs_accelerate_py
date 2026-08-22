@@ -12,9 +12,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
+    QuackTransportContentionError,
     is_quack_transport_target,
     open_quack_transport_connection,
     quack_transport_uri,
+    reset_quack_transport_cache,
+    resolve_quack_attach_token,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepository,
@@ -98,3 +101,96 @@ def test_database_daemon_defaults_to_quack_and_refuses_file_open(tmp_path) -> No
             database_path=tmp_path / "control.duckdb",
             task_source_kind="duckdb",
         )
+
+
+class _FakeQuackRaw:
+    def execute(self, sql, params=None):
+        del sql, params
+        return type("Result", (), {"fetchall": lambda self: [(1,)]})()
+
+    def close(self) -> None:
+        return None
+
+    def commit(self) -> None:
+        return None
+
+    def rollback(self) -> None:
+        return None
+
+
+def test_resolve_quack_attach_token_prefers_vault_over_stale_env(
+    tmp_path, monkeypatch
+) -> None:
+    vault = tmp_path / "env___IPFS_ACCELERATE_AGENT_QUACK_TOKEN.quack-token"
+    vault.write_text("vaultTok_value1234567890\n", encoding="utf-8")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", str(vault))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "staleEnv_token_value")
+    assert resolve_quack_attach_token() == "vaultTok_value1234567890"
+    assert resolve_quack_attach_token("explicit_token_ok") == "explicit_token_ok"
+
+
+def test_quack_attach_retries_authentication_failed_contention(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+    attempts = {"n": 0}
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise RuntimeError("Invalid Input Error: Authentication failed")
+        return _FakeQuackRaw()
+
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    try:
+        connection = open_quack_transport_connection("quack:127.0.0.1:41347")
+        assert attempts["n"] == 3
+        assert connection._pooled is True
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_quack_attach_reuses_cached_connection(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+    attaches = {"n": 0}
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        attaches["n"] += 1
+        return _FakeQuackRaw()
+
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    try:
+        first = open_quack_transport_connection("quack:127.0.0.1:41347")
+        first.close()
+        second = open_quack_transport_connection("quack:127.0.0.1:41347")
+        assert first is second
+        assert attaches["n"] == 1
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        raise RuntimeError("Invalid Input Error: Authentication failed")
+
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    monkeypatch.setattr(ds, "QUACK_ATTACH_ATTEMPTS", 3)
+    try:
+        with pytest.raises(QuackTransportContentionError, match="contended"):
+            open_quack_transport_connection("quack:127.0.0.1:41347")
+    finally:
+        reset_quack_transport_cache()

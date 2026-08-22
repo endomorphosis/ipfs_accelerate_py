@@ -9,9 +9,11 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
 import sqlite3
+import stat
 import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -62,6 +64,10 @@ _THREAD_LOCKS_GUARD = threading.Lock()
 
 class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
+
+
+class QuackTransportContentionError(DuckDBConnectionPolicyError):
+    """Loopback Quack ATTACH failed because the owner was busy or contended."""
 
 
 def _connection_tuning(
@@ -375,6 +381,7 @@ class DuckDBConnection:
         self._context_depth = 0
         self._closed = False
         self._default_catalog = None
+        self._pooled = False
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -413,6 +420,7 @@ class DuckDBConnection:
         instance._closed = False
         instance._lock_context = None
         instance._default_catalog = None
+        instance._pooled = False
         return instance
 
     @property
@@ -477,6 +485,13 @@ class DuckDBConnection:
             self._transaction_active = False
 
     def close(self) -> None:
+        if getattr(self, "_pooled", False):
+            if self._transaction_active:
+                try:
+                    self.rollback()
+                except Exception:
+                    pass
+            return
         if self._closed:
             return
         self._closed = True
@@ -554,6 +569,37 @@ _QUACK_OWNER_DML_PREFIXES = (
     "MERGE ",
     "INSERT OR REPLACE",
     "INSERT OR IGNORE",
+)
+_QUACK_ATTACH_LOCK = threading.RLock()
+_QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
+QUACK_ATTACH_ATTEMPTS = 8
+QUACK_ATTACH_BACKOFF_SECONDS: tuple[float, ...] = (
+    0.05,
+    0.1,
+    0.2,
+    0.4,
+    0.8,
+    1.6,
+    3.2,
+)
+_QUACK_ATTACH_CONTENTION_MARKERS = (
+    "authentication failed",
+    "could not set lock",
+    "conflicting lock",
+    "lock timeout",
+    "database is locked",
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "temporarily unavailable",
+    "resource temporarily unavailable",
+    "too many clients",
+    "too many connections",
+    "broken pipe",
+    "timeout",
+    "busy",
+    "locked",
+    "contention",
 )
 
 
@@ -654,6 +700,145 @@ def _consume_duckdb_result(connection: Any) -> None:
         pass
 
 
+def _quack_store_id() -> str:
+    store = str(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or "").strip()
+    if store:
+        return store
+    raw = str(os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or "").strip()
+    if not raw:
+        return ""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("store_id") or "").strip()
+
+
+def quack_token_vault_path() -> Path | None:
+    """Return the owner token-vault path when the process can locate it."""
+
+    explicit = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", "") or ""
+    ).strip()
+    if explicit:
+        return Path(explicit)
+    store = _quack_store_id()
+    if not store:
+        return None
+    handle = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "")
+        or "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+    ).strip()
+    owner_dir = Path(store).expanduser().resolve().parent / "quack-owner"
+    safe = handle.replace(":", "_").replace("/", "_")
+    return owner_dir / f"{safe}{'.quack-token'}"
+
+
+def _read_quack_token_vault(path: Path) -> str:
+    try:
+        metadata = os.lstat(path)
+    except OSError:
+        return ""
+    if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        return ""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not _QUACK_TOKEN_RE.fullmatch(token):
+        return ""
+    return token
+
+
+def resolve_quack_attach_token(token: str = "") -> str:
+    """Resolve the current owner attach token.
+
+    The vault file is preferred over a process environment value so a
+    restarted owner generation is not blocked by a stale supervisor env.
+    """
+
+    explicit = str(token or "").strip()
+    if explicit:
+        if not _QUACK_TOKEN_RE.fullmatch(explicit):
+            raise DuckDBConnectionPolicyError(
+                "quack attach token must be an opaque url-safe secret"
+            )
+        return explicit
+    vault = quack_token_vault_path()
+    if vault is not None:
+        material = _read_quack_token_vault(vault)
+        if material:
+            return material
+    secret = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
+    if secret and not _QUACK_TOKEN_RE.fullmatch(secret):
+        raise DuckDBConnectionPolicyError(
+            "quack attach token must be an opaque url-safe secret"
+        )
+    return secret
+
+
+def quack_attach_error_is_contention(exc: BaseException) -> bool:
+    """Return whether a failed ATTACH is owner-side contention, not a policy bug."""
+
+    text = " ".join(str(exc).lower().split())
+    return any(marker in text for marker in _QUACK_ATTACH_CONTENTION_MARKERS)
+
+
+def reset_quack_transport_cache() -> None:
+    """Drop cached loopback Quack attachments (tests and owner restart)."""
+
+    with _QUACK_ATTACH_LOCK:
+        cached = list(_QUACK_TRANSPORT_CACHE.items())
+        _QUACK_TRANSPORT_CACHE.clear()
+        for _uri, connection in cached:
+            try:
+                connection._pooled = False
+                connection.close()
+            except Exception:
+                pass
+
+
+def _probe_quack_connection(connection: Any) -> None:
+    probed = connection.execute("SELECT 1")
+    _consume_duckdb_result(probed)
+
+
+def _attach_quack_once(uri: str, secret: str) -> Any:
+    import duckdb
+
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("LOAD quack")
+        try:
+            connection.execute("SET httpfs_connection_caching = true")
+        except Exception:
+            pass
+        attach = (
+            f"ATTACH '{uri}' AS {_QUACK_CONTROL_CATALOG} "
+            "(READ_WRITE, DISABLE_SSL true"
+        )
+        if secret:
+            attach += f", TOKEN '{secret}'"
+        attach += ")"
+        attached = connection.execute(attach)
+        _consume_duckdb_result(attached)
+        used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+        _consume_duckdb_result(used)
+        probed = connection.execute(
+            f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+        )
+        _consume_duckdb_result(probed)
+    except Exception:
+        try:
+            connection.close()
+        except Exception:
+            pass
+        raise
+    return connection
+
+
 def open_quack_transport_connection(
     uri: str,
     *,
@@ -664,6 +849,11 @@ def open_quack_transport_connection(
     This is a transport connection, not a direct file open. The sealed
     one-writer file policy does not apply: Quack ATTACH requires a process
     that can reach the loopback state-owner.
+
+    Attach is serialized and retried: the owner DuckDB connection is the
+    single writer, the serve backlog is small, and a new ATTACH per query
+    otherwise loses the handshake to contention (often reported as
+    ``Authentication failed``). Live attachments are reused in-process.
     """
 
     text = quack_transport_uri(uri)
@@ -679,38 +869,52 @@ def open_quack_transport_connection(
         raise DuckDBConnectionPolicyError(
             "DuckDB is required for Quack transport"
         ) from exc
-    connection = duckdb.connect(":memory:")
-    try:
-        connection.execute("LOAD quack")
-        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
-        secret = str(
-            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
-        ).strip()
-        if secret:
-            if not _QUACK_TOKEN_RE.fullmatch(secret):
-                raise DuckDBConnectionPolicyError(
-                    "quack attach token must be an opaque url-safe secret"
-                )
-            attach += f", TOKEN '{secret}'"
-        attach += ")"
-        attached = connection.execute(attach)
-        _consume_duckdb_result(attached)
-        used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
-        _consume_duckdb_result(used)
-        # Prove the attached control catalog is visible on this connection.
-        probed = connection.execute(
-            f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
-        )
-        _consume_duckdb_result(probed)
-    except Exception:
-        try:
-            connection.close()
-        except Exception:
-            pass
-        raise
-    wrapped = DuckDBConnection.wrap(connection)
-    wrapped._default_catalog = _QUACK_CONTROL_CATALOG
-    return wrapped
+    del duckdb
+
+    with _QUACK_ATTACH_LOCK:
+        cached = _QUACK_TRANSPORT_CACHE.get(text)
+        if cached is not None and not getattr(cached, "_closed", False):
+            try:
+                _probe_quack_connection(cached._connection)
+                return cached
+            except Exception:
+                _QUACK_TRANSPORT_CACHE.pop(text, None)
+                try:
+                    cached._pooled = False
+                    cached.close()
+                except Exception:
+                    pass
+
+        last_error: BaseException | None = None
+        for attempt in range(QUACK_ATTACH_ATTEMPTS):
+            secret = resolve_quack_attach_token(token)
+            try:
+                raw = _attach_quack_once(text, secret)
+            except BaseException as exc:
+                last_error = exc
+                if (
+                    attempt + 1 >= QUACK_ATTACH_ATTEMPTS
+                    or not quack_attach_error_is_contention(exc)
+                ):
+                    break
+                delay = QUACK_ATTACH_BACKOFF_SECONDS[
+                    min(attempt, len(QUACK_ATTACH_BACKOFF_SECONDS) - 1)
+                ]
+                time.sleep(delay)
+                continue
+            wrapped = DuckDBConnection.wrap(raw)
+            wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+            wrapped._pooled = True
+            _QUACK_TRANSPORT_CACHE[text] = wrapped
+            return wrapped
+
+        if last_error is not None and quack_attach_error_is_contention(last_error):
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: " + str(last_error)
+            ) from last_error
+        if last_error is not None:
+            raise last_error
+        raise DuckDBConnectionPolicyError("quack control-plane attach failed")
 
 
 def open_duckdb_connection(

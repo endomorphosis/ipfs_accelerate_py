@@ -1647,6 +1647,11 @@ class QuackStateServer:
                 self._identity = identity
 
                 assert self.transport is not None
+                # Publish identity before quack_serve occupies this connection.
+                # Auth callbacks open a fresh DuckDB session; DML on the serve
+                # connection after listen starts is reported as Authentication
+                # failed rather than lock contention.
+                self._publish_identity_rows(connection, identity, capability)
                 public_obs = self.transport.start(
                     connection,
                     host=self.config.host,
@@ -1657,7 +1662,6 @@ class QuackStateServer:
                 # Ensure transport observation never echoed the token.
                 self._vault.assert_absent_from(public_obs, surface_name="transport.start")
 
-                self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
                 self._identity = identity
                 self._lifecycle = ServerLifecycle.READY
