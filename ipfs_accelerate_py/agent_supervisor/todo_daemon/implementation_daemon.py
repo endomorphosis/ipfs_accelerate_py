@@ -70137,13 +70137,26 @@ class DatabaseTaskAttempt:
 
 
 def _is_quack_attach_error(exc: BaseException) -> bool:
-    """Return whether a control-plane error is a Quack ATTACH failure."""
+    """Return whether a control-plane error is a Quack ATTACH failure.
+
+    Include attach.lock / DuckDB process-lock timeouts: those are the
+    sibling-lane wait that used to traceback and kill the daemon.
+    """
 
     detail = str(exc)
+    name = type(exc).__name__
+    lowered = detail.lower()
     return (
-        "Authentication failed" in detail
-        or "quack attach authentication failed" in detail
-        or type(exc).__name__ == "DuckDBConnectionPolicyError"
+        name == "DuckDBConnectionPolicyError"
+        or "Authentication failed" in detail
+        or "quack attach authentication failed" in lowered
+        or "timed out acquiring duckdb process lock" in lowered
+        or "timed out acquiring duckdb thread lock" in lowered
+        or "attach.lock" in lowered
+        or (
+            name == "TimeoutError"
+            and ("timed out" in lowered or "timeout" in lowered)
+        )
     )
 
 

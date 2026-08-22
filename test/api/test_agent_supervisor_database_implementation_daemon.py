@@ -2779,6 +2779,37 @@ def test_idle_run_once_idles_on_quack_attach_failure(
         daemon.close()
 
 
+def test_idle_run_once_idles_on_quack_attach_lock_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-lock-timeout-idle",
+    )
+
+    def boom() -> None:
+        raise TimeoutError(
+            "timed out acquiring DuckDB process lock: "
+            f"{tmp_path / 'quack-owner' / 'attach.lock'}"
+        )
+
+    try:
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("attach lock timeout claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["implementation_result"] is None
+        assert result["active_task_id"] == ""
+        assert result["control_plane_error"]["error_type"] == "TimeoutError"
+    finally:
+        daemon.close()
+
+
 def test_idle_run_once_settles_invalid_metadata_portal_quarantine_before_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

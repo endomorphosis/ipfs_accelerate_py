@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -97,6 +98,123 @@ def test_quack_attach_retries_transient_authentication_failed(
     wrapped = open_quack_transport_connection("quack:127.0.0.1:41327")
     assert _FakeConnection.attaches == 3
     assert wrapped._default_catalog == "control_plane"
+
+
+def test_quack_attach_releases_lock_before_retry_sleep(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(tmp_path / "control.duckdb"))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "retry-token")
+    lock_held = {"value": False}
+    held_during_sleep: list[bool] = []
+
+    @contextmanager
+    def _lock(*_args: object, **_kwargs: object):
+        lock_held["value"] = True
+        try:
+            yield
+        finally:
+            lock_held["value"] = False
+
+    def _sleep(_seconds: float) -> None:
+        held_during_sleep.append(lock_held["value"])
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.exclusive_file_lock",
+        _lock,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.time.sleep",
+        _sleep,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.random.random",
+        lambda: 0.0,
+    )
+
+    class _Result:
+        def fetchall(self) -> list[object]:
+            return []
+
+    class _FakeConnection:
+        attaches = 0
+
+        def execute(self, sql: str) -> _Result:
+            if str(sql).startswith("ATTACH"):
+                type(self).attaches += 1
+                if type(self).attaches < 3:
+                    raise RuntimeError("Invalid Input Error: Authentication failed")
+            return _Result()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    class _FakeDuckDB:
+        @staticmethod
+        def connect(_target: object) -> _FakeConnection:
+            return _FakeConnection()
+
+    monkeypatch.setitem(__import__("sys").modules, "duckdb", _FakeDuckDB())
+    wrapped = open_quack_transport_connection("quack:127.0.0.1:41327")
+    assert _FakeConnection.attaches == 3
+    assert held_during_sleep == [False, False]
+    assert wrapped._default_catalog == "control_plane"
+
+
+def test_quack_attach_lock_timeout_becomes_policy_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(tmp_path / "control.duckdb"))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "retry-token")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.time.sleep",
+        lambda _seconds: None,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.random.random",
+        lambda: 0.0,
+    )
+
+    @contextmanager
+    def _timeout_lock(*_args: object, **_kwargs: object):
+        raise TimeoutError(
+            "timed out acquiring DuckDB process lock: "
+            f"{tmp_path / 'quack-owner' / 'attach.lock'}"
+        )
+        yield
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.exclusive_file_lock",
+        _timeout_lock,
+    )
+
+    class _FakeConnection:
+        def execute(self, _sql: str) -> object:
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    class _FakeDuckDB:
+        @staticmethod
+        def connect(_target: object) -> _FakeConnection:
+            return _FakeConnection()
+
+    monkeypatch.setitem(__import__("sys").modules, "duckdb", _FakeDuckDB())
+    with pytest.raises(DuckDBConnectionPolicyError, match="quack attach authentication failed"):
+        open_quack_transport_connection("quack:127.0.0.1:41327")
 
 
 def test_intent_repository_reuses_quack_read_connection(

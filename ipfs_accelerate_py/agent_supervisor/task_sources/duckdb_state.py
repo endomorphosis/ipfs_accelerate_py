@@ -1149,6 +1149,13 @@ def open_quack_transport_connection(
     This is a transport connection, not a direct file open. The sealed
     one-writer file policy does not apply: Quack ATTACH requires a process
     that can reach the loopback state-owner.
+
+    ATTACH is serialized across supervisor processes so the native Quack
+    listen backlog (a handful of pending TCP handshakes) is not stormed.
+    Retry sleeps happen *outside* that lock; holding it across backoff
+    makes sibling lanes time out on ``attach.lock`` and die. Widening
+    Quack listen parallelism is not required once ATTACH syscalls are
+    sequential.
     """
 
     text = quack_transport_uri(uri)
@@ -1171,37 +1178,36 @@ def open_quack_transport_connection(
     attach += ")"
     last_error: Exception | None = None
     attempts = 8
-    with exclusive_file_lock(
-        quack_attach_lock_path(text),
-        timeout_seconds=max(DEFAULT_LOCK_TIMEOUT_SECONDS, 45.0),
-    ):
-        for attempt in range(attempts):
-            connection = duckdb.connect(":memory:")
-            try:
-                connection.execute("LOAD quack")
+    lock_path = quack_attach_lock_path(text)
+    lock_timeout = max(DEFAULT_LOCK_TIMEOUT_SECONDS, 45.0)
+    for attempt in range(attempts):
+        connection = duckdb.connect(":memory:")
+        try:
+            connection.execute("LOAD quack")
+            with exclusive_file_lock(lock_path, timeout_seconds=lock_timeout):
                 attached = connection.execute(attach)
                 _consume_duckdb_result(attached)
-                used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
-                _consume_duckdb_result(used)
-                probed = connection.execute(
-                    f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
-                )
-                _consume_duckdb_result(probed)
-                wrapped = DuckDBConnection.wrap(connection)
-                wrapped._default_catalog = _QUACK_CONTROL_CATALOG
-                return wrapped
-            except Exception as exc:
-                last_error = exc
-                try:
-                    connection.close()
-                except Exception:
-                    pass
-                if (
-                    not _is_transient_quack_attach_error(str(exc))
-                    or attempt == attempts - 1
-                ):
-                    break
-                time.sleep(0.5 * (attempt + 1) + random.random() * 0.4)
+            used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+            _consume_duckdb_result(used)
+            probed = connection.execute(
+                f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+            )
+            _consume_duckdb_result(probed)
+            wrapped = DuckDBConnection.wrap(connection)
+            wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+            return wrapped
+        except Exception as exc:
+            last_error = exc
+            try:
+                connection.close()
+            except Exception:
+                pass
+            if (
+                not _is_transient_quack_attach_error(str(exc))
+                or attempt == attempts - 1
+            ):
+                break
+            time.sleep(0.5 * (attempt + 1) + random.random() * 0.4)
     assert last_error is not None
     detail = str(last_error)
     if _is_transient_quack_attach_error(detail):
