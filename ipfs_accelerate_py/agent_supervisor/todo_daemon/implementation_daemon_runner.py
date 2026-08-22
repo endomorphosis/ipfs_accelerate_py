@@ -55,6 +55,8 @@ def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "wake_kinds",
         "requirement_id",
         "control_plane_error",
+        "declared_output_rearm",
+        "write_count",
     )
     return {key: result[key] for key in keys if key in result}
 

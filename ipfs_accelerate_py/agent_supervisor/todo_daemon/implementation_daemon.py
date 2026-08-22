@@ -70959,18 +70959,22 @@ class DatabaseImplementationDaemon:
         repo = self._merge_repo_root
         if repo is None or not paths:
             return False
+        git = "/usr/bin/git" if Path("/usr/bin/git").is_file() else "git"
         for path in paths:
             try:
                 probe = subprocess.run(
-                    ["git", "cat-file", "-e", f"HEAD:{path}"],
-                    cwd=repo,
+                    [git, "-C", str(repo), "cat-file", "-e", f"HEAD:{path}"],
                     check=False,
                     capture_output=True,
                     text=True,
                 )
             except OSError:
+                if (Path(repo) / path).is_file():
+                    continue
                 return False
             if probe.returncode != 0:
+                if (Path(repo) / path).is_file():
+                    continue
                 return False
         return True
 
@@ -76912,8 +76916,13 @@ class DatabaseImplementationDaemon:
     def wait_for_wake(self, timeout: float = 0.0) -> None:
         """Bounded idle wait; database authority uses polling, not FS notify."""
 
-        if timeout and timeout > 0:
-            time.sleep(min(float(timeout), 1.0))
+        timeout = max(0.0, float(timeout or 0.0))
+        cooldown = float(self._quack_attach_blocked_until or 0.0) - time.monotonic()
+        sleep_for = max(timeout, cooldown if cooldown > 0 else 0.0)
+        if sleep_for > 0:
+            # Cap only at a long poll bound.  A 1s cap made four lanes
+            # retry Quack ATTACH continuously and wedge the exclusive owner.
+            time.sleep(min(sleep_for, 30.0))
 
     def close_event_runtime(self) -> None:
         self.close()
