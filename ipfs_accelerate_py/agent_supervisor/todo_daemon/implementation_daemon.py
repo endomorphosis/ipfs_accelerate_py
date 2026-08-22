@@ -2167,11 +2167,9 @@ def _grok_cli_available() -> bool:
     if not _grok_binary():
         return False
     try:
-        from ...llm_router import _grok_cli_auth_available, get_llm_provider
+        from ...llm_router import _grok_cli_auth_available
 
-        if not _grok_cli_auth_available():
-            return False
-        return get_llm_provider("grok_cli") is not None
+        return bool(_grok_cli_auth_available())
     except Exception:
         return False
 
