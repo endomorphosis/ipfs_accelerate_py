@@ -70520,34 +70520,12 @@ class DatabaseImplementationDaemon:
         }
         return manual_completion or review_only
 
-    def _task_home_shard_index(self, task_alias: str) -> int:
-        """Return the deterministic alias-hash home for a canonical task."""
-
-        return _task_alias_home_shard_index(task_alias, self.task_shard_count)
-
-    def _task_belongs_to_strict_shard(self, task: Any) -> bool:
-        """Return whether ``task`` is admitted to this strict database lane.
-
-        The mutable display alias is read only from the current authoritative
-        task projection.  A CID is never treated as substitute routing
-        authority; a missing alias fails closed.
-        """
-
-        if not self.strict_task_sharding:
-            return True
-        task_alias = str(getattr(task, "task_alias", "") or "").strip()
-        if not task_alias:
-            return False
-        return self._task_home_shard_index(task_alias) == self.task_shard_index
-
     def _automatic_claim_exclusions(self) -> set[str]:
         tasks, _ready_cids = self._stable_authoritative_task_projection()
         return {
             str(task.task_cid)
             for task in tasks
             if self._automatic_claim_forbidden(task)
-            or not self._task_matches_prefix(task)
-            or not self._task_belongs_to_strict_shard(task)
         }
 
     def _task_matches_prefix(self, task: Any) -> bool:
