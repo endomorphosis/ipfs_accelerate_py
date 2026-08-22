@@ -1,11 +1,11 @@
 # LGCVF implementation report
 
 - Formal plan CID: baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq
-- Qualification result CID: baguqeeramef5roixvldnw5f3bo4oglssuqvqqmyjgogn275tjqxyebnogbtq
-- Qualification authority CID: baguqeeratz3jtsy4vtif5cd534zf3telfi6qffbdq5zw4rvamges3vhdveba
-- Benchmark result CID: baguqeerap4uxygafg7mwww22f3ogq7gbqh2igumha7wuabo3mgeximihqauq
+- Qualification result CID: baguqeerarasg52dwwmyjmggr2e3apulcgz4d6flaycfljav7b52i5upwogxa
+- Qualification authority CID: baguqeerac73jebs3yuwc3cbp4adttcutq7foxpvhs3qfl37hmiors3rtbncq
+- Benchmark result CID: baguqeeraxb5qc5hrscn3pgs6kgps2iui3sctd4v3uu5tc4nduokuqyg2y7kq
 - Benchmark authority CID: baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa
-- Release report SHA256: sha256:ac2dadb58af9af11b0da4731045072cdf87984375e9a65b9ea5ba1638ba34edc
+- Release report SHA256: sha256:2d0904bd12a8e6873d8be8f051e82149b2362ce50526a679e924c1c09693511b
 - Task implementation: incomplete
 - Test success: passed_hermetic
 - Objective completion: incomplete
@@ -15,7 +15,7 @@
 
 ## A. Exact source revisions and repository topology
 
-- Source revisions: {"ipfs_accelerate_py":{"head":"f64208fc851d9e474d759427cdbfdf2dcd63d537","protected_input_cid":"baguqeerassssmii4swihtamusqydqdjmhevatziewbb3dhymioxhuu4ohfra","tree":"f89dffdf0a3ac5548876e67a916601e8821be1cc"},"ipfs_datasets_py":{"gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","head":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeerassssmii4swihtamusqydqdjmhevatziewbb3dhymioxhuu4ohfra","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"}}
+- Source revisions: {"ipfs_accelerate_py":{"head":"119d5807e6699c71fd64d77a1e1b26097dcefffe","protected_input_cid":"baguqeeraculoak7fqu7z3d3rwyavtfzkaaomnzid5uojghyuhmqtd5hpflea","tree":"6e5f0d6f2addef18265a8d40449ef61ee201e9e9"},"ipfs_datasets_py":{"gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","head":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeeraculoak7fqu7z3d3rwyavtfzkaaomnzid5uojghyuhmqtd5hpflea","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"}}
 - Repository topology: {"ipfs_accelerate_py":{"kind":"repository_root","path":"."},"ipfs_datasets_py":{"kind":"git_submodule","path":"ipfs_datasets_py"}}
 
 ## B. Pre-existing implemented capabilities
@@ -45,7 +45,7 @@
 
 ## H. Vertical-slice trace and receipt identities
 
-- Vertical receipt identities: {"artifact_cid":"baguqeeraedyg4jbsoeqgof5vkownnixbhq6qwhivnwijufwdmm7d5munr2za","artifact_verification_receipt_cid":"baguqeera6tbtczwmjqe3h4bqnsrxif6txnrzylheo72wh32k3szqxw4lwsya","fresh_execution_receipts_reproducible":false,"vertical_result_cid":"baguqeerakerdz4c7iyvbc752yff54nytmyhjcqfltniath2rxyfjhm32shxq"}
+- Vertical receipt identities: {"artifact_cid":"baguqeeraedyg4jbsoeqgof5vkownnixbhq6qwhivnwijufwdmm7d5munr2za","artifact_verification_receipt_cid":"baguqeera6tbtczwmjqe3h4bqnsrxif6txnrzylheo72wh32k3szqxw4lwsya","fresh_execution_receipts_reproducible":false,"vertical_result_cid":"baguqeerazs6wj3cvmj6lxccwfzexu64rjjm2bii4h2d6sch7c752dymeolnq"}
 
 ## I. Benchmark metrics
 
@@ -64,4 +64,4 @@
 ## L. Next minimal machine-executable tasks
 
 - Successor task IDs: ["LGCVF-S001","LGCVF-S002","LGCVF-S003","LGCVF-S004","LGCVF-S005"]
-- Successor tasks CID: baguqeerayxkibwu72aqnsixmnyyc3rvxcugrphjfbnijacc3uwhfhtxcf6sq
+- Successor tasks CID: baguqeerat4627234sazwr7b4y7zwiuiqtcgiwak4nenxko7egsepgqjw6gsq
