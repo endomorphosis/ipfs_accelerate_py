@@ -14,10 +14,22 @@ import re
 import sqlite3
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+from .quack_owner_mutation import (
+    QuackOwnerMutationEnvelopeError,
+    build_mutation_request,
+    mutation_envelope_exists_at,
+    open_mutation_inbox_directory,
+    parse_mutation_result,
+    read_envelope_at,
+    unlink_mutation_envelope_at,
+    write_envelope_atomic_at,
+)
 
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
@@ -43,6 +55,22 @@ DUCKDB_CONNECTION_POLICY_SETTINGS = (
     ("enable_external_access", "false", False),
     ("allow_unsigned_extensions", "false", False),
     ("allow_persistent_secrets", "false", False),
+    ("lock_configuration", "true", True),
+)
+# Quack 1.5.5+c154811 creates an internal connection for each authenticated
+# request.  That worker requires both extension autoload and external access
+# even after ``quack`` itself has been loaded; disabling either makes every
+# remote request fail with HTTP 500.  This is therefore a distinct service
+# policy, not a relaxation of ``DUCKDB_CONNECTION_POLICY_SETTINGS``.  It is
+# admitted only for the loopback, single-owner transport process.  Automatic
+# installation and unsigned bytes stay disabled and the configuration is
+# immutable before the connection is returned.  The raw capability token and
+# mutation inbox are stripped from every provider subprocess.
+QUACK_OWNER_CONNECTION_POLICY_SETTINGS = (
+    ("autoinstall_known_extensions", "false", False),
+    ("autoload_known_extensions", "true", True),
+    ("enable_external_access", "true", True),
+    ("allow_unsigned_extensions", "false", False),
     ("lock_configuration", "true", True),
 )
 DUCKDB_CONNECTION_POLICY_TUNING_KEYS = frozenset({"threads", "memory_limit"})
@@ -126,9 +154,14 @@ def _connection_tuning(
     return tuning
 
 
-def _verify_duckdb_connection_policy(connection: Any) -> None:
+def _verify_connection_policy(
+    connection: Any,
+    *,
+    settings: Sequence[tuple[str, str, bool]],
+    policy_name: str,
+) -> None:
     setting_names = tuple(
-        name for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
+        name for name, _configured, _expected in settings
     )
     expressions = ", ".join(
         f"current_setting('{name}')" for name in setting_names
@@ -137,10 +170,10 @@ def _verify_duckdb_connection_policy(connection: Any) -> None:
         row = connection.execute(f"SELECT {expressions}").fetchone()
     except Exception as exc:
         raise DuckDBConnectionPolicyError(
-            "could not verify DuckDB supervisor connection policy"
+            f"could not verify {policy_name}"
         ) from exc
     expected = tuple(
-        value for _name, _configured, value in DUCKDB_CONNECTION_POLICY_SETTINGS
+        value for _name, _configured, value in settings
     )
     if (
         not isinstance(row, tuple)
@@ -149,8 +182,24 @@ def _verify_duckdb_connection_policy(connection: Any) -> None:
         or row != expected
     ):
         raise DuckDBConnectionPolicyError(
-            "DuckDB supervisor connection policy verification failed"
+            f"{policy_name} verification failed"
         )
+
+
+def _verify_duckdb_connection_policy(connection: Any) -> None:
+    _verify_connection_policy(
+        connection,
+        settings=DUCKDB_CONNECTION_POLICY_SETTINGS,
+        policy_name="DuckDB supervisor connection policy",
+    )
+
+
+def _verify_quack_owner_connection_policy(connection: Any) -> None:
+    _verify_connection_policy(
+        connection,
+        settings=QUACK_OWNER_CONNECTION_POLICY_SETTINGS,
+        policy_name="Quack owner connection policy",
+    )
 
 
 def connect_duckdb_with_policy(
@@ -199,20 +248,67 @@ def connect_duckdb_with_policy(
     return connection
 
 
+def connect_duckdb_with_quack_owner_policy(
+    duckdb_module: Any,
+    database: Path | str,
+    *,
+    configuration: Mapping[str, Any] | None = None,
+) -> Any:
+    """Open the locked, loopback-only Quack state-owner connection.
+
+    The Quack request worker currently requires autoload and external access.
+    Those settings remain enabled only in this exclusive transport authority;
+    ordinary supervisor connections continue to use the deny-by-default
+    policy.  No network installation is permitted, the exact installed Quack
+    extension is loaded with a literal statement, its required surface is
+    verified, and configuration is locked atomically at connection birth.
+    """
+
+    tuning = {
+        "threads": "1",
+        "memory_limit": DEFAULT_MEMORY_LIMIT,
+    }
+    tuning.update(_connection_tuning(configuration))
+    connect_config = {
+        name: configured
+        for name, configured, _expected in QUACK_OWNER_CONNECTION_POLICY_SETTINGS
+        if name != "lock_configuration"
+    }
+    connect_config.update(tuning)
+    connect_config["lock_configuration"] = "true"
+    connection = duckdb_module.connect(str(database), config=connect_config)
+    try:
+        connection.execute("LOAD quack")
+        functions = connection.execute(
+            """
+            SELECT count(DISTINCT function_name)
+            FROM duckdb_functions()
+            WHERE function_name IN ('quack_serve', 'quack_query')
+            """
+        ).fetchone()
+        if not isinstance(functions, tuple) or int(functions[0]) != 2:
+            raise DuckDBConnectionPolicyError(
+                "preloaded Quack extension lacks its required functions"
+            )
+        _verify_quack_owner_connection_policy(connection)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
 def connect_duckdb_quack_owner_with_policy(
     duckdb_module: Any,
     database: Path | str,
     *,
     configuration: Mapping[str, Any] | None = None,
 ) -> Any:
-    """Birth the exclusive state-owner connection with Quack preloaded.
+    """Birth the exclusive typed state-owner connection with Quack preloaded.
 
     Ordinary supervisor connections deny extension loading from connection
-    birth.  The one Quack state owner has a narrower requirement: load the
-    already-installed, signed ``quack`` extension without installation, then
-    disable external access and seal configuration *before* exposing the
-    connection or starting the service.  No caller-selectable extension name
-    or setting is accepted here.
+    birth.  The one typed Quack state owner loads the already-installed,
+    signed ``quack`` extension without installation, then disables external
+    access and seals configuration before exposing the connection.
     """
 
     tuning = {
@@ -234,10 +330,6 @@ def connect_duckdb_quack_owner_with_policy(
         config=birth_config,
     )
     try:
-        # Fixed extension identities; LOAD never INSTALLs and network-backed
-        # extension installation remains disabled at connection birth. Quack's
-        # ATTACH handshake uses httpfs internally, so both signed core
-        # extensions must be resident before external access is sealed.
         connection.execute("LOAD httpfs")
         connection.execute("LOAD quack")
         connection.execute("SET enable_external_access=false")
@@ -414,8 +506,13 @@ class DuckDBConnection:
         memory_limit: str = DEFAULT_MEMORY_LIMIT,
         threads: int = 1,
         transaction_on_context: bool = False,
+        quack_owner: bool = False,
         _preload_quack_for_state_owner: bool = False,
     ) -> None:
+        if type(quack_owner) is not bool:
+            raise TypeError("quack_owner must be a boolean")
+        if type(_preload_quack_for_state_owner) is not bool:
+            raise TypeError("_preload_quack_for_state_owner must be a boolean")
         if is_quack_transport_target(path):
             raise DuckDBConnectionPolicyError(
                 "quack transport URIs cannot be opened as DuckDB files; "
@@ -438,18 +535,16 @@ class DuckDBConnection:
         try:
             import duckdb
 
-            connector = (
-                connect_duckdb_quack_owner_with_policy
-                if _preload_quack_for_state_owner
-                else connect_duckdb_with_policy
-            )
+            if _preload_quack_for_state_owner:
+                connector = connect_duckdb_quack_owner_with_policy
+            elif quack_owner:
+                connector = connect_duckdb_with_quack_owner_policy
+            else:
+                connector = connect_duckdb_with_policy
             self._connection = connector(
                 duckdb,
                 self.path,
-                configuration={
-                    "threads": threads,
-                    "memory_limit": memory_limit,
-                },
+                configuration={"threads": threads, "memory_limit": memory_limit},
             )
         except BaseException:
             self._lock_context.__exit__(None, None, None)
@@ -615,12 +710,106 @@ _QUACK_OWNER_DML_PREFIXES = (
     "INSERT OR REPLACE",
     "INSERT OR IGNORE",
 )
+_QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
+_RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
+_STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
+
+
+def quack_owner_mutation_inbox_path(
+    runtime_registry_path: str | os.PathLike[str],
+    *,
+    repository_root: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Bind one owner/worker mutation inbox to the runtime registry path."""
+
+    text = str(runtime_registry_path or "").strip()
+    if not text or "\x00" in text:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires a runtime registry path"
+        )
+    registry = Path(text).expanduser()
+    root: Path | None = None
+    if not registry.is_absolute() and repository_root is None:
+        raise DuckDBConnectionPolicyError(
+            "relative runtime registry requires an explicit repository root"
+        )
+    if repository_root is not None:
+        root_text = str(repository_root or "").strip()
+        if not root_text or "\x00" in root_text:
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox requires a valid repository root"
+            )
+        root_path = Path(root_text).expanduser()
+        if not root_path.is_absolute():
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox requires an absolute repository root"
+            )
+        root = root_path.resolve()
+        if not registry.is_absolute():
+            registry = root / registry
+    registry = registry.resolve()
+    if root is not None:
+        try:
+            registry.relative_to(root)
+        except ValueError as exc:
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox escapes the repository root"
+            ) from exc
+    # Do not resolve the final component.  The owner opens it with O_NOFOLLOW
+    # so a replaced ``mutations`` directory cannot redirect trusted writes.
+    return registry / "mutations"
 
 
 def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
-    """Return no path: the former raw-SQL filesystem inbox is prohibited."""
+    """Return the exclusive owner's local mutation inbox, if configured."""
 
-    del store_id
+    explicit = str(
+        os.environ.get(_QUACK_MUTATION_DIR_ENV, "") or ""
+    ).strip()
+    registry = str(
+        os.environ.get(_RUNTIME_REGISTRY_PATH_ENV, "") or ""
+    ).strip()
+    authority_mode = str(
+        os.environ.get(_STATE_AUTHORITY_MODE_ENV, "") or ""
+    ).strip().lower().replace("-", "_")
+    if authority_mode == "quack" and not registry:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires a bound runtime registry"
+        )
+    if authority_mode == "quack" and not explicit:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox requires an explicit mutation binding"
+        )
+    registry_inbox = (
+        quack_owner_mutation_inbox_path(registry) if registry else None
+    )
+    if explicit:
+        explicit_path = Path(explicit).expanduser()
+        if not explicit_path.is_absolute():
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox must be an absolute path"
+            )
+        # Resolve only the parent.  The final inbox component must remain
+        # available to the O_NOFOLLOW admission check below.
+        explicit_inbox = explicit_path.parent.resolve() / explicit_path.name
+        if registry_inbox is not None and explicit_inbox != registry_inbox:
+            raise DuckDBConnectionPolicyError(
+                "quack owner mutation inbox does not match the bound runtime "
+                "registry"
+            )
+        return explicit_inbox
+    if registry_inbox is not None:
+        return registry_inbox
+    store = str(
+        store_id
+        or os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "")
+        or ""
+    ).strip()
+    if not store:
+        return None
+    path = Path(store)
+    if path.suffix.lower() in {".duckdb", ".ddb"}:
+        return path.expanduser().resolve().parent / "quack-owner" / "mutations"
     return None
 
 
@@ -634,12 +823,118 @@ def _execute_quack_owner_mutation(
     *,
     dml: bool,
 ) -> DuckDBCursor:
-    """Reject the removed raw-SQL mutation side channel."""
+    """Apply UPDATE/DELETE on the exclusive owner connection.
 
-    del statement, parameters, dml
-    raise DuckDBConnectionPolicyError(
-        "raw SQL owner mutations are forbidden; use a typed StateCommand"
+    This Quack ATTACH build can SELECT/INSERT new rows but cannot UPDATE or
+    DELETE attached base tables. Mutations stay on the state-owner that
+    already holds the exclusive file connection.
+    """
+    del dml
+
+    target = quack_owner_mutation_dir()
+    if target is None:
+        raise DuckDBConnectionPolicyError(
+            "quack ATTACH cannot UPDATE/DELETE remote base tables; set "
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR or "
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID so the state-owner can "
+            "apply the mutation"
+        )
+    try:
+        inbox_fd = open_mutation_inbox_directory(target)
+    except QuackOwnerMutationEnvelopeError as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner mutation inbox is not a safe owner directory"
+        ) from exc
+    request_id = uuid.uuid4().hex
+    request_name = f"{request_id}.request.json"
+    done_name = f"{request_id}.done.json"
+    if parameters is None:
+        bound: Any = None
+    elif isinstance(parameters, Mapping):
+        bound = dict(parameters)
+    else:
+        bound = list(parameters)
+    token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "")
+    store_id = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
     )
+    generation_raw = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
+    )
+    try:
+        try:
+            generation = int(generation_raw)
+            envelope = build_mutation_request(
+                request_id=request_id,
+                store_id=store_id,
+                generation=generation,
+                sql=statement,
+                parameters=bound,
+                token=token,
+            )
+            write_envelope_atomic_at(
+                inbox_fd,
+                request_name,
+                envelope,
+                replace=False,
+            )
+        except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
+            raise DuckDBConnectionPolicyError(
+                "could not create authenticated Quack owner mutation: "
+                f"{type(exc).__name__}"
+            ) from exc
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            if mutation_envelope_exists_at(inbox_fd, done_name):
+                try:
+                    payload = parse_mutation_result(
+                        read_envelope_at(inbox_fd, done_name),
+                        token=token,
+                        expected_request_id=request_id,
+                        expected_store_id=store_id,
+                        expected_generation=generation,
+                    )
+                except (OSError, ValueError, QuackOwnerMutationEnvelopeError) as exc:
+                    raise DuckDBConnectionPolicyError(
+                        "Quack owner mutation result was not admissible: "
+                        f"{type(exc).__name__}"
+                    ) from exc
+                finally:
+                    try:
+                        unlink_mutation_envelope_at(
+                            inbox_fd,
+                            request_name,
+                            missing_ok=True,
+                        )
+                        unlink_mutation_envelope_at(
+                            inbox_fd,
+                            done_name,
+                            missing_ok=True,
+                        )
+                    except OSError:
+                        pass
+                if payload.get("ok") is not True:
+                    raise DuckDBConnectionPolicyError(
+                        "quack owner mutation failed: "
+                        + str(payload.get("error_code") or "unknown")
+                    )
+                cursor = DuckDBCursor.__new__(DuckDBCursor)
+                cursor._columns = tuple(
+                    str(item) for item in payload.get("columns") or ()
+                )
+                cursor._rows = [
+                    tuple(item) for item in payload.get("rows") or ()
+                ]
+                cursor._offset = 0
+                cursor.rowcount = int(payload.get("rowcount") or -1)
+                return cursor
+            time.sleep(0.05)
+        raise DuckDBConnectionPolicyError(
+            "timed out waiting for quack state-owner to apply mutation; "
+            "outcome is unknown and must not be replayed blindly"
+        )
+    finally:
+        os.close(inbox_fd)
 
 
 def _consume_duckdb_result(connection: Any) -> None:
@@ -654,22 +949,57 @@ def open_quack_transport_connection(
     *,
     token: str = "",
 ) -> DuckDBConnection:
-    """Reject the generic SQL ATTACH surface.
+    """Attach to the exclusive Quack state-owner (multi-reader/multi-writer).
 
-    Quack clients must use :class:`QuackStateClient`, whose server-side
-    catalog accepts only named operations.  Keeping this legacy helper
-    callable but fail-closed prevents old code from silently reopening the
-    arbitrary READ_WRITE SQL authority.
+    This is a transport connection, not a direct file open. The sealed
+    one-writer file policy does not apply: Quack ATTACH requires a process
+    that can reach the loopback state-owner.
     """
 
-    if not quack_transport_uri(uri):
+    text = quack_transport_uri(uri)
+    if not text:
         raise DuckDBConnectionPolicyError(
             f"invalid or non-loopback quack URI: {uri!r}"
         )
-    del token
-    raise DuckDBConnectionPolicyError(
-        "generic Quack SQL ATTACH is disabled; use the typed state-owner client"
-    )
+    if "'" in text or ";" in text or "\x00" in text:
+        raise DuckDBConnectionPolicyError("quack URI contains forbidden characters")
+    try:
+        import duckdb
+    except ImportError as exc:
+        raise DuckDBConnectionPolicyError(
+            "DuckDB is required for Quack transport"
+        ) from exc
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("LOAD quack")
+        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
+        secret = str(
+            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
+        ).strip()
+        if secret:
+            if not _QUACK_TOKEN_RE.fullmatch(secret):
+                raise DuckDBConnectionPolicyError(
+                    "quack attach token must be an opaque url-safe secret"
+                )
+            attach += f", TOKEN '{secret}'"
+        attach += ")"
+        attached = connection.execute(attach)
+        _consume_duckdb_result(attached)
+        used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+        _consume_duckdb_result(used)
+        probed = connection.execute(
+            f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+        )
+        _consume_duckdb_result(probed)
+    except Exception:
+        try:
+            connection.close()
+        except Exception:
+            pass
+        raise
+    wrapped = DuckDBConnection.wrap(connection)
+    wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+    return wrapped
 
 
 def open_duckdb_connection(
@@ -678,14 +1008,20 @@ def open_duckdb_connection(
     timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
     memory_limit: str = DEFAULT_MEMORY_LIMIT,
     threads: int = 1,
+    quack_owner: bool = False,
 ) -> DuckDBConnection:
     if is_quack_transport_target(path):
+        if quack_owner:
+            raise DuckDBConnectionPolicyError(
+                "Quack transport clients cannot assume the owner policy"
+            )
         return open_quack_transport_connection(path)
     return DuckDBConnection(
         path,
         timeout_seconds=timeout_seconds,
         memory_limit=memory_limit,
         threads=threads,
+        quack_owner=quack_owner,
     )
 
 

@@ -79,17 +79,116 @@ def test_database_task_source_keeps_quack_uri(monkeypatch) -> None:
     assert repo._open_target == "quack:127.0.0.1:45123"
 
 
-def test_raw_sql_quack_mutation_inbox_is_disabled(tmp_path, monkeypatch) -> None:
+def test_quack_mutation_dir_follows_store_id(tmp_path, monkeypatch) -> None:
     store = tmp_path / "control.duckdb"
     store.write_bytes(b"")
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", raising=False)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         quack_owner_mutation_dir,
     )
 
-    assert quack_owner_mutation_dir() is None
-    assert not (store.resolve().parent / "quack-owner" / "mutations").exists()
+    assert quack_owner_mutation_dir() == store.resolve().parent / "quack-owner" / "mutations"
+
+
+def test_quack_mutation_dir_rejects_missing_or_mismatched_registry_binding(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        quack_owner_mutation_dir,
+    )
+
+    legacy_fallback = tmp_path / "quack-owner" / "mutations"
+    registry = tmp_path / "registry"
+    wrong = tmp_path / "wrong" / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", "quack")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+        str(tmp_path / "control.duckdb"),
+    )
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", raising=False)
+    with pytest.raises(DuckDBConnectionPolicyError, match="bound runtime registry"):
+        quack_owner_mutation_dir()
+    assert not legacy_fallback.exists()
+
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        str(wrong),
+    )
+    with pytest.raises(DuckDBConnectionPolicyError, match="bound runtime registry"):
+        quack_owner_mutation_dir()
+
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
+        str(registry),
+    )
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
+    with pytest.raises(DuckDBConnectionPolicyError, match="explicit mutation binding"):
+        quack_owner_mutation_dir()
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        str(wrong),
+    )
+    with pytest.raises(DuckDBConnectionPolicyError, match="does not match"):
+        quack_owner_mutation_dir()
+    assert not registry.exists()
+    assert not wrong.exists()
+
+
+def test_quack_mutation_timeout_is_unknown_outcome_without_internal_replay(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
+
+    registry = tmp_path / "runtime-registry"
+    inbox = registry / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", "quack")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
+        str(registry),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        str(inbox),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+        "store:timeout-unknown",
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "7")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "timeout-unknown-token",
+    )
+    monotonic_values = iter((0.0, 16.0))
+    monkeypatch.setattr(
+        duckdb_state_module.time,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    client = DuckDBConnection.wrap(object())
+    client._default_catalog = "control_plane"  # noqa: SLF001
+    with pytest.raises(
+        DuckDBConnectionPolicyError,
+        match="outcome is unknown and must not be replayed blindly",
+    ):
+        client.execute(
+            "UPDATE tasks SET status = ? WHERE task_cid = ?",
+            ["in_progress", "task:timeout"],
+        )
+
+    # One call publishes one stable request and leaves it for the owner to
+    # resolve. The worker does not create a second request on timeout.
+    assert len(list(inbox.glob("*.request.json"))) == 1
+    assert not list(inbox.glob("*.done.json"))
 
 
 def test_database_daemon_defaults_to_quack_and_refuses_file_open(tmp_path) -> None:

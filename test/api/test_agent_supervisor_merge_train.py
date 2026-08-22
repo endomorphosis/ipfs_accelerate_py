@@ -570,6 +570,117 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
 
 
+def test_same_git_worktree_todo_path_is_not_cross_board(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    todo = repo / "tasks.md"
+    todo.write_text(
+        "## REF-042 Same-board worktree copy\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tasks.md")
+    _git(repo, "commit", "-m", "todo")
+    worktree = tmp_path / "linked-worktree"
+    _git(repo, "worktree", "add", str(worktree), "HEAD")
+    worktree_todo = worktree / "tasks.md"
+    other_todo = repo / "other-tasks.md"
+    other_todo.write_text(
+        "## OTHER-001 Foreign board\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=todo,
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_pool_enabled=False,
+    )
+
+    assert daemon._same_board_todo_path(worktree_todo) is True
+    assert daemon._merge_request_is_cross_board(worktree_todo, {}) is False
+    assert daemon._merge_request_is_cross_board(
+        other_todo,
+        {"task": {"task_id": "OTHER-001"}},
+    ) is True
+
+
+def test_merge_cleanup_failure_keeps_merged_and_completes_board(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    todo = repo / "tasks.md"
+    todo.write_text(
+        "## REF-041 Cleanup after merge\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tasks.md")
+    _git(repo, "commit", "-m", "todo")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch = "implementation/ref-041"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("landed\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=todo,
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_pool_enabled=False,
+    )
+    task = daemon._load_tasks()[0]
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name=branch,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=tmp_path / "leftover-worktree",
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    assert queued.get("queued") is True
+
+    def integrate(*_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", integrate)
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree",
+        lambda *_args, **_kwargs: {
+            "cleaned": False,
+            "reason": "worktree_busy",
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result.get("cleanup_failed") is True
+    assert result.get("reason") != "merge_cleanup_failed"
+    assert "- Status: completed" in todo.read_text(encoding="utf-8")
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+
+
 def test_merge_train_rejects_a_mismatched_bound_queue_target(
     tmp_path: Path,
 ) -> None:

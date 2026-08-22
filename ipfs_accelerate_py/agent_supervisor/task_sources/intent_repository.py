@@ -59,24 +59,14 @@ from .duckdb_state import (
 INTENT_REPOSITORY_INTERFACE: Final[str] = "IntentRepository@1"
 PLAN_REVISION_REPOSITORY_INTERFACE: Final[str] = "PlanRevisionRepository@1"
 
-INTENT_REPOSITORY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-repository@1"
-)
+INTENT_REPOSITORY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-repository@1"
 PLAN_REVISION_REPOSITORY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-revision-repository@1"
 )
-INTENT_EVENT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-event@1"
-)
-INTENT_SNAPSHOT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-snapshot@1"
-)
-INTENT_RECEIPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-receipt@1"
-)
-QUEUE_ENTRY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-queue-entry@1"
-)
+INTENT_EVENT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-event@1"
+INTENT_SNAPSHOT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-snapshot@1"
+INTENT_RECEIPT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-receipt@1"
+QUEUE_ENTRY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-queue-entry@1"
 COMPLETION_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1"
 )
@@ -132,9 +122,7 @@ _READY_STATUSES: Final[frozenset[str]] = frozenset(
         "retrying",
     }
 )
-_COMPLETED_STATUSES: Final[frozenset[str]] = frozenset(
-    {"completed", "skipped", "complete", "done"}
-)
+_COMPLETED_STATUSES: Final[frozenset[str]] = frozenset({"completed", "skipped", "complete", "done"})
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {
         *_COMPLETED_STATUSES,
@@ -268,15 +256,12 @@ class IntentEventType(str, Enum):
 def _require_duckdb() -> Any:
     if not duckdb_available():
         raise DuckDBUnavailableError(
-            "DuckDB is required for IntentRepository; install the optional "
-            "duckdb dependency"
+            "DuckDB is required for IntentRepository; install the optional duckdb dependency"
         )
     try:
         import duckdb  # type: ignore  # noqa: F401
     except ImportError as exc:
-        raise DuckDBUnavailableError(
-            "DuckDB is required for IntentRepository"
-        ) from exc
+        raise DuckDBUnavailableError("DuckDB is required for IntentRepository") from exc
     return duckdb
 
 
@@ -284,12 +269,7 @@ def _utc_iso(moment: datetime | None = None) -> str:
     value = moment or datetime.now(timezone.utc)
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return (
-        value.astimezone(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _now_ms() -> int:
@@ -318,9 +298,7 @@ def _optional_identifier(value: Any, *, noun: str) -> str:
 def _status(value: Any, *, allowed: frozenset[str], noun: str) -> str:
     text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     if text not in allowed:
-        raise IntentRepositoryError(
-            f"{noun} status {value!r} is not in the closed set"
-        )
+        raise IntentRepositoryError(f"{noun} status {value!r} is not in the closed set")
     return text
 
 
@@ -337,9 +315,7 @@ def _jsonable(value: Any) -> Any:
         return [_jsonable(item) for item in value]
     if isinstance(value, (set, frozenset)):
         return sorted((_jsonable(item) for item in value), key=lambda item: str(item))
-    raise IntentRepositoryError(
-        f"unsupported intent JSON value type: {type(value).__name__}"
-    )
+    raise IntentRepositoryError(f"unsupported intent JSON value type: {type(value).__name__}")
 
 
 def _canonical(value: Any, *, noun: str = "payload") -> str:
@@ -375,6 +351,27 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
         ) from exc
 
 
+def _receipt_with_preserved_reopen_count(
+    receipt: Mapping[str, Any],
+    previous_receipt: Any,
+) -> dict[str, Any]:
+    """Keep unknown-callback reopen count across later claim receipts."""
+
+    stored = dict(receipt)
+    if "unknown_callback_reopen_count" in stored:
+        return stored
+    previous_count = None
+    if isinstance(previous_receipt, Mapping):
+        previous_count = previous_receipt.get("unknown_callback_reopen_count")
+    if previous_count is None:
+        return stored
+    try:
+        stored["unknown_callback_reopen_count"] = max(0, int(previous_count))
+    except (TypeError, ValueError):
+        return dict(receipt)
+    return stored
+
+
 def _mapping(value: Any, *, noun: str = "mapping") -> dict[str, Any]:
     if value is None:
         return {}
@@ -384,15 +381,8 @@ def _mapping(value: Any, *, noun: str = "mapping") -> dict[str, Any]:
 
 
 def _bounded_limit(limit: int) -> int:
-    if (
-        isinstance(limit, bool)
-        or not isinstance(limit, int)
-        or limit < 1
-        or limit > MAX_PAGE_LIMIT
-    ):
-        raise IntentRepositoryBoundsError(
-            f"limit must be in [1, {MAX_PAGE_LIMIT}]"
-        )
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1 or limit > MAX_PAGE_LIMIT:
+        raise IntentRepositoryBoundsError(f"limit must be in [1, {MAX_PAGE_LIMIT}]")
     return limit
 
 
@@ -791,17 +781,13 @@ class IntentRepository:
             )
         self.evidence_freshness_seconds = int(evidence_freshness_seconds)
         if lock_timeout_seconds <= 0:
-            raise IntentRepositoryBoundsError(
-                "lock_timeout_seconds must be positive"
-            )
+            raise IntentRepositoryBoundsError("lock_timeout_seconds must be positive")
         self.lock_timeout_seconds = float(lock_timeout_seconds)
         self._clock_ms = clock_ms or _now_ms
         self._lock_path = (
             None
             if self._quack_transport
-            else self.database_path.with_name(
-                f".{self.database_path.name}.intent.lock"
-            )
+            else self.database_path.with_name(f".{self.database_path.name}.intent.lock")
         )
         self._open = False
         self._closed = False
@@ -823,8 +809,7 @@ class IntentRepository:
                     connection = open_duckdb_connection(self.database_path)
                     try:
                         tables = {
-                            str(row[0])
-                            for row in connection.execute("SHOW TABLES").fetchall()
+                            str(row[0]) for row in connection.execute("SHOW TABLES").fetchall()
                         }
                     finally:
                         connection.close()
@@ -873,9 +858,7 @@ class IntentRepository:
         # Avoid relying on DuckDBConnection.__exit__ transaction bookkeeping,
         # which can mark a SQL-started transaction inactive before COMMIT runs.
         if write and not self._quack_transport:
-            with exclusive_file_lock(
-                self._lock_path, timeout_seconds=self.lock_timeout_seconds
-            ):
+            with exclusive_file_lock(self._lock_path, timeout_seconds=self.lock_timeout_seconds):
                 connection = open_duckdb_connection(self._open_target)
                 try:
                     connection.execute("BEGIN TRANSACTION")
@@ -919,8 +902,7 @@ class IntentRepository:
 
     def _next_stream_sequence(self, connection: Any) -> int:
         row = connection.execute(
-            "SELECT COALESCE(MAX(sequence), 0) FROM domain_events "
-            "WHERE stream_id = ?",
+            "SELECT COALESCE(MAX(sequence), 0) FROM domain_events WHERE stream_id = ?",
             [INTENT_STREAM_ID],
         ).fetchone()
         return int(row[0] if row else 0) + 1
@@ -941,9 +923,7 @@ class IntentRepository:
         stream_sequence = self._next_stream_sequence(connection)
         recorded_at = _utc_iso()
         event_type_value = (
-            event_type.value
-            if isinstance(event_type, IntentEventType)
-            else str(event_type)
+            event_type.value if isinstance(event_type, IntentEventType) else str(event_type)
         )
         body_payload = {
             "schema": INTENT_EVENT_SCHEMA,
@@ -1057,16 +1037,13 @@ class IntentRepository:
         title_text = str(title or "").strip() or alias
         status_text = str(status or "open").strip().lower()
         priority_text = str(priority or "P2").strip() or "P2"
-        parent = _optional_identifier(
-            parent_objective_id, noun="parent_objective_id"
-        )
+        parent = _optional_identifier(parent_objective_id, noun="parent_objective_id")
         body_map = _mapping(body, noun="objective body")
         now = _utc_iso()
 
         with self._connection(write=True) as connection:
             existing = connection.execute(
-                "SELECT revision, status, body_json FROM objectives "
-                "WHERE objective_id = ?",
+                "SELECT revision, status, body_json FROM objectives WHERE objective_id = ?",
                 [oid],
             ).fetchone()
             if existing is None:
@@ -1098,13 +1075,8 @@ class IntentRepository:
                 )
             else:
                 current_revision = int(existing[0])
-                if (
-                    expected_revision is not None
-                    and expected_revision != current_revision
-                ):
-                    raise IntentRepositoryConflictError(
-                        "objective revision CAS is stale"
-                    )
+                if expected_revision is not None and expected_revision != current_revision:
+                    raise IntentRepositoryConflictError("objective revision CAS is stale")
                 revision = current_revision + 1
                 connection.execute(
                     """
@@ -1247,10 +1219,7 @@ class IntentRepository:
                 )
             else:
                 current_revision = int(existing[0])
-                if (
-                    expected_revision is not None
-                    and expected_revision != current_revision
-                ):
+                if expected_revision is not None and expected_revision != current_revision:
                     raise IntentRepositoryConflictError("goal revision CAS is stale")
                 revision = current_revision + 1
                 connection.execute(
@@ -1342,9 +1311,7 @@ class IntentRepository:
                     "SELECT 1 FROM goals WHERE goal_cid = ?", [gcid]
                 ).fetchone()
                 if row is None:
-                    raise IntentRepositoryIntegrityError(
-                        f"goal {gcid!r} does not exist for edge"
-                    )
+                    raise IntentRepositoryIntegrityError(f"goal {gcid!r} does not exist for edge")
             connection.execute(
                 """
                 DELETE FROM goal_edges
@@ -1371,6 +1338,35 @@ class IntentRepository:
                     "revision": 0,
                 },
             )
+
+    def list_goal_edges(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_LIMIT,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return a bounded, stable projection of the admitted goal graph."""
+
+        selected = _bounded_limit(limit)
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                """
+                SELECT parent_goal_cid, child_goal_cid, edge_kind
+                FROM goal_edges
+                ORDER BY parent_goal_cid, child_goal_cid, edge_kind
+                LIMIT ?
+                """,
+                [selected],
+            ).fetchall()
+        return tuple(
+            MappingProxyType(
+                {
+                    "parent_goal_cid": str(row[0]),
+                    "child_goal_cid": str(row[1]),
+                    "edge_kind": str(row[2]),
+                }
+            )
+            for row in rows
+        )
 
     def reopen_goal(
         self,
@@ -1455,9 +1451,7 @@ class IntentRepository:
                 "SELECT 1 FROM goals WHERE goal_cid = ?", [gcid]
             ).fetchone()
             if goal_row is None:
-                raise IntentRepositoryIntegrityError(
-                    f"goal {gcid!r} does not exist for plan"
-                )
+                raise IntentRepositoryIntegrityError(f"goal {gcid!r} does not exist for plan")
             existing = connection.execute(
                 "SELECT revision FROM plans WHERE plan_cid = ?", [pcid]
             ).fetchone()
@@ -1487,10 +1481,7 @@ class IntentRepository:
                 )
             else:
                 current_revision = int(existing[0])
-                if (
-                    expected_revision is not None
-                    and expected_revision != current_revision
-                ):
+                if expected_revision is not None and expected_revision != current_revision:
                     raise IntentRepositoryConflictError("plan revision CAS is stale")
                 revision = current_revision + 1
                 connection.execute(
@@ -1696,9 +1687,7 @@ class IntentRepository:
                 "SELECT 1 FROM plans WHERE plan_cid = ?", [successor]
             ).fetchone()
             if succ is None:
-                raise IntentRepositoryIntegrityError(
-                    f"successor plan {successor!r} does not exist"
-                )
+                raise IntentRepositoryIntegrityError(f"successor plan {successor!r} does not exist")
             body_map = _decode_json(row[1], noun="plan body")
             if not isinstance(body_map, dict):
                 body_map = {}
@@ -1789,8 +1778,7 @@ class IntentRepository:
         now = _utc_iso()
         with self._connection(write=True) as connection:
             row = connection.execute(
-                "SELECT revision, goal_cid, plan_alias, body_json "
-                "FROM plans WHERE plan_cid = ?",
+                "SELECT revision, goal_cid, plan_alias, body_json FROM plans WHERE plan_cid = ?",
                 [pcid],
             ).fetchone()
             if row is None:
@@ -1929,9 +1917,7 @@ class IntentRepository:
                 "SELECT 1 FROM goals WHERE goal_cid = ?", [gcid]
             ).fetchone()
             if goal_row is None:
-                raise IntentRepositoryIntegrityError(
-                    f"goal {gcid!r} does not exist for task"
-                )
+                raise IntentRepositoryIntegrityError(f"goal {gcid!r} does not exist for task")
             existing = connection.execute(
                 "SELECT revision, status FROM tasks WHERE task_cid = ?",
                 [tcid],
@@ -1968,10 +1954,7 @@ class IntentRepository:
                 )
             else:
                 current_revision = int(existing[0])
-                if (
-                    expected_revision is not None
-                    and expected_revision != current_revision
-                ):
+                if expected_revision is not None and expected_revision != current_revision:
                     raise IntentRepositoryConflictError("task revision CAS is stale")
                 revision = current_revision + 1
                 # Canonical task_cid is immutable; alias/goal/plan may update.
@@ -2051,13 +2034,11 @@ class IntentRepository:
                 event_body["dependencies"] = resolved_dependencies
             if outputs is not None:
                 event_body["outputs"] = [
-                    dict(item) if isinstance(item, Mapping) else item
-                    for item in outputs
+                    dict(item) if isinstance(item, Mapping) else item for item in outputs
                 ]
             if acceptance is not None:
                 event_body["acceptance"] = [
-                    dict(item) if isinstance(item, Mapping) else item
-                    for item in acceptance
+                    dict(item) if isinstance(item, Mapping) else item for item in acceptance
                 ]
             if validations is not None:
                 event_body["validations"] = [
@@ -2080,9 +2061,7 @@ class IntentRepository:
     ) -> None:
         if len(dependencies) > MAX_DEPENDENCIES:
             raise IntentRepositoryBoundsError("dependency count exceeds bound")
-        connection.execute(
-            "DELETE FROM task_dependencies WHERE task_cid = ?", [task_cid]
-        )
+        connection.execute("DELETE FROM task_dependencies WHERE task_cid = ?", [task_cid])
         seen: set[str] = set()
         for raw in dependencies:
             dep = _identifier(raw, noun="dependency_task_cid")
@@ -2114,9 +2093,7 @@ class IntentRepository:
     ) -> None:
         if len(outputs) > MAX_OUTPUTS:
             raise IntentRepositoryBoundsError("output count exceeds bound")
-        connection.execute(
-            "DELETE FROM task_outputs WHERE task_cid = ?", [task_cid]
-        )
+        connection.execute("DELETE FROM task_outputs WHERE task_cid = ?", [task_cid])
         for ordinal, item in enumerate(outputs):
             mapping = _mapping(item, noun="task output")
             path = _identifier(
@@ -2145,9 +2122,7 @@ class IntentRepository:
     ) -> None:
         if len(acceptance) > MAX_ACCEPTANCE:
             raise IntentRepositoryBoundsError("acceptance count exceeds bound")
-        connection.execute(
-            "DELETE FROM task_acceptance WHERE task_cid = ?", [task_cid]
-        )
+        connection.execute("DELETE FROM task_acceptance WHERE task_cid = ?", [task_cid])
         for ordinal, item in enumerate(acceptance):
             if isinstance(item, str):
                 criterion = item.strip()
@@ -2185,9 +2160,7 @@ class IntentRepository:
     ) -> None:
         if len(validations) > MAX_VALIDATIONS:
             raise IntentRepositoryBoundsError("validation count exceeds bound")
-        connection.execute(
-            "DELETE FROM task_validations WHERE task_cid = ?", [task_cid]
-        )
+        connection.execute("DELETE FROM task_validations WHERE task_cid = ?", [task_cid])
         for ordinal, item in enumerate(validations):
             if isinstance(item, str):
                 argv = [item]
@@ -2225,9 +2198,7 @@ class IntentRepository:
                 ],
             )
 
-    def set_task_dependencies(
-        self, task_cid: str, dependencies: Sequence[str]
-    ) -> IntentReceipt:
+    def set_task_dependencies(self, task_cid: str, dependencies: Sequence[str]) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")
         with self._connection(write=True) as connection:
             row = connection.execute(
@@ -2244,8 +2215,7 @@ class IntentRepository:
                 body={
                     "task_cid": tcid,
                     "dependencies": [
-                        _identifier(item, noun="dependency_task_cid")
-                        for item in dependencies
+                        _identifier(item, noun="dependency_task_cid") for item in dependencies
                     ],
                     "revision": int(row[0]),
                 },
@@ -2269,9 +2239,7 @@ class IntentRepository:
             if not rows:
                 return None
             if len(rows) > 1:
-                raise IntentRepositoryIntegrityError(
-                    "task CID/alias lookup is ambiguous"
-                )
+                raise IntentRepositoryIntegrityError("task CID/alias lookup is ambiguous")
             row = rows[0]
             tcid = str(row[0])
             deps = [
@@ -2298,9 +2266,7 @@ class IntentRepository:
                 {
                     "ordinal": int(item[0]),
                     "criterion": str(item[1]),
-                    "evidence_policy": _decode_json(
-                        item[2], noun="acceptance policy"
-                    ),
+                    "evidence_policy": _decode_json(item[2], noun="acceptance policy"),
                 }
                 for item in connection.execute(
                     "SELECT ordinal, criterion, evidence_policy_json "
@@ -2358,12 +2324,7 @@ class IntentRepository:
             statuses = (_status(status, allowed=_TASK_STATUSES, noun="task"),)
         else:
             statuses = tuple(
-                sorted(
-                    {
-                        _status(item, allowed=_TASK_STATUSES, noun="task")
-                        for item in status
-                    }
-                )
+                sorted({_status(item, allowed=_TASK_STATUSES, noun="task") for item in status})
             )
         with self._connection(write=False) as connection:
             if statuses:
@@ -2486,9 +2447,7 @@ class IntentRepository:
         tcid = _identifier(task_cid, noun="task_cid")
         outcome_text = str(outcome or "").strip().lower()
         if outcome_text not in {"passed", "failed", "error", "skipped"}:
-            raise IntentRepositoryError(
-                f"validation outcome {outcome!r} is not in the closed set"
-            )
+            raise IntentRepositoryError(f"validation outcome {outcome!r} is not in the closed set")
         digest = _identifier(evidence_digest, noun="evidence_digest")
         body_map = _mapping(body, noun="validation body")
         argv_list = [str(item) for item in (argv or ())]
@@ -2652,6 +2611,122 @@ class IntentRepository:
             )
         return tuple(current)
 
+    def qualification_authority_for_task(
+        self,
+        task_cid: str,
+    ) -> Mapping[str, Any]:
+        """Return bounded canonical rows underlying task qualification.
+
+        Evidence nodes are indexes, not self-authorizing proof.  This view
+        lets callers bind them to the task identity, validation run/result,
+        and completion-receipt authorities without issuing raw SQL.
+        """
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        with self._connection(write=False) as connection:
+            task_row = connection.execute(
+                """
+                SELECT identity_json, extension_schema, extension_json
+                FROM tasks WHERE task_cid = ?
+                """,
+                [tcid],
+            ).fetchone()
+            if task_row is None:
+                raise KeyError(tcid)
+            run_rows = connection.execute(
+                """
+                SELECT run_id, task_cid, attempt_id, started_at, finished_at,
+                       status, command_digest, body_json
+                FROM validation_runs WHERE task_cid = ?
+                ORDER BY started_at, run_id
+                LIMIT ?
+                """,
+                [tcid, MAX_VALIDATIONS + 1],
+            ).fetchall()
+            result_rows = connection.execute(
+                """
+                SELECT result_id, run_id, task_cid, ordinal, outcome,
+                       evidence_digest, body_json
+                FROM validation_results WHERE task_cid = ?
+                ORDER BY run_id, ordinal, result_id
+                LIMIT ?
+                """,
+                [tcid, MAX_VALIDATIONS + 1],
+            ).fetchall()
+            completion_rows = connection.execute(
+                """
+                SELECT receipt_cid, task_cid, goal_cid, attempt_id, claim_cid,
+                       fencing_token, completed_at, validation_run_id,
+                       evidence_digest, body_json
+                FROM completion_receipts WHERE task_cid = ?
+                ORDER BY completed_at, receipt_cid
+                LIMIT ?
+                """,
+                [tcid, MAX_EVIDENCE + 1],
+            ).fetchall()
+        if len(run_rows) > MAX_VALIDATIONS or len(result_rows) > MAX_VALIDATIONS:
+            raise IntentRepositoryBoundsError(
+                "task qualification validation population exceeds bound"
+            )
+        if len(completion_rows) > MAX_EVIDENCE:
+            raise IntentRepositoryBoundsError(
+                "task qualification completion population exceeds bound"
+            )
+        return MappingProxyType(
+            {
+                "task_cid": tcid,
+                "identity": _decode_json(task_row[0], noun="task identity"),
+                "extension_schema": str(task_row[1] or ""),
+                "extension": _decode_json(task_row[2], noun="task extension"),
+                "validation_runs": tuple(
+                    MappingProxyType(
+                        {
+                            "run_id": str(row[0]),
+                            "task_cid": str(row[1]),
+                            "attempt_id": str(row[2] or ""),
+                            "started_at": str(row[3]),
+                            "finished_at": str(row[4] or ""),
+                            "status": str(row[5]),
+                            "command_digest": str(row[6]),
+                            "body": _decode_json(row[7], noun="validation run body"),
+                        }
+                    )
+                    for row in run_rows
+                ),
+                "validation_results": tuple(
+                    MappingProxyType(
+                        {
+                            "result_id": str(row[0]),
+                            "run_id": str(row[1]),
+                            "task_cid": str(row[2]),
+                            "ordinal": int(row[3]),
+                            "outcome": str(row[4]),
+                            "evidence_digest": str(row[5]),
+                            "body": _decode_json(row[6], noun="validation result body"),
+                        }
+                    )
+                    for row in result_rows
+                ),
+                "completion_receipts": tuple(
+                    MappingProxyType(
+                        {
+                            "receipt_cid": str(row[0]),
+                            "task_cid": str(row[1]),
+                            "goal_cid": str(row[2]),
+                            "attempt_id": str(row[3] or ""),
+                            "claim_cid": str(row[4] or ""),
+                            "fencing_token": int(row[5]),
+                            "completed_at": str(row[6]),
+                            "validation_run_id": str(row[7] or ""),
+                            "evidence_digest": str(row[8]),
+                            "body": _decode_json(row[9], noun="completion receipt body"),
+                        }
+                    )
+                    for row in completion_rows
+                ),
+            }
+        )
+
     def required_evidence_satisfied(
         self,
         task_cid: str,
@@ -2671,23 +2746,15 @@ class IntentRepository:
             validation = [
                 item
                 for item in current
-                if str(item.get("evidence_kind") or "")
-                in {"validation", "test", "acceptance"}
+                if str(item.get("evidence_kind") or "") in {"validation", "test", "acceptance"}
             ]
             if validation:
                 return True, ()
             return False, ("required:current_validation_evidence",)
 
         current = self.current_evidence_for_task(task_cid, now_ms=now_ms)
-        digests = {
-            str(item.get("digest") or "")
-            for item in current
-            if item.get("digest")
-        }
-        kinds = {
-            str(item.get("evidence_kind") or "")
-            for item in current
-        }
+        digests = {str(item.get("digest") or "") for item in current if item.get("digest")}
+        kinds = {str(item.get("evidence_kind") or "") for item in current}
         missing: list[str] = []
         for item in acceptance:
             if not isinstance(item, Mapping):
@@ -2702,11 +2769,7 @@ class IntentRepository:
                 or policy.get("digest")
                 or ""
             ).strip()
-            required_kind = str(
-                policy.get("evidence_kind")
-                or policy.get("kind")
-                or ""
-            ).strip()
+            required_kind = str(policy.get("evidence_kind") or policy.get("kind") or "").strip()
             if required_digest:
                 if required_digest not in digests:
                     missing.append(f"digest:{required_digest}")
@@ -2749,9 +2812,7 @@ class IntentRepository:
             if not row:
                 raise KeyError(tcid)
             if len(row) > 1:
-                raise IntentRepositoryIntegrityError(
-                    "task CID/alias lookup is ambiguous"
-                )
+                raise IntentRepositoryIntegrityError("task CID/alias lookup is ambiguous")
             task_row = row[0]
             resolved_cid = str(task_row[0])
             previous_status = str(task_row[3])
@@ -2797,22 +2858,48 @@ class IntentRepository:
                 body_map = {}
             body_map = dict(body_map)
             if receipt_map:
-                body_map["completion_receipt"] = receipt_map
-            connection.execute(
+                body_map["completion_receipt"] = _receipt_with_preserved_reopen_count(
+                    receipt_map,
+                    body_map.get("completion_receipt"),
+                )
+                if receipt_map.get("operation") in {
+                    "reopen_unimplemented_unknown_callback_quarantine",
+                    "requeue_unimplemented_stale_attempt",
+                }:
+                    raw_reopen_count = receipt_map.get("unknown_callback_reopen_count")
+                    if raw_reopen_count is not None:
+                        try:
+                            body_map["unknown_callback_reopen_count"] = max(
+                                0, int(raw_reopen_count)
+                            )
+                        except (TypeError, ValueError):
+                            pass
+            updated_rows = connection.execute(
                 """
-                UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
+                UPDATE tasks SET status = ?, revision = revision + 1, updated_at = ?,
                     body_json = ?
                 WHERE task_cid = ? AND revision = ?
+                RETURNING revision
                 """,
                 [
                     status_text,
-                    revision,
                     now,
                     _canonical(body_map, noun="task body"),
                     resolved_cid,
                     current_revision,
                 ],
-            )
+            ).fetchall()
+            if not updated_rows:
+                raise IntentRepositoryConflictError("task revision CAS is stale")
+            if (
+                len(updated_rows) != 1
+                or len(updated_rows[0]) != 1
+                or type(updated_rows[0][0]) is not int
+                or updated_rows[0][0] != revision
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "task revision CAS returned an unexpected revision"
+                )
             connection.execute(
                 """
                 INSERT INTO task_revisions (
@@ -2941,14 +3028,9 @@ class IntentRepository:
         # authority comes from current stored evidence nodes, never invented
         # digests that are not already recorded against the task.
         if evidence_digests:
-            provided = {
-                _identifier(item, noun="evidence_digest") for item in evidence_digests
-            }
+            provided = {_identifier(item, noun="evidence_digest") for item in evidence_digests}
             if not provided.issubset(current_digests):
-                return tuple(
-                    f"digest:{digest}"
-                    for digest in sorted(provided - current_digests)
-                )
+                return tuple(f"digest:{digest}" for digest in sorted(provided - current_digests))
         missing: list[str] = []
         if not acceptance_rows:
             if not current_digests:
@@ -2967,9 +3049,7 @@ class IntentRepository:
                 or policy.get("digest")
                 or ""
             ).strip()
-            required_kind = str(
-                policy.get("evidence_kind") or policy.get("kind") or ""
-            ).strip()
+            required_kind = str(policy.get("evidence_kind") or policy.get("kind") or "").strip()
             if required_digest:
                 if required_digest not in current_digests:
                     missing.append(f"digest:{required_digest}")
@@ -3178,8 +3258,7 @@ class IntentRepository:
             if task_row is None:
                 raise KeyError(tcid)
             row = connection.execute(
-                "SELECT COALESCE(MAX(attempt_number), 0) FROM task_attempts "
-                "WHERE task_cid = ?",
+                "SELECT COALESCE(MAX(attempt_number), 0) FROM task_attempts WHERE task_cid = ?",
                 [tcid],
             ).fetchone()
             attempt_number = int(row[0] if row else 0) + 1
@@ -3391,10 +3470,7 @@ class IntentRepository:
         # DuckDBRow is a Mapping: iterate rows and index columns, never unpack.
         for row in dep_rows:
             dependencies.setdefault(str(row[0]), set()).add(str(row[1]))
-        cooldown = {
-            str(row[0]): int(row[1] or 0)
-            for row in lease_rows
-        }
+        cooldown = {str(row[0]): int(row[1] or 0) for row in lease_rows}
         ready: list[Mapping[str, Any]] = []
         for row in task_rows:
             tcid = str(row[0])
@@ -3515,18 +3591,14 @@ class IntentRepository:
             # Validation projections are therefore updated in place during
             # replay, then rows absent from the admitted event stream are
             # removed before this transaction commits.
-            for row in connection.execute(
-                "SELECT result_id FROM validation_results"
-            ).fetchall():
+            for row in connection.execute("SELECT result_id FROM validation_results").fetchall():
                 result_id = str(row[0])
                 if result_id not in replayed_validation_result_ids:
                     connection.execute(
                         "DELETE FROM validation_results WHERE result_id = ?",
                         [result_id],
                     )
-            for row in connection.execute(
-                "SELECT run_id FROM validation_runs"
-            ).fetchall():
+            for row in connection.execute("SELECT run_id FROM validation_runs").fetchall():
                 run_id = str(row[0])
                 if run_id not in replayed_validation_run_ids:
                     connection.execute(
@@ -3817,14 +3889,10 @@ class IntentRepository:
             if "dependencies" in payload:
                 deps = payload.get("dependencies") or []
                 if isinstance(deps, Sequence) and not isinstance(deps, (str, bytes)):
-                    self._set_dependencies_on(
-                        connection, tcid, [str(item) for item in deps]
-                    )
+                    self._set_dependencies_on(connection, tcid, [str(item) for item in deps])
             if "outputs" in payload:
                 outputs = payload.get("outputs") or []
-                if isinstance(outputs, Sequence) and not isinstance(
-                    outputs, (str, bytes)
-                ):
+                if isinstance(outputs, Sequence) and not isinstance(outputs, (str, bytes)):
                     self._set_outputs_on(
                         connection,
                         tcid,
@@ -3832,15 +3900,11 @@ class IntentRepository:
                     )
             if "acceptance" in payload:
                 acceptance = payload.get("acceptance") or []
-                if isinstance(acceptance, Sequence) and not isinstance(
-                    acceptance, (str, bytes)
-                ):
+                if isinstance(acceptance, Sequence) and not isinstance(acceptance, (str, bytes)):
                     self._set_acceptance_on(connection, tcid, list(acceptance))
             if "validations" in payload:
                 validations = payload.get("validations") or []
-                if isinstance(validations, Sequence) and not isinstance(
-                    validations, (str, bytes)
-                ):
+                if isinstance(validations, Sequence) and not isinstance(validations, (str, bytes)):
                     self._set_validations_on(connection, tcid, list(validations))
             return
 
@@ -3848,9 +3912,7 @@ class IntentRepository:
             tcid = str(payload["task_cid"])
             deps = payload.get("dependencies") or []
             if isinstance(deps, Sequence):
-                self._set_dependencies_on(
-                    connection, tcid, [str(item) for item in deps]
-                )
+                self._set_dependencies_on(connection, tcid, [str(item) for item in deps])
             return
 
         if event_type in {
@@ -3873,7 +3935,10 @@ class IntentRepository:
             else:
                 body = {}
             if receipt:
-                body["completion_receipt"] = receipt
+                body["completion_receipt"] = _receipt_with_preserved_reopen_count(
+                    receipt,
+                    body.get("completion_receipt"),
+                )
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -3889,9 +3954,7 @@ class IntentRepository:
                 ],
             )
             # Ensure row exists when replaying status after a partial wipe.
-            exists = connection.execute(
-                "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
-            ).fetchone()
+            exists = connection.execute("SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]).fetchone()
             if exists is None:
                 connection.execute(
                     """
@@ -4050,9 +4113,7 @@ class IntentRepository:
                     str(payload.get("digest") or ""),
                     now,
                     _canonical(
-                        payload.get("body")
-                        if isinstance(payload.get("body"), dict)
-                        else {},
+                        payload.get("body") if isinstance(payload.get("body"), dict) else {},
                         noun="evidence body",
                     ),
                 ],
@@ -4086,9 +4147,7 @@ class IntentRepository:
                         now,
                         now,
                         str(payload.get("outcome") or "passed"),
-                        content_identity(
-                            {"argv": list(payload.get("argv") or ())}
-                        ),
+                        content_identity({"argv": list(payload.get("argv") or ())}),
                         _canonical(
                             {
                                 "argv": list(payload.get("argv") or ()),
@@ -4124,9 +4183,7 @@ class IntentRepository:
                         str(payload.get("outcome") or "passed"),
                         str(payload.get("evidence_digest") or ""),
                         _canonical(
-                            payload.get("body")
-                            if isinstance(payload.get("body"), dict)
-                            else {},
+                            payload.get("body") if isinstance(payload.get("body"), dict) else {},
                             noun="validation result",
                         ),
                     ],
@@ -4250,9 +4307,7 @@ class IntentRepository:
 
         if event_type == IntentEventType.ATTEMPT_RECORDED.value:
             attempt_id = str(payload["attempt_id"])
-            connection.execute(
-                "DELETE FROM task_attempts WHERE attempt_id = ?", [attempt_id]
-            )
+            connection.execute("DELETE FROM task_attempts WHERE attempt_id = ?", [attempt_id])
             connection.execute(
                 """
                 INSERT INTO task_attempts (
@@ -4279,9 +4334,7 @@ class IntentRepository:
         if event_type == IntentEventType.TASK_BLOCKED.value:
             block_id = str(payload["block_id"])
             tcid = str(payload["task_cid"])
-            connection.execute(
-                "DELETE FROM task_blocks WHERE block_id = ?", [block_id]
-            )
+            connection.execute("DELETE FROM task_blocks WHERE block_id = ?", [block_id])
             connection.execute(
                 """
                 INSERT INTO task_blocks (
@@ -4334,19 +4387,11 @@ class IntentRepository:
             objective_count = int(
                 connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
             )
-            goal_count = int(
-                connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0]
-            )
-            plan_count = int(
-                connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0]
-            )
-            task_count = int(
-                connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-            )
+            goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
+            plan_count = int(connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0])
+            task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
             dependency_count = int(
-                connection.execute(
-                    "SELECT COUNT(*) FROM task_dependencies"
-                ).fetchone()[0]
+                connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
             )
             watermark = int(
                 connection.execute(

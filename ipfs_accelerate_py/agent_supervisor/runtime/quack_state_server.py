@@ -76,10 +76,27 @@ from ..task_sources.control_plane_schema import (
     CONTROL_PLANE_SCHEMA_REVISION,
     install_control_plane_schema,
 )
-from ..task_sources.duckdb_state import open_quack_state_owner_connection
+from ..task_sources.duckdb_state import (
+    open_duckdb_connection,
+    open_quack_state_owner_connection,
+    quack_owner_mutation_inbox_path,
+)
 from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
     probe_quack_capabilities,
+)
+from ..task_sources.quack_owner_mutation import (
+    MAX_MUTATION_REQUEST_BYTES,
+    MAX_MUTATION_RESULT_ROWS,
+    QuackOwnerMutationEnvelopeError,
+    build_mutation_result,
+    mutation_envelope_exists_at,
+    open_mutation_inbox_directory,
+    parse_mutation_request,
+    parse_mutation_result,
+    read_envelope_at,
+    unlink_mutation_envelope_at,
+    write_envelope_atomic_at,
 )
 from ..task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_FILENAME,
@@ -118,6 +135,8 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
+MUTATION_INBOX_DIRNAME: Final = "mutations"
+MAX_MUTATIONS_PER_POLL: Final[int] = 64
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
     {
@@ -159,6 +178,12 @@ _PROVIDER_ENV_DENY_SUBSTRINGS: Final[tuple[str, ...]] = (
     "AUTHORIZATION",
     "BEARER",
     "QUACK_AUTH",
+)
+_PROVIDER_ENV_DENY_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
+    }
 )
 
 _logger = logging.getLogger(__name__)
@@ -440,7 +465,9 @@ def provider_safe_environment(
         for key, value in source.items():
             name = str(key)
             upper = name.upper()
-            if any(token in upper for token in _PROVIDER_ENV_DENY_SUBSTRINGS):
+            if upper in _PROVIDER_ENV_DENY_NAMES or any(
+                token in upper for token in _PROVIDER_ENV_DENY_SUBSTRINGS
+            ):
                 continue
             text = str(value)
             # Fail closed if a secret-handle-shaped value is smuggled under a
@@ -539,6 +566,11 @@ def assert_bind_admitted(
         raise QuackStateServerBindError(
             f"host {host!r} is not admitted by remote policy "
             f"{remote_policy.policy_id!r}"
+        )
+    if remote_policy.require_tls:
+        raise QuackStateServerBindError(
+            "non-loopback Quack TLS is not implemented; an explicit reviewed "
+            "plaintext policy is required"
         )
 
 
@@ -751,15 +783,58 @@ class QuackStateServerConfig:
     tool_version: str | None = None
     secret_handle: str = ""
     typed_command_socket_path_override: Path | None = None
+    repository_root: Path | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "database_path", Path(self.database_path))
-        object.__setattr__(self, "state_dir", Path(self.state_dir))
+        raw_root = self.repository_root
+        repository_root: Path | None = None
+        if raw_root is not None and str(raw_root).strip():
+            root = Path(raw_root).expanduser()
+            if not root.is_absolute():
+                raise ValueError("repository_root must be an absolute path")
+            repository_root = root.resolve()
+        object.__setattr__(self, "repository_root", repository_root)
+
+        def _sealed_path(value: Path, *, name: str) -> Path:
+            candidate = Path(value).expanduser()
+            if not candidate.is_absolute():
+                if repository_root is None:
+                    raise ValueError(
+                        f"relative {name} requires an explicit repository_root"
+                    )
+                candidate = repository_root / candidate
+            sealed = candidate.resolve()
+            if repository_root is not None:
+                try:
+                    sealed.relative_to(repository_root)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"{name} escapes the explicit repository_root"
+                    ) from exc
+            return sealed
+
+        object.__setattr__(
+            self,
+            "database_path",
+            _sealed_path(self.database_path, name="database_path"),
+        )
+        object.__setattr__(
+            self,
+            "state_dir",
+            _sealed_path(self.state_dir, name="state_dir"),
+        )
         socket_override = self.typed_command_socket_path_override
         if socket_override is not None:
             socket_override = Path(socket_override)
             if not socket_override.is_absolute():
                 raise ValueError("typed command socket override must be absolute")
+            if repository_root is not None:
+                try:
+                    socket_override.resolve().relative_to(repository_root)
+                except ValueError as exc:
+                    raise ValueError(
+                        "typed command socket override escapes the explicit repository_root"
+                    ) from exc
             object.__setattr__(
                 self,
                 "typed_command_socket_path_override",
@@ -1115,6 +1190,11 @@ class InProcessQuackTransport:
                 "allow_other_hostname := ?, disable_ssl := ?)",
                 [token, False, disable_ssl],
             ),
+            (
+                "SELECT * FROM quack_serve(?, token := ?, "
+                "allow_other_hostname := false, disable_ssl := true)",
+                [uri, token],
+            ),
             ("SELECT quack_serve(?, ?, ?)", [host, int(port), token]),
             ("SELECT quack_serve(?, ?)", [f"{host}:{int(port)}", token]),
             ("CALL quack_serve(?, ?, ?)", [host, int(port), token]),
@@ -1157,33 +1237,40 @@ class InProcessQuackTransport:
     ) -> Mapping[str, Any]:
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
-        # Query through the actual loopback RPC surface.  A local SELECT on the
-        # owner's connection would not prove that Quack clients can attach.
+        # Prove the listener, authentication, request worker, and response path
+        # are all usable.  A local SELECT on the owner connection would not
+        # prove that Quack clients can attach.
         query_attempts = (
             (
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := ?)",
-                [self._listen_uri, "SELECT 1 AS live", token, True],
+                [self._listen_uri, "SELECT 1 AS quack_live", token, True],
+            ),
+            (
+                "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := true)",
+                [self._listen_uri, "SELECT 1 AS quack_live", token],
             ),
             (
                 "SELECT * FROM quack_query(?, ?, ?, ?)",
-                [self._listen_uri, "SELECT 1 AS live", token, True],
+                [self._listen_uri, "SELECT 1 AS quack_live", token, True],
             ),
         )
-        row = None
+        rows = None
         last_error: Exception | None = None
         for sql, params in query_attempts:
             try:
-                row = connection.execute(sql, params).fetchone()
+                rows = connection.execute(sql, params).fetchall()
                 last_error = None
                 break
             except Exception as exc:  # pragma: no cover - extension-version path
                 last_error = exc
         if last_error is not None:
             raise QuackStateServerReadyError(
-                f"loopback Quack live query failed: {type(last_error).__name__}"
+                f"authenticated remote live query failed: {type(last_error).__name__}"
             ) from last_error
-        if row is None:
-            raise QuackStateServerReadyError("loopback Quack live query returned no row")
+        if rows is None or len(rows) != 1 or tuple(rows[0]) != (1,):
+            raise QuackStateServerReadyError(
+                "authenticated remote live query returned an unexpected result"
+            )
         observed = dict(self._server_identity)
         observed["live"] = True
         if not identity.matches(
@@ -1204,13 +1291,15 @@ class InProcessQuackTransport:
         if connection is not None and self._listen_uri:
             try:
                 connection.execute(
-                    "SELECT * FROM quack_stop(?)", [self._listen_uri]
+                    "SELECT * FROM quack_stop(?)",
+                    [self._listen_uri],
                 ).fetchall()
             except Exception:
                 # Closing the exclusive owning connection is the final stop
                 # boundary; callers still receive lifecycle bookkeeping.
                 pass
         self._started = False
+        self._listen_uri = ""
         self._server_identity = {}
 
 
@@ -1953,6 +2042,297 @@ class QuackStateServer:
             )
         gateway.revoke_grant(grant_id)
 
+    def mutation_inbox_path(self) -> Path:
+        """Return the owner-only inbox used for unsupported remote DML."""
+
+        return quack_owner_mutation_inbox_path(self.runtime_registry_path)
+
+    @property
+    def runtime_registry_path(self) -> Path:
+        """Return the sealed owner/worker runtime-registry identity binding."""
+
+        return self.config.state_dir
+
+    def _prepare_mutation_inbox(self) -> int:
+        """Create, admit, and return a pinned owner-only inbox descriptor."""
+
+        try:
+            return open_mutation_inbox_directory(self.mutation_inbox_path())
+        except QuackOwnerMutationEnvelopeError as exc:
+            raise QuackStateServerReadyError(
+                "mutation inbox is not a safe owner directory"
+            ) from exc
+
+    @staticmethod
+    def _mutation_result_rows(result: Any) -> tuple[tuple[str, ...], list[list[Any]], int]:
+        """Project one already-executed DML cursor into a bounded response."""
+
+        columns = tuple(str(item) for item in getattr(result, "_columns", ()) or ())
+        rowcount = int(getattr(result, "rowcount", -1) or -1)
+        raw_rows = result.fetchall() if callable(getattr(result, "fetchall", None)) else []
+        if raw_rows and not columns:
+            description = getattr(result, "description", None) or ()
+            columns = tuple(str(item[0]) for item in description)
+            if not columns and isinstance(raw_rows[0], Mapping):
+                columns = tuple(str(item) for item in raw_rows[0])
+        rows: list[list[Any]] = []
+        for raw in raw_rows:
+            if isinstance(raw, Mapping):
+                rows.append([raw[name] for name in columns])
+            else:
+                rows.append(list(raw))
+            if len(rows) > MAX_MUTATION_RESULT_ROWS:
+                raise QuackOwnerMutationEnvelopeError(
+                    "mutation result row count exceeds its bound",
+                    code="result_not_serializable",
+                )
+        return columns, rows, rowcount
+
+    def process_mutation_inbox(
+        self,
+        *,
+        max_requests: int = MAX_MUTATIONS_PER_POLL,
+        now_ms: int | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Serialize mutation processing with lifecycle and owner teardown."""
+
+        with self._lock:
+            return self._process_mutation_inbox_locked(
+                max_requests=max_requests,
+                now_ms=now_ms,
+            )
+
+    def _process_mutation_inbox_locked(
+        self,
+        *,
+        max_requests: int = MAX_MUTATIONS_PER_POLL,
+        now_ms: int | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Apply authenticated bounded DML on the exclusive owner connection.
+
+        The method is intentionally polling-oriented: Quack remains the read
+        transport while UPDATE/DELETE/CAS operations stay on the process that
+        owns the DuckDB file.  Every request is HMAC-bound to the current
+        store generation and every response is signed with the same secret.
+        """
+
+        if (
+            self._lifecycle is not ServerLifecycle.READY
+            or self._connection is None
+            or self._identity is None
+            or self._vault is None
+        ):
+            raise QuackStateServerReadyError(
+                "mutation inbox requires the live exclusive state owner"
+            )
+        if (
+            isinstance(max_requests, bool)
+            or not isinstance(max_requests, int)
+            or max_requests < 1
+            or max_requests > MAX_MUTATIONS_PER_POLL
+        ):
+            raise ValueError(
+                f"max_requests must be in [1, {MAX_MUTATIONS_PER_POLL}]"
+            )
+        token = self._vault.resolve(self._identity.secret_handle)
+        inbox_fd = self._prepare_mutation_inbox()
+        suffix = ".request.json"
+        summaries: list[Mapping[str, Any]] = []
+        try:
+            request_names = sorted(
+                name for name in os.listdir(inbox_fd) if name.endswith(suffix)
+            )[:max_requests]
+            for request_name in request_names:
+                request_id = request_name[: -len(suffix)]
+                summaries.append(
+                    self._process_mutation_request_at(
+                        inbox_fd=inbox_fd,
+                        request_name=request_name,
+                        done_name=f"{request_id}.done.json",
+                        request_id=request_id,
+                        token=token,
+                        now_ms=now_ms,
+                    )
+                )
+        finally:
+            os.close(inbox_fd)
+        return tuple(summaries)
+
+    def _process_mutation_request_at(
+        self,
+        *,
+        inbox_fd: int,
+        request_name: str,
+        done_name: str,
+        request_id: str,
+        token: str,
+        now_ms: int | None,
+    ) -> Mapping[str, Any]:
+        """Process one request entirely relative to a pinned inbox handle."""
+
+        assert self._connection is not None
+        assert self._identity is not None
+        error_code = ""
+        error = ""
+        columns: tuple[str, ...] = ()
+        rows: list[list[Any]] = []
+        rowcount = -1
+        ok = False
+
+        # A signed result is an idempotency tombstone. This handles the
+        # crash/retry edge where publication completed but request cleanup did
+        # not: never execute that DML twice.
+        if mutation_envelope_exists_at(inbox_fd, done_name):
+            try:
+                prior = parse_mutation_result(
+                    read_envelope_at(inbox_fd, done_name),
+                    token=token,
+                    expected_request_id=request_id,
+                    expected_store_id=self._identity.store_id,
+                    expected_generation=self._identity.generation,
+                )
+            except QuackOwnerMutationEnvelopeError:
+                # Never overwrite an unauthenticated or unsafe collision and
+                # never let it cause the request to run.
+                try:
+                    unlink_mutation_envelope_at(
+                        inbox_fd,
+                        request_name,
+                        missing_ok=True,
+                    )
+                except OSError:
+                    pass
+                return MappingProxyType(
+                    {
+                        "request_id": request_id,
+                        "ok": False,
+                        "error_code": "result_collision",
+                        "rowcount": -1,
+                    }
+                )
+            try:
+                unlink_mutation_envelope_at(
+                    inbox_fd,
+                    request_name,
+                    missing_ok=True,
+                )
+            except OSError:
+                pass
+            return MappingProxyType(
+                {
+                    "request_id": request_id,
+                    "ok": bool(prior["ok"]),
+                    "error_code": str(prior["error_code"]),
+                    "rowcount": int(prior["rowcount"]),
+                    "replayed": True,
+                }
+            )
+        try:
+            request = parse_mutation_request(
+                read_envelope_at(
+                    inbox_fd,
+                    request_name,
+                    max_bytes=MAX_MUTATION_REQUEST_BYTES,
+                ),
+                token=token,
+                expected_request_id=request_id,
+                expected_store_id=self._identity.store_id,
+                expected_generation=self._identity.generation,
+                now_ms=now_ms,
+            )
+            parameters = request["parameters"]
+            if parameters is None:
+                result = self._connection.execute(request["sql"])
+            else:
+                result = self._connection.execute(request["sql"], parameters)
+            columns, rows, rowcount = self._mutation_result_rows(result)
+            ok = True
+        except QuackOwnerMutationEnvelopeError as exc:
+            error_code = exc.code
+            error = str(exc)
+        except Exception as exc:  # noqa: BLE001 - typed owner boundary
+            error_code = "execution_failed"
+            error = f"owner mutation execution failed: {type(exc).__name__}"
+        try:
+            response = build_mutation_result(
+                request_id=request_id,
+                store_id=self._identity.store_id,
+                generation=self._identity.generation,
+                ok=ok,
+                token=token,
+                rowcount=rowcount,
+                columns=columns,
+                rows=rows,
+                error_code=error_code,
+                error=error,
+                completed_at_ms=now_ms,
+            )
+        except QuackOwnerMutationEnvelopeError:
+            # An invalid filename cannot be reflected into a valid signed
+            # receipt. Remove it so a forged path cannot spin forever.
+            try:
+                unlink_mutation_envelope_at(
+                    inbox_fd,
+                    request_name,
+                    missing_ok=True,
+                )
+            except OSError:
+                pass
+            return MappingProxyType(
+                {
+                    "request_id": "",
+                    "ok": False,
+                    "error_code": "malformed_filename",
+                }
+            )
+        try:
+            # A result is an idempotency tombstone, so even a concurrent
+            # collision must never be overwritten after execution.
+            write_envelope_atomic_at(
+                inbox_fd,
+                done_name,
+                response,
+                replace=False,
+            )
+        except (OSError, QuackOwnerMutationEnvelopeError) as exc:
+            try:
+                unlink_mutation_envelope_at(
+                    inbox_fd,
+                    request_name,
+                    missing_ok=True,
+                )
+            except OSError:
+                pass
+            return MappingProxyType(
+                {
+                    "request_id": request_id,
+                    "ok": False,
+                    "error_code": (
+                        "result_collision"
+                        if isinstance(exc, FileExistsError)
+                        else "result_publication_failed"
+                    ),
+                    "rowcount": rowcount,
+                    "outcome_unknown": ok,
+                }
+            )
+        try:
+            unlink_mutation_envelope_at(
+                inbox_fd,
+                request_name,
+                missing_ok=True,
+            )
+        except OSError:
+            pass
+        return MappingProxyType(
+            {
+                "request_id": request_id,
+                "ok": ok,
+                "error_code": error_code,
+                "rowcount": rowcount,
+            }
+        )
+
     # -- capability + migration -------------------------------------------
 
     def _admit_capability(self) -> QuackCapabilityReport:
@@ -1992,6 +2372,11 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
+        if isinstance(self.transport, InProcessQuackTransport):
+            return open_duckdb_connection(
+                self.config.database_path,
+                quack_owner=True,
+            )
         return open_quack_state_owner_connection(self.config.database_path)
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
@@ -2764,6 +3149,10 @@ class QuackStateServer:
             "--store-id",
             self.config.store_id,
         ]
+        if self.config.repository_root is not None:
+            argv.extend(
+                ["--repository-root", str(self.config.repository_root)]
+            )
         if self._bound_port or self.config.port:
             argv.extend(["--port", str(int(self._bound_port or self.config.port))])
         if identity is not None:
@@ -2840,6 +3229,7 @@ def build_server(
     *,
     database_path: Path | str,
     state_dir: Path | str,
+    repository_root: Path | str | None = None,
     host: str = DEFAULT_LOOPBACK_HOST,
     port: int = 0,
     repository_id: str = "",
@@ -2861,6 +3251,9 @@ def build_server(
     config = QuackStateServerConfig(
         database_path=Path(database_path),
         state_dir=Path(state_dir),
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
         host=host,
         port=port,
         repository_id=repository_id,
