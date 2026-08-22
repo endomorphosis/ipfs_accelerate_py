@@ -158,11 +158,11 @@ ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
 FRESH_RECOVERY_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "lgcvf-fresh-generation-recovery-policy@2"
+    "lgcvf-fresh-generation-recovery-policy@3"
 )
 FRESH_RECOVERY_VERIFICATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "lgcvf-fresh-generation-recovery-verification@3"
+    "lgcvf-fresh-generation-recovery-verification@4"
 )
 FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA = (
     "lgcvf-recovery-validation-projection-omission@1"
@@ -194,6 +194,18 @@ FRESH_RECOVERY_VERIFICATION_FIELDS = frozenset(
         "receipt_cid",
         "source_evidence_cid",
         "duckdb_runtime_cid",
+        "qualification_runtime_cid",
+        "qualification_runtime_evidence",
+        "qualification_runtime_evidence_cid",
+        "materializer_zero_wx_policy",
+        "materializer_zero_wx_policy_cid",
+        "materializer_zero_wx_qualification_lifecycle",
+        "materializer_zero_wx_qualification_lifecycle_cid",
+        "materializer_zero_wx_prepublication_lifecycle",
+        "materializer_zero_wx_prepublication_lifecycle_cid",
+        "materializer_zero_wx_verification_lifecycle",
+        "materializer_zero_wx_verification_lifecycle_cid",
+        "historical_postpublish_zero_wx_evidence",
         "completed_task_ids",
         "todo_task_ids",
         "blocked_task_ids",

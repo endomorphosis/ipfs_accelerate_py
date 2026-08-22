@@ -1613,6 +1613,152 @@ def open_state_repository(
     raise StateRepositoryError(f"unsupported authority mode: {mode!r}")
 
 
+TYPED_OPERATIONAL_STORE_INTERFACE: Final = "TypedOperationalReferenceStore@1"
+TYPED_OPERATIONAL_STORE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-operational-reference-store@1"
+)
+
+
+class TypedOperationalStoreError(StateRepositoryError):
+    """CAS, lease, fence, or single-writer failure in the operational store."""
+
+
+@dataclass(frozen=True)
+class OperationalReference:
+    key: str
+    cid: str
+    operation_id: str
+    cas_token: str
+    fence: int
+    writer_id: str
+    sequence: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "cas_token": self.cas_token,
+            "cid": self.cid,
+            "fence": self.fence,
+            "key": self.key,
+            "operation_id": self.operation_id,
+            "sequence": self.sequence,
+            "writer_id": self.writer_id,
+        }
+
+
+class TypedOperationalReferenceStore:
+    """Append-only CID references with CAS, leases, fences, and restart replay.
+
+    Single-writer enforcement is truthful: Quack is not claimed as qualified.
+    Operational fields stay in this accelerator store, never a datasets root.
+    """
+
+    INTERFACE: ClassVar[str] = TYPED_OPERATIONAL_STORE_INTERFACE
+    quack_qualified: ClassVar[bool] = False
+
+    def __init__(self, *, writer_id: str = "writer:primary") -> None:
+        self._writer_id = str(writer_id)
+        self._log: list[OperationalReference] = []
+        self._heads: dict[str, OperationalReference] = {}
+        self._seen_operations: set[str] = set()
+        self._lease_holder: str | None = None
+        self._fence = 0
+        self._outbox_cursor = 0
+
+    @property
+    def single_writer(self) -> bool:
+        return True
+
+    @property
+    def outbox_cursor(self) -> int:
+        return self._outbox_cursor
+
+    @property
+    def fence(self) -> int:
+        return self._fence
+
+    def acquire_lease(self, writer_id: str, *, fence: int | None = None) -> int:
+        if self._lease_holder not in {None, writer_id}:
+            raise TypedOperationalStoreError("single-writer lease held by another worker")
+        self._lease_holder = writer_id
+        if fence is not None and fence < self._fence:
+            raise TypedOperationalStoreError("stale fence")
+        self._fence = fence if fence is not None else self._fence + 1
+        return self._fence
+
+    def release_lease(self, writer_id: str) -> None:
+        if self._lease_holder not in {None, writer_id}:
+            raise TypedOperationalStoreError("cannot release another worker's lease")
+        self._lease_holder = None
+
+    def append_reference(
+        self,
+        key: str,
+        cid: str,
+        *,
+        operation_id: str,
+        expected_cas: str = "",
+        writer_id: str | None = None,
+        fence: int | None = None,
+    ) -> OperationalReference:
+        writer = writer_id or self._writer_id
+        if self._lease_holder is None:
+            self.acquire_lease(writer)
+        if writer != self._lease_holder:
+            raise TypedOperationalStoreError("stale-worker: writer does not hold lease")
+        if fence is not None and fence != self._fence:
+            raise TypedOperationalStoreError("fence mismatch")
+        if operation_id in self._seen_operations:
+            raise TypedOperationalStoreError("duplicate completion")
+        head = self._heads.get(key)
+        if expected_cas:
+            if head is None or head.cas_token != expected_cas:
+                raise TypedOperationalStoreError("CAS mismatch")
+        elif head is not None:
+            raise TypedOperationalStoreError("CAS required for existing key")
+        cas_token = content_identity(
+            {
+                "cid": cid,
+                "key": key,
+                "operation_id": operation_id,
+                "previous": None if head is None else head.cas_token,
+                "sequence": len(self._log) + 1,
+            }
+        )
+        record = OperationalReference(
+            key=key,
+            cid=cid,
+            operation_id=operation_id,
+            cas_token=cas_token,
+            fence=self._fence,
+            writer_id=writer,
+            sequence=len(self._log) + 1,
+        )
+        self._log.append(record)
+        self._heads[key] = record
+        self._seen_operations.add(operation_id)
+        self._outbox_cursor = record.sequence
+        return record
+
+    def restart(self) -> "TypedOperationalReferenceStore":
+        """Replay the append-only log into a fresh single-writer store."""
+
+        restored = TypedOperationalReferenceStore(writer_id=self._writer_id)
+        restored._fence = self._fence
+        for record in self._log:
+            restored._log.append(record)
+            restored._heads[record.key] = record
+            restored._seen_operations.add(record.operation_id)
+            restored._outbox_cursor = record.sequence
+        restored._lease_holder = None
+        return restored
+
+    def get(self, key: str) -> OperationalReference | None:
+        return self._heads.get(key)
+
+    def outbox(self, *, after: int = 0) -> tuple[OperationalReference, ...]:
+        return tuple(item for item in self._log if item.sequence > after)
+
+
 def populations_equivalent(
     left: RepositoryPopulation,
     right: RepositoryPopulation,
@@ -1647,6 +1793,10 @@ __all__ = [
     "StateRepositoryError",
     "StateRepositoryMaintenanceError",
     "StateRepositoryNotOpenError",
+    "OperationalReference",
+    "TYPED_OPERATIONAL_STORE_INTERFACE",
+    "TypedOperationalReferenceStore",
+    "TypedOperationalStoreError",
     "acquire_maintenance_lease",
     "exclusive_embedded_repository",
     "open_embedded_repository",

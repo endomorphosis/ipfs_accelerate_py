@@ -601,6 +601,36 @@ def _fresh_recovery_verification_report(
         "receipt_cid": "cid:recovery-receipt",
         "source_evidence_cid": "cid:source-evidence",
         "duckdb_runtime_cid": FRESH_RECOVERY_TEST_DUCKDB_RUNTIME_CID,
+        "qualification_runtime_cid": "cid:qualification-runtime",
+        "qualification_runtime_evidence": {
+            "fixture": "qualification-runtime-evidence"
+        },
+        "qualification_runtime_evidence_cid": (
+            "cid:qualification-runtime-evidence"
+        ),
+        "materializer_zero_wx_policy": {"fixture": "zero-wx-policy"},
+        "materializer_zero_wx_policy_cid": "cid:zero-wx-policy",
+        "materializer_zero_wx_qualification_lifecycle": {
+            "fixture": "zero-wx-qualification"
+        },
+        "materializer_zero_wx_qualification_lifecycle_cid": (
+            "cid:zero-wx-qualification"
+        ),
+        "materializer_zero_wx_prepublication_lifecycle": {
+            "fixture": "zero-wx-prepublication"
+        },
+        "materializer_zero_wx_prepublication_lifecycle_cid": (
+            "cid:zero-wx-prepublication"
+        ),
+        "materializer_zero_wx_verification_lifecycle": {
+            "fixture": "zero-wx-verification"
+        },
+        "materializer_zero_wx_verification_lifecycle_cid": (
+            "cid:zero-wx-verification"
+        ),
+        "historical_postpublish_zero_wx_evidence": (
+            "not_persisted_not_reconstructed"
+        ),
         "completed_task_ids": [
             "LGCVF-001",
             "LGCVF-002",
@@ -7716,6 +7746,24 @@ def test_v3_coordinator_replans_second_wave_from_new_head_and_revision(
     assert launched[0]["revision_cid"] == launched[1]["revision_cid"]
     assert launched[1]["source_head"] != launched[2]["source_head"]
     assert launched[1]["revision_cid"] != launched[2]["revision_cid"]
+
+
+def test_fresh_recovery_policy_schema_matches_canonical_scheduler() -> None:
+    """Supervisor admission must accept the frozen run-v17 recovery policy."""
+
+    root = Path(__file__).resolve().parents[2]
+    payload = json.loads(
+        (
+            root
+            / "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    policy = payload["fresh_generation_recovery"]
+    assert policy["schema"] == scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA
+    assert (
+        policy["target_generation"]
+        == scheduler_module.FRESH_RECOVERY_TARGET_GENERATION
+    )
 
 
 def test_fresh_recovery_initial_admission_precedes_launch_rendering(

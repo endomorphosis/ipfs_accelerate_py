@@ -2,4 +2,5 @@
 
 
 def stable_label() -> str:
-    return "unaffected"
+    label = "unaffected"
+    return label

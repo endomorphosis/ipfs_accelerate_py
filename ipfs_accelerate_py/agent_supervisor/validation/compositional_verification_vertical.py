@@ -150,6 +150,11 @@ VERTICAL_ARTIFACT_VERIFIER_INTERFACE: Final = (
 _TARGET_PATH = "pkg/module_a.py"
 _FAULT_VALUE = 30
 _REPAIR_VALUE = 10
+# Logical refs hashed into transaction/fixed-point receipts.  Absolute temp
+# worktree paths and incrementing durable fences are run-specific and must not
+# appear in replay-stable artifact identities.
+_REPAIR_WORKTREE_REF = "worktree:lgcvf-vertical-repair"
+_REPAIR_FENCE_REF = "fence:lgcvf-vertical-repair"
 _PROVIDER_MARKERS = (
     "anthropic",
     "llm_router",
@@ -276,7 +281,20 @@ def _fixture_default() -> Path:
 def _copy_fixture(fixture_root: Path, destination: Path) -> None:
     if not fixture_root.is_dir():
         raise VerticalSliceError(f"fixture root does not exist: {fixture_root}")
-    shutil.copytree(fixture_root, destination)
+    # Copy bytes only. shutil.copytree/copy2 chmod the destination, which the
+    # qualification worker's seccomp profile denies.
+    destination.mkdir(parents=True, exist_ok=True)
+    for current, dirnames, filenames in os.walk(fixture_root):
+        relative = Path(current).relative_to(fixture_root)
+        target_dir = destination / relative
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for name in dirnames:
+            (target_dir / name).mkdir(exist_ok=True)
+        for name in filenames:
+            source = Path(current) / name
+            if source.is_symlink() or not source.is_file():
+                continue
+            (target_dir / name).write_bytes(source.read_bytes())
     _git(destination, "init", "-b", "main")
     _git(destination, "config", "user.email", "lgcvf-fixture@example.invalid")
     _git(destination, "config", "user.name", "LGCVF Hermetic Fixture")
@@ -1019,13 +1037,13 @@ def verify_compositional_artifact(
 
     selected = _run_pytest(worktree, ("tests/test_selected.py",))
     checks["selected_tests_replayed"] = selected["returncode"] == 0
-    checks["selected_test_receipt"] = selected
+    observed_test_receipt = _test_receipt_id(selected)
+    checks["selected_test_receipt_cid"] = observed_test_receipt
     if selected["returncode"] != 0:
         issues.append("selected_test_replay_failed")
     claimed_test_receipt = str(
         artifact.payload.get("selected_test_receipt_cid") or ""
     )
-    observed_test_receipt = _test_receipt_id(selected)
     checks["selected_test_receipt_reconstructed"] = (
         observed_test_receipt == claimed_test_receipt
     )
@@ -1259,10 +1277,9 @@ def run_compositional_verification_vertical_slice(
         failed_obligation_id=failed_obligation_id,
         repair_receipt=repair_synthesis,
     )
-    worktree_ref = str(repair_worktree.worktree_path)
     sandbox = DoctorSandboxPolicy(
         sandbox_id=roots.sandbox_id,
-        worktree_root_ref=worktree_ref,
+        worktree_root_ref=_REPAIR_WORKTREE_REF,
         permitted_paths=(_TARGET_PATH,),
         enforcement_level=DoctorSandboxEnforcementLevel.ENFORCED,
         secrets_inherited=False,
@@ -1272,14 +1289,14 @@ def run_compositional_verification_vertical_slice(
     lock = DoctorCheckoutLock(
         lock_id="lock:lgcvf-vertical-repair",
         holder_id="holder:lgcvf-vertical",
-        worktree_root_ref=worktree_ref,
+        worktree_root_ref=_REPAIR_WORKTREE_REF,
         base_tree_cid=f"git-tree:{fault_tree}",
         active=True,
-        fence_id=f"fence:{repair_worktree.fence}",
+        fence_id=_REPAIR_FENCE_REF,
     )
     lease = DoctorWriterLease(
         lease_id=roots.lease_id,
-        fence_id=f"fence:{repair_worktree.fence}",
+        fence_id=_REPAIR_FENCE_REF,
         holder_id="holder:lgcvf-vertical",
         permitted_write_paths=(_TARGET_PATH,),
         permitted_read_paths=(_TARGET_PATH,),

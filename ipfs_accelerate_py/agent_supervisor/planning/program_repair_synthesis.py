@@ -60,6 +60,7 @@ from .deterministic_doctor_synthesis import (
     create_deterministic_doctor_synthesizer,
 )
 from .repair_operator_registry import (
+    CEGIS_FORBIDDEN_PARAMETER_KEYS,
     REPAIR_OPERATOR_REGISTRY_INTERFACE,
     RepairOperatorKind,
     RepairOperatorLookupDisposition,
@@ -69,6 +70,7 @@ from .repair_operator_registry import (
     ReviewedRepairHook,
     UnknownRepairOperatorError,
     build_default_repair_operator_registry,
+    cegis_restricted_operator_kinds,
     normalize_repair_operator_kind,
 )
 
@@ -339,6 +341,9 @@ class ProgramRepairReason(str, Enum):
     EQUALITY_INDEPENDENT_REJECT = "equality_independent_check_rejected"
     EQUALITY_INVALID_REWRITE = "equality_invalid_rewrite"
     EQUALITY_EXTRACTION = "equality_extraction_completed"
+    UNVALIDATED_INTERPOLANT = "interpolant_not_independently_validated"
+    UNDECLARED_EFFECT = "undeclared_effect_or_security_change"
+    COUNTEREVIDENCE_RESTRICTED = "operator_restricted_by_counterevidence"
 
 
 class ResidualHybridDisposition(str, Enum):
@@ -2885,6 +2890,63 @@ class ResidualHybridRepairService:
 # ---------------------------------------------------------------------------
 
 
+_CEGIS_FORBIDDEN_PARAMETER_KEYS: Final[frozenset[str]] = CEGIS_FORBIDDEN_PARAMETER_KEYS
+
+
+@dataclass(frozen=True)
+class ProgramRepairCounterevidence:
+    """Independently obtained cores, assumptions, and interpolants for CEGIS."""
+
+    unsat_core_refs: tuple[str, ...] = ()
+    failed_assumption_refs: tuple[str, ...] = ()
+    interpolant_refs: tuple[str, ...] = ()
+    interpolants_independently_validated: bool = False
+    effect_refs: tuple[str, ...] = ()
+    security_refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "unsat_core_refs",
+            _ids(self.unsat_core_refs, "unsat_core_refs"),
+        )
+        object.__setattr__(
+            self,
+            "failed_assumption_refs",
+            _ids(self.failed_assumption_refs, "failed_assumption_refs"),
+        )
+        object.__setattr__(
+            self,
+            "interpolant_refs",
+            _ids(self.interpolant_refs, "interpolant_refs"),
+        )
+        object.__setattr__(
+            self,
+            "effect_refs",
+            _ids(self.effect_refs, "effect_refs"),
+        )
+        object.__setattr__(
+            self,
+            "security_refs",
+            _ids(self.security_refs, "security_refs"),
+        )
+        object.__setattr__(
+            self,
+            "interpolants_independently_validated",
+            _bool(
+                self.interpolants_independently_validated,
+                "interpolants_independently_validated",
+            ),
+        )
+
+    def evidence_tags(self) -> tuple[str, ...]:
+        return (
+            self.unsat_core_refs
+            + self.failed_assumption_refs
+            + self.interpolant_refs
+        )
+
+
 @dataclass(frozen=True)
 class ProgramRepairRequest:
     """Inputs for bounded deterministic program-repair synthesis."""
@@ -2914,6 +2976,7 @@ class ProgramRepairRequest:
         [FormalCounterexample, Mapping[str, Any]], Sequence[Any]
     ] | None = None
     previous_witness_id: str | None = None
+    counterevidence: ProgramRepairCounterevidence | None = None
     allow_hybrid_residual: bool = True
     behavior_fixed_syntax_debt: bool = False
     syntax_slot_id: str = ""
@@ -3015,6 +3078,26 @@ class ProgramRepairRequest:
         if not isinstance(self.metadata, Mapping):
             raise ProgramRepairSynthesisError("metadata must be a mapping")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        if self.counterevidence is not None:
+            evidence = self.counterevidence
+            if isinstance(evidence, Mapping):
+                evidence = ProgramRepairCounterevidence(
+                    unsat_core_refs=tuple(evidence.get("unsat_core_refs") or ()),
+                    failed_assumption_refs=tuple(
+                        evidence.get("failed_assumption_refs") or ()
+                    ),
+                    interpolant_refs=tuple(evidence.get("interpolant_refs") or ()),
+                    interpolants_independently_validated=bool(
+                        evidence.get("interpolants_independently_validated")
+                    ),
+                    effect_refs=tuple(evidence.get("effect_refs") or ()),
+                    security_refs=tuple(evidence.get("security_refs") or ()),
+                )
+            if not isinstance(evidence, ProgramRepairCounterevidence):
+                raise ProgramRepairSynthesisError(
+                    "counterevidence must be ProgramRepairCounterevidence"
+                )
+            object.__setattr__(self, "counterevidence", evidence)
         # Reject forbidden claims in metadata.
         forbidden = _walk_forbidden_claims(dict(self.metadata))
         if forbidden:
@@ -3750,12 +3833,91 @@ class ProgramRepairSynthesizer:
 
     # -- CEGIS ------------------------------------------------------------
 
+    def _admitted_cegis_operator_kinds(
+        self, request: ProgramRepairRequest
+    ) -> tuple[str, ...] | None:
+        requested = tuple(request.operator_kinds)
+        evidence = request.counterevidence
+        if evidence is None:
+            return requested
+        if evidence.interpolant_refs and not evidence.interpolants_independently_validated:
+            return None
+        tags = evidence.evidence_tags()
+        if tags:
+            matched = tuple(
+                kind
+                for kind in requested
+                if any(kind in tag for tag in tags)
+            )
+            requested = matched
+        restricted = evidence.effect_refs + evidence.security_refs
+        if restricted:
+            sensitive = cegis_restricted_operator_kinds(self._registry)
+            requested = tuple(
+                kind
+                for kind in requested
+                if kind not in sensitive
+                or any(kind in tag for tag in restricted)
+            )
+        return requested
+
+    def _cegis_candidate_is_restricted(
+        self,
+        candidate: RefinementCandidate,
+        admitted_kinds: Sequence[str] = (),
+    ) -> str | None:
+        parameters = candidate.parameters or {}
+        if not isinstance(parameters, Mapping):
+            return ProgramRepairReason.MALFORMED_INPUT.value
+        operator_kind = str(parameters.get("operator_kind") or "").strip()
+        if admitted_kinds and operator_kind and operator_kind not in admitted_kinds:
+            return ProgramRepairReason.COUNTEREVIDENCE_RESTRICTED.value
+        for key in _CEGIS_FORBIDDEN_PARAMETER_KEYS:
+            value = parameters.get(key)
+            if value not in (None, False, (), [], ""):
+                if key in {"extra_imports"}:
+                    return ProgramRepairReason.EXTRA_IMPORT.value
+                if key in {"extra_paths", "extra_files", "files_added"}:
+                    return ProgramRepairReason.EXTRA_FILE.value
+                if key in {"extra_dependencies"}:
+                    return ProgramRepairReason.EXTRA_DEPENDENCY.value
+                if key in {"write_authority", "authority"}:
+                    return ProgramRepairReason.AUTHORITY_CLAIM.value
+                return ProgramRepairReason.UNDECLARED_EFFECT.value
+        return None
+
     def _synthesize_cegis(self, request: ProgramRepairRequest) -> ProgramRepairReceipt:
         if request.counterexample is None:
             return ProgramRepairReceipt(
                 disposition=ProgramRepairDisposition.ABSTAIN,
                 reason_codes=(
                     ProgramRepairReason.MALFORMED_INPUT.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                roots=request.roots,
+                mode=ProgramRepairMode.CEGIS,
+                bounds=request.bounds,
+            )
+        admitted_kinds = self._admitted_cegis_operator_kinds(request)
+        if admitted_kinds is None:
+            return ProgramRepairReceipt(
+                disposition=ProgramRepairDisposition.ABSTAIN,
+                reason_codes=(
+                    ProgramRepairReason.UNVALIDATED_INTERPOLANT.value,
+                    ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                ),
+                roots=request.roots,
+                mode=ProgramRepairMode.CEGIS,
+                bounds=request.bounds,
+            )
+        if request.operator_kinds and not admitted_kinds:
+            return ProgramRepairReceipt(
+                disposition=ProgramRepairDisposition.ABSTAIN,
+                reason_codes=(
+                    ProgramRepairReason.COUNTEREVIDENCE_RESTRICTED.value,
+                    ProgramRepairReason.NO_ADMISSIBLE_OPERATOR.value,
                     ProgramRepairReason.PROPOSAL_ONLY.value,
                     ProgramRepairReason.ZERO_MODEL_CALLS.value,
                 ),
@@ -3778,6 +3940,11 @@ class ProgramRepairSynthesizer:
 
             def validate(candidate: RefinementCandidate, context: Mapping[str, Any]):
                 del context
+                restricted = self._cegis_candidate_is_restricted(
+                    candidate, admitted_kinds
+                )
+                if restricted is not None:
+                    return CandidateValidationStatus.INVALID, restricted
                 if not candidate.addresses_witness:
                     return (
                         CandidateValidationStatus.INVALID,
@@ -3789,15 +3956,27 @@ class ProgramRepairSynthesizer:
                         ProgramRepairReason.CEGIS_INDEPENDENT_REJECT.value,
                     )
                 return CandidateValidationStatus.VALID, "independent_validation_passed"
+        else:
+            inner_validate = validate
+
+            def validate(candidate: RefinementCandidate, context: Mapping[str, Any]):
+                restricted = self._cegis_candidate_is_restricted(
+                    candidate, admitted_kinds
+                )
+                if restricted is not None:
+                    return CandidateValidationStatus.INVALID, restricted
+                return inner_validate(candidate, context)
 
         refine = request.cegis_refine
-        if refine is None and request.operator_kinds:
+        if refine is None and admitted_kinds:
 
             def refine(witness: FormalCounterexample, context: Mapping[str, Any]):
                 del witness
                 out: list[RefinementCandidate] = []
+                evidence = request.counterevidence
+                tags = evidence.evidence_tags() if evidence is not None else ()
                 for index, kind in enumerate(
-                    request.operator_kinds[: budget.max_candidates_per_iteration]
+                    admitted_kinds[: budget.max_candidates_per_iteration]
                 ):
                     out.append(
                         RefinementCandidate(
@@ -3819,6 +3998,7 @@ class ProgramRepairSynthesizer:
                             parameters={
                                 "operator_kind": kind,
                                 "obligation_refs": list(request.obligation_refs),
+                                "counterevidence_tags": list(tags),
                             },
                         )
                     )
@@ -3838,7 +4018,8 @@ class ProgramRepairSynthesizer:
                 context={
                     "obligation_refs": list(request.obligation_refs),
                     "target_paths": list(request.target_paths),
-                    "operator_kinds": list(request.operator_kinds),
+                    "operator_kinds": list(admitted_kinds),
+                    "requested_operator_kinds": list(request.operator_kinds),
                 },
             )
         except (CegisValidationError, ContractValidationError) as exc:
@@ -4134,6 +4315,7 @@ __all__ = (
     "ProgramRepairBounds",
     "ProgramRepairBoundsError",
     "ProgramRepairCandidate",
+    "ProgramRepairCounterevidence",
     "ProgramRepairDisposition",
     "ProgramRepairMode",
     "ProgramRepairReason",
