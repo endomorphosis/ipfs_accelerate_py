@@ -215,6 +215,7 @@ _CLUSTER_EXPAND_EDGE_KINDS = frozenset(
         EdgeKind.GENERATES,
         EdgeKind.SUPERSEDES,
         EdgeKind.DEPRECATES,
+        EdgeKind.FALLBACKS_TO,
     }
 )
 
@@ -2384,8 +2385,8 @@ def _build_view(architecture: ArchitectureIR) -> _GraphView:
         node.node_id: [] for node in architecture.nodes
     }
     for edge in architecture.edges:
-        outgoing[edge.source].append(edge)
-        incoming[edge.target].append(edge)
+        outgoing.setdefault(edge.source, []).append(edge)
+        incoming.setdefault(edge.target, []).append(edge)
     return _GraphView(
         architecture=architecture,
         nodes_by_id={node.node_id: node for node in architecture.nodes},
@@ -2472,7 +2473,8 @@ def detect_cross_boundary_cycles(
     graph: dict[str, list[str]] = {node.node_id: [] for node in view.architecture.nodes}
     for edge in view.architecture.edges:
         if edge.kind in _CYCLE_EDGE_KINDS:
-            graph[edge.source].append(edge.target)
+            graph.setdefault(edge.source, []).append(edge.target)
+            graph.setdefault(edge.target, [])
     cycles: list[tuple[str, ...]] = []
     index = 0
     stack: list[str] = []
@@ -3003,8 +3005,10 @@ def _collect_ambiguities(
 def _related_blockers(
     ownership: AuthorityOwnershipGraph,
     kind: BoundaryKind,
+    cluster: Iterable[str] = (),
 ) -> tuple[OwnershipBlocker, ...]:
     blockers: list[OwnershipBlocker] = []
+    inside = set(cluster)
     for concern in BOUNDARY_CONCERNS[kind]:
         record = ownership.ownership_for(concern)
         if record.blocker is not None:
@@ -3013,13 +3017,29 @@ def _related_blockers(
         blockers.extend(
             record.blocker
             for record in ownership.concerns
-            if record.blocker is not None and record.legacy_owners
+            if record.blocker is not None
+            and record.legacy_owners
+            and (
+                not inside
+                or inside.intersection(
+                    owner.node_id for owner in record.legacy_owners
+                )
+                or inside.intersection(record.blocker.node_ids)
+            )
         )
     if kind is BoundaryKind.SIMULATION:
         blockers.extend(
             record.blocker
             for record in ownership.concerns
-            if record.blocker is not None and record.simulation_owners
+            if record.blocker is not None
+            and record.simulation_owners
+            and (
+                not inside
+                or inside.intersection(
+                    owner.node_id for owner in record.simulation_owners
+                )
+                or inside.intersection(record.blocker.node_ids)
+            )
         )
     unique: dict[str, OwnershipBlocker] = {}
     for item in blockers:
@@ -3134,6 +3154,11 @@ def _callers_of(view: _GraphView, cluster: Iterable[str]) -> tuple[str, ...]:
         for edge in view.incoming.get(node_id, ()):
             if edge.kind in _CALLER_EDGE_KINDS and edge.source not in inside:
                 found.add(edge.source)
+    for edge in view.architecture.edges:
+        if edge.kind not in _CALLER_EDGE_KINDS:
+            continue
+        if edge.target in inside and edge.source not in inside:
+            found.add(edge.source)
     return tuple(sorted(found))
 
 
@@ -3193,8 +3218,8 @@ def _deprecated_paths(
                 if node is not None:
                     found.add(node.provenance.span.path)
         for node_id in cluster:
-            node = view.nodes_by_id[node_id]
-            if node.kind is NodeKind.COMPATIBILITY:
+            node = view.nodes_by_id.get(node_id)
+            if node is not None and node.kind is NodeKind.COMPATIBILITY:
                 found.add(node.provenance.span.path)
     if kind is BoundaryKind.SIMULATION:
         for record in ownership.concerns:
@@ -3203,60 +3228,81 @@ def _deprecated_paths(
                 if node is not None:
                     found.add(node.provenance.span.path)
         for node_id in cluster:
-            node = view.nodes_by_id[node_id]
-            if node.kind is NodeKind.SIMULATION:
+            node = view.nodes_by_id.get(node_id)
+            if node is not None and node.kind is NodeKind.SIMULATION:
                 found.add(node.provenance.span.path)
     return tuple(sorted(found))
 
 
-def _related_tests(view: _GraphView, cluster: Iterable[str]) -> tuple[str, ...]:
+def _related_obligation_nodes(
+    view: _GraphView,
+    cluster: Iterable[str],
+    *,
+    node_kind: NodeKind,
+    edge_kind: EdgeKind,
+) -> tuple[str, ...]:
     inside = set(cluster)
     found: set[str] = set()
     for node_id in inside:
-        node = view.nodes_by_id[node_id]
-        if node.kind is NodeKind.TEST:
+        node = view.nodes_by_id.get(node_id)
+        if node is None:
+            continue
+        if node.kind is node_kind:
             found.add(node_id)
         for edge in view.incoming.get(node_id, ()):
-            if edge.kind is EdgeKind.TESTS:
+            if edge.kind is edge_kind:
                 found.add(edge.source)
         for edge in view.outgoing.get(node_id, ()):
-            if edge.kind is EdgeKind.TESTS:
-                found.add(edge.source if view.nodes_by_id[edge.source].kind is NodeKind.TEST else edge.target)
-    return tuple(sorted(item for item in found if view.nodes_by_id[item].kind is NodeKind.TEST))
+            if edge.kind is edge_kind:
+                source = view.nodes_by_id.get(edge.source)
+                found.add(edge.source if source is not None and source.kind is node_kind else edge.target)
+    for edge in view.architecture.edges:
+        if edge.kind is not edge_kind:
+            continue
+        if edge.source in inside or edge.target in inside:
+            source = view.nodes_by_id.get(edge.source)
+            target = view.nodes_by_id.get(edge.target)
+            if source is not None and source.kind is node_kind:
+                found.add(edge.source)
+            if target is not None and target.kind is node_kind:
+                found.add(edge.target)
+    return tuple(
+        sorted(
+            item
+            for item in found
+            if item in view.nodes_by_id and view.nodes_by_id[item].kind is node_kind
+        )
+    )
+
+
+def _related_tests(view: _GraphView, cluster: Iterable[str]) -> tuple[str, ...]:
+    return _related_obligation_nodes(
+        view, cluster, node_kind=NodeKind.TEST, edge_kind=EdgeKind.TESTS
+    )
 
 
 def _related_proofs(view: _GraphView, cluster: Iterable[str]) -> tuple[str, ...]:
-    inside = set(cluster)
-    found: set[str] = set()
-    for node_id in inside:
-        node = view.nodes_by_id[node_id]
-        if node.kind is NodeKind.PROOF:
-            found.add(node_id)
-        for edge in view.incoming.get(node_id, ()):
-            if edge.kind is EdgeKind.PROVES:
-                found.add(edge.source)
-        for edge in view.outgoing.get(node_id, ()):
-            if edge.kind is EdgeKind.PROVES:
-                found.add(edge.source if view.nodes_by_id[edge.source].kind is NodeKind.PROOF else edge.target)
-    return tuple(sorted(item for item in found if view.nodes_by_id[item].kind is NodeKind.PROOF))
+    return _related_obligation_nodes(
+        view, cluster, node_kind=NodeKind.PROOF, edge_kind=EdgeKind.PROVES
+    )
 
 
 def _state_owner_id(view: _GraphView, cluster: Iterable[str], fallback: str) -> str:
     inside = set(cluster)
     states: list[str] = []
     for node_id in inside:
-        if view.nodes_by_id[node_id].kind is NodeKind.STATE:
+        node = view.nodes_by_id.get(node_id)
+        if node is not None and node.kind is NodeKind.STATE:
             states.append(node_id)
     if len(states) == 1:
         return states[0]
     persisted: list[str] = []
     for node_id in inside:
         for edge in view.outgoing.get(node_id, ()):
-            if edge.kind in _MUTABLE_EDGE_KINDS and view.nodes_by_id[edge.target].kind is NodeKind.STATE:
+            target = view.nodes_by_id.get(edge.target)
+            if edge.kind in _MUTABLE_EDGE_KINDS and target is not None and target.kind is NodeKind.STATE:
                 persisted.append(edge.target)
     unique = tuple(sorted(set(persisted)))
-    if len(unique) == 1:
-        return unique[0]
     if unique:
         return unique[0]
     if states:
@@ -3269,7 +3315,8 @@ def _public_symbols(view: _GraphView, cluster: Iterable[str]) -> tuple[str, ...]
         sorted(
             node_id
             for node_id in cluster
-            if view.nodes_by_id[node_id].kind in _PUBLIC_NODE_KINDS
+            if node_id in view.nodes_by_id
+            and view.nodes_by_id[node_id].kind in _PUBLIC_NODE_KINDS
         )
     )
 
@@ -3323,7 +3370,7 @@ def _draft_for(
 ) -> _Draft:
     seeds = _seed_nodes(ownership, view, kind)
     cluster = _expand_cluster(view, seeds)
-    blockers = _related_blockers(ownership, kind)
+    blockers = _related_blockers(ownership, kind, cluster)
     owner_id = _canonical_owner_id(ownership, kind) or _unresolved_owner_id(
         ownership, kind, view, blockers
     )
@@ -3455,16 +3502,19 @@ def synthesize_interface_boundaries(
             "ownership architecture_ir_identity must match ArchitectureIR"
         )
     parsed_contracts: ContractExtractionResult | None
-    if contracts is None:
-        parsed_contracts = None
-    elif isinstance(contracts, ContractExtractionResult):
-        parsed_contracts = contracts
-    else:
-        parsed_contracts = ContractExtractionResult.from_mapping(contracts)
-    parsed_ambiguities = tuple(
-        item if isinstance(item, ContractAmbiguity) else ContractAmbiguity.from_mapping(item)
-        for item in ambiguities
-    )
+    try:
+        if contracts is None:
+            parsed_contracts = None
+        elif isinstance(contracts, ContractExtractionResult):
+            parsed_contracts = contracts
+        else:
+            parsed_contracts = ContractExtractionResult.from_mapping(contracts)
+        parsed_ambiguities = tuple(
+            item if isinstance(item, ContractAmbiguity) else ContractAmbiguity.from_mapping(item)
+            for item in ambiguities
+        )
+    except ArchitectureContractError as exc:
+        raise BoundarySynthesizerError(str(exc)) from exc
     all_ambiguities = _collect_ambiguities(parsed_contracts, parsed_ambiguities)
     bound_freshness = freshness or graph.freshness
     view = _build_view(graph)
@@ -3524,16 +3574,19 @@ class InterfaceBoundarySynthesizer:
     ) -> None:
         self._architecture = _require_architecture_ir(architecture)
         self._ownership = _require_ownership(ownership)
-        if isinstance(contracts, Mapping):
-            self._contracts: ContractExtractionResult | None = (
-                ContractExtractionResult.from_mapping(contracts)
+        try:
+            if isinstance(contracts, Mapping):
+                self._contracts: ContractExtractionResult | None = (
+                    ContractExtractionResult.from_mapping(contracts)
+                )
+            else:
+                self._contracts = contracts
+            self._ambiguities = tuple(
+                item if isinstance(item, ContractAmbiguity) else ContractAmbiguity.from_mapping(item)
+                for item in ambiguities
             )
-        else:
-            self._contracts = contracts
-        self._ambiguities = tuple(
-            item if isinstance(item, ContractAmbiguity) else ContractAmbiguity.from_mapping(item)
-            for item in ambiguities
-        )
+        except ArchitectureContractError as exc:
+            raise BoundarySynthesizerError(str(exc)) from exc
         self._freshness = freshness
 
     @property
