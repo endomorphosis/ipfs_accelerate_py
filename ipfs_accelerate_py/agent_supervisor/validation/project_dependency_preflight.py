@@ -65,6 +65,10 @@ SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA = (
 SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2 = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@2"
 )
+SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3 = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@3"
+)
+
 SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@1"
 )
@@ -102,6 +106,18 @@ MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES = 64 * 1024
 # projection envelope without needing a data-dependent retry loop.
 MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES = 4
 MAX_DEPENDENCY_PREFLIGHT_PROJECTION_TEXT_BYTES = 512
+
+MAX_SCOPED_CONTRACT_EXTRA_BYTES = 128
+
+MAX_PREFLIGHT_EVENT_FINDING_PREVIEW = 16
+
+MAX_PREFLIGHT_EVENT_FIELD_BYTES = 512
+
+MAX_PREFLIGHT_INLINE_RECEIPT_BYTES = 64 * 1024
+
+
+_SAFE_SCOPED_EXTRA_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
 DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
