@@ -7916,5 +7916,45 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+CASF_EVENT_DRIVEN_WAKE_INTERFACE = (
+    "ipfs_accelerate_py/agent-supervisor/casf-event-driven-wake@1"
+)
+
+
+def casf_require_event_driven_wait(wait_capability: Mapping[str, object]) -> None:
+    """Fail closed unless the federation wait path is event-driven qualified."""
+
+    from ipfs_accelerate_py.agent_supervisor.federation.scheduler import (
+        require_event_driven_capability,
+    )
+
+    require_event_driven_capability(wait_capability)
+
+
+def casf_select_tracks_for_frontier(
+    tracks: Sequence[SupervisorTrack],
+    *,
+    must_wake: Sequence[str],
+    may_wake: Sequence[str],
+    do_not_wake: Sequence[str],
+    wait_capability: Mapping[str, object],
+) -> tuple[SupervisorTrack, ...]:
+    """Wake only frontier-eligible tracks. Unchanged do_not_wake tracks stay asleep."""
+
+    casf_require_event_driven_wait(wait_capability)
+    asleep = set(do_not_wake)
+    eligible = set(must_wake) | set(may_wake)
+    overlap = eligible & asleep
+    if overlap:
+        raise ValueError("frontier dispositions overlap")
+    selected: list[SupervisorTrack] = []
+    for track in tracks:
+        if track.name in asleep:
+            continue
+        if track.name in eligible:
+            selected.append(track)
+    return tuple(selected)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
