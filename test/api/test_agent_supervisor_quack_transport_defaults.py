@@ -290,6 +290,15 @@ def test_request_owner_board_unstall_writes_inbox_without_waiting(
     assert len(requests) == 1
     payload = json.loads(requests[0].read_text(encoding="utf-8"))
     assert payload == {"op": "board_unstall", "stale_seconds": 16_200}
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        clear_owner_board_unstall_bounce,
+        owner_should_recycle_for_board_unstall,
+    )
+
+    assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=0) is True
+    assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=10_000) is False
+    clear_owner_board_unstall_bounce(inbox)
+    assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=0) is False
 
 
 def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> None:

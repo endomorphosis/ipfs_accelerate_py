@@ -729,6 +729,8 @@ def unstall_stale_in_progress_tasks(
 
 
 BOARD_UNSTALL_OWNER_OP = "board_unstall"
+BOARD_UNSTALL_BOUNCE_NAME = "board-unstall.bounce"
+OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS = 15.0
 _OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
 
 
@@ -816,6 +818,19 @@ def request_owner_board_unstall(
         + "\n",
         encoding="utf-8",
     )
+    bounce_path = target / BOARD_UNSTALL_BOUNCE_NAME
+    bounce_path.write_text(
+        json.dumps(
+            {
+                "op": BOARD_UNSTALL_OWNER_OP,
+                "request_id": request_id,
+                "stale_seconds": int(stale_seconds),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     if not wait:
         return {
             "ok": True,
@@ -841,6 +856,50 @@ def request_owner_board_unstall(
     raise DuckDBConnectionPolicyError(
         "timed out waiting for quack state-owner to unstall the task board"
     )
+
+
+def owner_should_recycle_for_board_unstall(
+    mutation_dir: object = None,
+    *,
+    min_age_seconds: float = OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS,
+) -> bool:
+    """Return whether the exclusive owner should restart to apply board unstall.
+
+    ``quack_serve`` occupies the listen connection, so leftover in_progress
+    UPDATEs only land in the pre-listen writer window. A bounce marker older
+    than ``min_age_seconds`` means the live owner could not apply it.
+    """
+
+    if mutation_dir is not None:
+        target = Path(str(mutation_dir))
+    else:
+        target = quack_owner_mutation_dir()
+    if target is None:
+        return False
+    bounce = target / BOARD_UNSTALL_BOUNCE_NAME
+    if not bounce.is_file():
+        return False
+    try:
+        age = time.time() - bounce.stat().st_mtime
+    except OSError:
+        return False
+    return age >= float(min_age_seconds)
+
+
+def clear_owner_board_unstall_bounce(mutation_dir: object = None) -> None:
+    """Drop the recycle marker after a pre-listen unstall has run."""
+
+    if mutation_dir is not None:
+        target = Path(str(mutation_dir))
+    else:
+        target = quack_owner_mutation_dir()
+    if target is None:
+        return
+    bounce = target / BOARD_UNSTALL_BOUNCE_NAME
+    try:
+        bounce.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _quack_owner_mutation_required(normalized: str) -> bool:

@@ -70,7 +70,10 @@ from ..task_sources.control_plane_schema import (
     CONTROL_PLANE_SCHEMA_REVISION,
     install_control_plane_schema,
 )
-from ..task_sources.duckdb_state import open_duckdb_connection
+from ..task_sources.duckdb_state import (
+    open_duckdb_connection,
+    unstall_stale_in_progress_tasks,
+)
 from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
     probe_quack_capabilities,
@@ -1356,6 +1359,24 @@ class QuackStateServer:
             raise QuackStateServerError("DuckDB is required for the state-owner")
         return open_duckdb_connection(self.config.database_path)
 
+    def _unstall_stale_board_gates(self, connection: Any) -> None:
+        """Retry leftover in_progress gates before quack_serve occupies the writer."""
+
+        try:
+            result = unstall_stale_in_progress_tasks(connection)
+        except Exception as exc:
+            self._log(f"board unstall skipped: {type(exc).__name__}")
+            return
+        unstalled = result.get("unstalled") or []
+        if not unstalled:
+            return
+        aliases = ",".join(
+            str(item.get("task_alias") or item.get("task_cid") or "")
+            for item in unstalled[:8]
+            if isinstance(item, Mapping)
+        )
+        self._log(f"board unstall gates={len(unstalled)} aliases={aliases}")
+
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
             try:
@@ -1652,6 +1673,9 @@ class QuackStateServer:
                 # connection after listen starts is reported as Authentication
                 # failed rather than lock contention.
                 self._publish_identity_rows(connection, identity, capability)
+                # Last exclusive-writer window: quack_serve occupies this
+                # connection and later DML contends with auth callbacks.
+                self._unstall_stale_board_gates(connection)
                 public_obs = self.transport.start(
                     connection,
                     host=self.config.host,
