@@ -33,6 +33,7 @@ from ..merge.checkout_lock import (
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
+    board_scoped_checkout_mutation_lock_path,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lease_state,
@@ -42,6 +43,10 @@ from ..merge.checkout_lock import (
     release_checkout_mutation_lease,
     serialized_lock_update,
     update_checkout_mutation_lease,
+)
+from ..task_sources.board_control_plane import (
+    infer_board_namespace,
+    isolate_board_runtime,
 )
 from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
@@ -6591,6 +6596,28 @@ class PortalImplementationSupervisor:
             self._loaded_control_plane_source
         )
         self._last_control_plane_source_probe_monotonic = 0.0
+        todo_path = Path(config.todo_path)
+        self.board_namespace = infer_board_namespace(
+            merge_target_branch=config.merge_target_branch,
+            todo_path=todo_path,
+            state_prefix=config.state_prefix,
+        )
+        ingest_todo = todo_path.suffix.lower() in {".md", ".markdown"}
+        isolated = isolate_board_runtime(
+            repo_root=config.repo_root,
+            board_namespace=self.board_namespace,
+            merge_target_branch=config.merge_target_branch,
+            todo_path=todo_path,
+            state_prefix=config.state_prefix,
+            source_kind="" if ingest_todo else "duckdb",
+            ensure_branch=False,
+            ensure_worktree=False,
+            ingest_todo=ingest_todo,
+        )
+        self.board_control_plane_status = isolated
+        resolved_branch = str(isolated.get("implementation_branch") or "").strip()
+        if resolved_branch and not str(self.config.merge_target_branch or "").strip():
+            self.config.merge_target_branch = resolved_branch
 
     @staticmethod
     def _control_plane_source_snapshot() -> dict[str, Any]:
@@ -8865,7 +8892,15 @@ class PortalImplementationSupervisor:
         return result
 
     def _repo_merge_lock_path(self) -> Path:
-        return checkout_mutation_lock_path(self.config.repo_root)
+        namespace = getattr(self, "board_namespace", "") or infer_board_namespace(
+            merge_target_branch=self.config.merge_target_branch,
+            todo_path=self.config.todo_path,
+            state_prefix=self.config.state_prefix,
+        )
+        return board_scoped_checkout_mutation_lock_path(
+            self.config.repo_root,
+            namespace,
+        )
 
     def _todo_board_is_implementation_protected(self) -> bool:
         try:
@@ -15967,8 +16002,11 @@ class PortalImplementationSupervisor:
     def _objective_goals_for_finding_mapping(self) -> list[Any]:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        except Exception:
+            return []
 
         objective_path = self.config.objective_path or default_objective_path(
             self.config.repo_root

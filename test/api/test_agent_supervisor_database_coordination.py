@@ -1052,6 +1052,23 @@ def test_fair_claim_ready_selects_oldest_registered_task(tmp_path: Path) -> None
         coordinator.close()
 
 
+def test_claim_ready_respects_accept_task_cid_before_taking_scope(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:skip", task_id="SKIP")
+        coordinator.register_task(task_cid="task:keep", task_id="KEEP")
+        claim = coordinator.claim_ready_task(
+            owner_session_id="session:shard",
+            accept_task_cid=lambda cid: cid == "task:keep",
+        )
+        assert claim is not None
+        assert claim.task_cid == "task:keep"
+        skipped = coordinator.claimability("task:skip")
+        assert skipped["claimable"] is True
+    finally:
+        coordinator.close()
+
+
 def test_response_loss_idempotency_replays_same_claim(tmp_path: Path) -> None:
     coordinator, _clock = _open(tmp_path)
     try:

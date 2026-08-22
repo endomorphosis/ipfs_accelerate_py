@@ -2664,6 +2664,52 @@ def _docker_grok_command(
     return command
 
 
+def _create_grok_container_and_build_start_command(
+    create_command: Sequence[str],
+    *,
+    workspace: Path,
+    docker_environment: dict[str, str],
+    docker_lease: _DockerContainerLease,
+) -> list[str]:
+    """Create inert Grok container, then bind its exact ID to attached start."""
+
+    try:
+        created = subprocess.run(
+            list(create_command),
+            cwd=workspace,
+            env=docker_environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120.0,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Grok container creation timed out") from exc
+    if (
+        created.returncode != 0
+        or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Grok container could not be created")
+    created_fields = created.stdout.decode("ascii", errors="strict").split()
+    if (
+        len(created_fields) != 1
+        or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
+    ):
+        raise ValueError("Grok container identity is invalid")
+    return [
+        docker_lease.docker_bin,
+        f"--host={_DOCKER_LOCAL_HOST}",
+        "--config",
+        str(docker_lease.docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        created_fields[0],
+    ]
+
+
 def _run_created_grok_container_with_typed_failure_capture(
     create_command: Sequence[str],
     *,

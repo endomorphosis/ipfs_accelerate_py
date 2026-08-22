@@ -95,6 +95,10 @@ def _open_daemon(
     provider_fn: Callable[[DatabaseTaskAttempt], dict[str, object]] | None = None,
     lease_ms: int = 60_000,
     clock_ms: Callable[[], int] | None = None,
+    task_shard_count: int = 1,
+    task_shard_index: int = 0,
+    strict_task_sharding: bool = False,
+    task_prefix: str = "",
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
@@ -134,6 +138,10 @@ def _open_daemon(
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         clock_ms=clock_ms,
+        task_shard_count=task_shard_count,
+        task_shard_index=task_shard_index,
+        strict_task_sharding=strict_task_sharding,
+        task_prefix=task_prefix,
     )
 
 
@@ -193,6 +201,36 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         assert markdown.read_text(encoding="utf-8") == original_markdown
     finally:
         idle.close()
+
+
+def test_strict_shards_claim_only_home_lane_tasks(tmp_path: Path) -> None:
+    seed = _open_daemon(tmp_path, session="session:seed")
+    try:
+        seed.materialize_population(_population(8))
+    finally:
+        seed.close()
+
+    claimed: dict[int, str] = {}
+    for index in range(4):
+        daemon = _open_daemon(
+            tmp_path,
+            session=f"session:shard-{index}",
+            task_shard_count=4,
+            task_shard_index=index,
+            strict_task_sharding=True,
+            task_prefix="DQP-T",
+        )
+        try:
+            attempt = daemon.claim_next()
+            assert attempt is not None, f"shard {index} found no home-lane work"
+            alias = str(attempt.task_alias or "")
+            home = daemon._task_home_shard_index(alias)
+            assert home == index, f"{alias} home={home} claimed by shard {index}"
+            claimed[index] = alias
+        finally:
+            daemon.close()
+
+    assert len(set(claimed.values())) == 4
 
 
 def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> None:

@@ -1349,6 +1349,12 @@ def build_portal_implementation_daemon_from_args(
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
+            task_shard_count=int(getattr(parsed, "task_shard_count", 1) or 1),
+            task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
+            strict_task_sharding=bool(
+                getattr(parsed, "strict_task_sharding", False)
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,

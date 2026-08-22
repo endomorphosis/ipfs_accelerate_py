@@ -5615,11 +5615,13 @@ class DatabaseCoordinator:
         lease_ms: int | None = None,
         exclude_task_cids: Iterable[str] = (),
         now_ms: int | None = None,
+        accept_task_cid: Callable[[str], bool] | None = None,
     ) -> TaskClaim | None:
         """Fair-schedule: claim the oldest ready unclaimed task.
 
         Selection and acceptance share one transaction (LeaseCoordinator
-        ``claim_ready`` algorithm).
+        ``claim_ready`` algorithm).  ``accept_task_cid`` is evaluated before
+        the exclusive scope is taken so sharded lanes never steal off-home work.
         """
 
         owner = _text(owner_session_id, "owner_session_id")
@@ -5658,6 +5660,8 @@ class DatabaseCoordinator:
                     mapping = _row_mapping(task)
                     cid = str(_row_get(mapping, "task_cid", default=""))
                     if not cid or cid in excluded:
+                        continue
+                    if accept_task_cid is not None and not accept_task_cid(cid):
                         continue
                     scope_key = exclusive_scope_key(
                         lease_kind=LeaseKind.TASK, scope=cid, task_cid=cid

@@ -590,6 +590,12 @@ class DatabasePortalExecutionBridge:
                         or "backoff" in failure
                         or "capacity" in failure
                         or "resource_claim" in failure
+                        or failure
+                        in {
+                            "inflight_process",
+                            "inflight_process_missing",
+                            "worktree_lifecycle_claim_exists",
+                        }
                     ):
                         raise DatabasePortalBridgeDeferred(failure)
                     raise DatabasePortalBridgeError(failure)

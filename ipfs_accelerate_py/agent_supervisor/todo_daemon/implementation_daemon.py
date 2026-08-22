@@ -392,6 +392,18 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
         "lock_cleanup_failed",
     }
 )
+ABANDONED_MERGE_RECONCILE_REASONS = frozenset(
+    {
+        "stale_failed_merge_candidate",
+        "stale_quarantined_merge",
+        "operator_abandoned_stale_inventory_merge_after_capture_epoch",
+        "baseline_not_ancestor_of_target",
+        "main_checkout_dirty_conflict",
+        "main_checkout_dirty",
+        "dirty_worktree",
+    }
+)
+INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
@@ -50703,6 +50715,258 @@ class PortalImplementationDaemon:
 
         return self.state_path.parent.resolve()
 
+    def _reconciled_implementation_candidate_keys(self) -> set[tuple[str, str]]:
+        """Return ``(task_id, implementation_commit)`` pairs that are settled."""
+
+        keys: set[tuple[str, str]] = set()
+        for event in self._iter_events():
+            if str(event.get("type") or "") != "merge_reconciled":
+                continue
+            task_id = str(event.get("task_id") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if not task_id or not implementation_commit:
+                continue
+            if event.get("resolved"):
+                keys.add((task_id, implementation_commit))
+                continue
+            merge_result = event.get("merge_result") or {}
+            merge_reason = (
+                str(merge_result.get("reason") or "")
+                if isinstance(merge_result, dict)
+                else ""
+            )
+            reconcile_reason = str(event.get("reason") or "")
+            if (
+                merge_reason in ABANDONED_MERGE_RECONCILE_REASONS
+                or reconcile_reason in ABANDONED_MERGE_RECONCILE_REASONS
+            ):
+                keys.add((task_id, implementation_commit))
+        return keys
+
+    def _implementation_commit_was_reconciled(
+        self,
+        task_id: str,
+        implementation_commit: str,
+    ) -> bool:
+        task_id = str(task_id or "").strip()
+        implementation_commit = str(implementation_commit or "").strip()
+        if not task_id or not implementation_commit:
+            return False
+        return (
+            task_id,
+            implementation_commit,
+        ) in self._reconciled_implementation_candidate_keys()
+
+    def _latest_queued_implementation_was_reconciled(self, task_id: str) -> bool:
+        latest = self._latest_implementation_finished_by_task().get(str(task_id or ""))
+        if not isinstance(latest, dict):
+            return False
+        merge_result = latest.get("merge_result") or {}
+        if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+            return False
+        return self._implementation_commit_was_reconciled(
+            str(latest.get("task_id") or task_id),
+            str(latest.get("implementation_commit") or ""),
+        )
+
+    def _queued_merge_candidates(self) -> list[dict[str, Any]]:
+        """Return queued implementation_finished rows, last write wins per request."""
+
+        by_request: dict[str, dict[str, Any]] = {}
+        fallback: list[dict[str, Any]] = []
+        for event in self._iter_events():
+            if str(event.get("type") or "") != "implementation_finished":
+                continue
+            merge_result = event.get("merge_result") or {}
+            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            task_id = str(event.get("task_id") or "")
+            if not implementation_commit or not task_id:
+                continue
+            request_id = str(merge_result.get("request_id") or "")
+            payload = {
+                "task_id": task_id,
+                "attempt": int(event.get("attempt") or 0),
+                "branch": str(event.get("branch") or merge_result.get("branch") or ""),
+                "implementation_commit": implementation_commit,
+                "request_id": request_id,
+                "merge_result": merge_result,
+            }
+            if request_id:
+                by_request[request_id] = payload
+            else:
+                fallback.append(payload)
+        return [*by_request.values(), *fallback]
+
+    def _task_has_blocking_pending_merge(self, task: PortalTask) -> bool:
+        """True when the shared queue still owns a live, unresolved merge."""
+
+        has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
+        if not callable(has_pending):
+            return False
+        if not (
+            has_pending(self._canonical_ref(task))
+            or has_pending(task.task_id)
+        ):
+            return False
+        queued_commits = {
+            str(item.get("implementation_commit") or "")
+            for item in self._queued_merge_candidates()
+            if str(item.get("task_id") or "") == task.task_id
+            and str(item.get("implementation_commit") or "")
+        }
+        if not queued_commits:
+            latest = self._latest_implementation_finished_by_task().get(task.task_id) or {}
+            implementation_commit = str(latest.get("implementation_commit") or "")
+            if implementation_commit and self._implementation_commit_was_reconciled(
+                task.task_id,
+                implementation_commit,
+            ):
+                return False
+            return True
+        return any(
+            not self._implementation_commit_was_reconciled(task.task_id, commit)
+            for commit in queued_commits
+        )
+
+    def _cancel_reconciled_merge_request(
+        self,
+        request_id: str,
+        request_status: str,
+    ) -> bool:
+        if not request_id or request_status != "pending":
+            return False
+        cancel = getattr(self.merge_queue, "cancel", None)
+        if not callable(cancel):
+            return False
+        try:
+            cancel(request_id, reason="stale_quarantined_merge")
+        except Exception:
+            return False
+        return True
+
+    def _release_stale_quarantined_merges(self) -> list[dict[str, Any]]:
+        """Abandon queued merges that can no longer land on the current tip.
+
+        A quarantined or still-active inventory merge whose commit is off the
+        target first-parent history, or that fails the published artifact gate
+        after a recapture epoch, must not latch the source task as blocked.
+        Leftover pending rows for already-reconciled commits are cancelled so
+        they cannot keep ``has_pending_for_task`` true after a later failed
+        implementation.
+        """
+
+        if not hasattr(self.merge_queue, "get"):
+            return []
+        results: list[dict[str, Any]] = []
+        target_branch = self._main_branch_name()
+        for event in self._queued_merge_candidates():
+            task_id = str(event.get("task_id") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            merge_result = event.get("merge_result") or {}
+            request_id = str(event.get("request_id") or "")
+            request = self.merge_queue.get(request_id) if request_id else None
+            request_status = str(getattr(request, "status", "") or "")
+            failure_reason = str(getattr(request, "failure_reason", "") or "")
+            if self._implementation_commit_was_reconciled(
+                task_id,
+                implementation_commit,
+            ):
+                if self._cancel_reconciled_merge_request(request_id, request_status):
+                    results.append(
+                        {
+                            "task_id": task_id,
+                            "implementation_commit": implementation_commit,
+                            "request_id": request_id,
+                            "request_status": "cancelled",
+                            "resolved": True,
+                            "reason": "stale_quarantined_merge",
+                            "cancelled_reconciled_pending": True,
+                        }
+                    )
+                continue
+            if request_status not in {"quarantined", "pending", "processing"}:
+                continue
+            not_ancestor = not self._git_ref_is_ancestor(
+                implementation_commit,
+                target_branch,
+            )
+            inventory_task = task_id in INVENTORY_TASK_IDS
+            if request_status != "quarantined" and not inventory_task:
+                continue
+            # A published-gate miss on a commit that is already on the target
+            # first-parent is usually just the missing daemon status commit.
+            # Only abandon merges that cannot land (wrong branch / off-history).
+            if not (
+                not_ancestor
+                or failure_reason == "merge_branch_candidate_mismatch"
+            ):
+                continue
+            result = {
+                "task_id": task_id,
+                "attempt": int(event.get("attempt") or 0),
+                "branch": str(
+                    event.get("branch") or merge_result.get("branch") or ""
+                ),
+                "implementation_commit": implementation_commit,
+                "request_id": request_id,
+                "request_status": request_status,
+                "failure_reason": failure_reason,
+                "resolved": True,
+                "reason": "stale_quarantined_merge",
+                "merge_result": {
+                    "attempted": False,
+                    "merged": False,
+                    "queued": True,
+                    "request_id": request_id,
+                    "reason": "stale_quarantined_merge",
+                },
+            }
+            self._record_event("merge_reconciled", result)
+            results.append(result)
+        return results
+
+    def _inventory_task_passes_published_gate(self, task_id: str) -> bool:
+        """True when an inventory task still passes the published artifact gate."""
+
+        if task_id not in INVENTORY_TASK_IDS:
+            return True
+        try:
+            from scripts import validate_incremental_proof_sealer_board as ips_gate
+        except Exception:
+            return False
+        try:
+            result = ips_gate.validate_artifact(
+                task_id,
+                require_published=True,
+            )
+        except Exception:
+            return False
+        return isinstance(result, dict) and result.get("valid") is True
+
+    def _filter_inventory_merges_still_valid(
+        self,
+        task_ids: set[str],
+    ) -> set[str]:
+        """Drop inventory completions that no longer pass the published gate.
+
+        Fresh capture epochs can leave historical merge events pointing at
+        outputs that no longer bind current operator receipts. Those tasks must
+        not be force-recompleted after an operator reopen.
+        """
+
+        if not task_ids.intersection(INVENTORY_TASK_IDS):
+            return task_ids
+        kept: set[str] = set()
+        for task_id in task_ids:
+            if task_id not in INVENTORY_TASK_IDS:
+                kept.add(task_id)
+                continue
+            if self._inventory_task_passes_published_gate(task_id):
+                kept.add(task_id)
+        return kept
+
     def _reclaim_dead_same_lane_worktree_owners(self) -> dict[str, Any]:
         """Terminalize provably dead same-lane lifecycle claims every pass.
 
@@ -54471,6 +54735,11 @@ class PortalImplementationDaemon:
             return False
         if previous.last_merge_commit:
             return False
+        if self._implementation_commit_was_reconciled(
+            task.task_id,
+            previous.last_implementation_commit,
+        ):
+            return False
         return not self._git_ref_is_ancestor(previous.last_implementation_commit, self._main_branch_name())
 
     def _git_ref_is_ancestor(self, ancestor: str, descendant: str) -> bool:
@@ -58039,11 +58308,16 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if self._implementation_commit_was_reconciled(
+                task_id,
+                implementation_commit,
+            ):
+                continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id and hasattr(self.merge_queue, "get") else None
             if request is not None and str(getattr(request, "status", "")) == "quarantined":
                 continue
-            implementation_commit = str(event.get("implementation_commit") or "")
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 pending.add(task_id)
         return pending
@@ -58075,6 +58349,12 @@ class PortalImplementationDaemon:
                 continue
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            if self._implementation_commit_was_reconciled(
+                task_id,
+                implementation_commit,
+            ):
                 continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id else None
@@ -67223,7 +67503,7 @@ class DatabaseImplementationDaemon:
         events_path: Path | str | None = None,
         pid_path: Path | str | None = None,
         queue_path: Path | str | None = None,
-        lease_ms: int = 60_000,
+        lease_ms: int = 7_200_000,
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
@@ -67232,6 +67512,10 @@ class DatabaseImplementationDaemon:
         task_source: Any = None,
         coordinator: Any = None,
         install_schema: bool = True,
+        task_prefix: str = "",
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        strict_task_sharding: bool = False,
     ) -> None:
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
@@ -67299,6 +67583,16 @@ class DatabaseImplementationDaemon:
             self._store_target = self.execution_path
         self.authority_mode = normalized_authority_mode
         self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
+        self.task_prefix = re.sub(
+            r"^\s*#{1,6}\s*",
+            "",
+            str(task_prefix or ""),
+        ).strip()
+        self.task_shard_count = max(1, int(task_shard_count or 1))
+        self.task_shard_index = int(task_shard_index or 0)
+        if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
+            raise ValueError("task_shard_index must be in range [0, task_shard_count)")
+        self.strict_task_sharding = bool(strict_task_sharding)
         self.process_instance_id = _database_daemon_new_id("process")
         self.owner_session_id = str(
             owner_session_id
@@ -68239,10 +68533,31 @@ class DatabaseImplementationDaemon:
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
                 continue
+            alias = str(task.task_alias or task.task_cid)
+            if self.task_prefix and not alias.startswith(self.task_prefix):
+                continue
+            live_deps: list[str] = []
+            for dep in task.dependencies:
+                dep_cid = str(dep or "").strip()
+                if not dep_cid:
+                    continue
+                try:
+                    rec = self.task_source.get(dep_cid)
+                except Exception:
+                    rec = None
+                dep_status = str(getattr(rec, "status", "") or "").strip().lower()
+                if rec is not None and dep_status in {
+                    "completed",
+                    "complete",
+                    "done",
+                    "skipped",
+                }:
+                    continue
+                live_deps.append(dep_cid)
             self.coordinator.register_task(
                 task_cid=task.task_cid,
                 task_id=task.task_alias or task.task_cid,
-                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
+                dependency_task_cids=tuple(live_deps),
                 body={"task_alias": task.task_alias, "status": task.status},
             )
             registered.append(task.task_cid)
@@ -68292,11 +68607,33 @@ class DatabaseImplementationDaemon:
             if str(task_cid)
         }
         excluded.update(self._automatic_claim_exclusions())
+        if self.task_prefix:
+            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            excluded.update(
+                str(task.task_cid)
+                for task in ready.tasks
+                if not str(task.task_alias or "").startswith(self.task_prefix)
+            )
+        accept_task_cid = None
+        if self.strict_task_sharding and self.task_shard_count > 1:
+            def accept_task_cid(task_cid: str) -> bool:
+                record = self.task_source.get(task_cid)
+                return self._task_belongs_to_shard(
+                    self._shard_key_for_task(record, task_cid=task_cid)
+                )
+
+            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            excluded.update(
+                str(task.task_cid)
+                for task in ready.tasks
+                if not accept_task_cid(str(task.task_cid))
+            )
         claim = self.coordinator.claim_ready_task(
             owner_session_id=self.owner_session_id,
             lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
             exclude_task_cids=excluded,
             now_ms=self._now_ms(),
+            accept_task_cid=accept_task_cid,
         )
         if claim is None:
             return None
@@ -68304,7 +68641,7 @@ class DatabaseImplementationDaemon:
         task_alias = (
             str(task.task_alias)
             if task is not None and getattr(task, "task_alias", None)
-            else claim.task_cid
+            else str(claim.task_cid)
         )
         # Move durable task status through the database only (never Markdown).
         if task is not None and str(task.status).lower() in {
@@ -68443,7 +68780,52 @@ class DatabaseImplementationDaemon:
             """,
             [owner],
         ).fetchall()
-        return [self._attempt_from_row(row) for row in rows]
+        attempts = [self._attempt_from_row(row) for row in rows]
+        prefix = self.task_prefix
+        if prefix:
+            attempts = [
+                attempt
+                for attempt in attempts
+                if str(attempt.task_alias or "").startswith(prefix)
+                or f":{prefix}" in str(attempt.task_cid or "")
+            ]
+        if self.strict_task_sharding and self.task_shard_count > 1:
+            attempts = [
+                attempt
+                for attempt in attempts
+                if self._task_belongs_to_shard(
+                    self._shard_key_for_task(
+                        task_alias=str(attempt.task_alias or ""),
+                        task_cid=str(attempt.task_cid or ""),
+                    )
+                )
+            ]
+        return attempts
+
+    def _task_home_shard_index(self, task_id: str) -> int:
+        if self.task_shard_count <= 1:
+            return 0
+        digest = hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % self.task_shard_count
+
+    def _task_belongs_to_shard(self, task_id: str) -> bool:
+        return self._task_home_shard_index(task_id) == self.task_shard_index
+
+    def _shard_key_for_task(
+        self,
+        task: Any = None,
+        *,
+        task_cid: str = "",
+        task_alias: str = "",
+    ) -> str:
+        alias = str(
+            task_alias or getattr(task, "task_alias", "") or ""
+        ).strip()
+        cid = str(task_cid or getattr(task, "task_cid", "") or "").strip()
+        key = alias or cid
+        if ":" in key:
+            key = key.rsplit(":", 1)[-1]
+        return key
 
     def _attempt_from_row(self, row: Any) -> DatabaseTaskAttempt:
         finished = row[12]
@@ -68471,6 +68853,7 @@ class DatabaseImplementationDaemon:
         phase: str,
         *,
         body: Mapping[str, Any] | None = None,
+        require_live_claim: bool = True,
     ) -> DatabaseTaskAttempt:
         """Commit an attempt phase durably (crash boundary)."""
 
@@ -68536,10 +68919,11 @@ class DatabaseImplementationDaemon:
         elif phase_text == ATTEMPT_PHASE_BLOCKED:
             status = "blocked"
             finished_at = now
-        self._protect_attempt_write(
-            current,
-            allow_logically_completed=phase_text == ATTEMPT_PHASE_COMPLETE,
-        )
+        if require_live_claim:
+            self._protect_attempt_write(
+                current,
+                allow_logically_completed=phase_text == ATTEMPT_PHASE_COMPLETE,
+            )
         with self._lock:
             connection.execute("BEGIN TRANSACTION")
             try:
@@ -69320,12 +69704,44 @@ class DatabaseImplementationDaemon:
             )
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
+        prefix = self.task_prefix
         for attempt in self.list_running_attempts():
+            if prefix:
+                alias = str(attempt.task_alias or "")
+                cid = str(attempt.task_cid or "")
+                if not (alias.startswith(prefix) or f":{prefix}" in cid):
+                    continue
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             if claim is None:
-                raise DatabaseImplementationAuthorityError(
-                    f"running attempt {attempt.attempt_id} has no claim history"
+                logger.warning(
+                    "Dropping running attempt %s with no claim history",
+                    attempt.attempt_id,
                 )
+                try:
+                    self.commit_phase(
+                        attempt,
+                        ATTEMPT_PHASE_FAILED,
+                        body={"reason": "running_attempt_missing_claim_history"},
+                        require_live_claim=False,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Could not terminalize orphaned attempt %s: %s",
+                        attempt.attempt_id,
+                        exc,
+                    )
+                    continue
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "claim_id": attempt.claim_id,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "failed",
+                        "reason": "running_attempt_missing_claim_history",
+                        "retry_required": True,
+                    }
+                )
+                continue
             identity = claim.to_dict()
             expected_identity = {
                 "task_cid": attempt.task_cid,
@@ -69572,8 +69988,34 @@ class DatabaseImplementationDaemon:
         try:
             return self.resume_attempt(attempt)
         except Exception as exc:
-            from .database_portal_bridge import DatabasePortalBridgeError
+            from .database_portal_bridge import (
+                DatabasePortalBridgeDeferred,
+                DatabasePortalBridgeError,
+            )
 
+            if isinstance(exc, DatabasePortalBridgeDeferred):
+                # Grok/Codex is still in flight. Keep the exact running
+                # attempt so the next pass can accept the same projection
+                # instead of failing it and racing a replacement claim.
+                try:
+                    self._renew_attempt_lease(
+                        attempt
+                        if isinstance(attempt, DatabaseTaskAttempt)
+                        else self.get_attempt(
+                            str(getattr(attempt, "attempt_id", "") or attempt)
+                        )
+                        or attempt
+                    )
+                except Exception:
+                    pass
+                return {
+                    "resumed": True,
+                    "deferred": True,
+                    "reason": str(exc),
+                    "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+                    "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+                    "status": "running",
+                }
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
             failed = None
@@ -70382,6 +70824,7 @@ def main(argv: list[str] | None = None) -> None:
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(args.implement),
+            task_prefix=str(getattr(args, "task_prefix", "") or ""),
         )
         bind_database_portal_execution_from_args(
             daemon,
