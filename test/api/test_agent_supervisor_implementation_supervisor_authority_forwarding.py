@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DATABASE_PROGRAM_JSON_ENV,
+    RUNTIME_REGISTRY_PATH_ENV,
     STATE_AUTHORITY_MODE_ENV,
     STATE_FAILOVER_POLICY_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
     TASK_SOURCE_KIND_ENV,
     DatabaseProgramConfigError,
 )
@@ -152,9 +154,16 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
 
     child_env = supervisor_module._managed_daemon_child_environment(
         database_program=program,
+        repo_root=tmp_path,
     )
     assert child_env[STATE_AUTHORITY_MODE_ENV] == "quack"
     assert child_env[TASK_SOURCE_KIND_ENV] == "duckdb"
+    assert child_env[RUNTIME_REGISTRY_PATH_ENV] == str(
+        (tmp_path / "state" / "registry").resolve()
+    )
+    assert child_env[STATE_QUACK_MUTATION_DIR_ENV] == str(
+        (tmp_path / "state" / "registry" / "mutations").resolve()
+    )
     assert "QUACK_TOKEN" not in child_env
 
 

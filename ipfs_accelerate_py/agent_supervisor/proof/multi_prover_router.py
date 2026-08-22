@@ -65,6 +65,17 @@ PORTFOLIO_ATTEMPT_SCHEMA = (
 PORTFOLIO_RESULT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prover-portfolio-result@1"
 )
+AUTHORITY_LATTICE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/authority-lattice@1"
+)
+HAMMER_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hammer-trace@1"
+COUNTEREXAMPLE_TRACE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/counterexample-trace@1"
+)
+CHECKER_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/checker-trace@1"
+AUTHORITATIVE_DISPOSITION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/authoritative-disposition@1"
+)
 DEFAULT_PORTFOLIO_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_PARALLEL_PROVERS = 8
 DEFAULT_MAX_EVIDENCE_BYTES = 256 * 1024
@@ -2428,4 +2439,3 @@ def derive_authoritative_disposition(result: PortfolioResult) -> AuthoritativeDi
         checker_trace_ids=tuple(item.content_id for item in checkers),
         counterexample_trace_ids=tuple(item.content_id for item in counterexamples),
     )
-

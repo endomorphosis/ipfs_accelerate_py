@@ -60,12 +60,8 @@ DATABASE_TASK_SOURCE_SCHEMA: Final[str] = (
 DATABASE_TASK_SOURCE_SNAPSHOT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-task-source-snapshot@1"
 )
-DATABASE_TASK_PAGE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/database-task-page@1"
-)
-DATABASE_TASK_CAS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/database-task-cas@1"
-)
+DATABASE_TASK_PAGE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/database-task-page@1"
+DATABASE_TASK_CAS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/database-task-cas@1"
 
 DEFAULT_QUERY_LIMIT: Final[int] = DEFAULT_PAGE_LIMIT
 MAX_QUERY_LIMIT: Final[int] = MAX_PAGE_LIMIT
@@ -312,19 +308,13 @@ def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
         objective_id=str(row.get("objective_id") or ""),
         priority=str(row.get("priority") or ""),
         outputs=tuple(
-            MappingProxyType(dict(item))
-            for item in outputs
-            if isinstance(item, Mapping)
+            MappingProxyType(dict(item)) for item in outputs if isinstance(item, Mapping)
         ),
         acceptance=tuple(
-            MappingProxyType(dict(item))
-            for item in acceptance
-            if isinstance(item, Mapping)
+            MappingProxyType(dict(item)) for item in acceptance if isinstance(item, Mapping)
         ),
         validations=tuple(
-            MappingProxyType(dict(item))
-            for item in validations
-            if isinstance(item, Mapping)
+            MappingProxyType(dict(item)) for item in validations if isinstance(item, Mapping)
         ),
     )
 
@@ -360,9 +350,7 @@ class DatabaseTaskSource:
             self.database_path = Path(intent.database_path)
         else:
             if database_path is None:
-                raise ValueError(
-                    "DatabaseTaskSource requires database_path or intent"
-                )
+                raise ValueError("DatabaseTaskSource requires database_path or intent")
             if is_quack_transport_target(database_path):
                 store = quack_transport_uri(database_path)
                 self.database_path = store
@@ -431,12 +419,7 @@ class DatabaseTaskSource:
             or "tree:unknown"
         )
         self.repository_tree_id = tree_id
-        root = str(
-            plan_root_cid
-            or population.get("plan_root_cid")
-            or self.plan_root_cid
-            or ""
-        )
+        root = str(plan_root_cid or population.get("plan_root_cid") or self.plan_root_cid or "")
 
         objectives = population.get("objectives") or population.get("goals") or ()
         if isinstance(objectives, Mapping):
@@ -446,26 +429,15 @@ class DatabaseTaskSource:
         for index, item in enumerate(objectives):
             if not isinstance(item, Mapping):
                 continue
-            goal_cid = str(
-                item.get("goal_cid")
-                or item.get("goal_id")
-                or f"goal:cid:{index + 1}"
-            )
+            goal_cid = str(item.get("goal_cid") or item.get("goal_id") or f"goal:cid:{index + 1}")
             goal_alias = str(
-                item.get("goal_alias")
-                or item.get("goal_id")
-                or item.get("alias")
-                or goal_cid
+                item.get("goal_alias") or item.get("goal_id") or item.get("alias") or goal_cid
             )
-            objective_id = str(
-                item.get("objective_id") or item.get("owner_actor_id") or ""
-            )
+            objective_id = str(item.get("objective_id") or item.get("owner_actor_id") or "")
             if objective_id:
                 self._intent.upsert_objective(
                     objective_id=objective_id,
-                    objective_alias=str(
-                        item.get("objective_alias") or objective_id
-                    ),
+                    objective_alias=str(item.get("objective_alias") or objective_id),
                     title=str(item.get("title") or objective_id),
                     status=str(item.get("status") or "open"),
                     priority=str(item.get("priority") or "P2"),
@@ -562,9 +534,7 @@ class DatabaseTaskSource:
             self.plan_root_cid = plan_cids[0]
         else:
             # Synthetic plan head so snapshot identity is non-empty.
-            synthetic = content_identity(
-                {"repository_tree_id": tree_id, "goals": goal_cids}
-            )
+            synthetic = content_identity({"repository_tree_id": tree_id, "goals": goal_cids})
             self._intent.upsert_plan(
                 plan_cid=synthetic,
                 goal_cid=default_goal,
@@ -575,33 +545,18 @@ class DatabaseTaskSource:
             self.plan_root_cid = synthetic
             plan_cids.append(synthetic)
 
-        taskboard = (
-            population.get("taskboard")
-            or population.get("tasks")
-            or ()
-        )
+        taskboard = population.get("taskboard") or population.get("tasks") or ()
         if isinstance(taskboard, Mapping):
             taskboard = (taskboard,)
         task_cids: list[str] = []
         for index, item in enumerate(taskboard):
             if not isinstance(item, Mapping):
                 continue
-            task_cid = str(
-                item.get("task_cid")
-                or item.get("cid")
-                or f"task:cid:{index + 1}"
-            )
+            task_cid = str(item.get("task_cid") or item.get("cid") or f"task:cid:{index + 1}")
             task_alias = str(
-                item.get("task_id")
-                or item.get("task_alias")
-                or item.get("alias")
-                or task_cid
+                item.get("task_id") or item.get("task_alias") or item.get("alias") or task_cid
             )
-            goal_ref = str(
-                item.get("goal_cid")
-                or item.get("goal_id")
-                or default_goal
-            )
+            goal_ref = str(item.get("goal_cid") or item.get("goal_id") or default_goal)
             # Resolve aliases to the durable goal_cid before task insert.
             existing_goal = self._intent.get_goal(goal_ref)
             if existing_goal is not None:
@@ -629,28 +584,20 @@ class DatabaseTaskSource:
                 if not dep_text:
                     continue
                 prior = self._intent.get_task(dep_text)
-                resolved_deps.append(
-                    str(prior["task_cid"]) if prior is not None else dep_text
-                )
+                resolved_deps.append(str(prior["task_cid"]) if prior is not None else dep_text)
             outputs_raw = item.get("effects") or item.get("outputs") or ()
             outputs: list[Mapping[str, Any]] = []
             if isinstance(outputs_raw, Sequence):
                 for effect in outputs_raw:
                     if isinstance(effect, Mapping):
                         outputs.append(dict(effect))
-            acceptance_raw = (
-                item.get("acceptance_criteria")
-                or item.get("acceptance")
-                or ()
-            )
+            acceptance_raw = item.get("acceptance_criteria") or item.get("acceptance") or ()
             acceptance: list[Any] = []
             if isinstance(acceptance_raw, (str, Mapping)):
                 acceptance = [acceptance_raw]
             elif isinstance(acceptance_raw, Sequence):
                 acceptance = list(acceptance_raw)
-            validations_raw = item.get("validation_commands") or item.get(
-                "validations"
-            ) or ()
+            validations_raw = item.get("validation_commands") or item.get("validations") or ()
             validations: list[Any] = []
             if isinstance(validations_raw, str):
                 validations = [validations_raw]
@@ -1248,18 +1195,14 @@ class DatabaseTaskSource:
             or limit < 1
             or limit > MAX_QUERY_LIMIT
         ):
-            raise TaskSourceBoundsError(
-                f"limit must be in [1, {MAX_QUERY_LIMIT}]"
-            )
+            raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
         snap = self._intent.snapshot()
         revision = max(1, snap.event_watermark)
         offset = _cursor_decode(cursor, revision=revision) if cursor else 0
         # Intent repository max page is MAX_QUERY_LIMIT; requesting limit+1 at
         # the ceiling raises. Cap the probe and treat a full max page as more.
         fetch_limit = min(limit + 1, MAX_QUERY_LIMIT)
-        rows = self._intent.list_tasks(
-            status=status, limit=fetch_limit, offset=offset
-        )
+        rows = self._intent.list_tasks(status=status, limit=fetch_limit, offset=offset)
         if limit >= MAX_QUERY_LIMIT:
             has_more = len(rows) >= MAX_QUERY_LIMIT
             page_rows = rows[:limit]
@@ -1267,9 +1210,7 @@ class DatabaseTaskSource:
             has_more = len(rows) > limit
             page_rows = rows[:limit]
         tasks = tuple(_as_task_record(row) for row in page_rows)
-        next_cursor = (
-            _cursor_encode(revision, offset + len(tasks)) if has_more else ""
-        )
+        next_cursor = _cursor_encode(revision, offset + len(tasks)) if has_more else ""
         return TaskPage(tasks=tasks, revision=revision, next_cursor=next_cursor)
 
     def ready_tasks(
@@ -1284,9 +1225,7 @@ class DatabaseTaskSource:
             or limit < 1
             or limit > MAX_QUERY_LIMIT
         ):
-            raise TaskSourceBoundsError(
-                f"limit must be in [1, {MAX_QUERY_LIMIT}]"
-            )
+            raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
         # completed_ids / blocked_ids are advisory overlays for callers that
         # track ephemeral state outside the durable projection.
         completed = {str(item).strip() for item in completed_ids if str(item).strip()}
@@ -1321,6 +1260,22 @@ class DatabaseTaskSource:
 
     def get_goal(self, goal_cid: str) -> Mapping[str, Any] | None:
         return self._intent.get_goal(goal_cid)
+
+    def list_goal_edges(
+        self,
+        *,
+        limit: int = DEFAULT_QUERY_LIMIT,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return the bounded canonical goal-edge projection."""
+
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit < 1
+            or limit > MAX_QUERY_LIMIT
+        ):
+            raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
+        return self._intent.list_goal_edges(limit=limit)
 
     def get_plan(self, plan_cid: str) -> Mapping[str, Any] | None:
         return self._intent.get_plan(plan_cid)
@@ -1448,6 +1403,24 @@ class DatabaseTaskSource:
             )
         except IntentRepositoryUnknownOutcomeError as exc:
             raise TaskSourceUnknownOutcomeError(str(exc)) from exc
+
+    def current_evidence_for_task(
+        self,
+        task_cid: str,
+        *,
+        now_ms: int | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return bounded current evidence through the canonical repository."""
+
+        return self._intent.current_evidence_for_task(task_cid, now_ms=now_ms)
+
+    def qualification_authority_for_task(
+        self,
+        task_cid: str,
+    ) -> Mapping[str, Any]:
+        """Return bounded rows that authorize qualification evidence."""
+
+        return self._intent.qualification_authority_for_task(task_cid)
 
     def select_ready_tasks(self, *, limit: int = DEFAULT_QUERY_LIMIT) -> TaskPage:
         return self.ready_tasks(limit=limit)

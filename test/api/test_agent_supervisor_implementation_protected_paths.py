@@ -2015,14 +2015,16 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     queue_outcomes: list[int] = []
     diagnostics: list[str] = []
     verification_deferred = False
+    provider_inheritance: list[bool] = []
+
+    def provider_runner(*_args, **kwargs):
+        provider_inheritance.append(bool(kwargs["inherit_environment"]))
+        return subprocess.CompletedProcess(["fake-agent"], 0)
 
     monkeypatch.setattr(
         implementation_daemon_module,
         "run_process_group_stream",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            ["fake-agent"],
-            0,
-        ),
+        provider_runner,
     )
 
     def defer_verification(**_kwargs):
@@ -2130,6 +2132,7 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         state_dir=str(daemon.state_path.parent),
     )
     assert retry_lifecycle.state.value == "preparing"
+    assert provider_inheritance == [False]
     assert queue_outcomes == []
     assert diagnostics == []
     assert state.implementation_attempts == {task.task_id: 2}

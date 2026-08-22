@@ -1,0 +1,12 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.benchmark-policy@1",
+  "policy_id": "pcar-benchmark-policy-v1",
+  "network": "deny",
+  "external_writes": "deny",
+  "sibling_writes": "deny",
+  "production_effects": "deny",
+  "required_evidence": "same_or_stronger",
+  "required_safety": "same_or_stronger",
+  "validation_omission": "reject",
+  "simulation_as_live": "reject"
+}

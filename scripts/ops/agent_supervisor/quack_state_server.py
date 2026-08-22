@@ -92,6 +92,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for status, stop control, and secret-handle token files",
     )
     parser.add_argument(
+        "--repository-root",
+        default=str(_repo_root()),
+        help=(
+            "Absolute repository root used once to seal relative database and "
+            "state paths"
+        ),
+    )
+    parser.add_argument(
         "--host",
         default="127.0.0.1",
         help="Bind host (loopback by default; non-loopback needs reviewed policy)",
@@ -187,7 +195,26 @@ def _require_paths(args: argparse.Namespace) -> tuple[Path, Path]:
         raise SystemExit("--database is required")
     if not args.state_dir:
         raise SystemExit("--state-dir is required")
-    return Path(args.database), Path(args.state_dir)
+    root = Path(args.repository_root).expanduser()
+    if not root.is_absolute():
+        raise SystemExit("--repository-root must be absolute")
+    root = root.resolve()
+
+    def _sealed(value: str, *, name: str) -> Path:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        sealed = candidate.resolve()
+        try:
+            sealed.relative_to(root)
+        except ValueError as exc:
+            raise SystemExit(f"--{name} escapes --repository-root") from exc
+        return sealed
+
+    return (
+        _sealed(str(args.database), name="database"),
+        _sealed(str(args.state_dir), name="state-dir"),
+    )
 
 
 def _build_server(args: argparse.Namespace) -> Any:
@@ -201,6 +228,7 @@ def _build_server(args: argparse.Namespace) -> Any:
     return build_server(
         database_path=database,
         state_dir=state_dir,
+        repository_root=Path(args.repository_root),
         host=str(args.host),
         port=int(args.port),
         container_bind_host=str(args.container_bind_host or ""),
@@ -243,7 +271,7 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
             # The exclusive owner is also the sole executor for authenticated,
             # closed mutation bundles.  Keep each pass bounded so stop and
             # readiness control remain responsive.
-            server.service_mutation_inbox(max_requests=32)
+            server.process_mutation_inbox(max_requests=32)
             time.sleep(0.25)
         return server.stop()
     finally:

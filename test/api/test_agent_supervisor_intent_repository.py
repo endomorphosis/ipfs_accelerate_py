@@ -14,9 +14,14 @@ readiness, queue retry, goal reopen, current evidence.
 from __future__ import annotations
 
 import json
+import threading
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import (
@@ -38,6 +43,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceBoundsError,
     TaskSourceCompletionError,
     TaskSourceConflictError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     INTENT_COMPLETION_PROJECTION_SCHEMA,
@@ -196,6 +204,16 @@ def test_objectives_goals_plans_tasks_retain_canonical_ids(tmp_path: Path) -> No
         # Alias lookup preserves the durable CID.
         by_task_alias = repo.get_task("DQP-012-A")
         assert by_task_alias is not None
+
+        assert tuple(dict(item) for item in repo.list_goal_edges()) == (
+            {
+                "parent_goal_cid": "goal:cid:root",
+                "child_goal_cid": "goal:cid:child",
+                "edge_kind": "depends_on",
+            },
+        )
+        with pytest.raises(IntentRepositoryBoundsError):
+            repo.list_goal_edges(limit=MAX_QUERY_LIMIT + 1)
         assert by_task_alias["task_cid"] == "task:cid:001"
         assert by_task_alias["dependencies"] == ()
         assert len(by_task_alias["acceptance"]) == 1
@@ -489,6 +507,131 @@ def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:
             )
 
 
+def test_quack_concurrent_task_status_cas_has_one_winner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Quack CAS loser cannot append a duplicate revision or domain event."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        build_server,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
+        QuackCapabilityStatus,
+        probe_quack_capabilities,
+    )
+
+    capability = probe_quack_capabilities(allow_network_install=False)
+    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
+
+    database_path = tmp_path / "control.duckdb"
+    with open_intent_repository(database_path, owner_id="owner:seed") as seed:
+        ids = _seed_graph(seed)
+        baseline_watermark = seed.event_watermark()
+
+    server = build_server(
+        database_path=database_path,
+        state_dir=tmp_path / "quack-owner",
+        port=0,
+        store_id="intent-cas-race",
+        secret_handle="handle:intent-cas-race",
+    )
+    identity = server.start()
+    assert server._vault is not None  # noqa: SLF001 - exact owner test boundary
+    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        str(server.mutation_inbox_path()),
+    )
+
+    stop = threading.Event()
+    pump_errors: list[BaseException] = []
+
+    def pump() -> None:
+        try:
+            while not stop.wait(0.002):
+                server.process_mutation_inbox()
+        except BaseException as exc:  # pragma: no cover - asserted below
+            pump_errors.append(exc)
+
+    pump_thread = threading.Thread(target=pump, daemon=True)
+    pump_thread.start()
+    # Client write transactions take an exclusive mutation lock, so a SELECT
+    # barrier would deadlock. One winner is still required under concurrency.
+    repositories = tuple(
+        IntentRepository(
+            identity.listen_uri,
+            owner_id=f"owner:race:{ordinal}",
+            install_schema=False,
+        )
+        for ordinal in range(2)
+    )
+
+    def change_status(ordinal: int, status: str) -> tuple[str, str]:
+        try:
+            receipt = repositories[ordinal].cas_task_status(
+                task_cid=ids["task_a"],
+                expected_revision=1,
+                new_status=status,
+            )
+        except IntentRepositoryConflictError:
+            return "conflict", status
+        return "success", str(receipt.details["status"])
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = (
+                executor.submit(change_status, 0, "in_progress"),
+                executor.submit(change_status, 1, "blocked"),
+            )
+            outcomes = tuple(future.result(timeout=20.0) for future in futures)
+        assert sorted(outcome for outcome, _status in outcomes) == [
+            "conflict",
+            "success",
+        ]
+        assert pump_thread.is_alive()
+        assert not pump_errors
+        winning_status = next(status for outcome, status in outcomes if outcome == "success")
+    finally:
+        for repository in repositories:
+            repository.close()
+        stop.set()
+        pump_thread.join(timeout=2.0)
+        server.stop()
+
+    assert not pump_thread.is_alive()
+    assert not pump_errors
+    with open_intent_repository(database_path, owner_id="owner:verify") as verify:
+        task = verify.get_task(ids["task_a"])
+        assert task is not None
+        assert task["revision"] == 2
+        assert task["status"] == winning_status
+        events = verify.list_events(after_global_sequence=baseline_watermark)
+        assert len(events) == 1
+        assert events[0]["event_type"] == IntentEventType.TASK_STATUS_CHANGED.value
+        assert events[0]["task_cid"] == ids["task_a"]
+
+    connection = open_duckdb_connection(database_path)
+    try:
+        revisions = connection.execute(
+            """
+            SELECT revision, status FROM task_revisions
+            WHERE task_cid = ? ORDER BY revision
+            """,
+            [ids["task_a"]],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [(int(row[0]), str(row[1])) for row in revisions] == [
+        (1, "ready"),
+        (2, winning_status),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Completion evidence gate
 # ---------------------------------------------------------------------------
@@ -751,13 +894,9 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         assert before.event_watermark > 0
 
         events = repo.list_events(limit=1000)
+        assert any(item["event_type"] == IntentEventType.TASK_UPSERTED.value for item in events)
         assert any(
-            item["event_type"] == IntentEventType.TASK_UPSERTED.value
-            for item in events
-        )
-        assert any(
-            item["event_type"] == IntentEventType.COMPLETION_RECORDED.value
-            for item in events
+            item["event_type"] == IntentEventType.COMPLETION_RECORDED.value for item in events
         )
 
         after = repo.rebuild_projections_from_events()
@@ -879,11 +1018,15 @@ def test_database_task_source_public_api_and_completion_gate(tmp_path: Path) -> 
                             }
                         ],
                         "validation_commands": [
-                            "python -m pytest -q test/api/test_agent_supervisor_intent_repository.py"
+                            "python -m pytest -q "
+                            "test/api/test_agent_supervisor_intent_repository.py"
                         ],
                         "effects": [
                             {
-                                "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+                                "path": (
+                                    "ipfs_accelerate_py/agent_supervisor/"
+                                    "task_sources/intent_repository.py"
+                                ),
                                 "effect": "create",
                             }
                         ],
@@ -1070,6 +1213,57 @@ def test_reopened_source_refuses_ambiguous_task_bound_plan_roots(
         repository_tree_id="tree:ambiguous",
     ) as reopened:
         assert reopened.snapshot().plan_root_cid == ""
+
+
+def test_database_task_source_forwards_sorted_bounded_goal_edges(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "goal-edges.duckdb") as source:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:goal-edges",
+                "objectives": [
+                    {"goal_cid": "goal:root", "goal_id": "G0", "title": "Root"},
+                    {"goal_cid": "goal:a", "goal_id": "GA", "title": "A"},
+                    {"goal_cid": "goal:b", "goal_id": "GB", "title": "B"},
+                ],
+                "goal_edges": [
+                    {
+                        "parent_goal_cid": "goal:a",
+                        "child_goal_cid": "goal:b",
+                        "edge_kind": "goal_dependency",
+                    },
+                    {
+                        "parent_goal_cid": "goal:root",
+                        "child_goal_cid": "goal:a",
+                        "edge_kind": "goal_parent",
+                    },
+                ],
+                "taskboard": [
+                    {
+                        "task_cid": "task:goal-edges",
+                        "task_id": "T-GOAL-EDGES",
+                        "goal_cid": "goal:a",
+                        "acceptance_criteria": ["goal graph is exact"],
+                    }
+                ],
+            }
+        )
+
+        assert tuple(dict(item) for item in source.list_goal_edges()) == (
+            {
+                "parent_goal_cid": "goal:a",
+                "child_goal_cid": "goal:b",
+                "edge_kind": "goal_dependency",
+            },
+            {
+                "parent_goal_cid": "goal:root",
+                "child_goal_cid": "goal:a",
+                "edge_kind": "goal_parent",
+            },
+        )
+        with pytest.raises(TaskSourceBoundsError):
+            source.list_goal_edges(limit=MAX_QUERY_LIMIT + 1)
 
 
 def test_database_task_source_stale_cursor_and_cas_conflict(tmp_path: Path) -> None:

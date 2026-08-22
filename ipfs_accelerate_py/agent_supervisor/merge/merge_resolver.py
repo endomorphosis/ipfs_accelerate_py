@@ -1291,6 +1291,10 @@ def invoke_llm_resolver(
             ]
         )
     timeout = resolver_timeout_seconds(timeout_seconds)
+    # Import locally because the reusable runner imports merge checkout-lock
+    # helpers; a module-level dependency would make import order authoritative.
+    from ..runtime.multi_supervisor_runner import provider_subprocess_environment
+
     process = subprocess.Popen(
         command,
         cwd=payload.get("repo_root") or None,
@@ -1298,6 +1302,7 @@ def invoke_llm_resolver(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=provider_subprocess_environment(os.environ),
         start_new_session=True,
     )
     try:

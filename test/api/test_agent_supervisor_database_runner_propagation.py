@@ -12,7 +12,9 @@ local DuckDB or file authority; provider subprocess lacks state credentials.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,8 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     STATE_AUTHORITY_MODE_ENV,
     STATE_CREDENTIAL_ENV_NAMES,
     STATE_ENDPOINT_SECRET_HANDLE_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
+    RUNTIME_REGISTRY_PATH_ENV,
     TASK_SOURCE_KIND_ENV,
     expand_database_implementation_track_lanes,
     parse_database_program_config,
@@ -130,6 +134,51 @@ def test_quack_authority_rejects_silent_local_failover() -> None:
     program.assert_quack_not_demoted(candidate_mode=AUTHORITY_MODE_QUACK)
 
 
+def test_quack_environment_binds_absolute_repo_scoped_mutation_inbox(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    program = _quack_program(
+        store_id="state/control.duckdb",
+        runtime_registry_path="state/registry",
+    )
+    environment = program.environment(repository_root=repo)
+    registry = (repo / "state" / "registry").resolve()
+    assert environment[RUNTIME_REGISTRY_PATH_ENV] == str(registry)
+    assert environment[STATE_QUACK_MUTATION_DIR_ENV] == str(
+        registry / "mutations"
+    )
+    assert environment[STATE_QUACK_MUTATION_DIR_ENV] != str(
+        (elsewhere / "state" / "quack-owner" / "mutations").resolve()
+    )
+
+    with pytest.raises(DatabaseProgramConfigError, match="runtime_registry_path"):
+        _quack_program(runtime_registry_path="").environment(
+            repository_root=repo
+        )
+    with pytest.raises(DatabaseProgramConfigError, match="repository root"):
+        program.environment()
+    with pytest.raises(DatabaseProgramConfigError, match="absolute repository root"):
+        program.environment(repository_root=Path("relative-repository"))
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / "escaped-registry").symlink_to(
+        outside,
+        target_is_directory=True,
+    )
+    with pytest.raises(DatabaseProgramConfigError, match="escapes"):
+        _quack_program(
+            runtime_registry_path="escaped-registry"
+        ).environment(repository_root=repo)
+
+
 def test_argv_and_env_redaction_keeps_handles_not_tokens() -> None:
     program = _quack_program()
     argv = program.cli_args() + ["--state-token", "raw-token-bytes"]
@@ -143,6 +192,8 @@ def test_argv_and_env_redaction_keeps_handles_not_tokens() -> None:
         "PATH": "/usr/bin",
         STATE_ENDPOINT_SECRET_HANDLE_ENV: "env://QUACK_TOKEN",
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "also-secret",
+        STATE_QUACK_MUTATION_DIR_ENV: "/private/quack-owner/mutations",
+        RUNTIME_REGISTRY_PATH_ENV: "/private/runtime-registry",
     }
     cleaned = scrub_state_credentials_from_environment(
         env,
@@ -150,6 +201,8 @@ def test_argv_and_env_redaction_keeps_handles_not_tokens() -> None:
     )
     assert "QUACK_TOKEN" not in cleaned
     assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in cleaned
+    assert STATE_QUACK_MUTATION_DIR_ENV not in cleaned
+    assert RUNTIME_REGISTRY_PATH_ENV not in cleaned
     assert cleaned["PATH"] == "/usr/bin"
     assert cleaned[STATE_ENDPOINT_SECRET_HANDLE_ENV] == "env://QUACK_TOKEN"
     for name in STATE_CREDENTIAL_ENV_NAMES:
@@ -164,6 +217,8 @@ def test_provider_subprocess_lacks_state_credentials() -> None:
         STATE_AUTHORITY_MODE_ENV: "quack",
         TASK_SOURCE_KIND_ENV: "duckdb",
         DATABASE_PROGRAM_JSON_ENV: json.dumps(program.to_dict()),
+        STATE_QUACK_MUTATION_DIR_ENV: "/private/quack-owner/mutations",
+        RUNTIME_REGISTRY_PATH_ENV: "/private/runtime-registry",
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
     }
     provider_env = provider_subprocess_environment(
@@ -174,6 +229,8 @@ def test_provider_subprocess_lacks_state_credentials() -> None:
     assert STATE_AUTHORITY_MODE_ENV not in provider_env
     assert TASK_SOURCE_KIND_ENV not in provider_env
     assert DATABASE_PROGRAM_JSON_ENV not in provider_env
+    assert STATE_QUACK_MUTATION_DIR_ENV not in provider_env
+    assert RUNTIME_REGISTRY_PATH_ENV not in provider_env
     assert provider_env["IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"] == (
         "grok_cli"
     )
@@ -237,10 +294,14 @@ def test_supervisor_propagates_program_to_daemon_command_and_child_env(
 
     child_env = supervisor_module._managed_daemon_child_environment(
         database_program=program,
+        repo_root=tmp_path,
     )
     assert child_env[STATE_AUTHORITY_MODE_ENV] == "quack"
     assert child_env[TASK_SOURCE_KIND_ENV] == "duckdb"
     assert child_env[STATE_ENDPOINT_SECRET_HANDLE_ENV] == "env://QUACK_TOKEN"
+    expected_inbox = (tmp_path / "state" / "registry" / "mutations").resolve()
+    assert child_env[RUNTIME_REGISTRY_PATH_ENV] == str(expected_inbox.parent)
+    assert child_env[STATE_QUACK_MUTATION_DIR_ENV] == str(expected_inbox)
     assert DATABASE_PROGRAM_JSON_ENV in child_env
     restored = DatabaseProgramConfig.from_mapping(
         json.loads(child_env[DATABASE_PROGRAM_JSON_ENV])
@@ -251,11 +312,75 @@ def test_supervisor_propagates_program_to_daemon_command_and_child_env(
         {
             "QUACK_TOKEN": "raw-token-bytes",
             "PATH": "/usr/bin",
-            **program.environment(),
+            **program.environment(repository_root=tmp_path),
         }
     )
     assert "QUACK_TOKEN" not in provider_env
     assert STATE_AUTHORITY_MODE_ENV not in provider_env
+    assert RUNTIME_REGISTRY_PATH_ENV not in provider_env
+    assert STATE_QUACK_MUTATION_DIR_ENV not in provider_env
+
+
+def test_supervisor_loop_binds_trusted_source_root_for_safe_path_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = Path(supervisor_module.__file__).resolve().parents[3]
+    hostile_root = tmp_path / "hostile"
+    hostile_package = hostile_root / "ipfs_accelerate_py"
+    hostile_package.mkdir(parents=True)
+    (hostile_package / "__init__.py").write_text(
+        "raise RuntimeError('ambient shadow package imported')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(hostile_root))
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    todo = tmp_path / "tasks.md"
+    todo.write_text("# Tasks\n", encoding="utf-8")
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            implement=True,
+            database_program=_quack_program(worktree_root=""),
+            repo_root=repo_root,
+        )
+    )
+
+    loop_config = supervisor.build_supervisor_loop_config()
+    assert loop_config.child_env == loop_config.spec.launch_env
+    pythonpath = loop_config.child_env["PYTHONPATH"].split(os.pathsep)
+    assert pythonpath[0] == str(repo_root)
+    assert pythonpath.index(str(hostile_root)) > 0
+    assert loop_config.command[1] == "-P"
+    assert loop_config.child_env[STATE_QUACK_MUTATION_DIR_ENV] == str(
+        (repo_root / "state" / "registry" / "mutations").resolve()
+    )
+
+    probe = subprocess.run(
+        [
+            loop_config.command[0],
+            loop_config.command[1],
+            "-c",
+            (
+                "from pathlib import Path; import ipfs_accelerate_py; "
+                "print(Path(ipfs_accelerate_py.__file__).resolve().parents[1])"
+            ),
+        ],
+        cwd=tmp_path,
+        env={**os.environ, **loop_config.child_env},
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.strip() == str(repo_root)
 
 
 def test_supervisor_cli_round_trip_from_namespace(
@@ -506,6 +631,15 @@ def test_configured_board_propagates_database_program(
     assert plan["environment"][TASK_SOURCE_KIND_ENV] == "duckdb"
     assert plan["environment"][STATE_ENDPOINT_SECRET_HANDLE_ENV] == (
         "env://QUACK_TOKEN"
+    )
+    expected_mutation_inbox = (
+        repo / "data" / "configured-board" / "registry" / "mutations"
+    ).resolve()
+    assert plan["environment"][RUNTIME_REGISTRY_PATH_ENV] == str(
+        expected_mutation_inbox.parent
+    )
+    assert plan["environment"][STATE_QUACK_MUTATION_DIR_ENV] == str(
+        expected_mutation_inbox
     )
     # Raw credentials never enter the launch environment.
     assert "QUACK_TOKEN" not in plan["environment"]

@@ -30,6 +30,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.compositional_verification_v
     VerticalSliceError,
     run_compositional_verification_vertical_slice,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.lgcvf_task_class_coverage import (  # noqa: E402
+    run_task_class_coverage_extension,
+)
 
 REPORT_SCHEMA: Final[str] = "lgcvf-symbolic-displacement-benchmark@1"
 REPORT_INTERFACE: Final[str] = "LgcvfSymbolicDisplacementBenchmark@1"
@@ -40,6 +43,27 @@ DEFAULT_OUTPUT: Final[Path] = (
     / "agent_supervisor"
     / "logic_governed_compositional_verification_fabric"
     / "benchmark_result.json"
+)
+TASK_CLASS_COVERAGE_OUTPUT: Final[Path] = (
+    _REPOSITORY_ROOT
+    / "data"
+    / "agent_supervisor"
+    / "logic_governed_compositional_verification_fabric"
+    / "task_class_coverage_extension.json"
+)
+MODEL_CALL_DISPLACEMENT_OUTPUT: Final[Path] = (
+    _REPOSITORY_ROOT
+    / "data"
+    / "agent_supervisor"
+    / "logic_governed_compositional_verification_fabric"
+    / "model_call_displacement.json"
+)
+CONTEXT_REDUCTION_OUTPUT: Final[Path] = (
+    _REPOSITORY_ROOT
+    / "data"
+    / "agent_supervisor"
+    / "logic_governed_compositional_verification_fabric"
+    / "context_reduction_measurement.json"
 )
 QUALIFICATION_OUTPUT: Final[Path] = (
     _REPOSITORY_ROOT
@@ -128,7 +152,11 @@ def _threshold(
     }
 
 
-def _build_thresholds(paired: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _build_thresholds(
+    paired: Mapping[str, Any],
+    *,
+    observed_classes: Sequence[str] = OBSERVED_TASK_CLASSES,
+) -> list[dict[str, Any]]:
     comparison = paired["comparison"]
     challenger = paired["challenger"]
     return [
@@ -181,7 +209,7 @@ def _build_thresholds(paired: Mapping[str, Any]) -> list[dict[str, Any]]:
         _threshold(
             threshold_id="representative_task_class_coverage",
             target=len(REQUIRED_TASK_CLASSES),
-            observed=len(OBSERVED_TASK_CLASSES),
+            observed=len(tuple(observed_classes)),
             comparison="at_least",
         ),
     ]
@@ -225,14 +253,23 @@ def _reproducible_projection(report: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_report(vertical_result: Mapping[str, Any]) -> dict[str, Any]:
+def build_report(
+    vertical_result: Mapping[str, Any],
+    *,
+    observed_classes: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Project independently checked public-route output into a paired report."""
 
     paired = vertical_result.get("benchmark")
     if not isinstance(paired, Mapping):
         raise BenchmarkSchemaError("vertical result has no paired benchmark mapping")
-    thresholds = _build_thresholds(paired)
-    missing = sorted(set(REQUIRED_TASK_CLASSES) - set(OBSERVED_TASK_CLASSES))
+    observed = (
+        tuple(observed_classes)
+        if observed_classes is not None
+        else OBSERVED_TASK_CLASSES
+    )
+    thresholds = _build_thresholds(paired, observed_classes=observed)
+    missing = sorted(set(REQUIRED_TASK_CLASSES) - set(observed))
     artifact = vertical_result.get("proof_carrying_artifact")
     artifact_verification = vertical_result.get("artifact_verification")
     fixture = vertical_result.get("fixture")
@@ -274,7 +311,7 @@ def build_report(vertical_result: Mapping[str, Any]) -> dict[str, Any]:
         },
         "task_class_coverage": {
             "required": list(REQUIRED_TASK_CLASSES),
-            "observed": list(OBSERVED_TASK_CLASSES),
+            "observed": list(observed),
             "missing": missing,
         },
         "paired_result": dict(paired),
@@ -409,11 +446,85 @@ def run_benchmark(
     *,
     fixture_root: Path | None = None,
     runner: VerticalRunner = run_compositional_verification_vertical_slice,
+    persist_successors: bool = False,
 ) -> dict[str, Any]:
     """Execute the existing public route and build its benchmark projection."""
 
     result = runner(fixture_root=fixture_root)
-    return build_report(result)
+    if runner is run_compositional_verification_vertical_slice:
+        coverage = run_task_class_coverage_extension(fixture_root=fixture_root)
+        observed = tuple(coverage["observed"])
+    else:
+        coverage = {
+            "schema": "lgcvf-task-class-coverage-extension@1",
+            "observed": list(OBSERVED_TASK_CLASSES),
+            "missing": sorted(set(REQUIRED_TASK_CLASSES) - set(OBSERVED_TASK_CLASSES)),
+        }
+        observed = OBSERVED_TASK_CLASSES
+    report = build_report(result, observed_classes=observed)
+    if persist_successors:
+        _write_successor_measurements(report, coverage)
+    return report
+
+
+def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _write_successor_measurements(
+    report: Mapping[str, Any],
+    coverage: Mapping[str, Any],
+) -> None:
+    """Persist S003-S005 measurements without claiming 121/123 authority."""
+
+    _write_json(TASK_CLASS_COVERAGE_OUTPUT, coverage)
+    paired = report.get("paired_result")
+    comparison = paired.get("comparison") if isinstance(paired, Mapping) else {}
+    challenger = paired.get("challenger") if isinstance(paired, Mapping) else {}
+    baseline = paired.get("baseline") if isinstance(paired, Mapping) else {}
+    thresholds = {
+        item.get("threshold_id"): item
+        for item in report.get("thresholds") or ()
+        if isinstance(item, Mapping)
+    }
+    model_calls = int(challenger.get("model_calls") or 0) + int(
+        baseline.get("model_calls") or 0
+    )
+    model_payload = {
+        "schema": "lgcvf-model-call-displacement@1",
+        "cohort": "hermetic_local_execution",
+        "production_authoritative": False,
+        "release_qualified": False,
+        "production_authorized": False,
+        "baseline_model_calls": baseline.get("model_calls"),
+        "challenger_model_calls": challenger.get("model_calls"),
+        "threshold": thresholds.get("warm_cache_model_call_reduction_bps"),
+        "evaluated": model_calls > 0,
+        "limitations": [
+            "both paired routes remain zero-model in this hermetic fixture",
+            "live local/remote model displacement is outside this measurement",
+        ],
+    }
+    model_payload["report_cid"] = content_identity(model_payload)
+    _write_json(MODEL_CALL_DISPLACEMENT_OUTPUT, model_payload)
+    context_payload = {
+        "schema": "lgcvf-context-reduction-measurement@1",
+        "cohort": "hermetic_local_execution",
+        "production_authoritative": False,
+        "release_qualified": False,
+        "production_authorized": False,
+        "baseline_context_tokens": baseline.get("context_tokens"),
+        "challenger_context_tokens": challenger.get("context_tokens"),
+        "context_reduction_bps": comparison.get("context_reduction_bps"),
+        "threshold": thresholds.get("median_context_reduction_bps"),
+        "limitations": [
+            "measurement is the single hermetic fixture paired projection",
+            "a typed miss remains visible and is valid successor output",
+        ],
+    }
+    context_payload["report_cid"] = content_identity(context_payload)
+    _write_json(CONTEXT_REDUCTION_OUTPUT, context_payload)
 
 
 def write_report_atomic(report: Mapping[str, Any], destination: Path) -> Path:
@@ -630,7 +741,12 @@ def main(
         if arguments.check:
             qualification_gate()
         existing = _load_checked_report(arguments.output) if arguments.check else None
-        report = run_benchmark(fixture_root=arguments.fixture_root, runner=runner)
+        report = run_benchmark(
+            fixture_root=arguments.fixture_root,
+            runner=runner,
+            persist_successors=not arguments.check
+            and runner is run_compositional_verification_vertical_slice,
+        )
         if existing is not None and _reproducible_projection(existing) != _reproducible_projection(
             report
         ):

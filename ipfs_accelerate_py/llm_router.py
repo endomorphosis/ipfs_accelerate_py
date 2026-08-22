@@ -3621,6 +3621,9 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
+    found = find_grok_cli()
+    if found:
+        return found
     return (
         _coalesce_env(
             "ipfs_accelerate_py_GROK_CLI_CMD",

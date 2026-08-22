@@ -13,9 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from ipfs_accelerate_py import llm_router
-from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
-from ipfs_accelerate_py.agent_supervisor.entrypoints import provider_attempt_store
+from ipfs_accelerate_py.agent_supervisor.control import provider_attempt_store
 from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as merge_resolver_fallback,
 )
@@ -28,6 +26,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoImplementationDaemon,
 )
+
+from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
 
 _NATIVE_SESSION_ID = "00000000-0000-4000-8000-000000000001"
 _SPENDING_LIMIT_MESSAGE = (
@@ -176,6 +177,7 @@ def _install_fake_grok_docker_primary(
     *,
     create_returncode: int = 0,
     create_stdout: bytes | None = None,
+    cidfile_container_id: str | None = None,
 ) -> dict[str, object]:
     workspace = tmp_path / "workspace"
     provider_home = tmp_path / "asref-grok-home-test"
@@ -226,6 +228,11 @@ def _install_fake_grok_docker_primary(
 
     def fake_create_run(command, **kwargs):
         create_calls.append((list(command), dict(kwargs)))
+        if create_returncode == 0:
+            FakeLease.cidfile.write_text(
+                (cidfile_container_id or container_id) + "\n",
+                encoding="ascii",
+            )
         return subprocess.CompletedProcess(
             command,
             create_returncode,
@@ -344,8 +351,9 @@ def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
     nonce = command[command.index("--grok-failure-receipt-nonce") + 1]
     assert len(nonce) == 64
     assert set(nonce) <= set("0123456789abcdef")
-    head = " ".join(command[: command.index("--codex-fallback-command-json")])
-    assert "codex" not in head
+    head = command[: command.index("--codex-fallback-command-json")]
+    assert fallback[0] not in head
+    assert json.dumps(fallback, separators=(",", ":")) not in head
 
 
 @pytest.mark.parametrize("override_source", ("constructor", "environment"))
@@ -681,6 +689,11 @@ def test_repeated_exact_max_turns_is_one_unknown_denial_without_terra(
         "resolve_agent_implementation_route_binding",
         lambda *_args, **_kwargs: route_plan,
     )
+    monkeypatch.setattr(
+        llm_router._agent_implementation_route,
+        "resolve_agent_implementation_route_binding",
+        lambda *_args, **_kwargs: route_plan,
+    )
 
     result = grok_cli_runner.main(
         [
@@ -692,6 +705,8 @@ def test_repeated_exact_max_turns_is_one_unknown_denial_without_terra(
             "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(_terra_fallback_command(str(codex), workspace)),
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--grok-failure-receipt-nonce",
             nonce,
             "--agent-implementation-route-json",
@@ -791,6 +806,8 @@ def test_scoped_route_rejects_prompt_cid_before_grok_preflight(
             "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(_terra_fallback_command(str(codex), workspace)),
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--grok-failure-receipt-nonce",
             "a" * 64,
             "--agent-implementation-route-json",
@@ -904,7 +921,18 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
     valid = _terra_fallback_command("/usr/local/bin/codex", "/repo")
-    assert grok_cli_runner._parse_codex_fallback_command(json.dumps(valid)) == valid
+    assert (
+        grok_cli_runner._parse_codex_fallback_command(
+            json.dumps(valid),
+            expected_fallback_reasoning_effort="high",
+        )
+        == valid
+    )
+    with pytest.raises(
+        ValueError,
+        match="reasoning does not match the sealed provider route",
+    ):
+        grok_cli_runner._parse_codex_fallback_command(json.dumps(valid))
     model_drift = list(valid)
     model_drift[model_drift.index("-m") + 1] = "gpt-5.6-sol"
     effort_drift = list(valid)
@@ -914,7 +942,10 @@ def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
     effort_drift[effort_idx] = 'model_reasoning_effort="low"'
     for drifted in (model_drift, effort_drift):
         with pytest.raises(ValueError):
-            grok_cli_runner._parse_codex_fallback_command(json.dumps(drifted))
+            grok_cli_runner._parse_codex_fallback_command(
+                json.dumps(drifted),
+                expected_fallback_reasoning_effort="high",
+            )
 
 
 def test_quota_fallback_rejects_workspace_codex_executable(tmp_path: Path) -> None:
@@ -1066,6 +1097,7 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
         "resolve_codex_quota_fallback_executable",
         lambda **_kwargs: str(codex),
     )
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: str(grok))
     wrapper_command = shlex.split(
         merge_resolver_fallback.llm_merge_resolver_fallback_command(
             python_executable="python-test"
@@ -1402,6 +1434,11 @@ def test_typed_preflight_requires_independent_quota_confirmation(
         lambda *_args, **_kwargs: route_plan,
     )
     monkeypatch.setattr(
+        llm_router._agent_implementation_route,
+        "resolve_agent_implementation_route_binding",
+        lambda *_args, **_kwargs: route_plan,
+    )
+    monkeypatch.setattr(
         grok_cli_runner,
         "_repository_head",
         lambda _workspace: "b" * 40,
@@ -1417,6 +1454,8 @@ def test_typed_preflight_requires_independent_quota_confirmation(
             "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(fallback),
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--grok-failure-receipt-nonce",
             nonce,
             "--agent-implementation-route-json",
@@ -1990,9 +2029,11 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
     class FakeLease:
         docker_bin = "/usr/bin/docker"
         docker_config = tmp_path / "docker-config"
+        cidfile = tmp_path / "container.cid"
 
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs)))
+        FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             0,
@@ -2029,21 +2070,36 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
 
 
 @pytest.mark.parametrize(
-    "create_stdout",
+    ("create_stdout", "cidfile_container_id", "error"),
     (
-        b"container-name\n",
-        ("a" * 64 + "\n" + "b" * 64 + "\n").encode("ascii"),
-        ("A" * 64 + "\n").encode("ascii"),
+        (b"container-name\n", "d" * 64, "identity is invalid"),
+        (
+            ("a" * 64 + "\n" + "b" * 64 + "\n").encode("ascii"),
+            "a" * 64,
+            "identity is invalid",
+        ),
+        (("A" * 64 + "\n").encode("ascii"), "A" * 64, "identity is invalid"),
+        (("a" * 64 + "\n").encode("ascii"), "b" * 64, "identity is invalid"),
+        (("a" * 64 + "\n").encode("ascii"), None, "identity is unavailable"),
     ),
 )
 def test_grok_docker_create_rejects_untrusted_container_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     create_stdout: bytes,
+    cidfile_container_id: str | None,
+    error: str,
 ) -> None:
     class FakeLease:
         docker_bin = "/usr/bin/docker"
         docker_config = tmp_path / "docker-config"
+        cidfile = tmp_path / "container.cid"
+
+    if cidfile_container_id is not None:
+        FakeLease.cidfile.write_text(
+            cidfile_container_id + "\n",
+            encoding="ascii",
+        )
 
     monkeypatch.setattr(
         grok_cli_runner.subprocess,
@@ -2056,13 +2112,45 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
         ),
     )
 
-    with pytest.raises(ValueError, match="container identity is invalid"):
+    with pytest.raises(ValueError, match=error):
         grok_cli_runner._create_grok_container_and_build_start_command(
             ["/usr/bin/docker", "create", "sealed-grok"],
             workspace=tmp_path,
             docker_environment={},
             docker_lease=FakeLease(),
         )
+
+
+def test_grok_docker_primary_rejects_forged_stdout_identity_before_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_fake_grok_docker_primary(
+        tmp_path,
+        monkeypatch,
+        cidfile_container_id="e" * 64,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_bounded_stderr",
+        lambda *_args, **_kwargs: pytest.fail(
+            "mismatched container identity must never be attached"
+        ),
+    )
+
+    result = grok_cli_runner.main(
+        [
+            "--workspace",
+            str(harness["workspace"]),
+            "--grok-bin",
+            str(harness["grok"]),
+            "--model",
+            "grok-4.6",
+        ]
+    )
+
+    assert result == 2
+    assert harness["close_calls"] == [False]
 
 
 @pytest.mark.parametrize("typed_route", (False, True))
@@ -2793,6 +2881,11 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
         lambda: "/usr/bin/grok",
     )
     monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
         grok_cli_runner,
         "resolve_codex_quota_fallback_executable",
         lambda **_kwargs: "/usr/local/bin/codex",
@@ -2823,7 +2916,7 @@ def test_incomplete_quota_route_defaults_medium_reasoning_effort(
         implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
         "primary_quota_exhausted",
     )
-    monkeypatch.setenv(implementation_daemon._GROK_MODEL_ENV, "grok-4.5")
+    monkeypatch.setenv(implementation_daemon._GROK_MODEL_ENV, "grok-4.6")
     monkeypatch.setenv(implementation_daemon._CODEX_MODEL_ENV, "gpt-5.6-terra")
     monkeypatch.delenv(
         implementation_daemon._CODEX_REASONING_EFFORT_ENV,

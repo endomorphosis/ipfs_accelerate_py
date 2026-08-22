@@ -2822,6 +2822,34 @@ def _docker_grok_command(
     return command
 
 
+def _validated_created_grok_container_id(
+    created: subprocess.CompletedProcess[bytes],
+    *,
+    cidfile: Path,
+) -> str:
+    """Match Docker's create response to the runner-owned cidfile."""
+
+    if (
+        created.returncode != 0
+        or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Grok container could not be created")
+    try:
+        created_fields = created.stdout.decode("ascii", errors="strict").split()
+        recorded_container_id = cidfile.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("Grok container identity is unavailable") from exc
+    if (
+        len(created_fields) != 1
+        or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
+        or recorded_container_id != created_fields[0]
+    ):
+        raise ValueError("Grok container identity is invalid")
+    return created_fields[0]
+
+
+
 def _create_grok_container_and_build_start_command(
     create_command: Sequence[str],
     *,
@@ -2844,18 +2872,10 @@ def _create_grok_container_and_build_start_command(
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Grok container creation timed out") from exc
-    if (
-        created.returncode != 0
-        or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
-        or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
-    ):
-        raise ValueError("Grok container could not be created")
-    created_fields = created.stdout.decode("ascii", errors="strict").split()
-    if (
-        len(created_fields) != 1
-        or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
-    ):
-        raise ValueError("Grok container identity is invalid")
+    container_id = _validated_created_grok_container_id(
+        created,
+        cidfile=docker_lease.cidfile,
+    )
     return [
         docker_lease.docker_bin,
         f"--host={_DOCKER_LOCAL_HOST}",
@@ -2864,7 +2884,7 @@ def _create_grok_container_and_build_start_command(
         "start",
         "--attach",
         "--interactive",
-        created_fields[0],
+        container_id,
     ]
 
 
@@ -2899,23 +2919,10 @@ def _run_created_grok_container_with_typed_failure_capture(
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Grok container creation timed out") from exc
-    if (
-        created.returncode != 0
-        or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
-        or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
-    ):
-        raise ValueError("Grok container could not be created")
-    try:
-        created_fields = created.stdout.decode("ascii", errors="strict").split()
-        recorded_container_id = cidfile.read_text(encoding="ascii").strip()
-    except (OSError, UnicodeError) as exc:
-        raise ValueError("Grok container identity is unavailable") from exc
-    if (
-        len(created_fields) != 1
-        or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
-        or recorded_container_id != created_fields[0]
-    ):
-        raise ValueError("Grok container identity is invalid")
+    container_id = _validated_created_grok_container_id(
+        created,
+        cidfile=cidfile,
+    )
     start_command = [
         docker_bin,
         f"--host={_DOCKER_LOCAL_HOST}",
@@ -2924,7 +2931,7 @@ def _run_created_grok_container_with_typed_failure_capture(
         "start",
         "--attach",
         "--interactive",
-        created_fields[0],
+        container_id,
     ]
     return _run_grok_with_typed_failure_capture(start_command, env=env)
 

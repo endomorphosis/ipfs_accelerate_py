@@ -109,9 +109,12 @@ def _database_program_environment(
         ).as_posix(),
         store_generation="17",
         schema_revision="9",
+        runtime_registry_path=(
+            "state/agent_supervisor_proof_carrying_procedure_compiler/registry"
+        ),
         failover_policy="fail_closed",
     )
-    return program.environment(), control_root
+    return program.environment(repository_root=repository), control_root
 
 
 def _mounts(command: list[str]) -> list[str]:

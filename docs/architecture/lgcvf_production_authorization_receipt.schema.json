@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lgcvf-production-authorization-receipt.schema.json",
+  "title": "LGCVF-123 operator production authorization receipt",
+  "description": "Closed schema for a named human operator receipt. Filling this schema is not issuance. This file is not production_authorization_receipt.json. Models, fixtures, tests, CIDs, task state, and the supervisor cannot satisfy this schema honestly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "operator",
+    "issued_at",
+    "expires_at",
+    "plan_cid",
+    "external_qualification_receipt_cid",
+    "release_report_sha256",
+    "source_revisions",
+    "scope",
+    "lgswf_006_reused",
+    "depends_on_lgcvf_121",
+    "depends_on_lgcvf_122",
+    "production_authorized",
+    "limitations",
+    "receipt_cid"
+  ],
+  "properties": {
+    "schema": {
+      "const": "lgcvf-production-authorization-receipt@1"
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "role"],
+      "properties": {
+        "identity": { "type": "string", "minLength": 8 },
+        "role": { "type": "string", "minLength": 8 }
+      }
+    },
+    "issued_at": { "type": "string", "minLength": 8 },
+    "expires_at": { "type": "string", "minLength": 8 },
+    "plan_cid": { "type": "string", "pattern": "^baguqeera[a-z2-7]{52}$" },
+    "external_qualification_receipt_cid": {
+      "type": "string",
+      "pattern": "^baguqeera[a-z2-7]{52}$"
+    },
+    "release_report_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_revisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ipfs_accelerate_py", "ipfs_datasets_py"],
+      "properties": {
+        "ipfs_accelerate_py": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "tree"],
+          "properties": {
+            "head": { "type": "string", "minLength": 40 },
+            "tree": { "type": "string", "minLength": 40 }
+          }
+        },
+        "ipfs_datasets_py": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "tree", "gitlink"],
+          "properties": {
+            "head": { "type": "string", "minLength": 40 },
+            "tree": { "type": "string", "minLength": 40 },
+            "gitlink": { "type": "string", "minLength": 40 }
+          }
+        }
+      }
+    },
+    "scope": { "type": "string", "minLength": 8 },
+    "lgswf_006_reused": { "const": false },
+    "depends_on_lgcvf_121": { "const": true },
+    "depends_on_lgcvf_122": { "const": true },
+    "production_authorized": { "type": "boolean" },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 8 }
+    },
+    "receipt_cid": { "type": "string", "pattern": "^baguqeera[a-z2-7]{52}$" }
+  }
+}

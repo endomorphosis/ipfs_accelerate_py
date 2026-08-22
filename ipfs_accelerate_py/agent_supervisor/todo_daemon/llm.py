@@ -748,7 +748,14 @@ def call_llm_router_with_receipt(
             handle.write(_llm_router_child_code(config))
             child_file = Path(handle.name)
 
-        env = os.environ.copy()
+        # Import locally so the reusable runtime's todo-daemon compatibility
+        # import cannot form a package-initialization cycle through this file.
+        from ..runtime.multi_supervisor_runner import provider_subprocess_environment
+
+        # The router is an implementation-provider child, not a state client.
+        # Preserve provider credentials while removing Quack/DuckDB authority,
+        # mutation-inbox, and database-program bindings from its exact env.
+        env = provider_subprocess_environment(os.environ)
         # The child intentionally runs outside the repository checkout.  Pin
         # its core router import to this exact source tree so an unrelated
         # editable ``ipfs_datasets_py``/``ipfs_accelerate_py`` installation

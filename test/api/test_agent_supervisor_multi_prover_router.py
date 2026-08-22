@@ -10,9 +10,18 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     ContractValidationError,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
+    AUTHORITATIVE_DISPOSITION_SCHEMA,
+    AUTHORITY_LATTICE_SCHEMA,
+    CHECKER_TRACE_SCHEMA,
+    COUNTEREXAMPLE_TRACE_SCHEMA,
     DEFAULT_PROPERTY_POLICIES,
+    HAMMER_TRACE_SCHEMA,
     AttemptOutcome,
+    AuthoritativeDisposition,
     AuthorityClass,
+    CheckerTrace,
+    CounterexampleTrace,
+    HammerTrace,
     MultiProverRouter,
     PortfolioResult,
     PortfolioVerdict,
@@ -405,6 +414,30 @@ def test_result_is_canonical_and_retains_plan_order() -> None:
     ]
     assert PortfolioResult.from_dict(payload) == result
     assert set(DEFAULT_PROPERTY_POLICIES) == set(PropertyKind)
+
+
+def test_trace_contract_schema_identities_are_declared_and_bound() -> None:
+    assert HammerTrace.SCHEMA == HAMMER_TRACE_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/hammer-trace@1"
+    )
+    assert CounterexampleTrace.SCHEMA == COUNTEREXAMPLE_TRACE_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/counterexample-trace@1"
+    )
+    assert CheckerTrace.SCHEMA == CHECKER_TRACE_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/checker-trace@1"
+    )
+    assert AuthoritativeDisposition.SCHEMA == AUTHORITATIVE_DISPOSITION_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/authoritative-disposition@1"
+    )
+
+    result = MultiProverRouter().execute(
+        _obligation(PropertyKind.AUTHORIZATION),
+        lambda request, cancel: ProverOutput(AttemptOutcome.UNKNOWN),
+    )
+    disposition = derive_authoritative_disposition(result).to_dict()
+    assert disposition["authority_lattice"] == AUTHORITY_LATTICE_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/authority-lattice@1"
+    )
 
 
 def test_solver_counterexamples_retain_obligation_scope_and_bounds() -> None:

@@ -28,6 +28,10 @@ from ...llm_router import (
     verify_agent_implementation_sealed_control_plane,
 )
 from ..control.lifecycle_orchestrator import REPOSITORY_ROOT_ENV
+from ..control.manual_completion_seal import (
+    ManualCompletionSealError,
+    verify_manual_completion_seal,
+)
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -282,6 +286,27 @@ SELECTION_DISPOSITION_IDLE_REASON_PREFIX = "disposition_idle:"
 # --- restored PROVIDER_CAPACITY_BACKOFF_IDLE_REASON ---
 
 PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
+
+
+_DISPOSITION_SELECTION_PRIORITY = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+_DISPOSITION_IDLE_CLASSES = frozenset({"abstain_review", "defer_capability"})
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS = frozenset(
+    {"no_shard_selectable_ready_tasks", "no_tasks_found"}
+)
+_QUIESCENT_POLICY_IDLE_REASONS = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
 
 
 # --- restored IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX ---
@@ -1316,6 +1341,7 @@ def expand_supervisor_scheduler_config_args(
 def _managed_daemon_child_environment(
     *,
     database_program: DatabaseProgramConfig | None = None,
+    repo_root: Path | str | None = None,
 ) -> dict[str, str]:
     """Keep a source-checkout supervisor's daemon on the same package code.
 
@@ -1376,7 +1402,7 @@ def _managed_daemon_child_environment(
             )
         )
     if database_program is not None:
-        env.update(database_program.environment())
+        env.update(database_program.environment(repository_root=repo_root))
     return env
 
 
@@ -7787,6 +7813,14 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
     ) -> dict[str, Any]:
+        if self.config.manual_completion_authority_revalidation_only:
+            return {
+                "stuck": False,
+                "maintenance_blocked": False,
+                "reason": "manual_completion_authority_revalidation_only",
+                "manual_completion_authority_revalidation_only": True,
+                "ordinary_provider_dispatch_allowed": False,
+            }
         if not self.config.implementation_protected_paths:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
@@ -8403,9 +8437,6 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
-        managed_daemon_environment = _managed_daemon_child_environment(
-            database_program=self.config.database_program,
-        )
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -8424,6 +8455,10 @@ class PortalImplementationSupervisor:
             float(self.config.stale_seconds),
             self._implementation_watchdog_timeout_seconds()
             + max(30.0, float(self.config.check_interval) * 2.0),
+        )
+        child_environment = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+            repo_root=self.config.repo_root,
         )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
@@ -8445,12 +8480,18 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
-            launch_env=managed_daemon_environment,
+            launch_env=child_environment,
         )
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
             log_prefix=f"{prefix}_implementation_daemon",
+            # ``SupervisorLoop`` launches the daemon from ``child_env``; it
+            # does not consult ``ManagedDaemonSpec.launch_env`` itself.  Keep
+            # the two projections identical so safe-path (``python -P``)
+            # children retain the admitted source root and database authority
+            # bindings instead of falling back to an ambient installation.
+            child_env=child_environment,
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -8466,7 +8507,6 @@ class PortalImplementationSupervisor:
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
-            child_env=managed_daemon_environment,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -16964,12 +17004,77 @@ class PortalImplementationSupervisor:
             )
         )
 
+    def _release_inactive_supervisor_recovery_if_clean(self) -> dict[str, Any]:
+        """Drop a leftover supervisor journal when the owner is gone and clean."""
+
+        existing = read_checkout_mutation_lease(self._repo_merge_lock_path())
+        if existing is None:
+            return {"released": False, "reason": "no_lease"}
+        metadata = dict(existing.metadata)
+        if metadata.get("protected_recovery_required") is not True:
+            return {"released": False, "reason": "not_recovery_journal"}
+        if str(metadata.get("protected_recovery_owner") or "") != (
+            "implementation_supervisor"
+        ):
+            return {"released": False, "reason": "external_owner"}
+        if self._supervisor_recovery_owner_is_active(metadata):
+            return {"released": False, "reason": "owner_active"}
+        protected = [
+            self.config.repo_root / path
+            for path in self.config.implementation_protected_paths
+            if str(path).strip()
+        ]
+        dirty = self._dirty_implementation_protected_paths(protected)
+        if dirty:
+            return {
+                "released": False,
+                "reason": "protected_paths_dirty",
+                "dirty_protected_paths": list(dirty),
+            }
+        released = release_checkout_mutation_lease(existing)
+        result = {
+            "released": bool(released),
+            "reason": (
+                "inactive_owner_protected_paths_clean"
+                if released
+                else "release_raced"
+            ),
+            "lock_path": str(existing.lock_path),
+            "lease_id": existing.lease_id,
+        }
+        if released:
+            try:
+                self._record_event(
+                    "stale_supervisor_protected_recovery_released",
+                    result,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to record stale supervisor recovery release",
+                    exc_info=True,
+                )
+        return result
+
     def _recover_retained_generated_checkout_lease(self) -> dict[str, Any]:
         """Autonomously clean a retained generated-output transaction."""
 
         if not self._retained_generated_checkout_lease():
             adoption = self._adopt_supervisor_protected_recovery()
             if adoption.get("required") and adoption.get("blocked"):
+                leftover = self._release_inactive_supervisor_recovery_if_clean()
+                if leftover.get("released"):
+                    return {
+                        "attempted": True,
+                        "recovered": True,
+                        "retained_lease": False,
+                        "reason": "stale_supervisor_protected_recovery_released",
+                        "adoption": {
+                            key: value
+                            for key, value in adoption.items()
+                            if key != "lease"
+                        },
+                        "leftover_release": leftover,
+                    }
                 return {
                     **adoption,
                     "attempted": False,
@@ -17532,6 +17637,7 @@ class PortalImplementationSupervisor:
         env.update(
             _managed_daemon_child_environment(
                 database_program=self.config.database_program,
+                repo_root=self.config.repo_root,
             )
         )
         process = subprocess.Popen(
@@ -18717,12 +18823,25 @@ class PortalImplementationSupervisor:
             return False
         tokens = command_line.split()
 
+        has_strict_task_sharding = "--strict-task-sharding" in tokens
+        if self.config.strict_task_sharding != has_strict_task_sharding:
+            return False
+
         def option_values(option: str) -> set[str]:
             return {
                 tokens[index + 1]
                 for index, token in enumerate(tokens[:-1])
                 if token == option
             }
+
+        if option_values("--task-shard-count") != {
+            str(self.config.task_shard_count)
+        }:
+            return False
+        if option_values("--task-shard-index") != {
+            str(self.config.task_shard_index)
+        }:
+            return False
 
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids

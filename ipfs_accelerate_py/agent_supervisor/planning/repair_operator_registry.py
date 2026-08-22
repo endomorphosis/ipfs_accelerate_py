@@ -174,6 +174,29 @@ class RepairOperatorCapability(str, Enum):
     DECLARED_EQUALITY_THEORY = "declared_equality_theory"
 
 
+CEGIS_RESTRICTED_CAPABILITIES: Final[frozenset[str]] = frozenset(
+    {
+        RepairOperatorCapability.IMPORT_WIRING.value,
+        RepairOperatorCapability.EXPORT_WIRING.value,
+        RepairOperatorCapability.REGISTRATION_WIRING.value,
+        RepairOperatorCapability.FILE_MOVE.value,
+    }
+)
+CEGIS_FORBIDDEN_PARAMETER_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "extra_imports",
+        "extra_paths",
+        "extra_files",
+        "extra_dependencies",
+        "write_authority",
+        "network",
+        "undeclared_effects",
+        "authority",
+        "files_added",
+    }
+)
+
+
 class RepairBehaviorClass(str, Enum):
     PURE_LOCAL = "pure_local"
     UNKNOWN = "unknown"
@@ -918,6 +941,15 @@ class RepairOperatorRegistry(CanonicalContract):
     def kinds(self) -> tuple[RepairOperatorKind, ...]:
         return tuple(item.kind for item in self.operators)
 
+    def cegis_restricted_kinds(self) -> frozenset[str]:
+        """Kinds that may introduce undeclared imports, files, deps, or wiring."""
+
+        return frozenset(
+            spec.kind.value
+            for spec in self.operators
+            if CEGIS_RESTRICTED_CAPABILITIES.intersection(spec.capability_refs)
+        )
+
     def specs(self) -> tuple[DoctorRepairOperatorSpec, ...]:
         return self.operators
 
@@ -1506,6 +1538,15 @@ def default_repair_operator_registry_id(
     return build_default_repair_operator_registry(roots).registry_id
 
 
+def cegis_restricted_operator_kinds(
+    registry: RepairOperatorRegistry | None = None,
+) -> frozenset[str]:
+    """Return reviewed operator kinds gated by counterevidence in CEGIS."""
+
+    catalog = registry or build_default_repair_operator_registry()
+    return catalog.cegis_restricted_kinds()
+
+
 __all__ = (
     "DOCTOR_REPAIR_OPERATOR_SPEC_INTERFACE",
     "DOCTOR_REPAIR_OPERATOR_SPEC_SCHEMA",
@@ -1532,6 +1573,9 @@ __all__ = (
     "ReviewedRepairHook",
     "UnknownRepairOperatorError",
     "build_default_repair_operator_registry",
+    "cegis_restricted_operator_kinds",
     "default_repair_operator_registry_id",
     "normalize_repair_operator_kind",
+    "CEGIS_FORBIDDEN_PARAMETER_KEYS",
+    "CEGIS_RESTRICTED_CAPABILITIES",
 )

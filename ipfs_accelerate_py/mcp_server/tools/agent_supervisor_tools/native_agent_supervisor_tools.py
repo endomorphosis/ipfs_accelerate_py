@@ -161,6 +161,67 @@ def _resolve_service(request: OperationRequest) -> SupervisorControlService:
     return selected
 
 
+_configured_autonomy_surface: Any = None
+
+
+def configure_autonomy_control(surface: Any | None = None) -> None:
+    """Bind the process-local APMC-017 autonomy adapter for MCP dispatch."""
+
+    global _configured_autonomy_surface
+    with _configuration_lock:
+        _configured_autonomy_surface = surface
+
+
+async def execute_autonomy_control(
+    operation: str,
+    request: Mapping[str, Any] | None = None,
+    *,
+    confirmation_id: str = "",
+    level: str = "",
+    authorization: Any = None,
+) -> dict[str, Any]:
+    """Typed MCP adapter for autonomy operations.  Never shells out."""
+
+    from ....agent_supervisor.autonomy.cli import (
+        AUTONOMY_CONTROL_OPERATION_NAMES,
+        AutonomyControlError,
+        AutonomyControlSurface,
+    )
+
+    name = str(operation or "").strip()
+    if name not in AUTONOMY_CONTROL_OPERATION_NAMES:
+        raise AutonomyControlError(f"unknown autonomy operation {name}")
+    mapped = {
+        "capabilities": Operation.CAPABILITIES,
+        "status": Operation.STATUS,
+        "metrics": Operation.METRICS,
+        "pause": Operation.PAUSE,
+        "resume": Operation.RESUME,
+        "cancel": Operation.CANCEL,
+    }.get(name)
+    if mapped is not None:
+        if not isinstance(request, Mapping):
+            raise AutonomyControlError(
+                f"{name} requires a canonical OperationRequest record"
+            )
+        return await execute_agent_supervisor_operation(request, mapped)
+    with _configuration_lock:
+        surface = _configured_autonomy_surface
+    if surface is None or not isinstance(surface, AutonomyControlSurface):
+        raise AgentSupervisorMCPConfigurationError(
+            "autonomy MCP tools require a configured AutonomyControlSurface"
+        )
+    result = surface.execute(
+        name,
+        confirmation_id=confirmation_id,
+        level=level,
+        authorization=authorization,
+    )
+    if hasattr(result, "to_record"):
+        return dict(result.to_record())
+    return dict(result)
+
+
 async def execute_agent_supervisor_operation(
     request: Mapping[str, Any],
     operation: Operation | str,
@@ -639,7 +700,9 @@ __all__ = [
     "agent_supervisor_control",
     "agent_supervisor_usage",
     "configure_agent_supervisor_control",
+    "configure_autonomy_control",
     "execute_agent_supervisor_operation",
+    "execute_autonomy_control",
     "get_provider_usage_control_service",
     "mcp_control_surface_publication",
     "mcp_v2_control_surface_publication",

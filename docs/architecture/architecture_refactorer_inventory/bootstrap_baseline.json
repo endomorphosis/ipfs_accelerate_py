@@ -1,0 +1,80 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.bootstrap-baseline@1",
+  "observed_at": "2026-08-21T00:00:00Z",
+  "repository": {
+    "name": "endomorphosis/ipfs_accelerate_py",
+    "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
+    "worktree": "/home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1",
+    "branch": "codex/proof-carrying-architecture-refactorer-v1",
+    "commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+    "origin_main_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "clean_at_inspection": true
+  },
+  "branch_protection": {
+    "main_protected": true,
+    "required_status_checks": ["documentation-gates"],
+    "strict_up_to_date": false,
+    "force_pushes_allowed": false,
+    "deletions_allowed": false,
+    "signed_commits_required": false,
+    "admin_enforcement": false,
+    "linear_history_required": false,
+    "conversation_resolution_required": false,
+    "repository_ruleset_count": 0
+  },
+  "environment": {
+    "python": "3.12.3",
+    "package_version": "0.0.45",
+    "duckdb_python": "1.5.5",
+    "quack": {
+      "status": "compatible",
+      "available": true,
+      "passes_health_check": true,
+      "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+      "maturity": "beta"
+    },
+    "ducklake": {
+      "installed": true,
+      "role": "optional_non_authoritative_history_projection"
+    }
+  },
+  "gitlinks": {
+    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+    "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+    "ipfs_transformers_py": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+    "ipfs_model_manager_py": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+    "test/huggingface_transformers": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
+    "test/doc-builder": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+    "test/huggingface_doc_builder": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+    "docs/fastmcp": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+    "docs/mcp-python-sdk": "0da9a074d09267a927d72faa58c26d828f0f8edb"
+  },
+  "operation_catalog": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/control-operation-catalog@2",
+    "content_id": "baguqeeradphx3pal7n2brjzpoa3l6tyjb5xrh7ekwbyhhrxxtyqqkxztffua",
+    "requirement_id": "294719425747343997526263348545558645762",
+    "operation_count": 35,
+    "source": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py"
+  },
+  "proof_schemas": [
+    "code-proof-obligation@1",
+    "proof-plan@1",
+    "proof-plan-step@1",
+    "proof-attempt@1",
+    "proof-receipt@1",
+    "proof-evidence@1",
+    "proof-resource-budget@1",
+    "assurance-assessment@1"
+  ],
+  "receipt_schemas": [
+    "ipfs-accelerate.semantic-verification-receipt@1",
+    "ipfs-accelerate.semantic-receipt-index@1",
+    "control-query-audit-receipt@2",
+    "control-proposal-audit-receipt@2",
+    "control-mutation-audit-receipt@2",
+    "signed-test-pass-receipt@2"
+  ],
+  "qualification_state": "planning_evidence_only_pcar_000_must_reseal_current_task_tree"
+}
