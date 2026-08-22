@@ -48,9 +48,11 @@ from .control_plane_migrations import duckdb_available
 from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
     DuckDBConnectionPolicyError,
+    _is_quack_session_dead,
     exclusive_file_lock,
     is_quack_transport_target,
     open_duckdb_connection,
+    quack_session_is_live,
     quack_transport_uri,
 )
 
@@ -880,19 +882,28 @@ class IntentRepository:
             return
         if self._quack_transport:
             with self._bound_connection_lock:
-                if self._quack_read_connection is None:
-                    self._quack_read_connection = open_duckdb_connection(
-                        self._open_target
-                    )
                 connection = self._quack_read_connection
-                try:
-                    yield connection
-                except BaseException:
+                if connection is not None and not quack_session_is_live(connection):
                     try:
                         connection.close()
                     except Exception:
                         pass
                     self._quack_read_connection = None
+                    connection = None
+                if connection is None:
+                    self._quack_read_connection = open_duckdb_connection(
+                        self._open_target
+                    )
+                    connection = self._quack_read_connection
+                try:
+                    yield connection
+                except BaseException as exc:
+                    if _is_quack_session_dead(exc):
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        self._quack_read_connection = None
                     raise
             return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,

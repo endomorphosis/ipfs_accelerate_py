@@ -921,6 +921,44 @@ def _is_transient_quack_attach_error(detail: str) -> bool:
     )
 
 
+def _is_quack_session_dead(exc: BaseException) -> bool:
+    """Return whether a Quack SQL error means the ATTACH session is gone.
+
+    Query-level ``Authorization failed`` is not session death: dropping the
+    attached connection forces a new ATTACH, which is what wedges the
+    owner and turns later ticks into ``quack_attach_failed``.
+    """
+
+    detail = str(exc)
+    lowered = detail.lower()
+    return (
+        "Authentication failed" in detail
+        or "connection refused" in lowered
+        or "connection reset" in lowered
+        or "connection closed" in lowered
+        or "not connected" in lowered
+        or "could not connect" in lowered
+    )
+
+
+def quack_session_is_live(connection: Any) -> bool:
+    """Probe one attached Quack session without opening another ATTACH."""
+
+    if connection is None or getattr(connection, "_closed", False):
+        return False
+    catalog = str(getattr(connection, "_default_catalog", "") or _QUACK_CONTROL_CATALOG)
+    raw = getattr(connection, "_connection", connection)
+    execute = getattr(raw, "execute", None)
+    if not callable(execute):
+        return False
+    try:
+        probed = execute(f"SELECT count(*) FROM {catalog}.tasks")
+        _consume_duckdb_result(probed)
+    except Exception:
+        return False
+    return True
+
+
 def quack_owner_command_dir(store_id: object = "") -> Path | None:
     """Return the exclusive owner's local typed-command inbox, if configured."""
 
