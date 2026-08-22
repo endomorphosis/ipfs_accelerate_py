@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -225,6 +226,70 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
     }
     assert rows["PCCE-021"] == ("retrying", 10)
     assert rows["PCCE-022"] == ("in_progress", 1)
+
+
+def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        apply_owner_command_payload,
+    )
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-021",
+            "PCCE-021",
+            "in_progress",
+            9,
+            stale,
+        ],
+    )
+    reply = apply_owner_command_payload(
+        connection,
+        {"op": "board_unstall", "stale_seconds": 16_200},
+    )
+    assert reply["ok"] is True
+    assert reply["rowcount"] == 1
+    assert reply["board_unstall"]["unstalled"][0]["task_alias"] == "PCCE-021"
+    status = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
+    ).fetchone()
+    assert tuple(status) == ("retrying", 10)
+
+
+def test_request_owner_board_unstall_writes_inbox_without_waiting(
+    tmp_path, monkeypatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        request_owner_board_unstall,
+    )
+
+    inbox = tmp_path / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    result = request_owner_board_unstall(wait=False)
+    assert result["ok"] is True
+    assert result["requested"] is True
+    requests = list(inbox.glob("*.request.json"))
+    assert len(requests) == 1
+    payload = json.loads(requests[0].read_text(encoding="utf-8"))
+    assert payload == {"op": "board_unstall", "stale_seconds": 16_200}
 
 
 def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> None:

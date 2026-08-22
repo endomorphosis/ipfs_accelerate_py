@@ -69984,6 +69984,48 @@ class DatabaseImplementationDaemon:
                 return []
             raise
 
+    def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
+        """Retry leftover in_progress control tasks that freeze claim_next.
+
+        Lane-local lease expiry does not move ``tasks.status``. A dead gate
+        stays ``in_progress`` and dependents never enter the ready frontier.
+        Age out those rows after the live-attempt window so the board can
+        drain after attach contention, a crashed implementer, or a leftover
+        CAS.
+        """
+
+        self._require_execution_authority("stale in_progress board unstall")
+        unstall = getattr(self.task_source, "unstall_stale_in_progress_tasks", None)
+        if not callable(unstall):
+            return []
+        result = unstall()
+        if not isinstance(result, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "task source returned a malformed board unstall receipt"
+            )
+        unstalled = result.get("unstalled") or []
+        if not isinstance(unstalled, list):
+            raise DatabaseImplementationAuthorityError(
+                "task source returned a malformed board unstall receipt"
+            )
+        return [item for item in unstalled if isinstance(item, Mapping)]
+
+    def _request_owner_board_unstall(self) -> dict[str, Any]:
+        """Ask the exclusive owner to unstall gates when ATTACH cannot run."""
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            request_owner_board_unstall,
+        )
+
+        try:
+            return request_owner_board_unstall(wait=False)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "requested": False,
+                "error": f"{type(exc).__name__}: board unstall request failed",
+            }
+
     def _quack_attach_contention_deferral(
         self,
         exc: BaseException,
@@ -69999,8 +70041,9 @@ class DatabaseImplementationDaemon:
             expired = self.reconcile_expired_running_attempts()
         except Exception:
             expired = []
+        board_unstall = self._request_owner_board_unstall()
         return {
-            "unchanged": not expired,
+            "unchanged": not expired and not board_unstall.get("requested"),
             "deferred": True,
             "skipped": True,
             "reason": "quack_attach_contended",
@@ -70013,6 +70056,7 @@ class DatabaseImplementationDaemon:
             "authority_mode": self.authority_mode,
             "task_source_kind": self.task_source_kind,
             "expired_attempt_reconciliations": expired,
+            "board_unstall_request": board_unstall,
         }
 
     @staticmethod
@@ -72558,11 +72602,15 @@ class DatabaseImplementationDaemon:
         terminal_retry_reconciliations = self._run_reconciliation_step(
             self.reconcile_terminal_retry_states
         )
+        stale_in_progress_unstalls = self._run_reconciliation_step(
+            self.reconcile_stale_in_progress_gates
+        )
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
+            + len(stale_in_progress_unstalls)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -72588,6 +72636,7 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "stale_in_progress_unstalls": stale_in_progress_unstalls,
             }
 
         attempt = self.claim_next()
@@ -72613,6 +72662,7 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "stale_in_progress_unstalls": stale_in_progress_unstalls,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -72630,6 +72680,7 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
+            "stale_in_progress_unstalls": stale_in_progress_unstalls,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

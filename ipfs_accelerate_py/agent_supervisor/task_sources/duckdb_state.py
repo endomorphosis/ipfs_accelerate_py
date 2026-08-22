@@ -728,6 +728,121 @@ def unstall_stale_in_progress_tasks(
     }
 
 
+BOARD_UNSTALL_OWNER_OP = "board_unstall"
+_OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
+
+
+def apply_owner_command_payload(
+    connection: Any,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply one owner-inbox command on the exclusive writer connection.
+
+    ATTACH clients cannot UPDATE/DELETE base tables, and ``quack_serve``
+    occupies the listen handle, so the owner applies DML here. Structured
+    ``board_unstall`` commands recover leftover ``in_progress`` gates without
+    the client issuing SQL.
+    """
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("mutation request must be an object")
+    op = str(payload.get("op") or "").strip()
+    if op == BOARD_UNSTALL_OWNER_OP:
+        stale_raw = payload.get("stale_seconds", STALE_IN_PROGRESS_UNSTALL_SECONDS)
+        stale_seconds = int(stale_raw)
+        result = unstall_stale_in_progress_tasks(
+            connection, stale_seconds=stale_seconds
+        )
+        return {
+            "ok": True,
+            "rowcount": len(result.get("unstalled") or []),
+            "board_unstall": result,
+        }
+    sql = str(payload.get("sql") or "")
+    normalized = " ".join(sql.strip().upper().split())
+    if not normalized.startswith(_OWNER_INBOX_DML_PREFIXES):
+        raise ValueError("mutation inbox accepts only owner DML")
+    if ";" in normalized.rstrip(";"):
+        raise ValueError("mutation inbox accepts exactly one SQL statement")
+    parameters = payload.get("parameters")
+    result = (
+        connection.execute(sql)
+        if parameters is None
+        else connection.execute(sql, parameters)
+    )
+    rowcount = -1
+    try:
+        if getattr(result, "description", None):
+            result.fetchall()
+        elif hasattr(result, "rowcount"):
+            rowcount = int(result.rowcount)
+    except Exception:
+        pass
+    return {"ok": True, "rowcount": rowcount}
+
+
+def request_owner_board_unstall(
+    *,
+    stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    wait: bool = True,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
+    """Ask the exclusive owner to retry leftover in_progress gates.
+
+    Used when Quack ATTACH is contended: the daemon cannot SELECT or UPDATE,
+    but it can still write a mutation-inbox request. ``wait=False`` is the
+    attach-deferral path so the process does not block on a dead owner.
+    """
+
+    if int(stale_seconds) <= 0:
+        raise ValueError("stale_seconds must be positive")
+    target = quack_owner_mutation_dir()
+    if target is None:
+        return {"ok": False, "requested": False, "error": "no_mutation_dir"}
+    import uuid
+
+    target.mkdir(parents=True, exist_ok=True)
+    request_id = uuid.uuid4().hex
+    request_path = target / f"{request_id}.request.json"
+    done_path = target / f"{request_id}.done.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "op": BOARD_UNSTALL_OWNER_OP,
+                "stale_seconds": int(stale_seconds),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    if not wait:
+        return {
+            "ok": True,
+            "requested": True,
+            "waited": False,
+            "request_id": request_id,
+        }
+    deadline = time.monotonic() + float(timeout_seconds)
+    while time.monotonic() < deadline:
+        if done_path.is_file():
+            reply = json.loads(done_path.read_text(encoding="utf-8"))
+            try:
+                request_path.unlink(missing_ok=True)
+                done_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if not isinstance(reply, dict):
+                raise DuckDBConnectionPolicyError(
+                    "malformed board unstall owner reply"
+                )
+            return reply
+        time.sleep(0.05)
+    raise DuckDBConnectionPolicyError(
+        "timed out waiting for quack state-owner to unstall the task board"
+    )
+
+
 def _quack_owner_mutation_required(normalized: str) -> bool:
     return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
 
