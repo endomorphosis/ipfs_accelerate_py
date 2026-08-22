@@ -1717,38 +1717,44 @@ def _docker_isolation_image_id(
     """Resolve the configured cached tag to an immutable local image ID."""
 
     # Prefer the sealed PCPC isolation image when the daemon pinned one; the
-    # ubuntu:24.04 tag remains the standalone Grok-runner default.
+    # ubuntu:24.04 tag remains the standalone Grok-runner default. Create and
+    # start stay on the same Docker host so the container ID remains visible.
     del base_env
-    image = _sealed_provider_isolation_image_id() or DEFAULT_GROK_ISOLATION_IMAGE
-    try:
-        completed = subprocess.run(
-            [
-                docker_bin,
-                f"--host={_docker_isolation_host()}",
-                "--config",
-                str(docker_config),
-                "image",
-                "inspect",
-                "--format",
-                "{{.Id}}",
-                image,
-            ],
-            env=_docker_control_env(),
-            stdin=subprocess.DEVNULL,
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-    candidate = completed.stdout.strip()
-    return (
-        candidate
-        if completed.returncode == 0
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
-        else ""
-    )
+    images = []
+    sealed = _sealed_provider_isolation_image_id()
+    if sealed:
+        images.append(sealed)
+    images.append(DEFAULT_GROK_ISOLATION_IMAGE)
+    for image in images:
+        try:
+            completed = subprocess.run(
+                [
+                    docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(docker_config),
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    image,
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        candidate = completed.stdout.strip()
+        if (
+            completed.returncode == 0
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
+        ):
+            return candidate
+    return ""
 
 
 def _docker_codex_task_toolchain_image_id(
@@ -2613,7 +2619,7 @@ def _docker_grok_command(
     container_grok = Path("/opt/ipfs-accelerate/grok")
     command = [
         docker,
-        f"--host={_docker_isolation_host()}",
+        f"--host={_DOCKER_LOCAL_HOST}",
         "--config",
         str(docker_config),
         "create",
