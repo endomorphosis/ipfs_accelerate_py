@@ -786,6 +786,17 @@ def _outbox_worker_health(status_payload: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _state_owner_outbox_health(server: Any) -> dict[str, Any]:
+    """Evaluate the worker together with its canonical commit observer.
+
+    ``outbox_worker_capability()`` is intentionally only a worker projection.
+    Startup and steady-state admission also require the typed gateway's
+    commit-observer attestation, which is published by ``status()``.
+    """
+
+    return _outbox_worker_health(server.status())
+
+
 def _process_birth(pid: int) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
         read_process_birth,
@@ -1292,7 +1303,7 @@ def state_owner(config_path: Path) -> int:
     )
     server.bind_typed_status_scope()
     outbox_runtime = server.start_federation_outbox_worker()
-    if _outbox_worker_health({"outbox_worker": outbox_runtime})["healthy"] is not True:
+    if _state_owner_outbox_health(server)["healthy"] is not True:
         raise OperatorError("state-owner outbox worker failed startup health")
     task_projection = {
         "task_count": int(projection.get("task_count") or 0),
@@ -1337,10 +1348,7 @@ def state_owner(config_path: Path) -> int:
     runtime_exit_code: int | None = None
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(2.0):
-            outbox_health = dict(server.outbox_worker_capability())
-            if _outbox_worker_health({"outbox_worker": outbox_health})[
-                "healthy"
-            ] is not True:
+            if _state_owner_outbox_health(server)["healthy"] is not True:
                 runtime_exit_code = 1
                 break
             runtime_exit_code = supervisor_process.poll()

@@ -863,6 +863,43 @@ def test_outbox_worker_health_rejects_missing_malformed_or_polling_status() -> N
     assert suppressed_observer_failure["healthy"] is False
 
 
+def test_state_owner_outbox_health_uses_full_canonical_status() -> None:
+    operator = _operator()
+
+    class Server:
+        status_calls = 0
+
+        def status(self):
+            self.status_calls += 1
+            return {
+                "outbox_worker": {
+                    "available": True,
+                    "thread_alive": True,
+                    "server_owned": True,
+                    "polling": False,
+                    "watermark": 99,
+                    "committed_sequence": 99,
+                    "drain_count": 1,
+                    "last_error_type": "",
+                },
+                "typed_command_gateway": {
+                    "commit_observer_bound": True,
+                    "last_observer_error_type": "",
+                },
+            }
+
+        def outbox_worker_capability(self):
+            raise AssertionError("worker-only status is not an admission witness")
+
+    server = Server()
+    health = operator._state_owner_outbox_health(server)
+
+    assert health["healthy"] is True
+    assert health["caught_up"] is True
+    assert health["commit_observer_bound"] is True
+    assert server.status_calls == 1
+
+
 @pytest.mark.parametrize(
     ("authority", "runtime", "master", "expected"),
     [
