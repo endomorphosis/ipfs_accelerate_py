@@ -10,6 +10,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+    DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
     DatabasePortalBridgeDeferred,
@@ -61,6 +63,10 @@ def _open_daemon(
         [DatabaseTaskAttempt], Mapping[str, object]
     ]
     | None = None,
+    pooled_worktree_create_recovery_fn: Callable[
+        [DatabaseTaskAttempt], Mapping[str, object]
+    ]
+    | None = None,
     max_task_attempts: int = 3,
     clock_ms: Callable[[], int] | None = None,
 ) -> DatabaseImplementationDaemon:
@@ -106,6 +112,7 @@ def _open_daemon(
         validation_retry_seed_conflict_recovery_fn=(
             validation_retry_seed_conflict_recovery_fn
         ),
+        pooled_worktree_create_recovery_fn=pooled_worktree_create_recovery_fn,
         require_real_execution=True,
         clock_ms=clock_ms,
     )
@@ -332,5 +339,114 @@ def test_run_once_rearms_leftover_wait_budget_exhaustion(
         rearmed = daemon.task_source.get(source.task_cid)
         assert rearmed is not None
         assert rearmed.status in {"retrying", "in_progress", "completed"}
+    finally:
+        daemon.close()
+
+
+def _pooled_worktree_recovery_receipt(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
+        "disposition": "retry",
+        "reason": DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+        "source_reason": "portal_provider_failed",
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "worktree_path": "/tmp/missing-pooled-worktree",
+        "worktree_present": False,
+        "identity_bound": True,
+        "backoff_seconds": 0,
+        "attempt_consumed": False,
+    }
+    receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
+    return receipt
+
+
+def test_run_once_retries_pooled_worktree_create_failure_then_completes(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+
+    def provider(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if len(provider_calls) == 1:
+            raise DatabasePortalBridgeError("portal_provider_failed")
+        return {"status": "succeeded", "accepted": True}
+
+    def recover(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        return _pooled_worktree_recovery_receipt(holder["daemon"], attempt)
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        pooled_worktree_create_recovery_fn=recover,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source_attempt = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source_attempt is not None
+        blocked = daemon.task_source.get(source_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        completed = daemon.task_source.get(source_attempt.task_cid)
+        assert completed is not None and completed.status == "completed"
+        recovery = repaired["pooled_worktree_create_recovery_reconciliations"]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+        assert recovery[0]["control_previous_status"] == "blocked"
+        assert provider_calls == [
+            source_attempt.attempt_id,
+            repaired["attempt_id"],
+        ]
+        assert repaired["attempt_id"] != source_attempt.attempt_id
+    finally:
+        daemon.close()
+
+
+def test_automatic_pooled_worktree_recovery_fails_closed_for_foreign_failure(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    def recover(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError(
+            "pooled-worktree create recovery requires a pre-dispatch "
+            "worktree-setup failure"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        pooled_worktree_create_recovery_fn=recover,
+    )
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source_attempt = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source_attempt is not None
+        blocked = daemon.task_source.get(source_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        outcomes = daemon.reconcile_blocked_pooled_worktree_create_recoveries()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == "pooled_worktree_create_recovery_not_admitted"
+        assert daemon.task_source.get(source_attempt.task_cid).status == "blocked"
     finally:
         daemon.close()

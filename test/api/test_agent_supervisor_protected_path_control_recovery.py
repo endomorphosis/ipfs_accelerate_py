@@ -614,6 +614,10 @@ def test_runner_binds_bridge_protected_path_recovery_callback(tmp_path: Path) ->
     assert getattr(seed_conflict_callback, "__name__", "") == (
         "recover_validation_retry_seed_conflict"
     )
+    pooled_callback = captured.get("pooled_worktree_create_recovery_fn")
+    assert callable(pooled_callback)
+    assert getattr(pooled_callback, "__self__", None) is bridge
+    assert getattr(pooled_callback, "__name__", "") == "recover_pooled_worktree_create"
 
 
 def test_crash_fence_reaches_locked_auto_clear_and_keeps_genuine_mutation(

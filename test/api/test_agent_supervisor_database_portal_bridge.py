@@ -15,6 +15,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+    DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+    DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
     DatabasePortalBridgeDeferred,
@@ -832,6 +834,149 @@ def test_bridge_defers_worktree_lifecycle_claim_skip(tmp_path: Path) -> None:
     assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
     assert portal.closed is True
+
+
+def test_bridge_defers_pooled_worktree_create_interrupt(tmp_path: Path) -> None:
+    class SetupFailPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "provider_dispatched": False,
+                    "attempt_consumed": True,
+                    "exception_result": {
+                        "exception_type": "RuntimeError",
+                        "phase": "worktree_setup",
+                        "message": (
+                            "failed to create pooled worktree: "
+                            "Preparing worktree (new branch 'implementation/x')"
+                        ),
+                    },
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = SetupFailPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+    assert str(caught.value) == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.attempt_consumed is False
+    assert portal.closed is True
+
+
+def test_bridge_keeps_dispatched_provider_failure_terminal(tmp_path: Path) -> None:
+    class DispatchedFailPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "provider_dispatched": True,
+                    "attempt_consumed": True,
+                    "reason": "model_failed",
+                    "exception_result": {
+                        "exception_type": "RuntimeError",
+                        "phase": "provider",
+                        "message": "failed to create pooled worktree: should-not-match",
+                    },
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: DispatchedFailPortal(),
+        max_passes=1,
+    )
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "model_failed"
+
+
+def test_bridge_recovers_pooled_worktree_create_when_path_absent(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        max_passes=1,
+    )
+    attempt = _attempt()
+    paths = bridge._paths(attempt)
+    paths.root.mkdir(parents=True)
+    append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            "task_id": attempt.task_alias,
+            "canonical_task_cid": attempt.task_cid,
+            "task_cid": attempt.task_cid,
+            "provider_dispatched": False,
+            "attempt_consumed": True,
+            "returncode": 1,
+            "worktree_path": str(tmp_path / "missing-pooled-worktree"),
+            "exception_result": {
+                "exception_type": "RuntimeError",
+                "phase": "worktree_setup",
+                "message": "failed to create pooled worktree: Preparing worktree",
+            },
+        },
+    )
+    receipt = bridge.recover_pooled_worktree_create(attempt)
+    assert receipt["schema"] == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA
+    assert receipt["reason"] == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+    assert receipt["source_reason"] == "portal_provider_failed"
+    assert receipt["worktree_present"] is False
+    assert receipt["identity_bound"] is True
+    assert bridge.recover_pooled_worktree_create(attempt) == receipt
+
+
+def test_bridge_does_not_recover_pooled_worktree_create_while_path_present(
+    tmp_path: Path,
+) -> None:
+    leftover = tmp_path / "leftover-pooled-worktree"
+    leftover.mkdir()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        max_passes=1,
+    )
+    attempt = _attempt()
+    paths = bridge._paths(attempt)
+    paths.root.mkdir(parents=True)
+    append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            "task_id": attempt.task_alias,
+            "canonical_task_cid": attempt.task_cid,
+            "task_cid": attempt.task_cid,
+            "provider_dispatched": False,
+            "attempt_consumed": True,
+            "returncode": 1,
+            "worktree_path": str(leftover),
+            "exception_result": {
+                "exception_type": "RuntimeError",
+                "phase": "worktree_setup",
+                "message": "failed to create pooled worktree: Preparing worktree",
+            },
+        },
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="worktree path to be absent"):
+        bridge.recover_pooled_worktree_create(attempt)
 
 
 def test_bridge_recovers_inflight_process_only_when_runner_absent(

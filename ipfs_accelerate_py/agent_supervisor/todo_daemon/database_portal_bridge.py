@@ -82,6 +82,16 @@ DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON: Final[str] = (
     "Portal retry seed state conflicts with its source receipt"
 )
+DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-pooled-worktree-create-recovery@1"
+)
+DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON: Final[str] = (
+    "pooled_worktree_create_failed"
+)
+DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON: Final[str] = (
+    "portal_provider_failed"
+)
 _PROTECTED_PATH_RECOVERY_INTENT_FILENAME: Final[str] = (
     "database-portal-protected-path-recovery-intent.json"
 )
@@ -97,11 +107,18 @@ _INFLIGHT_PROCESS_RECOVERY_FILENAME: Final[str] = (
 _VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_FILENAME: Final[str] = (
     "database-portal-validation-retry-seed-conflict-recovery.json"
 )
+_POOLED_WORKTREE_CREATE_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-pooled-worktree-create-recovery.json"
+)
 _PAIRED_SUPERVISOR_PROTECTED_RECOVERY_OWNER: Final[str] = (
     "implementation_supervisor"
 )
 _EXTERNAL_PROTECTED_CHECKOUT_DEFERRAL_BACKOFF_SECONDS: Final[int] = 20
 _INFLIGHT_PROCESS_DEFERRAL_BACKOFF_SECONDS: Final[int] = 20
+_POOLED_WORKTREE_CREATE_DEFERRAL_BACKOFF_SECONDS: Final[int] = 30
+_POOLED_WORKTREE_CREATE_FAILURE_PREFIX: Final[str] = (
+    "failed to create pooled worktree"
+)
 _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME: Final[str] = (
     "implementation-protected-path-active.json"
 )
@@ -1598,6 +1615,38 @@ class DatabasePortalExecutionBridge:
         ):
             backoff = 30
         return (reason, int(backoff))
+
+    @staticmethod
+    def _pooled_worktree_create_deferral(
+        result: Mapping[str, Any],
+    ) -> tuple[str, int] | None:
+        """Defer a failed pooled ``git worktree add`` instead of terminalizing it.
+
+        Portal historically mapped cold checkout interrupts to returncode 1
+        and ``portal_provider_failed``.  That is infrastructure, not a
+        dispatched provider failure.
+        """
+
+        implementation = result.get("implementation_result")
+        payload = implementation if isinstance(implementation, Mapping) else result
+        if not isinstance(payload, Mapping):
+            return None
+        if payload.get("deferred") is True:
+            return None
+        if payload.get("provider_dispatched") is True:
+            return None
+        exception = payload.get("exception_result")
+        if not isinstance(exception, Mapping):
+            return None
+        if str(exception.get("phase") or "") != "worktree_setup":
+            return None
+        message = str(exception.get("message") or "")
+        if not message.startswith(_POOLED_WORKTREE_CREATE_FAILURE_PREFIX):
+            return None
+        return (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+            _POOLED_WORKTREE_CREATE_DEFERRAL_BACKOFF_SECONDS,
+        )
 
     @staticmethod
     def _looks_like_validation_retry(
@@ -3225,6 +3274,173 @@ class DatabasePortalExecutionBridge:
             receipt=receipt,
         )
 
+    def _observe_pooled_worktree_create_failure(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+    ) -> dict[str, Any]:
+        """Prove the leftover terminal block was a pre-dispatch worktree add."""
+
+        if not paths.events.is_file():
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery artifacts are incomplete"
+            )
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        task_cid = str(attempt.task_cid)
+        finished = [
+            event
+            for event in self._verified_event_chain(paths)
+            if event.get("type") == "implementation_finished"
+            and str(event.get("task_id") or "") == alias
+            and str(event.get("canonical_task_cid") or event.get("task_cid") or "")
+            in {"", task_cid}
+        ]
+        if not finished:
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery has no implementation_finished event"
+            )
+        last = finished[-1]
+        exception = last.get("exception_result")
+        if not isinstance(exception, Mapping):
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery is not a worktree-setup failure"
+            )
+        message = str(exception.get("message") or "")
+        worktree_path = str(
+            last.get("worktree_path") or exception.get("worktree_path") or ""
+        )
+        if (
+            last.get("provider_dispatched") is not False
+            or str(exception.get("phase") or "") != "worktree_setup"
+            or not message.startswith(_POOLED_WORKTREE_CREATE_FAILURE_PREFIX)
+        ):
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery requires a pre-dispatch "
+                "worktree-setup failure"
+            )
+        if worktree_path:
+            candidate = Path(worktree_path)
+            if candidate.exists():
+                raise DatabasePortalBridgeError(
+                    "pooled-worktree create recovery requires the leftover "
+                    "worktree path to be absent"
+                )
+        return {
+            "worktree_path": worktree_path,
+            "worktree_present": False,
+            "exception_type": str(exception.get("exception_type") or ""),
+            "phase": "worktree_setup",
+        }
+
+    def _finalize_pooled_worktree_create_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        observation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        receipt = {
+            "schema": DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
+            "disposition": "retry",
+            "reason": DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+            "source_reason": DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "worktree_path": str(observation.get("worktree_path") or ""),
+            "worktree_present": False,
+            "identity_bound": True,
+            "backoff_seconds": 0,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _verify_pooled_worktree_create_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        observation: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "worktree_path",
+            "worktree_present",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery receipt is malformed or foreign"
+            )
+        expected = self._finalize_pooled_worktree_create_recovery_receipt(
+            attempt=attempt,
+            observation=observation,
+        )
+        if dict(receipt) != expected:
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery receipt changed after finalization"
+            )
+        return expected
+
+    def recover_pooled_worktree_create(self, attempt: Any) -> Mapping[str, Any]:
+        """Rearm a leftover pooled-worktree create interrupt.
+
+        The historical failed phase stays immutable.  Absence of the leftover
+        checkout path plus the attempt-local worktree-setup exception is the
+        closed proof that the crash-window leftover cleared.
+        """
+
+        self._record_for_attempt(self.task_source, attempt)
+        paths = self._paths(attempt)
+        observation = self._observe_pooled_worktree_create_failure(
+            attempt=attempt,
+            paths=paths,
+        )
+        final_path = paths.root / _POOLED_WORKTREE_CREATE_RECOVERY_FILENAME
+        if final_path.is_file():
+            return self._verify_pooled_worktree_create_recovery_receipt(
+                attempt=attempt,
+                observation=observation,
+                receipt=self._read_json_object(
+                    final_path,
+                    noun="pooled-worktree create recovery receipt",
+                ),
+            )
+        receipt = self._finalize_pooled_worktree_create_recovery_receipt(
+            attempt=attempt,
+            observation=observation,
+        )
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return self._verify_pooled_worktree_create_recovery_receipt(
+            attempt=attempt,
+            observation=observation,
+            receipt=receipt,
+        )
+
     def _preserved_commit_exists(
         self,
         *,
@@ -3953,6 +4169,15 @@ class DatabasePortalExecutionBridge:
                         reason,
                         backoff_seconds=backoff_seconds,
                     )
+                pooled_worktree_deferral = self._pooled_worktree_create_deferral(
+                    raw_result
+                )
+                if pooled_worktree_deferral is not None:
+                    reason, backoff_seconds = pooled_worktree_deferral
+                    raise DatabasePortalBridgeDeferred(
+                        reason,
+                        backoff_seconds=backoff_seconds,
+                    )
                 implementation = raw_result.get("implementation_result")
                 if (
                     isinstance(implementation, Mapping)
@@ -4046,6 +4271,9 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA",
+    "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON",
+    "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA",
+    "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",

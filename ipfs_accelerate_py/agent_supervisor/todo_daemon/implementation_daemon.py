@@ -3820,6 +3820,22 @@ class ImplementationRetryDeferred(RuntimeError):
         self.backoff_seconds = backoff_seconds
 
 
+class PooledWorktreeCreateDeferred(ImplementationRetryDeferred):
+    """Retry a failed pooled Git worktree add before provider dispatch.
+
+    Cold ``git worktree add`` can be interrupted while checking out files.
+    That is infrastructure, not a failed provider, and must not terminalize
+    the control task.
+    """
+
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(
+            "pooled_worktree_create_failed",
+            backoff_seconds=30,
+        )
+        self.detail = str(detail or "")
+
+
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
     """Fail closed when a configured implementation dependency is unavailable."""
 
@@ -34875,14 +34891,20 @@ class PortalImplementationDaemon:
                     task=task,
                 )
 
-            lease = self.worktree_pool.acquire(
-                cache_key=cache_key,
-                base_ref=base_ref,
-                branch_name=branch_name,
-                dependency_paths=self._effective_worktree_submodule_paths(task),
-                activate=activate,
-                authorize_reuse=self._authorize_pooled_worktree_reuse,
-            )
+            try:
+                lease = self.worktree_pool.acquire(
+                    cache_key=cache_key,
+                    base_ref=base_ref,
+                    branch_name=branch_name,
+                    dependency_paths=self._effective_worktree_submodule_paths(task),
+                    activate=activate,
+                    authorize_reuse=self._authorize_pooled_worktree_reuse,
+                )
+            except RuntimeError as exc:
+                message = str(exc)
+                if message.startswith("failed to create pooled worktree"):
+                    raise PooledWorktreeCreateDeferred(message) from exc
+                raise
             lease_path = Path(lease.path).resolve()
             try:
                 requested_path = worktree_path.resolve()
@@ -68434,6 +68456,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        pooled_worktree_create_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -68597,6 +68623,14 @@ class DatabaseImplementationDaemon:
             )
         self._validation_retry_seed_conflict_recovery_fn = (
             validation_retry_seed_conflict_recovery_fn
+        )
+        if (
+            pooled_worktree_create_recovery_fn is not None
+            and not callable(pooled_worktree_create_recovery_fn)
+        ):
+            raise TypeError("pooled_worktree_create_recovery_fn must be callable")
+        self._pooled_worktree_create_recovery_fn = (
+            pooled_worktree_create_recovery_fn
         )
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
@@ -68888,6 +68922,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        pooled_worktree_create_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -68919,6 +68957,13 @@ class DatabaseImplementationDaemon:
             raise TypeError(
                 "validation retry seed-conflict recovery callback must be callable"
             )
+        if (
+            pooled_worktree_create_recovery_fn is not None
+            and not callable(pooled_worktree_create_recovery_fn)
+        ):
+            raise TypeError(
+                "pooled worktree create recovery callback must be callable"
+            )
         with self._lock:
             if any(
                 callback is not None
@@ -68930,6 +68975,7 @@ class DatabaseImplementationDaemon:
                     self._external_protected_checkout_recovery_fn,
                     self._inflight_process_recovery_fn,
                     self._validation_retry_seed_conflict_recovery_fn,
+                    self._pooled_worktree_create_recovery_fn,
                 )
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -68948,6 +68994,9 @@ class DatabaseImplementationDaemon:
             self._inflight_process_recovery_fn = inflight_process_recovery_fn
             self._validation_retry_seed_conflict_recovery_fn = (
                 validation_retry_seed_conflict_recovery_fn
+            )
+            self._pooled_worktree_create_recovery_fn = (
+                pooled_worktree_create_recovery_fn
             )
 
     def _require_execution_authority(self, operation: str) -> None:
@@ -68997,6 +69046,7 @@ class DatabaseImplementationDaemon:
             "inflight_process_recovery_reconciliations": [],
             "validation_retry_seed_conflict_recovery_reconciliations": [],
             "leftover_wait_deferral_budget_recovery_reconciliations": [],
+            "pooled_worktree_create_recovery_reconciliations": [],
         }
 
     def projections_required(self) -> bool:
@@ -72948,6 +72998,8 @@ class DatabaseImplementationDaemon:
         | None = None,
         leftover_wait_deferral_budget_recovery_evidence: Mapping[str, Any]
         | None = None,
+        pooled_worktree_create_recovery_evidence: Mapping[str, Any]
+        | None = None,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
 
@@ -72958,6 +73010,7 @@ class DatabaseImplementationDaemon:
             inflight_process_recovery_evidence is not None,
             validation_retry_seed_conflict_recovery_evidence is not None,
             leftover_wait_deferral_budget_recovery_evidence is not None,
+            pooled_worktree_create_recovery_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
@@ -73042,6 +73095,14 @@ class DatabaseImplementationDaemon:
                         leftover_wait_deferral_budget_recovery_evidence
                     ),
                 )
+            if pooled_worktree_create_recovery_evidence is not None:
+                self._verified_pooled_worktree_create_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        pooled_worktree_create_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 (
@@ -73053,6 +73114,7 @@ class DatabaseImplementationDaemon:
                     is not None
                     or leftover_wait_deferral_budget_recovery_evidence
                     is not None
+                    or pooled_worktree_create_recovery_evidence is not None
                 )
                 and existing_entry is not None
                 and str(getattr(existing_entry, "reason", "") or "")
@@ -73101,6 +73163,7 @@ class DatabaseImplementationDaemon:
                 or inflight_process_recovery_evidence is not None
                 or validation_retry_seed_conflict_recovery_evidence is not None
                 or leftover_wait_deferral_budget_recovery_evidence is not None
+                or pooled_worktree_create_recovery_evidence is not None
             )
         )
         if task_status != "in_progress" and not blocked_recovery:
@@ -73164,6 +73227,8 @@ class DatabaseImplementationDaemon:
                     if validation_retry_seed_conflict_recovery_evidence is not None
                     else "database_portal_leftover_wait_deferral_budget_retry_recovery"
                     if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else "database_portal_pooled_worktree_create_retry_recovery"
+                    if pooled_worktree_create_recovery_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -73246,6 +73311,15 @@ class DatabaseImplementationDaemon:
                     if leftover_wait_deferral_budget_recovery_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "pooled_worktree_create_recovery_seed": dict(
+                            pooled_worktree_create_recovery_evidence
+                        ),
+                    }
+                    if pooled_worktree_create_recovery_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -73287,6 +73361,10 @@ class DatabaseImplementationDaemon:
                     )
                 ]
                 if leftover_wait_deferral_budget_recovery_evidence is not None
+                else [
+                    str(pooled_worktree_create_recovery_evidence["receipt_id"])
+                ]
+                if pooled_worktree_create_recovery_evidence is not None
                 else None
             ),
         )
@@ -74692,6 +74770,403 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _verified_pooled_worktree_create_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed pooled-worktree create recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "worktree_path",
+            "worktree_present",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed pooled-worktree create recovery evidence has unknown or "
+                "missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason")
+            != DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+            or raw.get("source_reason")
+            != DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or raw.get("worktree_present") is not False
+            or raw.get("identity_bound") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed pooled-worktree create recovery evidence failed "
+                "independent verification"
+            )
+        return dict(raw)
+
+    def _verified_pooled_worktree_create_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+        )
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "pooled_worktree_create_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery control receipt has unknown or "
+                "missing fields"
+            )
+        recovery_seed = self._verified_pooled_worktree_create_recovery_receipt(
+            attempt,
+            receipt.get("pooled_worktree_create_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task has no exact revision"
+            )
+        reason = DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_pooled_worktree_create_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_pooled_worktree_create_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery control receipt does not "
+                "match its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify pooled-worktree create recovery "
+                "queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery queue state does not match "
+                "its receipt"
+            )
+        if self._terminal_portal_failure_reason(attempt) != "portal_provider_failed":
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery does not supersede this "
+                "terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "pooled_worktree_create_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def recover_blocked_portal_pooled_worktree_create_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm a leftover pooled-worktree create interrupt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+        )
+
+        self._require_execution_authority("pooled-worktree create retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery rejected a superseded attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason") != "portal_provider_failed"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery is limited to a terminal "
+                "Portal failure with the exact leftover worktree-setup reason"
+            )
+        verified = self._verified_pooled_worktree_create_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery rejected a manual/review-only "
+                "task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery requires blocked or exact "
+                f"retrying control state, observed {status!r}"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason=DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_pooled_worktree_create_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            pooled_worktree_create_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["pooled_worktree_create_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_pooled_worktree_create_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover pooled-worktree create interrupts."""
+
+        self._require_execution_authority(
+            "pooled-worktree create recovery reconciliation"
+        )
+        callback = self._pooled_worktree_create_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if self._terminal_portal_failure_reason(attempt) != "portal_provider_failed":
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_pooled_worktree_create_recovery_state(attempt, task)
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = self.recover_blocked_portal_pooled_worktree_create_retry(
+                    attempt,
+                    recovery_evidence=evidence,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "pooled-worktree create recovery not admitted for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "pooled_worktree_create_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
     def _persist_typed_deferral_budget_exhausted(
         self,
         attempt: DatabaseTaskAttempt,
@@ -75867,6 +76342,14 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
+                elif (
+                    operation
+                    == "database_portal_pooled_worktree_create_retry_recovery"
+                ):
+                    self._verified_pooled_worktree_create_recovery_state(
+                        attempt,
+                        task,
+                    )
                 else:
                     self._verified_validation_retry_recovery_state(
                         attempt,
@@ -76304,6 +76787,9 @@ class DatabaseImplementationDaemon:
         leftover_wait_deferral_budget_recovery_reconciliations = (
             self.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
         )
+        pooled_worktree_create_recovery_reconciliations = (
+            self.reconcile_blocked_pooled_worktree_create_recoveries()
+        )
         terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
         reconciliation_write_count = (
             len(completion_reconciliations)
@@ -76339,6 +76825,11 @@ class DatabaseImplementationDaemon:
                 for item in (
                     leftover_wait_deferral_budget_recovery_reconciliations
                 )
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in pooled_worktree_create_recovery_reconciliations
                 if item.get("changed") is True
             )
         )
@@ -76381,6 +76872,9 @@ class DatabaseImplementationDaemon:
                 "leftover_wait_deferral_budget_recovery_reconciliations": (
                     leftover_wait_deferral_budget_recovery_reconciliations
                 ),
+                "pooled_worktree_create_recovery_reconciliations": (
+                    pooled_worktree_create_recovery_reconciliations
+                ),
             }
 
         attempt = self.claim_next()
@@ -76421,6 +76915,9 @@ class DatabaseImplementationDaemon:
                 "leftover_wait_deferral_budget_recovery_reconciliations": (
                     leftover_wait_deferral_budget_recovery_reconciliations
                 ),
+                "pooled_worktree_create_recovery_reconciliations": (
+                    pooled_worktree_create_recovery_reconciliations
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -76452,6 +76949,9 @@ class DatabaseImplementationDaemon:
             ),
             "leftover_wait_deferral_budget_recovery_reconciliations": (
                 leftover_wait_deferral_budget_recovery_reconciliations
+            ),
+            "pooled_worktree_create_recovery_reconciliations": (
+                pooled_worktree_create_recovery_reconciliations
             ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,

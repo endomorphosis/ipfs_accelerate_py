@@ -1311,6 +1311,7 @@ def bind_database_portal_execution_from_args(
         validation_retry_seed_conflict_recovery_fn=(
             bridge.recover_validation_retry_seed_conflict
         ),
+        pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
     )
     return bridge
 
@@ -1501,6 +1502,7 @@ def build_database_implementation_daemon_from_args(
     external_protected_checkout_recovery_fn: Callable[..., Any] | None = None,
     inflight_process_recovery_fn: Callable[..., Any] | None = None,
     validation_retry_seed_conflict_recovery_fn: Callable[..., Any] | None = None,
+    pooled_worktree_create_recovery_fn: Callable[..., Any] | None = None,
 ) -> object:
     """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
 
@@ -1545,6 +1547,7 @@ def build_database_implementation_daemon_from_args(
         validation_retry_seed_conflict_recovery_fn=(
             validation_retry_seed_conflict_recovery_fn
         ),
+        pooled_worktree_create_recovery_fn=pooled_worktree_create_recovery_fn,
         require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,
