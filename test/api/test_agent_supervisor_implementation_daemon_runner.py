@@ -168,6 +168,109 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
 
+def test_rescue_dirty_worktree_commits_failed_test_files_in_submodule(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+
+    child = tmp_path / "child"
+    parent = tmp_path / "parent"
+    child.mkdir()
+    parent.mkdir()
+
+    def git(cwd: Path, *args: str) -> None:
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=tester",
+                "-c",
+                "user.email=tester@example.invalid",
+                *args,
+            ],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git(child, "init")
+    (child / "ok.py").write_text("ok = True\n", encoding="utf-8")
+    git(child, "add", "-A")
+    git(child, "commit", "-m", "child-base")
+    git(parent, "init")
+    (parent / "README").write_text("parent\n", encoding="utf-8")
+    git(parent, "add", "README")
+    git(parent, "commit", "-m", "parent-base")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(child),
+            "external/ipfs_accelerate",
+        ],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    git(parent, "commit", "-m", "parent-with-submodule")
+    nested = parent / "external" / "ipfs_accelerate"
+    (nested / "lifecycle.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-submodule-path",
+            "external/ipfs_accelerate",
+        ]
+    )
+    config = supervisor_config_from_args(parsed, repo_root=parent)
+    supervisor = PortalImplementationSupervisor(config)
+    result = supervisor._rescue_dirty_worktree(
+        parent,
+        branch="implementation/pcce-021-attempt-1",
+        head=subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=parent,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip(),
+        target_ref="HEAD",
+        status_lines=[" M external/ipfs_accelerate"],
+        reason="failed_tests",
+    )
+    assert result.get("preserved") is True
+    submodule_results = result.get("submodule_results") or []
+    assert any(item.get("committed") for item in submodule_results)
+    listed = subprocess.run(
+        ["git", "ls-files", "--", "lifecycle.py"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "lifecycle.py" in listed.stdout
+    assert result.get("reason") in {
+        "dirty_worktree_committed_to_rescue_branch",
+        "no_staged_rescue_delta",
+    }
+    if result.get("reason") == "no_staged_rescue_delta":
+        raise AssertionError(
+            "parent rescue did not stage the submodule gitlink after "
+            f"committing nested failed-test files: {result}"
+        )
+
+
 def test_supervisor_propagates_explicit_merge_queue_namespace(
     tmp_path: Path,
 ) -> None:
