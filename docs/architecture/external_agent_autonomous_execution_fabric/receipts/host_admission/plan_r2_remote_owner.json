@@ -1,23 +1,35 @@
 {
   "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
-  "decision": "typed_missing",
+  "decision": "admitted",
   "evidence": {
+    "allowed_operations": [
+      "plan_r2.prepare",
+      "plan_r2.apply",
+      "plan_r2.observe"
+    ],
     "artifact": "plan_r2_remote_owner",
-    "independent_signature_present": false,
+    "artifact_cid": "sha256:68b7c9c929b16fbbb79cdb0200b54a4f3af0cc22416c7f972f5394dfa009907b",
+    "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/plan-r2-remote-owner.json",
+    "configured_board_launch": false,
+    "decision": "admitted",
+    "independent_signature_present": true,
     "r1_evidence_promotes_r2": false,
-    "reason": "independently signed prepare/apply/observe remote-owner capability and process-remote channel are absent",
+    "request_channel_id": "unix:///run/user/1000/eaaef-cf/plan-r2-request.sock",
+    "response_channel_id": "unix:///run/user/1000/eaaef-cf/plan-r2-response.sock",
     "self_signed_rejected": true,
-    "source_only_factory_authority": false
+    "signer_did": "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin",
+    "source_only_factory_authority": false,
+    "supervisor_signed": false
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:8bac87586b37e9c004afc0250f4f91f81747bbf0f021ecbe726b86a49a2df5dc",
+  "receipt_cid": "sha256:900dd2e35563e24deb5e6ef9f25ed8f449fac30d186cb851a9e3b442f97cf2ba",
   "receipt_name": "plan_r2_remote_owner.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "0fd408b2ee2a1020ab923243b5e22f91e7c39719",
-  "source_tree": "1f22225b83e678498c05509cc250814c993e293c",
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
   "supervisor_process_started": false,
   "task_id": "EAAEF-190"
 }

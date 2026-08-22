@@ -32,16 +32,25 @@ from .prompt_entrypoints import (
     prompt_lifecycle_discovery_manifest,
     register_prompt_lifecycle_tools,
 )
+from .external_handoff import (
+    HANDOFF_MCP_OPERATIONS,
+    HANDOFF_TOOL_NAMES,
+    configure_external_handoff_api,
+    execute_external_handoff_operation,
+    external_handoff_discovery_manifest,
+    register_external_handoff_tools,
+)
 
 for _operation, _tool in AGENT_SUPERVISOR_OPERATION_TOOLS.items():
     globals()[_tool.__name__] = getattr(_native, _tool.__name__)
 
 
 def register_all_agent_supervisor_tools(manager: object) -> None:
-    """Register control-plane tools and prompt-lifecycle facade tools."""
+    """Register control-plane, prompt-lifecycle, and external-handoff tools."""
 
     register_native_agent_supervisor_tools(manager)
     register_prompt_lifecycle_tools(manager)
+    register_external_handoff_tools(manager)
 
 
 __all__ = [
@@ -51,6 +60,8 @@ __all__ = [
     "AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV",
     "AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV",
     "PROMPT_LIFECYCLE_TOOLS",
+    "HANDOFF_MCP_OPERATIONS",
+    "HANDOFF_TOOL_NAMES",
     "AgentSupervisorMCPConfigurationError",
     "agent_supervisor_control",
     "agent_supervisor_discovery_manifest",
@@ -64,12 +75,16 @@ __all__ = [
     "agent_supervisor_v2_discovery_manifest",
     "agent_supervisor_service_resolution_count",
     "configure_agent_supervisor_control",
+    "configure_external_handoff_api",
     "configure_prompt_lifecycle_supervisor",
     "execute_agent_supervisor_operation",
+    "execute_external_handoff_operation",
+    "external_handoff_discovery_manifest",
     "mcp_control_surface_publication",
     "mcp_v2_control_surface_publication",
     "prompt_lifecycle_discovery_manifest",
     "register_all_agent_supervisor_tools",
+    "register_external_handoff_tools",
     "register_native_agent_supervisor_tools",
     "register_prompt_lifecycle_tools",
     "validate_agent_supervisor_mcp_catalog",

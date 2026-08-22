@@ -396,3 +396,57 @@ off legitimately exportable visible history and an exact Git repository; only
 repositories admitted by a qualified ProjectAdapter may receive bounded
 containerized mutation. Unsupported codebases remain preview-only or require
 human configuration.
+
+## Current overlay implementation status (EAAEF-174)
+
+This section extends the bootstrap checkpoint above. It does not rewrite
+reviewed roots, unmerged-work classification, compatibility bindings, or the
+historical diagnostic observations already recorded. Those remain provenance.
+
+Contract modules for epics B through R now exist in-process (handoff API and
+run handle, repository-transfer contracts, authority/disclosure, container
+execution/lease/OCI/checkpoint records, context and planning, conflict-free
+frontier, Quack owner and recovery, fixed-point termination, Python/CLI/MCP
+surfaces, security and packaging admission, CI receipts). Host-gated bootstrap
+admission receipts (epic S) remain separate typed evidence and are not a live
+launch.
+
+Qualification `evidence_mode` is `contract_fail_closed` unless a live receipt
+exists. No live eight-container campaign was run in this overlay. Receipts
+therefore bind:
+
+- `evidence_mode`: `contract_fail_closed`
+- `live_runtime_invoked`: `false`
+- `live_eight_container_qualification`: `false`
+
+In-process overlay suites exercise existing APIs and fail closed on the live
+path rather than converting a simulation into live evidence.
+
+### Epic status
+
+| Epic | Goal | Status | Live qualified |
+| --- | --- | --- | --- |
+| A | Unmerged-work reconciliation and release baseline | `implemented_contracts` | no |
+| B | External agent-session handoff protocol | `implemented_contracts` | no |
+| C | Complete Git repository transfer | `implemented_contracts` | no |
+| D | Caller identity, capability and disclosure policy | `implemented_contracts` | no |
+| E | Project onboarding and codebase classification | `implemented_contracts` | no |
+| F | OCI container execution fabric | `implemented_contracts` | no |
+| G | Handoff context and federated retrieval | `implemented_contracts` | no |
+| H | Logic-governed goal and task compilation | `implemented_contracts` | no |
+| I | Conflict-free multi-agent parallel execution | `implemented_contracts` | no |
+| J | Production DuckDB, Quack and DuckLake plane | `implemented_contracts` | no |
+| K | Closed-loop execution and adaptive replanning | `implemented_contracts` | no |
+| L | Python, CLI, MCP and MCP++ surfaces | `implemented_contracts` | no |
+| M | Security hardening | `implemented_contracts` | no |
+| N | Observability and accounting | `implemented_contracts` | no |
+| O | End-to-end and fault qualification | `implemented_contracts` | no |
+| P | Performance and parallelism benchmark | `implemented_contracts` | no |
+| Q | Packaging and external deployment | `implemented_contracts` | no |
+| R | Blocking CI and qualification release | `implemented_contracts` | no |
+| S | Host-gated bootstrap admission evidence | `implemented_contracts` | no |
+
+Live eight-container qualification: **not run**. Real external clients, isolated
+worker containers, and unsupervised autonomy are **not** qualified. Unsupported
+codebases remain preview-only or human-configured. The current recommendation
+is recorded in [`FINAL_RECOMMENDATION.md`](FINAL_RECOMMENDATION.md).

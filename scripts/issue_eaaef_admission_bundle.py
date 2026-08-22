@@ -2,8 +2,8 @@
 """Independently sign the current EAAEF-191 admission or no-go bundle.
 
 Uses the trusted local-operator profile and host lifecycle root. The
-prospective supervisor does not sign. Live launch remains fail-closed while
-child S-epic artifacts are typed_missing.
+prospective supervisor does not sign. The bundle may be admitted when 182-190
+are independently admitted; configured-board-launch still does not start here.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     lifecycle_root_identity_did,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+    ADMIT_REQUIRED_CHILDREN,
     BUNDLE_SIGNATURES_PATH,
     BUNDLE_SIGNATURES_SCHEMA,
     RECEIPT_DIR,
@@ -78,9 +79,14 @@ def issue() -> dict[str, str]:
         for task_id in RECEIPT_FILES
         if task_id != "EAAEF-191"
     }
+    decision = (
+        "admitted"
+        if all(child_decisions.get(task_id) == "admitted" for task_id in ADMIT_REQUIRED_CHILDREN)
+        else "no_go"
+    )
     review = admission_bundle_review_payload(
         child_decisions=child_decisions,
-        decision="no_go",
+        decision=decision,
         launch_plan_allowed=False,
     )
     operator_did, operator_signature = _sign(OPERATOR_KEY, review)
@@ -105,9 +111,12 @@ def issue() -> dict[str, str]:
         "payload_sha256": cid(review),
         "supervisor_signed": False,
         "configured_board_launch": False,
-        "decision": "no_go",
+        "decision": decision,
     }
     BUNDLE_SIGNATURES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if BUNDLE_SIGNATURES_PATH.exists():
+        os.chmod(BUNDLE_SIGNATURES_PATH, stat.S_IRUSR | stat.S_IWUSR)
+        BUNDLE_SIGNATURES_PATH.unlink()
     BUNDLE_SIGNATURES_PATH.write_text(
         json.dumps(artifact, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -117,18 +126,22 @@ def issue() -> dict[str, str]:
     bundle = json.loads(
         (RECEIPT_DIR / RECEIPT_FILES["EAAEF-191"]).read_text(encoding="utf-8")
     )
-    if bundle.get("decision") != "no_go":
-        raise RuntimeError("signed bundle must remain no_go until children admit")
+    if bundle.get("decision") != decision:
+        raise RuntimeError(
+            f"signed bundle decision drifted: expected {decision} got {bundle.get('decision')}"
+        )
     if not bundle["evidence"].get("independent_signature_present"):
         raise RuntimeError("signed bundle did not verify on collect")
     if bundle["evidence"].get("launch_plan_allowed") is True:
-        raise RuntimeError("signed no-go bundle must not allow live launch")
+        raise RuntimeError("issuer must not start live launch")
+    if bundle.get("process_started") is True or bundle.get("supervisor_process_started") is True:
+        raise RuntimeError("issuer started a supervisor")
     return {
         "operator_did": operator_did,
         "security_reviewer_did": reviewer_did,
         "payload_sha256": artifact["payload_sha256"],
         "signatures_path": str(BUNDLE_SIGNATURES_PATH.relative_to(ROOT)),
-        "decision": "no_go",
+        "decision": decision,
         "independent_signature_present": "true",
         "configured_board_launch": "false",
         "collection": json.dumps(refreshed["decisions"], sort_keys=True),

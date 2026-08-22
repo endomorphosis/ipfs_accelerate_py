@@ -1,0 +1,34 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-agent-qualification-report@1",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_eight_container_qualification": false,
+  "revisions": {
+    "ipfs_accelerate_py": "integration/external-agent-autonomous-execution-fabric-v1",
+    "ipfs_datasets_py": "integration/external-agent-autonomous-execution-fabric-v1",
+    "ipfs_kit_py": "integration/external-agent-autonomous-execution-fabric-v1",
+    "Mcp-Plus-Plus": "integration/external-agent-autonomous-execution-fabric-v1"
+  },
+  "epics": {
+    "B": "implemented_contracts",
+    "C": "implemented_contracts",
+    "D": "implemented_contracts",
+    "E": "implemented_contracts",
+    "F": "implemented_contracts",
+    "G": "implemented_contracts",
+    "H": "implemented_contracts",
+    "I": "implemented_contracts",
+    "J": "implemented_contracts",
+    "K": "implemented_contracts",
+    "L": "implemented_contracts",
+    "M": "implemented_contracts",
+    "N": "implemented_contracts",
+    "O": "implemented_contracts",
+    "P": "implemented_contracts",
+    "Q": "implemented_contracts",
+    "R": "implemented_contracts",
+    "S": "implemented_contracts"
+  },
+  "live_qualified": false,
+  "unsupervised_autonomy": false
+}

@@ -1,22 +1,31 @@
 {
   "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
-  "decision": "typed_missing",
+  "decision": "admitted",
   "evidence": {
     "artifact": "native_lane_dispatcher_artifacts",
-    "independent_signature_present": false,
-    "reason": "independently signed native-dependency, V2 lane/verifier/merge and dispatcher-service artifacts are absent",
+    "artifact_cid": "sha256:c61318d42d4bb6ae2e5dd932477586acd73290c53fba0c28865636132a12edf9",
+    "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/native-lane-dispatcher.json",
+    "configured_board_launch": false,
+    "decision": "admitted",
+    "dispatcher_factory": "EAAEFContainerDispatcherFactoryQualification@1",
+    "independent_signature_present": true,
+    "lane_authority": "EAAEFBootstrapLaneAuthority@2",
+    "native_dependency_admission": "AgentSupervisorNativeDependencyAdmission@1",
+    "quack_extension_sha256": "sha256:41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
     "self_signed_rejected": true,
-    "source_only_factory_authority": false
+    "signer_did": "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin",
+    "source_only_factory_authority": false,
+    "supervisor_signed": false
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:2bf1ed237651f7876d29de018cf61c485105406fec3feab2342b00a09e1543c1",
+  "receipt_cid": "sha256:248de2e3acdc195afba9672cdace7b8536d9a694ce9d7ddb7a2e23b3deedaec5",
   "receipt_name": "native_lane_dispatcher.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "0fd408b2ee2a1020ab923243b5e22f91e7c39719",
-  "source_tree": "1f22225b83e678498c05509cc250814c993e293c",
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
   "supervisor_process_started": false,
   "task_id": "EAAEF-189"
 }

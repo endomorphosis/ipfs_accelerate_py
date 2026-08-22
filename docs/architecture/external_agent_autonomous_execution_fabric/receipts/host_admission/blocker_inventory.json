@@ -7,22 +7,6 @@
     "bootstrap_admission_decision": null,
     "items": [
       {
-        "blocker": "provider/container qualification is diagnostic-only and does not admit task dispatch",
-        "class": "host_gated_external_authority",
-        "closing_task_ids": [
-          "EAAEF-185",
-          "EAAEF-186"
-        ]
-      },
-      {
-        "blocker": "the versioned Grok mount and execution-profile schemas are implemented fail-closed, but no externally signed @2 profile artifact or admitted container engine exists",
-        "class": "host_gated_external_authority",
-        "closing_task_ids": [
-          "EAAEF-183",
-          "EAAEF-186"
-        ]
-      },
-      {
         "blocker": "typed authenticated Quack ingress, private-owner atomic CAS and read-only egress are implemented but unqualified; signed lane admission, a durable ambiguity journal, signed verifier and merge evidence, and a qualified dispatcher factory are absent",
         "class": "host_gated_external_authority",
         "closing_task_ids": [
@@ -52,13 +36,6 @@
         ]
       },
       {
-        "blocker": "worker_network_authorization_propagation_unavailable",
-        "class": "host_gated_external_authority",
-        "closing_task_ids": [
-          "EAAEF-187"
-        ]
-      },
-      {
         "blocker": "board validation has not admitted live launch",
         "class": "host_gated_external_authority",
         "closing_task_ids": [
@@ -69,20 +46,9 @@
         "blocker": "container_policy.live_dispatch_allowed is not true",
         "class": "host_gated_external_authority",
         "closing_task_ids": [
-          "EAAEF-183"
-        ]
-      },
-      {
-        "blocker": "container_policy.bootstrap_image_status is not admitted",
-        "class": "host_gated_external_authority",
-        "closing_task_ids": [
-          "EAAEF-183"
-        ]
-      },
-      {
-        "blocker": "container_policy.bootstrap_image_digest is not a full sha256 identity",
-        "class": "host_gated_external_authority",
-        "closing_task_ids": [
+          "EAAEF-185",
+          "EAAEF-186",
+          "EAAEF-191",
           "EAAEF-183"
         ]
       },
@@ -100,12 +66,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:131588043a0b8d9b53ef24d50cf71509eab179f17a5cfb43046e95e80a3644d7",
+  "receipt_cid": "sha256:457d41bd8ed9aa1c8cfd442d0e7db632d0412841842d5be7719f50a4176b4c62",
   "receipt_name": "blocker_inventory.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "0fd408b2ee2a1020ab923243b5e22f91e7c39719",
-  "source_tree": "1f22225b83e678498c05509cc250814c993e293c",
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
   "supervisor_process_started": false,
   "task_id": "EAAEF-180"
 }

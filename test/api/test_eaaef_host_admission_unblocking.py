@@ -89,6 +89,20 @@ def test_inventory_classifies_ingest_failures_as_host_bootstrap_recovery() -> No
         "host_gated_external_authority"
     )
     assert "EAAEF-184" in closing_task_ids("eaaef_scoped_provider_authorization_missing")
+    evidence_plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": (
+                "independently signed network-none worker image, SBOM and five "
+                "slot identities are absent"
+            ),
+        }
+    )
+    assert evidence_plan.action is AutoRescueAction.HOST_EVIDENCE_MATERIALIZE
+    assert evidence_plan.max_provider_rescue_passes == 0
+    assert "EAAEF-185" in closing_task_ids(
+        "container_policy.bootstrap_image_digest is not a full sha256 identity"
+    )
 
 
 def test_inventory_receipt_classifies_launch_plan_blockers() -> None:
@@ -170,43 +184,113 @@ def test_provider_authorization_receipt_contract() -> None:
 
 def test_worker_image_receipt_contract() -> None:
     payload = _receipt("worker_image.json")
-    assert payload["decision"] == "typed_missing"
-    assert payload["evidence"]["live_dispatch_claimed"] is False
+    evidence = payload["evidence"]
+    assert evidence["live_dispatch_claimed"] is False
+    assert evidence.get("configured_board_launch") is not True
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert str(evidence.get("image_digest") or "").startswith("sha256:")
+        assert len(str(evidence.get("image_digest") or "")) == 71
+        assert evidence["required_worker_slots"] == 5
+        assert len(evidence.get("slot_identities") or ()) == 5
+        assert evidence.get("supervisor_signed") is False
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_container_profile_receipt_contract() -> None:
     payload = _receipt("container_profile.json")
-    assert payload["decision"] == "typed_missing"
+    evidence = payload["evidence"]
+    assert evidence.get("configured_board_launch") is not True
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert str(evidence.get("schema") or "").endswith("launch@2")
+        assert evidence.get("nonroot_user") == "65532:65532"
+        assert evidence.get("read_only_base") is True
+        assert evidence.get("cap_drop") == ["ALL"]
+        assert evidence.get("supervisor_signed") is False
+        assert evidence.get("live_dispatch_claimed") is False
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_worker_network_receipt_contract() -> None:
     payload = _receipt("worker_network.json")
-    assert payload["decision"] == "typed_missing"
-    assert payload["evidence"]["required_lanes"] == 5
+    evidence = payload["evidence"]
+    assert evidence["required_lanes"] == 5
+    assert evidence.get("configured_board_launch") is not True
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert len(evidence.get("lane_ids") or ()) == 5
+        assert len(set(evidence.get("lane_ids") or ())) == 5
+        assert evidence.get("docker_network_internal") is True
+        assert evidence.get("connect_only_443") is True
+        assert evidence.get("create_start_restart_reverification_required") is True
+        assert evidence.get("child_propagation_status") == "admitted"
+        assert evidence.get("supervisor_signed") is False
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_command_fabric_receipt_contract() -> None:
     payload = _receipt("command_fabric_endpoints.json")
-    assert payload["decision"] == "typed_missing"
-    assert payload["evidence"]["implemented_unqualified_fail_closed_admitted"] is False
+    evidence = payload["evidence"]
+    assert evidence.get("implemented_unqualified_fail_closed_admitted") is False
+    assert evidence.get("configured_board_launch") is not True
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert evidence["child_adapter_status"] == "admitted"
+        assert str(evidence.get("command_authorizer_endpoint") or "").startswith("unix://")
+        assert str(evidence.get("quack_ingress_endpoint") or "").startswith("unix://")
+        assert str(evidence.get("dispatcher_endpoint") or "").startswith("unix://")
+        assert evidence.get("supervisor_signed") is False
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_native_lane_receipt_contract() -> None:
     payload = _receipt("native_lane_dispatcher.json")
-    assert payload["decision"] == "typed_missing"
+    evidence = payload["evidence"]
+    assert evidence.get("configured_board_launch") is not True
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert evidence["native_dependency_admission"] == (
+            "AgentSupervisorNativeDependencyAdmission@1"
+        )
+        assert evidence["lane_authority"] == "EAAEFBootstrapLaneAuthority@2"
+        assert str(evidence.get("quack_extension_sha256") or "").startswith("sha256:")
+        assert evidence.get("supervisor_signed") is False
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_plan_r2_receipt_contract() -> None:
     payload = _receipt("plan_r2_remote_owner.json")
-    assert payload["decision"] == "typed_missing"
-    assert payload["evidence"]["r1_evidence_promotes_r2"] is False
+    evidence = payload["evidence"]
+    assert evidence["r1_evidence_promotes_r2"] is False
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert evidence["allowed_operations"] == [
+            "plan_r2.prepare",
+            "plan_r2.apply",
+            "plan_r2.observe",
+        ]
+        assert evidence.get("supervisor_signed") is False
+    else:
+        assert payload["decision"] == "typed_missing"
+        assert evidence["independent_signature_present"] is False
 
 
 def test_admission_bundle_receipt_contract() -> None:
     payload = _receipt("admission_bundle.json")
     evidence = payload["evidence"]
     assert payload["schema"] == BUNDLE_SCHEMA
-    assert payload["decision"] == "no_go"
+    assert payload["decision"] in {"no_go", "admitted"}
     assert evidence["prospective_supervisor_signature_rejected"] is True
     assert evidence["launch_plan_allowed"] is False
     child_cids = evidence["child_receipt_cids"]
@@ -223,6 +307,9 @@ def test_admission_bundle_receipt_contract() -> None:
     else:
         assert evidence["independent_operator_signature"] == ""
         assert evidence["independent_security_reviewer_signature"] == ""
+    if payload["decision"] == "admitted":
+        assert evidence["independent_signature_present"] is True
+        assert evidence.get("configured_board_launch") is not True
     assert _tasks()["EAAEF-191"]["completion_mode"] == "manual"
     assert _tasks()["EAAEF-183"]["completion_mode"] == "auto"
     assert _tasks()["EAAEF-184"]["completion_mode"] == "auto"

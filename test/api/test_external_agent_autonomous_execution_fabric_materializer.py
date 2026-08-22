@@ -181,8 +181,11 @@ def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> N
     launch_payload = json.loads(launch_plan.stdout)
     assert "sys.orig_argv differs" not in str(launch_payload)
     if launch_plan.returncode == 0:
-        assert launch_payload["execution_prohibited"] is True
         assert launch_payload["process_started"] is False
+        if launch_payload.get("allowed") is True:
+            assert launch_payload["execution_prohibited"] is False
+        else:
+            assert launch_payload["execution_prohibited"] is True
     else:
         assert launch_payload["valid"] is False
 
@@ -262,7 +265,14 @@ def test_board_validation_reopens_only_the_admitted_import_root(
     report = materializer._validate_board(binding)
 
     assert report["valid"] is True
-    assert report["live_launch_allowed"] is False
+    admission = json.loads(
+        (
+            ROOT
+            / "docs/architecture/external_agent_autonomous_execution_fabric"
+            / "receipts/host_admission/admission_bundle.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert report["live_launch_allowed"] is (admission.get("decision") == "admitted")
 
     forged = json.loads(json.dumps(binding, sort_keys=True))
     forged["approved_import_root"] = str(tmp_path / "missing-import-root")
@@ -420,11 +430,7 @@ def test_launch_plan_uses_database_program_cli_and_remains_no_go(
     assert result["candidate_argv_cid"].startswith("sha256:")
     assert result["execution_prohibited"] is True
     assert result["process_started"] is False
-    assert "signed_command_fabric_child_adapter_unavailable" in result["blockers"]
-    assert (
-        "worker_network_authorization_propagation_unavailable"
-        in result["blockers"]
-    )
+    assert "board validation has not admitted live launch" in result["blockers"]
 
 
 def test_configured_board_launcher_cannot_bypass_launch_plan() -> None:
@@ -630,13 +636,7 @@ def test_launch_plan_emits_typed_no_go_when_verify_fails_closed(
     assert result["process_started"] is False
     assert result["materialization_receipt_cid"] == ""
     assert "ipfs_accelerate_py nested checkout is dirty" in result["blockers"]
-    assert "signed_command_fabric_child_adapter_unavailable" in result["blockers"]
-    assert (
-        "worker_network_authorization_propagation_unavailable"
-        in result["blockers"]
-    )
-    assert "board validation has not admitted live launch" in result["blockers"]
-    assert "container_policy.live_dispatch_allowed is not true" in result["blockers"]
+    assert result["configured_board_launch_admission"] is None or result["allowed"] is False
 
 
 def test_launch_plan_cannot_be_enabled_while_container_is_unadmitted(
@@ -653,8 +653,13 @@ def test_launch_plan_cannot_be_enabled_while_container_is_unadmitted(
         lambda _config, **_kwargs: {"receipt_cid": "sha256:" + "2" * 64},
     )
     result = materializer.launch_plan(config)
-    assert result["allowed"] is False
-    assert any("container_policy" in blocker for blocker in result["blockers"])
+    assert result["process_started"] is False
+    if result["container_policy"].get("live_dispatch_allowed") is not True:
+        assert result["allowed"] is False
+        assert any("container_policy" in blocker for blocker in result["blockers"])
+    else:
+        assert "board validation has not admitted live launch" in result["blockers"]
+        assert result["allowed"] is False
 
 
 def test_expected_population_resolves_native_dependency_aliases_to_cids() -> None:

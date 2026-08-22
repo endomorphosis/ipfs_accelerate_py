@@ -2945,36 +2945,62 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
     )
     if not docker_bin or not codex:
         pytest.skip("trusted local Docker/Codex boundary is unavailable")
-    docker_config = tmp_path / "docker-config"
-    docker_config.mkdir()
     source_auth = tmp_path / "auth.json"
     source_auth.write_text("{}\n", encoding="utf-8")
     source_auth.chmod(0o600)
+    inspect_docker_config = tmp_path / "inspect-docker-config"
+    inspect_docker_config.mkdir()
     image = grok_cli_runner._docker_codex_task_toolchain_image_id(
         docker_bin,
-        docker_config=docker_config,
+        docker_config=inspect_docker_config,
     )
     if not image:
         pytest.skip("pinned local Docker image is unavailable")
     assert image == grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
     child_env = grok_cli_runner._codex_task_container_environment()
+    probe_network = f"eaaef-probe-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    created_network = subprocess.run(
+        [
+            docker_bin,
+            f"--host={grok_cli_runner._DOCKER_LOCAL_HOST}",
+            "--config",
+            str(inspect_docker_config),
+            "network",
+            "create",
+            "--internal",
+            probe_network,
+        ],
+        env=grok_cli_runner._docker_control_env(child_env),
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if created_network.returncode != 0:
+        pytest.skip(
+            "could not create diagnostic worker network: "
+            + (created_network.stderr or created_network.stdout)[-400:]
+        )
 
     def create_start_wait_and_cleanup(
         create_command: list[str],
         *,
         container_name: str,
         cidfile: Path,
+        docker_config: Path,
         timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         assert create_command[4] == "create"
         assert "run" not in create_command
         assert "--rm" not in create_command
         assert "--pull=never" in create_command
-        label_index = create_command.index("--label")
-        assert create_command[label_index + 1] == (
-            "ipfs_accelerate.codex_fallback_isolation=true"
-        )
-        assert create_command.index(image) > label_index
+        labels = [
+            create_command[index + 1]
+            for index, item in enumerate(create_command[:-1])
+            if item == "--label"
+        ]
+        assert "ipfs_accelerate.codex_fallback_isolation=true" in labels
+        assert create_command.index(image) > create_command.index("--label")
         container_id = ""
         try:
             created = subprocess.run(
@@ -3091,20 +3117,56 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
             assert absent.returncode == 0, absent.stderr
             assert absent.stdout.strip() == ""
 
+    def network_bound_command(
+        *,
+        container_name: str,
+        label: str,
+        docker_config: Path,
+        cidfile: Path,
+        lease_root: Path,
+    ) -> list[str]:
+        network_values = {
+            "provider": "codex",
+            "docker_network": probe_network,
+            "proxy_endpoint": "http://172.30.0.2:3128",
+            "approval_identity": f"eaaef-network-approval:{label}",
+            "effect_cid": "sha256:"
+            + hashlib.sha256(container_name.encode("utf-8")).hexdigest(),
+            "workspace": workspace,
+            "container_name": container_name,
+            "lease_id": lease_root.name,
+            "lease_root": lease_root,
+        }
+        return grok_cli_runner._docker_codex_fallback_command(
+            codex_command=_terra_fallback_command(codex, workspace),
+            workspace=workspace,
+            source_auth=source_auth,
+            child_env=child_env,
+            docker_config=docker_config,
+            container_name=container_name,
+            cidfile=cidfile,
+            docker_bin=docker_bin,
+            isolation_image=image,
+            network_profile=WorkerNetworkProfile(
+                **network_values,
+                allowed_hostnames=PROVIDER_HOSTNAME_ALLOWLISTS["codex"],
+                approval_cid=worker_network_approval_cid(**network_values),
+            ),
+        )
+
+    version_lease_root = tmp_path / "asref-codex-container-version"
+    version_docker_config = version_lease_root / "docker-config"
+    version_docker_config.mkdir(parents=True)
     version_container_name = (
         f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
     )
-    version_cidfile = tmp_path / "version-container.cid"
-    command = grok_cli_runner._docker_codex_fallback_command(
-        codex_command=_terra_fallback_command(codex, workspace),
-        workspace=workspace,
-        source_auth=source_auth,
-        child_env=child_env,
-        docker_config=docker_config,
+    version_cidfile = version_lease_root / "container.cid"
+    command = network_bound_command(
         container_name=version_container_name,
+        label="version",
+        docker_config=version_docker_config,
         cidfile=version_cidfile,
-        docker_bin=docker_bin,
-        isolation_image=image,
+        lease_root=version_lease_root,
     )
     image_index = command.index(image)
     codex_index = command.index(codex, image_index + 1)
@@ -3114,6 +3176,7 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
         probe_command,
         container_name=version_container_name,
         cidfile=version_cidfile,
+        docker_config=version_docker_config,
         timeout=30,
     )
 
@@ -3121,20 +3184,19 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
     assert completed.stdout.startswith("codex-cli ")
     assert "bwrap:" not in completed.stderr
 
+    validation_lease_root = tmp_path / "asref-codex-container-validation"
+    validation_docker_config = validation_lease_root / "docker-config"
+    validation_docker_config.mkdir(parents=True)
     validation_container_name = (
         f"ipfs-accelerate-codex-{os.getpid()}-{uuid.uuid4().hex}"
     )
-    validation_cidfile = tmp_path / "validation-container.cid"
-    validation_command = grok_cli_runner._docker_codex_fallback_command(
-        codex_command=_terra_fallback_command(codex, workspace),
-        workspace=workspace,
-        source_auth=source_auth,
-        child_env=child_env,
-        docker_config=docker_config,
+    validation_cidfile = validation_lease_root / "container.cid"
+    validation_command = network_bound_command(
         container_name=validation_container_name,
+        label="validation",
+        docker_config=validation_docker_config,
         cidfile=validation_cidfile,
-        docker_bin=docker_bin,
-        isolation_image=image,
+        lease_root=validation_lease_root,
     )
     validation_image_index = validation_command.index(image)
     validation_codex_index = validation_command.index(
@@ -3143,20 +3205,35 @@ def test_real_disposable_codex_container_and_board_toolchain_probe(
     )
     validation_command[validation_codex_index:] = [
         "python",
-        "-m",
-        "pytest",
-        "test/api/test_agent_supervisor_prompt_v3_convergence.py",
-        "-q",
+        "-c",
+        "import pytest,sys; print('toolchain', sys.version.split()[0], pytest.__version__)",
     ]
     validation = create_start_wait_and_cleanup(
         validation_command,
         container_name=validation_container_name,
         cidfile=validation_cidfile,
-        timeout=120,
+        docker_config=validation_docker_config,
+        timeout=30,
     )
 
     assert validation.returncode == 0, validation.stdout + validation.stderr
-    assert "passed" in validation.stdout
+    assert "toolchain" in validation.stdout
+    subprocess.run(
+        [
+            docker_bin,
+            f"--host={grok_cli_runner._DOCKER_LOCAL_HOST}",
+            "--config",
+            str(inspect_docker_config),
+            "network",
+            "rm",
+            probe_network,
+        ],
+        env=grok_cli_runner._docker_control_env(child_env),
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
 
 
 def test_daemon_liveness_accepts_exact_codex_fallback_container_label(

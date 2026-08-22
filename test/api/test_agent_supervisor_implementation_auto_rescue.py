@@ -52,6 +52,23 @@ FAILED test/api/test_foo.py::test_provider_surfaces - AssertionError: assert 0 >
     assert "assert 0 >= 1" in head
 
 
+def test_summarize_test_failure_strips_ansi_failed_nodes() -> None:
+    output = (
+        "\x1b[31mFAILED\x1b[0m "
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py::"
+        "\x1b[1mtest_quota_grok_command_authorizes_canonical_legacy_preflight\x1b[0m "
+        "- AssertionError: assert 'grok-4.6' == 'grok-4.5'\n"
+    )
+    summary = summarize_test_failure(output)
+    assert any(
+        "test_quota_grok_command_authorizes_canonical_legacy_preflight" in item
+        for item in summary["failed_tests"]
+    )
+    assert summary["failed_test_paths"] == [
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
+    ]
+
+
 def test_summarize_test_failure_quiet_mode_still_extracts_failed_node() -> None:
     output = """
 F                                                                        [100%]
@@ -343,6 +360,32 @@ def test_plan_strips_helper_only_scope_denials_when_outputs_exist() -> None:
         strip_helpers_used=True,
     )
     assert after_strip.action is AutoRescueAction.NONE
+
+
+def test_plan_routes_combined_pytest_failures_to_file_isolation() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": "python3 -m pytest -q test/api/test_eaaef_borrowed_transaction.py",
+            "stdout": "===== 2 failed, 10 passed in 1.0s =====",
+        }
+    )
+    assert plan.action is AutoRescueAction.PYTEST_FILE_ISOLATION
+    assert plan.max_provider_rescue_passes == 0
+
+
+def test_plan_routes_host_gated_image_gaps_to_host_evidence_materialize() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "error": (
+                "independently signed execution-profile @2 is absent; unsigned "
+                "@1 cannot satisfy this gate"
+            ),
+        }
+    )
+    assert plan.action is AutoRescueAction.HOST_EVIDENCE_MATERIALIZE
+    assert plan.max_provider_rescue_passes == 0
 
 
 def test_plan_routes_control_plane_ingest_failures_to_host_bootstrap_recovery() -> None:

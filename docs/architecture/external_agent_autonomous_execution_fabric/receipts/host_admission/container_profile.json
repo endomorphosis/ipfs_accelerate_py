@@ -1,22 +1,38 @@
 {
   "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
   "board_namespace": "external-agent-autonomous-execution-fabric-v1",
-  "decision": "typed_missing",
+  "decision": "admitted",
   "evidence": {
     "artifact": "container_execution_profile_v2",
-    "independent_signature_present": false,
-    "reason": "independently signed execution-profile @2 is absent; unsigned @1 cannot satisfy this gate",
+    "artifact_cid": "sha256:77e1d75fbca24dd8714e7fb2ad16e1943724b84e6daeac10d5dc6e2f8256a7f1",
+    "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/container-execution-profile-v2.json",
+    "cap_drop": [
+      "ALL"
+    ],
+    "configured_board_launch": false,
+    "decision": "admitted",
+    "engine_endpoint": "unix:///run/user/1000/docker.sock",
+    "image_digest": "sha256:3c2bec0ebd89f6427cc1e31ab650fa252d40d1f05f2c4a9f2ca52d1609e31b3b",
+    "independent_signature_present": true,
+    "live_dispatch_claimed": false,
+    "nonroot_user": "65532:65532",
+    "profile_cid": "sha256:e17d508356130d412ff7cd001147d7cba64d03090a03eaa4e0957b426a9784e3",
+    "profile_schema": "ipfs_accelerate_py/agent-supervisor/external-agent-worker-container-profile@2",
+    "read_only_base": true,
+    "schema": "ipfs_accelerate_py/agent-supervisor/source-addressed-container-execution-profile-launch@2",
     "self_signed_rejected": true,
-    "source_only_factory_authority": false
+    "signer_did": "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin",
+    "source_only_factory_authority": false,
+    "supervisor_signed": false
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:64a91cd66682f17d57a75606a88d939c1976ef49dedc618bfa96374cdc90e5b3",
+  "receipt_cid": "sha256:337738438f35136ba8e27391c3b21311f7c076577e4ed32f8565ce3a8cb4aa07",
   "receipt_name": "container_profile.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "0fd408b2ee2a1020ab923243b5e22f91e7c39719",
-  "source_tree": "1f22225b83e678498c05509cc250814c993e293c",
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
   "supervisor_process_started": false,
   "task_id": "EAAEF-186"
 }

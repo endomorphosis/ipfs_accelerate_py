@@ -749,6 +749,27 @@ def validate(*, source_only: bool = False) -> dict[str, Any]:
         board = _validate_generated_parity(errors)
         _validate_native_markdown_projection(board, errors)
         counts = _validate_board(board, source, stack, errors)
+    admission_path = CAMPAIGN_DIR / "receipts/host_admission/admission_bundle.json"
+    admission_decision = ""
+    if admission_path.is_file():
+        try:
+            admission = json.loads(admission_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            admission = {}
+        if isinstance(admission, dict):
+            admission_decision = str(admission.get("decision") or "")
+    live_launch_allowed = admission_decision == "admitted"
+    live_launch_blockers = []
+    if not live_launch_allowed:
+        live_launch_blockers = [
+            "EAAEF-191 admission bundle is not independently signed admitted",
+            "actual independently signed native-dependency, V2 lane/verifier/merge, Quack-client, dispatcher-service and Plan-R2 remote-owner artifacts are absent",
+            "independently deployed signed command-authorizer, Quack and dispatcher endpoints plus a qualified DuckDB/Quack extension are absent",
+            "real Docker/container engine, image/profile/SBOM, provider and effect-bound network authority are not admitted",
+            "configured multi-supervisor launch requires an immutable accepted control-plane capsule",
+            "continuous Quack and live DuckLake exact profiles remain unqualified",
+            "source R1/R2 factories and supervisor wiring do not authorize live launch or effects",
+        ]
     return {
         "schema": SCHEMA,
         "valid": not errors,
@@ -759,16 +780,13 @@ def validate(*, source_only: bool = False) -> dict[str, Any]:
         "source_forest_root": source.get("source_forest_root"),
         "board_namespace": board.get("board_namespace"),
         "board_cid": board.get("board_cid"),
-        "qualification_status": "source_r1_r2_seams_implemented_live_no_go",
-        "live_launch_allowed": False,
-        "live_launch_blockers": [
-            "actual independently signed native-dependency, V2 lane/verifier/merge, Quack-client, dispatcher-service and Plan-R2 remote-owner artifacts are absent",
-            "independently deployed signed command-authorizer, Quack and dispatcher endpoints plus a qualified DuckDB/Quack extension are absent",
-            "real Docker/container engine, image/profile/SBOM, provider and effect-bound network authority are not admitted",
-            "configured multi-supervisor launch requires an immutable accepted control-plane capsule",
-            "continuous Quack and live DuckLake exact profiles remain unqualified",
-            "source R1/R2 factories and supervisor wiring do not authorize live launch or effects",
-        ],
+        "qualification_status": (
+            "admitted_live_launch"
+            if live_launch_allowed
+            else "source_r1_r2_seams_implemented_live_no_go"
+        ),
+        "live_launch_allowed": live_launch_allowed,
+        "live_launch_blockers": live_launch_blockers,
     }
 
 

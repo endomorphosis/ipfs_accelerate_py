@@ -10,6 +10,18 @@ from pathlib import Path
 
 import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
+from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
+    CampaignLeaseCoordinator,
+)
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
+    LearningCheckpointAdapter,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    L3ResourceKind,
+    LearningCheckpointBinding,
+    StaleFenceError,
+)
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,

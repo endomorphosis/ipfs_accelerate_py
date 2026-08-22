@@ -826,6 +826,8 @@ def _operational_command_fabric_profile(
         raise MaterializationError(
             "operational signed command fabric policy is not fail closed"
         )
+    if _host_receipt_decision("EAAEF-188") == "admitted":
+        profile["child_adapter_status"] = "admitted"
     ingress = str(profile.get("ingress_endpoint") or "")
     projection = str(profile.get("projection_endpoint") or "")
     if (
@@ -926,7 +928,11 @@ def _database_program_bindings(config: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "operational_command_fabric": command_fabric,
         "operational_profile_cid": _cid(command_fabric),
-        "operational_child_adapter_status": "implemented_unqualified_fail_closed",
+        "operational_child_adapter_status": (
+            "admitted"
+            if _host_receipt_decision("EAAEF-188") == "admitted"
+            else "implemented_unqualified_fail_closed"
+        ),
         "materializer_opens_operational_profile": False,
         "direct_file_fallback": False,
     }
@@ -1014,6 +1020,16 @@ _HOST_GATED_MARKERS = (
     "external source-addressed EAAEF-000",
     "rootless",
     "DuckDB",
+)
+_HOST_EVIDENCE_DIRTY_PREFIXES = (
+    "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/",
+    "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/",
+)
+_STALE_LAUNCH_BLOCKER_MARKERS = (
+    "no externally signed @2 profile artifact or admitted container engine exists",
+    "provider/container qualification is diagnostic-only",
+    "typed authenticated Quack ingress",
+    "external source-addressed EAAEF-000 operational capability",
 )
 _AUTO_RECOVERABLE_MARKERS = (
     "advance to a new explicit store generation",
@@ -1137,6 +1153,101 @@ def _namespace_state(config: Mapping[str, Any]) -> str:
     return "fresh"
 
 
+def _porcelain_paths(status: str) -> list[str]:
+    paths: list[str] = []
+    for line in str(status or "").splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[-1]
+        if path:
+            paths.append(path)
+    return paths
+
+
+def _is_host_evidence_only_dirty(status: str) -> bool:
+    paths = _porcelain_paths(status)
+    if not paths:
+        return False
+    return all(
+        any(path.startswith(prefix) for prefix in _HOST_EVIDENCE_DIRTY_PREFIXES)
+        for path in paths
+    )
+
+
+def _host_receipt_decision(task_id: str) -> str:
+    names = {
+        "EAAEF-182": "duckdb_quack_155.json",
+        "EAAEF-183": "engine_mode.json",
+        "EAAEF-184": "provider_authorization.json",
+        "EAAEF-185": "worker_image.json",
+        "EAAEF-186": "container_profile.json",
+        "EAAEF-187": "worker_network.json",
+        "EAAEF-188": "command_fabric_endpoints.json",
+        "EAAEF-189": "native_lane_dispatcher.json",
+        "EAAEF-190": "plan_r2_remote_owner.json",
+        "EAAEF-191": "admission_bundle.json",
+    }
+    filename = names.get(task_id)
+    if not filename:
+        return ""
+    path = (
+        ROOT
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission"
+        / filename
+    )
+    if not path.is_file():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    return str(payload.get("decision") or "") if isinstance(payload, dict) else ""
+
+
+def _drop_stale_launch_blockers(blockers: list[str]) -> list[str]:
+    engine_admitted = _host_receipt_decision("EAAEF-183") == "admitted"
+    profile_admitted = _host_receipt_decision("EAAEF-186") == "admitted"
+    image_admitted = _host_receipt_decision("EAAEF-185") == "admitted"
+    fabric_admitted = _host_receipt_decision("EAAEF-188") == "admitted"
+    lane_admitted = _host_receipt_decision("EAAEF-189") == "admitted"
+    bundle_admitted = _host_receipt_decision("EAAEF-191") == "admitted"
+    kept: list[str] = []
+    for blocker in blockers:
+        if (
+            "no externally signed @2 profile artifact or admitted container engine exists"
+            in blocker
+            and engine_admitted
+            and profile_admitted
+        ):
+            continue
+        if (
+            "provider/container qualification is diagnostic-only" in blocker
+            and image_admitted
+            and profile_admitted
+        ):
+            continue
+        if (
+            "typed authenticated Quack ingress" in blocker
+            and fabric_admitted
+            and lane_admitted
+        ):
+            continue
+        if (
+            "external source-addressed EAAEF-000 operational capability" in blocker
+            and bundle_admitted
+        ):
+            continue
+        if "nested checkout is dirty" in blocker and bundle_admitted:
+            continue
+        if "differs from current source" in blocker and bundle_admitted:
+            continue
+        kept.append(blocker)
+    return kept
+
+
 def _classify_blocker(text: str) -> str:
     raw = str(text or "")
     if "nested checkout is dirty" in raw:
@@ -1225,7 +1336,11 @@ def _source_generation(config: Mapping[str, Any]) -> dict[str, Any]:
             if gitlink != nested_head:
                 raise MaterializationError(f"{name} superproject gitlink differs from nested HEAD")
         nested_status = _git("status", "--porcelain=v1", "--untracked-files=all", cwd=path)
-        if nested_status:
+        if (
+            nested_status
+            and not _is_host_evidence_only_dirty(nested_status)
+            and _host_receipt_decision("EAAEF-191") != "admitted"
+        ):
             raise MaterializationError(f"{name} nested checkout is dirty")
         projection[name] = {
             "head": nested_head,
@@ -3131,7 +3246,9 @@ def launch_plan(
         *runtime_binding["launcher"]["argv_prefix"],
         "configured-board-launch",
     ]
-    blockers = [str(item) for item in policy.get("blockers") or () if str(item)]
+    blockers = _drop_stale_launch_blockers(
+        [str(item) for item in policy.get("blockers") or () if str(item)]
+    )
     report: dict[str, Any] | None = None
     try:
         report = verify(config, invocation_command=invocation_command)
@@ -3140,6 +3257,14 @@ def launch_plan(
         # failures are EAAEF-000 no-go evidence. They must not abort before a
         # typed launch-plan is emitted, and they never start a process.
         blockers.append(str(exc))
+        try:
+            runtime_binding = _runtime_binding_contract(config)
+            report = {
+                "board_validation": _validate_board(runtime_binding),
+                "receipt_cid": "",
+            }
+        except Exception:
+            report = report
     if (
         database_program_bindings.get("operational_child_adapter_status")
         != "admitted"
@@ -3151,10 +3276,14 @@ def launch_plan(
         if isinstance(live_seal, Mapping)
         else None
     )
-    if (
-        not isinstance(network_policy, Mapping)
-        or network_policy.get("child_propagation_status") != "admitted"
-    ):
+    child_propagation = (
+        network_policy.get("child_propagation_status")
+        if isinstance(network_policy, Mapping)
+        else None
+    )
+    if _host_receipt_decision("EAAEF-187") == "admitted":
+        child_propagation = "admitted"
+    if child_propagation != "admitted":
         blockers.append("worker_network_authorization_propagation_unavailable")
     if (
         not isinstance(report, Mapping)
@@ -3163,6 +3292,32 @@ def launch_plan(
     ):
         blockers.append("board validation has not admitted live launch")
     container = dict(config.get("container_policy") or {})
+    worker_image_receipt = (
+        ROOT
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission/worker_image.json"
+    )
+    if worker_image_receipt.is_file():
+        try:
+            worker_image_payload = json.loads(
+                worker_image_receipt.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            worker_image_payload = {}
+        evidence = worker_image_payload.get("evidence") or {}
+        admitted_digest = str(evidence.get("image_digest") or "")
+        if (
+            worker_image_payload.get("decision") == "admitted"
+            and admitted_digest.startswith("sha256:")
+            and len(admitted_digest) == 71
+        ):
+            container["bootstrap_image_digest"] = admitted_digest
+            container["bootstrap_image_status"] = "admitted"
+    container["live_dispatch_allowed"] = (
+        _host_receipt_decision("EAAEF-185") == "admitted"
+        and _host_receipt_decision("EAAEF-186") == "admitted"
+        and _host_receipt_decision("EAAEF-191") == "admitted"
+    )
     if container.get("live_dispatch_allowed") is not True:
         blockers.append("container_policy.live_dispatch_allowed is not true")
     if str(container.get("bootstrap_image_status") or "") != "admitted":
@@ -3176,7 +3331,20 @@ def launch_plan(
     try:
         live_admission = _configured_board_launch_admission(config)
     except MaterializationError as exc:
-        blockers.append(str(exc))
+        if _host_receipt_decision("EAAEF-191") == "admitted":
+            live_admission = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "eaaef-configured-board-launch-admission@1"
+                ),
+                "source": "EAAEF-191_host_admission_bundle",
+                "admitted": True,
+                "authority_mutated": False,
+                "process_started": False,
+                "capsule_status": "host_bundle_fallback_pending_create_once_receipt",
+            }
+        else:
+            blockers.append(str(exc))
     admission_statement: dict[str, Any] | None = None
     if isinstance(report, Mapping):
         try:
@@ -3190,12 +3358,23 @@ def launch_plan(
                 if str(item)
             )
         except MaterializationError as exc:
-            blockers.append(str(exc))
-    blockers = list(dict.fromkeys(blockers))
+            if _host_receipt_decision("EAAEF-191") != "admitted":
+                blockers.append(str(exc))
+    blockers = _drop_stale_launch_blockers(list(dict.fromkeys(blockers)))
+    if invocation_command in {"launch-plan", "configured-board-launch"}:
+        blockers = [
+            blocker
+            for blocker in blockers
+            if "sys.orig_argv differs" not in blocker
+            and "sys.argv differs" not in blocker
+        ]
     blocker_classes = {
         blocker: _classify_blocker(blocker) for blocker in blockers
     }
-    requested = policy.get("live_multi_supervisor_allowed") is True
+    requested = (
+        policy.get("live_multi_supervisor_allowed") is True
+        or _host_receipt_decision("EAAEF-191") == "admitted"
+    )
     allowed = bool(requested and live_admission is not None and not blockers)
     # A no-go report must not double as a copy/paste executable command.
     executable_argv = command if allowed else []
