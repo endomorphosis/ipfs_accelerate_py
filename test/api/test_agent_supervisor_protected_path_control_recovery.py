@@ -606,6 +606,14 @@ def test_runner_binds_bridge_protected_path_recovery_callback(tmp_path: Path) ->
     assert callable(inflight_callback)
     assert getattr(inflight_callback, "__self__", None) is bridge
     assert getattr(inflight_callback, "__name__", "") == "recover_inflight_process"
+    seed_conflict_callback = captured.get(
+        "validation_retry_seed_conflict_recovery_fn"
+    )
+    assert callable(seed_conflict_callback)
+    assert getattr(seed_conflict_callback, "__self__", None) is bridge
+    assert getattr(seed_conflict_callback, "__name__", "") == (
+        "recover_validation_retry_seed_conflict"
+    )
 
 
 def test_crash_fence_reaches_locked_auto_clear_and_keeps_genuine_mutation(

@@ -15,6 +15,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+    DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+    DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
@@ -250,6 +252,148 @@ def _git_candidate_with_rescue_branch(repo: Path) -> tuple[str, str]:
         check=True,
     )
     return commit, rescue_branch
+
+
+def _progressed_implementation_commit(repo: Path) -> tuple[str, str]:
+    output = repo / "inventory" / "result.json"
+    output.write_text('{"progressed":true}\n', encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "--", str(output.relative_to(repo))],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "progressed implementation"],
+        cwd=repo,
+        check=True,
+    )
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    branch = "implementation/lgswf-004-attempt-2-progressed"
+    subprocess.run(["git", "branch", branch, commit], cwd=repo, check=True)
+    return commit, branch
+
+
+def _mutate_portal_retry_state(
+    paths: object,
+    *,
+    alias: str,
+    task_cid: str,
+    commit: str,
+    branch: str,
+    attempts: int = 2,
+    returncode: int = 0,
+    task_id: str | None = None,
+) -> dict[str, object]:
+    state = json.loads(paths.state.read_text(encoding="utf-8"))
+    assert isinstance(state, dict)
+    state["implementation_attempts"] = {alias: attempts}
+    state["implementation_attempts_by_cid"] = {task_cid: attempts}
+    state["last_implementation_task_id"] = task_id if task_id is not None else alias
+    state["last_implementation_returncode"] = returncode
+    state["last_implementation_branch"] = branch
+    state["last_implementation_commit"] = commit
+    paths.state.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return state
+
+
+class _InspectSeedPortal:
+    def __init__(self, paths: object) -> None:
+        self.paths = paths
+
+    def run_once(self) -> dict[str, object]:
+        return {
+            "implementation_result": {
+                "returncode": 1,
+                "reason": "stop_after_seed_inspection",
+            }
+        }
+
+
+def _seeded_validation_retry_successor(tmp_path: Path) -> dict[str, object]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    commit, rescue_branch = _git_candidate_with_rescue_branch(repo)
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _ValidationFailurePortal(
+            paths,
+            alias,
+            commit=commit,
+            rescue_branch=rescue_branch,
+        ),
+        repository_root=repo,
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    production_attempt = _attempt(attempt_number=189)
+    with pytest.raises(DatabasePortalValidationRetry) as caught:
+        bridge.run_provider(production_attempt)
+    retry = caught.value
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": "attempt:002",
+            "claim_id": "claim:002",
+            "attempt_number": 190,
+            "fencing_token": 8,
+            "fence_epoch": 3,
+            "lease_id": "lease:002",
+            "validation_retry_source_attempt_id": (
+                production_attempt.attempt_id
+            ),
+            "validation_retry_seed": retry.retry_receipt,
+        },
+    }
+    record.revision += 1
+    successor = DatabaseTaskAttempt(
+        attempt_id="attempt:002",
+        claim_id="claim:002",
+        task_cid="task:cid:004",
+        task_alias="LGSWF-004",
+        attempt_number=190,
+        owner_session_id="session:bridge",
+        fencing_token=8,
+        fence_epoch=3,
+        lease_id="lease:002",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=2,
+    )
+    successor_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda paths, _alias: _InspectSeedPortal(paths),
+        repository_root=repo,
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError, match="stop_after_seed_inspection"
+    ):
+        successor_bridge.run_provider(successor)
+    paths = successor_bridge._paths(successor)
+    return {
+        "repo": repo,
+        "record": record,
+        "commit": commit,
+        "rescue_branch": rescue_branch,
+        "successor": successor,
+        "bridge": successor_bridge,
+        "paths": paths,
+        "retry": retry,
+    }
 
 
 class _ValidationFailurePortal:
@@ -692,6 +836,121 @@ def test_bridge_recovers_inflight_process_only_when_runner_absent(
     assert receipt["source_reason"] == "inflight_process"
     assert receipt["live_runner_present"] is False
     assert bridge.recover_inflight_process(attempt) == receipt
+
+
+def test_bridge_accepts_identity_bound_progressed_validation_retry_seed(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    progressed_commit, progressed_branch = _progressed_implementation_commit(
+        seeded["repo"]
+    )
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=successor.task_cid,
+        commit=progressed_commit,
+        branch=progressed_branch,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError, match="stop_after_seed_inspection"
+    ):
+        bridge.run_provider(successor)
+
+    state = json.loads(paths.state.read_text(encoding="utf-8"))
+    assert state["implementation_attempts"][successor.task_alias] == 2
+    assert state["last_implementation_returncode"] == 0
+    assert state["last_implementation_commit"] == progressed_commit
+    assert state["last_implementation_branch"] == progressed_branch
+
+
+def test_bridge_keeps_foreign_progressed_validation_retry_seed_terminal(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    progressed_commit, progressed_branch = _progressed_implementation_commit(
+        seeded["repo"]
+    )
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=successor.task_cid,
+        commit=progressed_commit,
+        branch=progressed_branch,
+        task_id="FOREIGN-001",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(successor)
+
+    assert str(caught.value) == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+    with pytest.raises(DatabasePortalBridgeError, match="identity-bound"):
+        bridge.recover_validation_retry_seed_conflict(successor)
+
+
+def test_bridge_recovers_identity_bound_validation_retry_seed_conflict(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    progressed_commit, progressed_branch = _progressed_implementation_commit(
+        seeded["repo"]
+    )
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=successor.task_cid,
+        commit=progressed_commit,
+        branch=progressed_branch,
+    )
+
+    receipt = bridge.recover_validation_retry_seed_conflict(successor)
+    assert (
+        receipt["schema"]
+        == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA
+    )
+    assert receipt["reason"] == "validation_retry_seed_state_progressed"
+    assert (
+        receipt["source_reason"]
+        == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+    )
+    assert receipt["identity_bound"] is True
+    assert receipt["observed_commit"] == progressed_commit
+    assert receipt["observed_branch"] == progressed_branch
+    assert receipt["seed_commit"] == seeded["commit"]
+    assert receipt["seed_rescue_branch"] == seeded["rescue_branch"]
+    assert bridge.recover_validation_retry_seed_conflict(successor) == receipt
+
+
+def test_bridge_does_not_recover_invented_validation_retry_seed_commit(
+    tmp_path: Path,
+) -> None:
+    seeded = _seeded_validation_retry_successor(tmp_path)
+    successor = seeded["successor"]
+    bridge = seeded["bridge"]
+    paths = seeded["paths"]
+    _mutate_portal_retry_state(
+        paths,
+        alias=successor.task_alias,
+        task_cid=successor.task_cid,
+        commit="a" * 40,
+        branch="implementation/lgswf-004-attempt-2-progressed",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(successor)
+    assert str(caught.value) == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+    with pytest.raises(DatabasePortalBridgeError, match="identity-bound"):
+        bridge.recover_validation_retry_seed_conflict(successor)
 
 
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(

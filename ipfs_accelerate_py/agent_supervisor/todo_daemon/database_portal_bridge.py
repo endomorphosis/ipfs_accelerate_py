@@ -75,6 +75,13 @@ DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-inflight-process-recovery@1"
 )
+DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-validation-retry-seed-conflict-recovery@1"
+)
+DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON: Final[str] = (
+    "Portal retry seed state conflicts with its source receipt"
+)
 _PROTECTED_PATH_RECOVERY_INTENT_FILENAME: Final[str] = (
     "database-portal-protected-path-recovery-intent.json"
 )
@@ -86,6 +93,9 @@ _EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_FILENAME: Final[str] = (
 )
 _INFLIGHT_PROCESS_RECOVERY_FILENAME: Final[str] = (
     "database-portal-inflight-process-recovery.json"
+)
+_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-validation-retry-seed-conflict-recovery.json"
 )
 _PAIRED_SUPERVISOR_PROTECTED_RECOVERY_OWNER: Final[str] = (
     "implementation_supervisor"
@@ -2839,6 +2849,345 @@ class DatabasePortalExecutionBridge:
             receipt=receipt,
         )
 
+    def _safe_progressed_ref_name(self, name: str) -> bool:
+        """Accept only closed implementation or rescue ref names."""
+
+        if (
+            not (
+                name.startswith("rescue/")
+                or name.startswith("implementation/")
+            )
+            or ".." in name
+            or "@{" in name
+            or "\\" in name
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", name)
+        ):
+            return False
+        try:
+            checked = subprocess.run(
+                ["git", "check-ref-format", f"refs/heads/{name}"],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return checked.returncode == 0
+
+    def _git_commit_object_exists(self, commit: str) -> bool:
+        """Prove a claimed commit exists in this repository's object store."""
+
+        if self.repository_root is None:
+            return False
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            return False
+        try:
+            result = subprocess.run(
+                ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return result.returncode == 0
+
+    def _validation_retry_seed_state_is_compatible(
+        self,
+        *,
+        current_state: Mapping[str, Any],
+        state_seed: Mapping[str, Any],
+    ) -> bool:
+        """Accept identity-bound Portal progress over a validation-retry seed.
+
+        Portal ``run_once`` mutates attempt counts, returncode, branch, and
+        commit after the seed is projected.  Exact equality then terminalizes
+        a live resume.  Foreign task identity, malformed counters, unsafe
+        ref names, and invented commits stay fail-closed.
+        """
+
+        if not isinstance(current_state, Mapping):
+            return False
+        for key in (
+            "last_implementation_task_id",
+            "last_implementation_task_key",
+            "last_implementation_task_cid",
+        ):
+            if current_state.get(key) != state_seed.get(key):
+                return False
+        branch = current_state.get("last_implementation_branch")
+        if type(branch) is not str or not self._safe_progressed_ref_name(branch):
+            return False
+        returncode = current_state.get("last_implementation_returncode")
+        if isinstance(returncode, bool) or not isinstance(returncode, int):
+            return False
+        for count_key in (
+            "implementation_attempts",
+            "implementation_attempts_by_cid",
+        ):
+            seed_counts = state_seed.get(count_key)
+            observed_counts = current_state.get(count_key)
+            if not isinstance(seed_counts, Mapping) or not isinstance(
+                observed_counts, Mapping
+            ):
+                return False
+            if set(observed_counts) != set(seed_counts):
+                return False
+            for identity, seed_count in seed_counts.items():
+                observed = observed_counts.get(identity)
+                if (
+                    isinstance(seed_count, bool)
+                    or not isinstance(seed_count, int)
+                    or isinstance(observed, bool)
+                    or not isinstance(observed, int)
+                    or observed < seed_count
+                ):
+                    return False
+        commit = current_state.get("last_implementation_commit")
+        seed_commit = state_seed.get("last_implementation_commit")
+        if type(commit) is not str or not re.fullmatch(r"[0-9a-f]{40}", commit):
+            return False
+        if commit == seed_commit:
+            return True
+        return self._git_commit_object_exists(commit)
+
+    def _validation_retry_seed_event(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+    ) -> Mapping[str, Any]:
+        """Bind this attempt to its exact durable validation-retry seed event."""
+
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        task_cid = str(attempt.task_cid)
+        matching = [
+            event
+            for event in self._verified_event_chain(paths)
+            if event.get("type") == "database_portal_validation_retry_seeded"
+            and event.get("task_id") == alias
+            and event.get("canonical_task_cid") == task_cid
+            and str(event.get("target_database_attempt_id") or "")
+            == str(attempt.attempt_id)
+        ]
+        if len(matching) != 1:
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery has no exact seed event"
+            )
+        return matching[0]
+
+    def _state_seed_from_validation_retry_seed_event(
+        self,
+        *,
+        attempt: Any,
+        seed_event: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        task_cid = str(attempt.task_cid)
+        receipt = seed_event.get("validation_retry_receipt")
+        source_portal_attempt = (
+            receipt.get("portal_attempt") if isinstance(receipt, Mapping) else None
+        )
+        if (
+            seed_event.get("task_id") != alias
+            or seed_event.get("canonical_task_cid") != task_cid
+            or type(seed_event.get("canonical_task_key") or "") is not str
+            or not str(seed_event.get("canonical_task_key") or "")
+            or isinstance(source_portal_attempt, bool)
+            or not isinstance(source_portal_attempt, int)
+            or source_portal_attempt < 1
+        ):
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery seed event is foreign"
+            )
+        return {
+            "implementation_attempts": {alias: source_portal_attempt},
+            "implementation_attempts_by_cid": {task_cid: source_portal_attempt},
+            "last_implementation_task_id": alias,
+            "last_implementation_task_key": str(
+                seed_event.get("canonical_task_key") or ""
+            ),
+            "last_implementation_task_cid": task_cid,
+            "last_implementation_returncode": 1,
+            "last_implementation_branch": str(
+                seed_event.get("rescue_branch") or ""
+            ),
+            "last_implementation_commit": str(
+                seed_event.get("implementation_commit") or ""
+            ),
+        }
+
+    def _observe_validation_retry_seed_conflict_state(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+    ) -> dict[str, Any]:
+        """Prove leftover seed-conflict state is identity-bound Portal progress."""
+
+        if not paths.state.is_file() or not paths.events.is_file():
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery artifacts are incomplete"
+            )
+        seed_event = self._validation_retry_seed_event(
+            attempt=attempt,
+            paths=paths,
+        )
+        try:
+            current_state = json.loads(paths.state.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal retry seed state is unreadable"
+            ) from exc
+        state_seed = self._state_seed_from_validation_retry_seed_event(
+            attempt=attempt,
+            seed_event=seed_event,
+        )
+        if not self._validation_retry_seed_state_is_compatible(
+            current_state=current_state,
+            state_seed=state_seed,
+        ):
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery requires "
+                "identity-bound progressed Portal state"
+            )
+        return {
+            "seed_id": str(seed_event.get("seed_id") or ""),
+            "seed_commit": str(seed_event.get("implementation_commit") or ""),
+            "seed_rescue_branch": str(seed_event.get("rescue_branch") or ""),
+            "observed_commit": str(
+                current_state.get("last_implementation_commit") or ""
+            ),
+            "observed_branch": str(
+                current_state.get("last_implementation_branch") or ""
+            ),
+        }
+
+    def _finalize_validation_retry_seed_conflict_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        observation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        receipt = {
+            "schema": (
+                DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA
+            ),
+            "disposition": "retry",
+            "reason": "validation_retry_seed_state_progressed",
+            "source_reason": DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "seed_id": str(observation.get("seed_id") or ""),
+            "seed_commit": str(observation.get("seed_commit") or ""),
+            "seed_rescue_branch": str(observation.get("seed_rescue_branch") or ""),
+            "observed_commit": str(observation.get("observed_commit") or ""),
+            "observed_branch": str(observation.get("observed_branch") or ""),
+            "identity_bound": True,
+            "backoff_seconds": 0,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _verify_validation_retry_seed_conflict_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        observation: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "seed_id",
+            "seed_commit",
+            "seed_rescue_branch",
+            "observed_commit",
+            "observed_branch",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery receipt is malformed "
+                "or foreign"
+            )
+        expected = self._finalize_validation_retry_seed_conflict_recovery_receipt(
+            attempt=attempt,
+            observation=observation,
+        )
+        if dict(receipt) != expected:
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery receipt changed after "
+                "finalization"
+            )
+        return expected
+
+    def recover_validation_retry_seed_conflict(
+        self, attempt: Any
+    ) -> Mapping[str, Any]:
+        """Rearm only identity-bound portal-progressed validation-retry state.
+
+        The leftover block is an exact-equality false alarm: Portal advanced
+        the private attempt state after the seed was projected.  Foreign
+        identity, a missing seed event, or a commit absent from this
+        repository stays blocked.
+        """
+
+        self._record_for_attempt(self.task_source, attempt)
+        paths = self._paths(attempt)
+        observation = self._observe_validation_retry_seed_conflict_state(
+            attempt=attempt,
+            paths=paths,
+        )
+        final_path = paths.root / _VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_FILENAME
+        if final_path.is_file():
+            return self._verify_validation_retry_seed_conflict_recovery_receipt(
+                attempt=attempt,
+                observation=observation,
+                receipt=self._read_json_object(
+                    final_path,
+                    noun="validation-retry seed-conflict recovery receipt",
+                ),
+            )
+        receipt = self._finalize_validation_retry_seed_conflict_recovery_receipt(
+            attempt=attempt,
+            observation=observation,
+        )
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return self._verify_validation_retry_seed_conflict_recovery_receipt(
+            attempt=attempt,
+            observation=observation,
+            receipt=receipt,
+        )
+
     def _preserved_commit_exists(
         self,
         *,
@@ -3423,12 +3772,16 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "Portal retry seed state is unreadable"
                 ) from exc
-            if not isinstance(current_state, Mapping) or any(
-                current_state.get(key) != value
+            exact_seed = isinstance(current_state, Mapping) and all(
+                current_state.get(key) == value
                 for key, value in state_seed.items()
+            )
+            if not exact_seed and not self._validation_retry_seed_state_is_compatible(
+                current_state=current_state,
+                state_seed=state_seed,
             ):
                 raise DatabasePortalBridgeError(
-                    "Portal retry seed state conflicts with its source receipt"
+                    DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
                 )
         else:
             _atomic_write(
@@ -3647,6 +4000,8 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA",
+    "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON",
+    "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",

@@ -68414,6 +68414,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        validation_retry_seed_conflict_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -68568,6 +68572,16 @@ class DatabaseImplementationDaemon:
         ):
             raise TypeError("inflight_process_recovery_fn must be callable")
         self._inflight_process_recovery_fn = inflight_process_recovery_fn
+        if (
+            validation_retry_seed_conflict_recovery_fn is not None
+            and not callable(validation_retry_seed_conflict_recovery_fn)
+        ):
+            raise TypeError(
+                "validation_retry_seed_conflict_recovery_fn must be callable"
+            )
+        self._validation_retry_seed_conflict_recovery_fn = (
+            validation_retry_seed_conflict_recovery_fn
+        )
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -68854,6 +68868,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        validation_retry_seed_conflict_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -68878,6 +68896,13 @@ class DatabaseImplementationDaemon:
             and not callable(inflight_process_recovery_fn)
         ):
             raise TypeError("inflight process recovery callback must be callable")
+        if (
+            validation_retry_seed_conflict_recovery_fn is not None
+            and not callable(validation_retry_seed_conflict_recovery_fn)
+        ):
+            raise TypeError(
+                "validation retry seed-conflict recovery callback must be callable"
+            )
         with self._lock:
             if any(
                 callback is not None
@@ -68888,6 +68913,7 @@ class DatabaseImplementationDaemon:
                     self._protected_path_recovery_fn,
                     self._external_protected_checkout_recovery_fn,
                     self._inflight_process_recovery_fn,
+                    self._validation_retry_seed_conflict_recovery_fn,
                 )
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -68904,6 +68930,9 @@ class DatabaseImplementationDaemon:
                 external_protected_checkout_recovery_fn
             )
             self._inflight_process_recovery_fn = inflight_process_recovery_fn
+            self._validation_retry_seed_conflict_recovery_fn = (
+                validation_retry_seed_conflict_recovery_fn
+            )
 
     def _require_execution_authority(self, operation: str) -> None:
         """Require the explicit real-execution permit for a mutating phase.
@@ -68950,6 +68979,7 @@ class DatabaseImplementationDaemon:
             "protected_path_recovery_reconciliations": [],
             "external_protected_checkout_recovery_reconciliations": [],
             "inflight_process_recovery_reconciliations": [],
+            "validation_retry_seed_conflict_recovery_reconciliations": [],
         }
 
     def projections_required(self) -> bool:
@@ -70553,11 +70583,15 @@ class DatabaseImplementationDaemon:
             inflight_seed = prior_status_receipt.get(
                 "inflight_process_recovery_seed"
             )
+            seed_conflict_seed = prior_status_receipt.get(
+                "validation_retry_seed_conflict_recovery_seed"
+            )
             retry_authorities = [
                 seed is not None,
                 protected_seed is not None,
                 external_seed is not None,
                 inflight_seed is not None,
+                seed_conflict_seed is not None,
             ]
             if sum(retry_authorities) > 1:
                 raise DatabaseImplementationAuthorityError(
@@ -70926,6 +70960,100 @@ class DatabaseImplementationDaemon:
                         ),
                         "inflight_process_recovery_seed": dict(
                             verified_state["inflight_process_recovery_evidence"]
+                        ),
+                    }
+                )
+            elif seed_conflict_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != (
+                        "database_portal_validation_retry_seed_conflict_"
+                        "retry_recovery"
+                    )
+                    or not isinstance(seed_conflict_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed validation-retry "
+                        "seed-conflict recovery seed"
+                    )
+                source_attempt_id = str(
+                    seed_conflict_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation-retry seed-conflict "
+                        "recovery source attempt is unavailable"
+                    )
+                verified_state = (
+                    self._verified_validation_retry_seed_conflict_recovery_state(
+                        source_attempt,
+                        task,
+                        expected_recovery_evidence=seed_conflict_seed,
+                    )
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation-retry seed-conflict "
+                        "recovery target is unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim validation-retry seed-conflict "
+                        "recovery target is not an exact newer attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "validation_retry_seed_conflict_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "validation_retry_seed_conflict_recovery_seed": dict(
+                            verified_state[
+                                "validation_retry_seed_conflict_recovery_evidence"
+                            ]
                         ),
                     }
                 )
@@ -71547,6 +71675,92 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "typed inflight-process recovery evidence failed independent "
                 "verification"
+            )
+        return dict(raw)
+
+    def _verified_validation_retry_seed_conflict_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one identity-bound seed-conflict leftover receipt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed validation-retry seed-conflict recovery evidence is "
+                "malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "seed_id",
+            "seed_commit",
+            "seed_rescue_branch",
+            "observed_commit",
+            "observed_branch",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed validation-retry seed-conflict recovery evidence has "
+                "unknown or missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        seed_id = str(raw.get("seed_id") or "")
+        seed_commit = str(raw.get("seed_commit") or "")
+        observed_commit = str(raw.get("observed_commit") or "")
+        seed_rescue_branch = str(raw.get("seed_rescue_branch") or "")
+        observed_branch = str(raw.get("observed_branch") or "")
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason") != "validation_retry_seed_state_progressed"
+            or raw.get("source_reason")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", seed_id)
+            or not re.fullmatch(r"[0-9a-f]{40}", seed_commit)
+            or not re.fullmatch(r"[0-9a-f]{40}", observed_commit)
+            or not seed_rescue_branch.startswith("rescue/")
+            or not (
+                observed_branch.startswith("rescue/")
+                or observed_branch.startswith("implementation/")
+            )
+            or raw.get("identity_bound") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed validation-retry seed-conflict recovery evidence failed "
+                "independent verification"
             )
         return dict(raw)
 
@@ -72518,6 +72732,168 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _verified_validation_retry_seed_conflict_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the retrying projection superseding one leftover seed conflict."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+        )
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "validation_retry_seed_conflict_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery control receipt has "
+                "unknown or missing fields"
+            )
+        recovery_seed = (
+            self._verified_validation_retry_seed_conflict_recovery_receipt(
+                attempt,
+                receipt.get("validation_retry_seed_conflict_recovery_seed"),
+            )
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery control receipt has a "
+                "foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task has no exact revision"
+            )
+        reason = "validation_retry_seed_state_progressed"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_validation_retry_seed_conflict_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_validation_retry_seed_conflict_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery control receipt does "
+                "not match its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery has an invalid queue "
+                "deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify validation-retry seed-conflict "
+                "recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery queue state does not "
+                "match its receipt"
+            )
+        if (
+            self._terminal_portal_failure_reason(attempt)
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery does not supersede "
+                "this terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "validation_retry_seed_conflict_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _persist_task_retry_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -72532,6 +72908,8 @@ class DatabaseImplementationDaemon:
         external_protected_checkout_recovery_evidence: Mapping[str, Any]
         | None = None,
         inflight_process_recovery_evidence: Mapping[str, Any] | None = None,
+        validation_retry_seed_conflict_recovery_evidence: Mapping[str, Any]
+        | None = None,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
 
@@ -72540,6 +72918,7 @@ class DatabaseImplementationDaemon:
             protected_path_recovery_evidence is not None,
             external_protected_checkout_recovery_evidence is not None,
             inflight_process_recovery_evidence is not None,
+            validation_retry_seed_conflict_recovery_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
@@ -72608,6 +72987,14 @@ class DatabaseImplementationDaemon:
                         inflight_process_recovery_evidence
                     ),
                 )
+            if validation_retry_seed_conflict_recovery_evidence is not None:
+                self._verified_validation_retry_seed_conflict_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        validation_retry_seed_conflict_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 (
@@ -72615,6 +73002,8 @@ class DatabaseImplementationDaemon:
                     or protected_path_recovery_evidence is not None
                     or external_protected_checkout_recovery_evidence is not None
                     or inflight_process_recovery_evidence is not None
+                    or validation_retry_seed_conflict_recovery_evidence
+                    is not None
                 )
                 and existing_entry is not None
                 and str(getattr(existing_entry, "reason", "") or "")
@@ -72661,6 +73050,7 @@ class DatabaseImplementationDaemon:
                 or protected_path_recovery_evidence is not None
                 or external_protected_checkout_recovery_evidence is not None
                 or inflight_process_recovery_evidence is not None
+                or validation_retry_seed_conflict_recovery_evidence is not None
             )
         )
         if task_status != "in_progress" and not blocked_recovery:
@@ -72720,6 +73110,8 @@ class DatabaseImplementationDaemon:
                     if external_protected_checkout_recovery_evidence is not None
                     else "database_portal_inflight_process_retry_recovery"
                     if inflight_process_recovery_evidence is not None
+                    else "database_portal_validation_retry_seed_conflict_retry_recovery"
+                    if validation_retry_seed_conflict_recovery_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -72784,6 +73176,15 @@ class DatabaseImplementationDaemon:
                     if inflight_process_recovery_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "validation_retry_seed_conflict_recovery_seed": dict(
+                            validation_retry_seed_conflict_recovery_evidence
+                        ),
+                    }
+                    if validation_retry_seed_conflict_recovery_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -72809,6 +73210,14 @@ class DatabaseImplementationDaemon:
                 if external_protected_checkout_recovery_evidence is not None
                 else [str(inflight_process_recovery_evidence["receipt_id"])]
                 if inflight_process_recovery_evidence is not None
+                else [
+                    str(
+                        validation_retry_seed_conflict_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if validation_retry_seed_conflict_recovery_evidence is not None
                 else None
             ),
         )
@@ -73535,6 +73944,200 @@ class DatabaseImplementationDaemon:
                         "status": "blocked",
                         "changed": False,
                         "reason": "inflight_process_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def recover_blocked_portal_validation_retry_seed_conflict_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one leftover seed-conflict block after identity-bound progress."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+        )
+
+        self._require_execution_authority(
+            "validation-retry seed-conflict retry recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery requires an exact "
+                "failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery rejected a superseded "
+                "attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery is limited to a "
+                "terminal Portal failure with the exact leftover seed reason"
+            )
+        verified = self._verified_validation_retry_seed_conflict_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery rejected a "
+                "manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery requires blocked or "
+                f"exact retrying control state, observed {status!r}"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason="validation_retry_seed_state_progressed",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_validation_retry_seed_conflict_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            validation_retry_seed_conflict_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["validation_retry_seed_conflict_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_validation_retry_seed_conflict_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover seed-conflict blocks once proved safe."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+        )
+
+        self._require_execution_authority(
+            "validation-retry seed-conflict recovery reconciliation"
+        )
+        callback = self._validation_retry_seed_conflict_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if (
+                self._terminal_portal_failure_reason(attempt)
+                != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+            ):
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_validation_retry_seed_conflict_recovery_state(
+                    attempt,
+                    task,
+                )
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = (
+                    self.recover_blocked_portal_validation_retry_seed_conflict_retry(
+                        attempt,
+                        recovery_evidence=evidence,
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "validation-retry seed-conflict recovery not admitted "
+                    "for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": (
+                            "validation_retry_seed_conflict_recovery_not_admitted"
+                        ),
                         "error_type": type(exc).__name__,
                         "error": str(exc)[:512],
                     }
@@ -74702,6 +75305,14 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
+                elif (
+                    operation
+                    == "database_portal_validation_retry_seed_conflict_retry_recovery"
+                ):
+                    self._verified_validation_retry_seed_conflict_recovery_state(
+                        attempt,
+                        task,
+                    )
                 else:
                     self._verified_validation_retry_recovery_state(
                         attempt,
@@ -75133,6 +75744,9 @@ class DatabaseImplementationDaemon:
         inflight_process_recovery_reconciliations = (
             self.reconcile_blocked_inflight_process_recoveries()
         )
+        validation_retry_seed_conflict_recovery_reconciliations = (
+            self.reconcile_blocked_validation_retry_seed_conflict_recoveries()
+        )
         terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
         reconciliation_write_count = (
             len(completion_reconciliations)
@@ -75154,6 +75768,13 @@ class DatabaseImplementationDaemon:
             + sum(
                 1
                 for item in inflight_process_recovery_reconciliations
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in (
+                    validation_retry_seed_conflict_recovery_reconciliations
+                )
                 if item.get("changed") is True
             )
         )
@@ -75190,6 +75811,9 @@ class DatabaseImplementationDaemon:
                 "inflight_process_recovery_reconciliations": (
                     inflight_process_recovery_reconciliations
                 ),
+                "validation_retry_seed_conflict_recovery_reconciliations": (
+                    validation_retry_seed_conflict_recovery_reconciliations
+                ),
             }
 
         attempt = self.claim_next()
@@ -75224,6 +75848,9 @@ class DatabaseImplementationDaemon:
                 "inflight_process_recovery_reconciliations": (
                     inflight_process_recovery_reconciliations
                 ),
+                "validation_retry_seed_conflict_recovery_reconciliations": (
+                    validation_retry_seed_conflict_recovery_reconciliations
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -75249,6 +75876,9 @@ class DatabaseImplementationDaemon:
             ),
             "inflight_process_recovery_reconciliations": (
                 inflight_process_recovery_reconciliations
+            ),
+            "validation_retry_seed_conflict_recovery_reconciliations": (
+                validation_retry_seed_conflict_recovery_reconciliations
             ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
