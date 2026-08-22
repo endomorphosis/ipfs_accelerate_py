@@ -30,7 +30,11 @@ from typing import Any, ClassVar, Final
 
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
-from .duckdb_state import is_quack_transport_target, quack_transport_uri
+from .duckdb_state import (
+    STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    is_quack_transport_target,
+    quack_transport_uri,
+)
 from .intent_repository import (
     DEFAULT_PAGE_LIMIT,
     MAX_PAGE_LIMIT,
@@ -1304,6 +1308,18 @@ class DatabaseTaskSource:
         )
 
     cas_status = compare_and_set_status
+
+    def unstall_stale_in_progress_tasks(
+        self,
+        *,
+        now: Any = None,
+        stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    ) -> dict[str, Any]:
+        """Retry leftover in_progress gates through the intent authority."""
+
+        return self._intent.unstall_stale_in_progress_tasks(
+            now=now, stale_seconds=stale_seconds
+        )
 
     def record_queue_backoff(
         self,

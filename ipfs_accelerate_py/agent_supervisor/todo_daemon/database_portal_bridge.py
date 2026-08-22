@@ -28,6 +28,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final
 
+from ..merge.protected_recovery_fence import (
+    FENCE_CONTENTION_BACKOFF_SECONDS,
+    is_protected_recovery_fence_contention,
+)
 from ..runtime.event_log import append_jsonl_event
 from ..validation.validation_commands import validation_command_repository_root
 
@@ -91,6 +95,8 @@ _ROOT_REPOSITORY_AUTHORITY: Final[str] = "ipfs_accelerate_py"
 _MAX_REPOSITORY_PATH_BYTES: Final[int] = 1024
 _MAX_TASK_IDENTITY_BYTES: Final[int] = 4096
 _MAX_DATABASE_PORTAL_BACKOFF_SECONDS: Final[int] = 86_400
+INFLIGHT_PROCESS_BACKOFF_SECONDS: Final[int] = 30
+_INFLIGHT_PROCESS_SKIP_REASON: Final[str] = "inflight_process"
 _MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
 _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
@@ -1259,7 +1265,12 @@ class DatabasePortalExecutionBridge:
     @staticmethod
     def _terminal_failure(result: Mapping[str, Any]) -> str:
         if result.get("blocked") is True:
-            return str(result.get("reason") or "portal_execution_blocked")
+            reason = str(result.get("reason") or "portal_execution_blocked")
+            if is_protected_recovery_fence_contention(reason):
+                # Peer-owner recovery is a wait, not a task defect. The
+                # typed-deferral classifier admits retry; do not CAS blocked.
+                return ""
+            return reason
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return ""
@@ -1269,7 +1280,12 @@ class DatabasePortalExecutionBridge:
         if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
-            return str(implementation.get("reason") or "portal_execution_skipped")
+            reason = str(implementation.get("reason") or "portal_execution_skipped")
+            if reason == _INFLIGHT_PROCESS_SKIP_REASON:
+                # A live implementer is a wait, not a task defect. Deferral
+                # owns this reason; do not CAS blocked.
+                return ""
+            return reason
         return ""
 
     @staticmethod
@@ -1561,9 +1577,50 @@ class DatabasePortalExecutionBridge:
     ) -> tuple[str, int] | None:
         """Return exact Portal deferral data without parsing reason text."""
 
+        if result.get("blocked") is True:
+            reason = str(result.get("reason") or "")
+            if is_protected_recovery_fence_contention(reason):
+                raw_backoff = result.get(
+                    "backoff_seconds",
+                    FENCE_CONTENTION_BACKOFF_SECONDS,
+                )
+                if (
+                    isinstance(raw_backoff, bool)
+                    or not isinstance(raw_backoff, int)
+                    or raw_backoff < 0
+                    or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+                ):
+                    raise DatabasePortalBridgeError(
+                        "Portal fence deferral returned an invalid "
+                        "backoff_seconds value"
+                    )
+                return (
+                    reason or "external_protected_checkout_recovery_required",
+                    int(raw_backoff),
+                )
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
+        if (
+            implementation.get("skipped") is True
+            and str(implementation.get("reason") or "")
+            == _INFLIGHT_PROCESS_SKIP_REASON
+        ):
+            raw_backoff = implementation.get(
+                "backoff_seconds",
+                INFLIGHT_PROCESS_BACKOFF_SECONDS,
+            )
+            if (
+                isinstance(raw_backoff, bool)
+                or not isinstance(raw_backoff, int)
+                or raw_backoff < 0
+                or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal inflight deferral returned an invalid "
+                    "backoff_seconds value"
+                )
+            return (_INFLIGHT_PROCESS_SKIP_REASON, int(raw_backoff))
         # ``attempt_consumed=false``/``provider_dispatched=false`` also
         # describe a successful deterministic zero-provider closure.  Only
         # the explicit closed deferral signal grants retry semantics.
@@ -1601,6 +1658,7 @@ class DatabasePortalExecutionBridge:
         """Select only the closed post-dispatch validation-failure shape."""
 
         validation = implementation.get("validation_result")
+        reason = str(validation.get("reason") or "") if isinstance(validation, Mapping) else ""
         return bool(
             implementation.get("returncode") not in (None, 0)
             and implementation.get("attempt_consumed") is True
@@ -1608,7 +1666,11 @@ class DatabasePortalExecutionBridge:
             and isinstance(validation, Mapping)
             and validation.get("attempted") is True
             and validation.get("passed") is False
-            and validation.get("reason") == "declared_validation_failed"
+            and reason
+            in {
+                "declared_validation_failed",
+                "validation_command_failed",
+            }
         )
 
     @staticmethod

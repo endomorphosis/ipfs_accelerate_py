@@ -4772,6 +4772,273 @@ def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
         daemon.close()
 
 
+@pytest.mark.parametrize("control_status", ("completed", "todo"))
+def test_terminal_portal_reconciliation_skips_settled_control_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    control_status: str,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-reconcile-skip",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        original_get = daemon.task_source.get
+
+        def projected_get(task_cid: str) -> object:
+            task = original_get(task_cid)
+            if task_cid != attempt.task_cid or task is None:
+                return task
+            return SimpleNamespace(
+                status=control_status,
+                revision=task.revision,
+                body=dict(task.body),
+            )
+
+        monkeypatch.setattr(daemon.task_source, "get", projected_get)
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_proposal_gate_failure_retries_instead_of_blocking(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("proposal_gate_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:proposal-gate-retry",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        implementation = failed_result.get("implementation_result") or {}
+        assert implementation.get("portal_retryable_failure") is True
+        assert implementation.get("portal_terminal_failure") is False
+        assert implementation.get("reason") == "proposal_gate_failed"
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_quack_attach_contention_defers_instead_of_crashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-defer",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("skipped") is True
+        assert result.get("reason") == "quack_attach_contended"
+        assert result.get("portal_retryable_failure") is True
+        assert result.get("portal_terminal_failure") is False
+        assert result.get("attempt_consumed") is False
+        assert result.get("provider_dispatched") is False
+    finally:
+        daemon.close()
+
+
+def test_quack_attach_contention_requests_owner_board_unstall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    inbox = tmp_path / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-unstall",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result.get("board_unstall_request", {}).get("requested") is True
+        requests = list(inbox.glob("*.request.json"))
+        assert len(requests) == 1
+        payload = json.loads(requests[0].read_text(encoding="utf-8"))
+        assert payload["op"] == "board_unstall"
+    finally:
+        daemon.close()
+
+
+def test_run_once_unstalls_stale_in_progress_gate_and_claims(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unstall-gate",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [stale, "task:cid:001"],
+            )
+        stuck = daemon.task_source.get("task:cid:001")
+        assert stuck is not None
+        assert stuck.status == "in_progress"
+        idle = daemon.claim_next()
+        assert idle is None
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert [item["task_cid"] for item in unstalled] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:001"
+    finally:
+        daemon.close()
+
+
+def test_stale_in_progress_unstall_leaves_live_attempts_alone(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unstall-live",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [recent, "task:cid:001"],
+            )
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert unstalled == []
+        live = daemon.task_source.get("task:cid:001")
+        assert live is not None
+        assert live.status == "in_progress"
+    finally:
+        daemon.close()
+
+
+def test_quack_attach_contention_still_expires_running_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-expire",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> list[object]:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+
+        expired = [
+            {
+                "status": "expired",
+                "reason": "coordination_lease_expired_before_completion",
+            }
+        ]
+        seen = {"expired": False}
+
+        def expire() -> list[dict[str, object]]:
+            seen["expired"] = True
+            return expired
+
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(daemon, "reconcile_expired_running_attempts", expire)
+        monkeypatch.setattr(daemon, "reconcile_terminal_portal_failures", boom)
+        monkeypatch.setattr(daemon, "reconcile_terminal_retry_states", lambda: [])
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        result = daemon.run_once()
+        assert seen["expired"] is True
+        assert result.get("expired_attempt_reconciliations") == expired
+        assert result.get("selection_idle_reason") == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_inflight_process_failure_retries_instead_of_blocking(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("inflight_process")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-process-retry",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        implementation = failed_result.get("implementation_result") or {}
+        assert implementation.get("portal_retryable_failure") is True
+        assert implementation.get("portal_terminal_failure") is False
+        assert implementation.get("reason") == "inflight_process"
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [
