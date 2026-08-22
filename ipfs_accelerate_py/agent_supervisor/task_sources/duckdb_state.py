@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import re
 import sqlite3
 import stat
@@ -889,6 +890,36 @@ def quack_owner_command_response(
     return response
 
 
+def quack_attach_lock_path(uri: str = "") -> Path:
+    """Return the process-shared lock that serializes Quack ATTACH storms."""
+
+    command_dir = quack_owner_command_dir()
+    if command_dir is not None:
+        return command_dir.parent / "attach.lock"
+    digest = hashlib.sha256(
+        str(uri or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "")).encode(
+            "utf-8"
+        )
+    ).hexdigest()[:16]
+    return Path(os.environ.get("TMPDIR", "/tmp")) / (
+        f"ipfs-accelerate-quack-attach-{digest}.lock"
+    )
+
+
+def _is_transient_quack_attach_error(detail: str) -> bool:
+    text = str(detail or "")
+    lowered = text.lower()
+    return (
+        "Authentication failed" in text
+        or "authentication token" in lowered
+        or "connection refused" in lowered
+        or "connection reset" in lowered
+        or "timed out" in lowered
+        or "timeout" in lowered
+        or "could not connect" in lowered
+    )
+
+
 def quack_owner_command_dir(store_id: object = "") -> Path | None:
     """Return the exclusive owner's local typed-command inbox, if configured."""
 
@@ -1139,38 +1170,41 @@ def open_quack_transport_connection(
         attach += f", TOKEN '{secret}'"
     attach += ")"
     last_error: Exception | None = None
-    for attempt in range(4):
-        connection = duckdb.connect(":memory:")
-        try:
-            connection.execute("LOAD quack")
-            attached = connection.execute(attach)
-            _consume_duckdb_result(attached)
-            used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
-            _consume_duckdb_result(used)
-            probed = connection.execute(
-                f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
-            )
-            _consume_duckdb_result(probed)
-            wrapped = DuckDBConnection.wrap(connection)
-            wrapped._default_catalog = _QUACK_CONTROL_CATALOG
-            return wrapped
-        except Exception as exc:
-            last_error = exc
+    attempts = 8
+    with exclusive_file_lock(
+        quack_attach_lock_path(text),
+        timeout_seconds=max(DEFAULT_LOCK_TIMEOUT_SECONDS, 45.0),
+    ):
+        for attempt in range(attempts):
+            connection = duckdb.connect(":memory:")
             try:
-                connection.close()
-            except Exception:
-                pass
-            detail = str(exc)
-            auth_failed = (
-                "Authentication failed" in detail
-                or "authentication token" in detail.lower()
-            )
-            if not auth_failed or attempt == 3:
-                break
-            time.sleep(0.4 * (attempt + 1))
+                connection.execute("LOAD quack")
+                attached = connection.execute(attach)
+                _consume_duckdb_result(attached)
+                used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+                _consume_duckdb_result(used)
+                probed = connection.execute(
+                    f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+                )
+                _consume_duckdb_result(probed)
+                wrapped = DuckDBConnection.wrap(connection)
+                wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+                return wrapped
+            except Exception as exc:
+                last_error = exc
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+                if (
+                    not _is_transient_quack_attach_error(str(exc))
+                    or attempt == attempts - 1
+                ):
+                    break
+                time.sleep(0.5 * (attempt + 1) + random.random() * 0.4)
     assert last_error is not None
     detail = str(last_error)
-    if "Authentication failed" in detail or "authentication token" in detail.lower():
+    if _is_transient_quack_attach_error(detail):
         raise DuckDBConnectionPolicyError(
             "quack attach authentication failed "
             f"uri={text!r} token_present={bool(secret)} "

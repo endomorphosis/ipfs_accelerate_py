@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnectionPolicyError,
     is_quack_transport_target,
     open_quack_transport_connection,
+    quack_attach_lock_path,
     quack_transport_uri,
     resolve_quack_attach_token,
 )
@@ -45,6 +46,91 @@ def test_absolutized_quack_path_is_still_transport() -> None:
 def test_quack_transport_rejects_non_loopback() -> None:
     with pytest.raises(DuckDBConnectionPolicyError, match="non-loopback"):
         open_quack_transport_connection("quack:10.0.0.1:45123")
+
+
+def test_quack_attach_lock_path_follows_store_id(tmp_path: Path, monkeypatch) -> None:
+    store = tmp_path / "control.duckdb"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
+    assert quack_attach_lock_path("quack:127.0.0.1:41327") == (
+        store.resolve().parent / "quack-owner" / "attach.lock"
+    )
+
+
+def test_quack_attach_retries_transient_authentication_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(tmp_path / "control.duckdb"))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "retry-token")
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("random.random", lambda: 0.0)
+
+    class _Result:
+        def fetchall(self) -> list[object]:
+            return []
+
+    class _FakeConnection:
+        attaches = 0
+
+        def execute(self, sql: str) -> _Result:
+            if str(sql).startswith("ATTACH"):
+                type(self).attaches += 1
+                if type(self).attaches < 3:
+                    raise RuntimeError("Invalid Input Error: Authentication failed")
+            return _Result()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    class _FakeDuckDB:
+        @staticmethod
+        def connect(_target: object) -> _FakeConnection:
+            return _FakeConnection()
+
+    monkeypatch.setitem(__import__("sys").modules, "duckdb", _FakeDuckDB())
+    wrapped = open_quack_transport_connection("quack:127.0.0.1:41327")
+    assert _FakeConnection.attaches == 3
+    assert wrapped._default_catalog == "control_plane"
+
+
+def test_intent_repository_reuses_quack_read_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opens: list[object] = []
+
+    class _FakeConnection:
+        def execute(self, *_args: object, **_kwargs: object) -> object:
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    def _fake_open(path: object, **_kwargs: object) -> _FakeConnection:
+        opens.append(path)
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.open_duckdb_connection",
+        _fake_open,
+    )
+    repo = IntentRepository("quack:127.0.0.1:45123", install_schema=False)
+    with repo._connection():
+        pass
+    with repo._connection():
+        pass
+    assert opens == ["quack:127.0.0.1:45123"]
+    repo.close()
 
 
 def test_resolve_quack_attach_token_follows_env_secret_handle() -> None:

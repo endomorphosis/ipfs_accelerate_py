@@ -723,6 +723,7 @@ class IntentRepository:
             self._bound_connection = bound_connection
             self._bound_connection_lock = threading.RLock()
             self._bound_transaction_depth = 0
+            self._quack_read_connection = None
             self.database_path = self._open_target
         elif database_path is None:
             raise IntentRepositoryError("database_path or bound_connection is required")
@@ -732,6 +733,7 @@ class IntentRepository:
             self._bound_connection = None
             self._bound_connection_lock = threading.RLock()
             self._bound_transaction_depth = 0
+            self._quack_read_connection = None
             # Path identity is unused for file locks; keep a stable placeholder.
             self.database_path = Path(self._open_target)
         else:
@@ -740,6 +742,7 @@ class IntentRepository:
             self._bound_connection = None
             self._bound_connection_lock = threading.RLock()
             self._bound_transaction_depth = 0
+            self._quack_read_connection = None
             self.database_path = self._open_target
         self.owner_id = _identifier(owner_id, noun="owner_id")
         self.session_id = _identifier(session_id, noun="session_id")
@@ -822,6 +825,13 @@ class IntentRepository:
     def close(self) -> None:
         self._closed = True
         self._open = False
+        connection = self._quack_read_connection
+        self._quack_read_connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
 
     def __enter__(self) -> IntentRepository:
         self._require_open()
@@ -867,6 +877,23 @@ class IntentRepository:
                         self._bound_transaction_depth = 0
                 else:
                     yield connection
+            return
+        if self._quack_transport:
+            with self._bound_connection_lock:
+                if self._quack_read_connection is None:
+                    self._quack_read_connection = open_duckdb_connection(
+                        self._open_target
+                    )
+                connection = self._quack_read_connection
+                try:
+                    yield connection
+                except BaseException:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    self._quack_read_connection = None
+                    raise
             return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,
         # commit/rollback with SQL, and always close the adapter explicitly.

@@ -44,6 +44,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_datasets_authoritative_operational_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    DuckDBConnectionPolicyError,
     connect_duckdb_with_policy,
     open_duckdb_connection,
 )
@@ -2741,6 +2742,39 @@ def test_idle_run_once_invokes_bound_post_merge_recovery_before_claim(
         reported = result["post_merge_recovery_reconciliation"]
         assert reported == reconciliation
         assert reported["results"][0]["status"] == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_idles_on_quack_attach_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-idle",
+    )
+
+    def boom() -> None:
+        raise DuckDBConnectionPolicyError(
+            "quack attach authentication failed uri='quack:127.0.0.1:41327' "
+            "token_present=True token_sha16=deadbeefdeadbeef"
+        )
+
+    try:
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("attach failure claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["implementation_result"] is None
+        assert result["active_task_id"] == ""
+        assert result["control_plane_error"]["error_type"] == (
+            "DuckDBConnectionPolicyError"
+        )
     finally:
         daemon.close()
 

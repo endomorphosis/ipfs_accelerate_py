@@ -76339,13 +76339,14 @@ class DatabaseImplementationDaemon:
             post_merge_recovery_reconciliation = (
                 self._run_post_merge_recovery()
             )
+            post_merge_recovery_write_count = int(
+                post_merge_recovery_reconciliation.get("write_count", 0) or 0
+            )
         except Exception as exc:
-            if merge_quarantine_write_count <= 0 or not _is_quack_attach_error(
-                exc
-            ):
+            if not _is_quack_attach_error(exc):
                 raise
             return {
-                "unchanged": False,
+                "unchanged": merge_quarantine_write_count == 0,
                 "write_count": merge_quarantine_write_count,
                 "active_task_id": "",
                 "selection_idle_reason": "quack_attach_failed",
@@ -76361,9 +76362,6 @@ class DatabaseImplementationDaemon:
                     "error": str(exc)[-2000:],
                 },
             }
-        post_merge_recovery_write_count = int(
-            post_merge_recovery_reconciliation.get("write_count", 0) or 0
-        )
         reconciliation_write_count = (
             merge_quarantine_write_count
             + len(completion_reconciliations)
@@ -76373,7 +76371,31 @@ class DatabaseImplementationDaemon:
             + post_merge_recovery_write_count
         )
         # Prefer resume of this session's running attempts (crash recovery).
-        running = self.list_running_attempts()
+        try:
+            running = self.list_running_attempts()
+        except Exception as exc:
+            if not _is_quack_attach_error(exc):
+                raise
+            return {
+                "unchanged": reconciliation_write_count == 0,
+                "write_count": reconciliation_write_count,
+                "active_task_id": "",
+                "selection_idle_reason": "quack_attach_failed",
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "merge_quarantine_settlement": merge_quarantine_settlement,
+                "post_merge_recovery_reconciliation": (
+                    post_merge_recovery_reconciliation
+                ),
+                "control_plane_error": {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-2000:],
+                },
+            }
         if running:
             result = self._resume_attempt_without_process_crash(running[0])
             return {
@@ -76402,7 +76424,41 @@ class DatabaseImplementationDaemon:
                 ),
             }
 
-        attempt = self.claim_next()
+        try:
+            attempt = self.claim_next()
+        except Exception as exc:
+            if not _is_quack_attach_error(exc):
+                raise
+            return {
+                "unchanged": reconciliation_write_count == 0,
+                "write_count": reconciliation_write_count,
+                "active_task_id": "",
+                "selection_idle_reason": "quack_attach_failed",
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "completion_reconciliations": completion_reconciliations,
+                "expired_attempt_reconciliations": (
+                    expired_attempt_reconciliations
+                ),
+                "terminal_retry_reconciliations": (
+                    terminal_retry_reconciliations
+                ),
+                "terminal_portal_reconciliations": (
+                    terminal_portal_reconciliations
+                ),
+                "merge_quarantine_settlement": merge_quarantine_settlement,
+                "post_merge_recovery_reconciliation": (
+                    post_merge_recovery_reconciliation
+                ),
+                "control_plane_error": {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-2000:],
+                },
+            }
         if attempt is None:
             return {
                 "unchanged": reconciliation_write_count == 0,
