@@ -3492,8 +3492,37 @@ def classify_provider_capacity_failure(
     text: str,
     *,
     provider_labels: Sequence[str] = (),
+    provider_returncode: int | None = None,
 ) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
+
+    del provider_returncode
+    # Canonical-legacy Grok preflight writes a typed receipt, then may deny
+    # Codex fallback. That is still quota exhaustion, not a code defect.
+    for receipt in extract_grok_failure_receipts(text):
+        if str(receipt.get("failure_class") or "") != "hard_quota_exhausted":
+            continue
+        if receipt.get("primary_dispatched") is True:
+            continue
+        probe_returncode = receipt.get("probe_returncode")
+        if (
+            isinstance(probe_returncode, bool)
+            or not isinstance(probe_returncode, int)
+            or probe_returncode == 0
+        ):
+            continue
+        return {
+            "exhausted": True,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "failure_class": "hard_quota_exhausted",
+            "hard_quota_exhausted_providers": ["grok"],
+            "quota_probe_receipt": dict(receipt),
+            "quota_probe_receipt_id": str(receipt.get("receipt_id") or ""),
+            "hard_quota_evidence_sha256": str(
+                receipt.get("evidence_sha256") or ""
+            ),
+        }
 
     # Worktree pool races can dispose the workspace between setup and provider
     # launch. That is infrastructure, not an implementation attempt to charge.
@@ -18698,15 +18727,26 @@ class PortalImplementationDaemon:
             command = event.get("command")
             if not isinstance(command, list):
                 continue
+            command_nonce = self._command_flag_value(
+                command,
+                "--grok-failure-receipt-nonce",
+            )
+            uses_canonical_legacy = (
+                "--canonical-legacy-preflight-route" in command
+                and not command_nonce
+            )
+            nonce_matches = (
+                command_nonce == nonce
+                if command_nonce
+                else uses_canonical_legacy
+                and bool(re.fullmatch(r"[0-9a-f]{64}", nonce))
+            )
             if (
-                self._command_flag_value(
-                    command,
-                    "--grok-failure-receipt-nonce",
-                )
-                != nonce
+                not nonce_matches
                 or self._command_flag_value(command, "--model") != model
                 or not any(
                     Path(str(item)).name == "grok_cli_runner.py"
+                    or str(item).endswith("grok_cli_runner")
                     for item in command
                 )
             ):
@@ -67626,6 +67666,24 @@ _DATABASE_AUTHORITY_MODES = frozenset(
 _DATABASE_TASK_SOURCE_KINDS = frozenset({"duckdb"})
 _DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS = 300
 _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS = 86_400
+_RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
+    {
+        "proposal_gate_failed",
+        "proposal_validation_failed",
+    }
+)
+_TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(
+    {
+        "blocked",
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "todo",
+        "cancelled",
+        "failed",
+    }
+)
 _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral@1"
 )
@@ -71976,7 +72034,7 @@ class DatabaseImplementationDaemon:
                     f"failed attempt {attempt.attempt_id} has no control task"
                 )
             status = str(task.status or "").strip().lower()
-            if status == "blocked":
+            if status in _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES:
                 continue
             if status == "retrying":
                 # The immutable legacy attempt still says terminal failure.
@@ -72180,7 +72238,12 @@ class DatabaseImplementationDaemon:
                 exc,
                 DatabasePortalValidationRetry,
             )
-            retryable = deferred or validation_retry
+            reason = self._database_portal_reason(str(exc))
+            retryable = (
+                deferred
+                or validation_retry
+                or reason in _RETRYABLE_PORTAL_FAILURE_REASONS
+            )
             backoff_seconds = (
                 self._database_portal_backoff_seconds(
                     getattr(
@@ -72192,7 +72255,6 @@ class DatabaseImplementationDaemon:
                 if retryable
                 else 0
             )
-            reason = self._database_portal_reason(str(exc))
             failed = None
             try:
                 # ``resume_attempt`` can durably advance one or more phases
@@ -72304,6 +72366,13 @@ class DatabaseImplementationDaemon:
                         validation_retry_evidence=(
                             verified_validation_retry
                         ),
+                    )
+                elif retryable:
+                    control_state = self._persist_task_retry_state(
+                        terminal,
+                        reason=reason,
+                        backoff_ms=backoff_seconds * 1000,
+                        evidence_source="typed_portal_proposal_gate_retry",
                     )
                 else:
                     control_state = self._persist_terminal_portal_failure(

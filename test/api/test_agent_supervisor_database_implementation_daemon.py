@@ -1208,6 +1208,70 @@ def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
         daemon.close()
 
 
+@pytest.mark.parametrize("control_status", ("completed", "todo"))
+def test_terminal_portal_reconciliation_skips_settled_control_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    control_status: str,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-reconcile-skip",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        original_get = daemon.task_source.get
+
+        def projected_get(task_cid: str) -> object:
+            task = original_get(task_cid)
+            if task_cid != attempt.task_cid or task is None:
+                return task
+            return SimpleNamespace(
+                status=control_status,
+                revision=task.revision,
+                body=dict(task.body),
+            )
+
+        monkeypatch.setattr(daemon.task_source, "get", projected_get)
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_proposal_gate_failure_retries_instead_of_blocking(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("proposal_gate_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:proposal-gate-retry",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        implementation = failed_result.get("implementation_result") or {}
+        assert implementation.get("portal_retryable_failure") is True
+        assert implementation.get("portal_terminal_failure") is False
+        assert implementation.get("reason") == "proposal_gate_failed"
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [
