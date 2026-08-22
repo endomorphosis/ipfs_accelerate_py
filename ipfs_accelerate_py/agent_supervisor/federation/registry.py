@@ -437,8 +437,26 @@ def _casf_templates() -> tuple[StatementTemplate, ...]:
             """
             INSERT INTO global_sequence_head (
                 head_id, current_sequence, revision, updated_at
-            ) VALUES ('global', 0, 0, ?)
-            ON CONFLICT (head_id) DO NOTHING
+            )
+            SELECT 'global', COALESCE(MAX(global_sequence), 0), 0, ?
+            FROM domain_events
+            ON CONFLICT (head_id) DO UPDATE SET
+                current_sequence = GREATEST(
+                    global_sequence_head.current_sequence,
+                    excluded.current_sequence
+                ),
+                revision = CASE
+                    WHEN excluded.current_sequence
+                         > global_sequence_head.current_sequence
+                    THEN global_sequence_head.revision + 1
+                    ELSE global_sequence_head.revision
+                END,
+                updated_at = CASE
+                    WHEN excluded.current_sequence
+                         > global_sequence_head.current_sequence
+                    THEN excluded.updated_at
+                    ELSE global_sequence_head.updated_at
+                END
             """,
             ("updated_at",),
         ),

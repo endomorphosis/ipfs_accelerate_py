@@ -806,6 +806,51 @@ def test_every_casf_template_prepares_against_migration_two(tmp_path: Path) -> N
             connection.execute(f"DEALLOCATE {prepared_name}")
 
 
+def test_global_event_head_reconciles_preexisting_control_plane_events(
+    tmp_path: Path,
+) -> None:
+    database, client, _repository, _binding, request, policy = _open_repository(
+        tmp_path
+    )
+    client.close()
+    with open_duckdb_connection(database) as connection:
+        connection.execute(
+            """
+            INSERT INTO domain_events (
+                event_id, stream_id, sequence, global_sequence,
+                event_type, recorded_at, body_json
+            ) VALUES ('event:legacy:94', 'legacy-materializer', 94, 94,
+                      'TASK_CREATED', ?, '{}')
+            """,
+            [NOW],
+        )
+        head_count = connection.execute(
+            "SELECT COUNT(*) FROM global_sequence_head"
+        ).fetchone()
+        assert head_count is not None and int(head_count[0]) == 0
+
+    client, repository = _reopen_repository(database)
+    try:
+        AuthoritativeBudgetAuthority(
+            repository,
+            capacity=_BUDGET_CAPACITY,
+            authority_id="authority:budget:legacy-watermark-test",
+            now=lambda: datetime(2030, 1, 1, tzinfo=timezone.utc),
+        ).reserve(request, policy)
+    finally:
+        client.close()
+
+    with open_duckdb_connection(database) as connection:
+        head = connection.execute(
+            "SELECT current_sequence FROM global_sequence_head WHERE head_id = 'global'"
+        ).fetchone()
+        maximum = connection.execute(
+            "SELECT MAX(global_sequence) FROM domain_events"
+        ).fetchone()
+        assert head is not None and int(head[0]) == 95
+        assert maximum is not None and int(maximum[0]) == 95
+
+
 def test_create_is_idempotent_and_commits_one_state_event_outbox(
     tmp_path: Path,
 ) -> None:
