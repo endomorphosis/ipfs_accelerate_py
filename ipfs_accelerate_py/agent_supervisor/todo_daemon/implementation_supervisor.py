@@ -16902,12 +16902,77 @@ class PortalImplementationSupervisor:
             )
         )
 
+    def _release_inactive_supervisor_recovery_if_clean(self) -> dict[str, Any]:
+        """Drop a leftover supervisor journal when the owner is gone and clean."""
+
+        existing = read_checkout_mutation_lease(self._repo_merge_lock_path())
+        if existing is None:
+            return {"released": False, "reason": "no_lease"}
+        metadata = dict(existing.metadata)
+        if metadata.get("protected_recovery_required") is not True:
+            return {"released": False, "reason": "not_recovery_journal"}
+        if str(metadata.get("protected_recovery_owner") or "") != (
+            "implementation_supervisor"
+        ):
+            return {"released": False, "reason": "external_owner"}
+        if self._supervisor_recovery_owner_is_active(metadata):
+            return {"released": False, "reason": "owner_active"}
+        protected = [
+            self.config.repo_root / path
+            for path in self.config.implementation_protected_paths
+            if str(path).strip()
+        ]
+        dirty = self._dirty_implementation_protected_paths(protected)
+        if dirty:
+            return {
+                "released": False,
+                "reason": "protected_paths_dirty",
+                "dirty_protected_paths": list(dirty),
+            }
+        released = release_checkout_mutation_lease(existing)
+        result = {
+            "released": bool(released),
+            "reason": (
+                "inactive_owner_protected_paths_clean"
+                if released
+                else "release_raced"
+            ),
+            "lock_path": str(existing.lock_path),
+            "lease_id": existing.lease_id,
+        }
+        if released:
+            try:
+                self._record_event(
+                    "stale_supervisor_protected_recovery_released",
+                    result,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to record stale supervisor recovery release",
+                    exc_info=True,
+                )
+        return result
+
     def _recover_retained_generated_checkout_lease(self) -> dict[str, Any]:
         """Autonomously clean a retained generated-output transaction."""
 
         if not self._retained_generated_checkout_lease():
             adoption = self._adopt_supervisor_protected_recovery()
             if adoption.get("required") and adoption.get("blocked"):
+                leftover = self._release_inactive_supervisor_recovery_if_clean()
+                if leftover.get("released"):
+                    return {
+                        "attempted": True,
+                        "recovered": True,
+                        "retained_lease": False,
+                        "reason": "stale_supervisor_protected_recovery_released",
+                        "adoption": {
+                            key: value
+                            for key, value in adoption.items()
+                            if key != "lease"
+                        },
+                        "leftover_release": leftover,
+                    }
                 return {
                     **adoption,
                     "attempted": False,

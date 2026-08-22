@@ -16494,12 +16494,13 @@ class PortalImplementationDaemon:
         ):
             wake_kinds = self._consume_runtime_wake_kinds()
             self._current_runtime_wake_kinds = set(wake_kinds)
+            blocked_reason = str(
+                protected_checkout_recovery.get("reason")
+                or "protected_checkout_recovery_required"
+            )
             result = {
                 "blocked": True,
-                "reason": str(
-                    protected_checkout_recovery.get("reason")
-                    or "protected_checkout_recovery_required"
-                ),
+                "reason": blocked_reason,
                 "protected_checkout_recovery": (
                     protected_checkout_recovery
                 ),
@@ -16509,7 +16510,16 @@ class PortalImplementationDaemon:
                 "unchanged": True,
                 "write_count": 0,
                 "projection_delta": {},
-                "implementation_result": None,
+                "implementation_result": {
+                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                    "deferred": True,
+                    "retryable": True,
+                    "attempt_consumed": False,
+                    "failure_kind": "lifecycle_setup",
+                    "provider_dispatched": False,
+                    "provider_call_allowed": False,
+                    "reason": blocked_reason,
+                },
                 "merge_reconciliation": [],
                 "wake_kinds": sorted(wake_kinds),
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
@@ -70202,6 +70212,49 @@ class DatabaseImplementationDaemon:
         raw = row[0] if not isinstance(row, Mapping) else row.get("result_json")
         return _database_daemon_load_json(raw)
 
+    @staticmethod
+    def _is_protected_checkout_setup_block(reason: str) -> bool:
+        from .database_portal_bridge import is_protected_checkout_setup_block
+
+        return is_protected_checkout_setup_block(reason)
+
+    def _external_protected_checkout_setup_block_reason(self) -> str:
+        """Detect a supervisor-owned recovery journal before callback intent."""
+
+        repo = getattr(self, "repo_root", None)
+        if repo is None:
+            return ""
+        from ..merge.checkout_lock import (
+            checkout_mutation_lock_path,
+            read_checkout_mutation_lease,
+        )
+
+        try:
+            existing = read_checkout_mutation_lease(
+                checkout_mutation_lock_path(Path(repo))
+            )
+        except (OSError, TypeError, ValueError):
+            return ""
+        if existing is None:
+            return ""
+        metadata = dict(existing.metadata)
+        if metadata.get("protected_recovery_required") is not True:
+            return ""
+        owner = str(metadata.get("protected_recovery_owner") or "")
+        if owner and owner != "implementation_daemon":
+            return "external_protected_checkout_recovery_required"
+        return ""
+
+    def _require_protected_checkout_provider_ready(self) -> None:
+        """Defer dispatch while another owner holds protected recovery."""
+
+        reason = self._external_protected_checkout_setup_block_reason()
+        if not reason:
+            return
+        from .database_portal_bridge import DatabasePortalBridgeDeferred
+
+        raise DatabasePortalBridgeDeferred(reason)
+
     def run_provider(
         self,
         attempt: DatabaseTaskAttempt,
@@ -70276,6 +70329,11 @@ class DatabaseImplementationDaemon:
         callback = provider_fn or self._provider_fn
         callback_intent: dict[str, Any] | None = None
         invocation_id = _database_daemon_new_id("provider")
+        if callback is not None:
+            # A leftover supervisor recovery journal must not be recorded as
+            # an unknown provider callback.  Defer before the durable intent
+            # so a later process death cannot quarantine the task.
+            self._require_protected_checkout_provider_ready()
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -72544,13 +72602,17 @@ class DatabaseImplementationDaemon:
                     "task_alias": attempt.task_alias,
                     "status": "failed",
                 }
-            if isinstance(exc, DatabasePortalBridgeError) and not isinstance(
-                exc, DatabasePortalBridgeDeferred
+            if isinstance(exc, DatabasePortalBridgeError) and (
+                not isinstance(exc, DatabasePortalBridgeDeferred)
+                or self._is_protected_checkout_setup_block(str(exc))
             ):
                 # Typed Portal setup/recovery failures (for example
                 # external_protected_checkout_recovery_required) are raised
                 # after callback intent is recorded.  Killing --once then
                 # quarantines unknown-callback and can cap reopen forever.
+                # Setup deferrals of the same class never dispatched a
+                # provider, so they also requeue instead of consuming the
+                # claim as a failed callback.
                 task = self.task_source.get(attempt.task_cid)
                 if task is None:
                     raise

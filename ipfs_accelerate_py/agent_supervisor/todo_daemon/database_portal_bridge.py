@@ -41,6 +41,28 @@ DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA: Final[str] = (
 DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/portal-retry-deferral@1"
 )
+PROTECTED_CHECKOUT_SETUP_BLOCK_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "external_protected_checkout_recovery_required",
+        "protected_recovery_owner_active",
+        "protected_recovery_adoption_raced",
+        "protected_checkout_recovery_required",
+        "protected_checkout_recovery_failed",
+        "supervisor_protected_recovery_owner_active",
+        "supervisor_protected_recovery_adoption_raced",
+        "supervisor_protected_recovery_journal_invalid",
+        "checkout_mutation_protected_recovery_required",
+    }
+)
+
+
+def is_protected_checkout_setup_block(reason: str) -> bool:
+    """True when Portal/provider dispatch is blocked before any callback."""
+
+    normalized = str(reason or "").strip().replace(" ", "_")
+    if not normalized:
+        return False
+    return any(token in normalized for token in PROTECTED_CHECKOUT_SETUP_BLOCK_REASONS)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset({"completed", "complete", "done"})
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
@@ -1243,6 +1265,13 @@ class DatabasePortalExecutionBridge:
                         implementation, Mapping
                     ) and self._explicit_retryable_deferral(implementation):
                         raise DatabasePortalBridgeDeferred(failure)
+                    if (
+                        raw_result.get("blocked") is True
+                        and is_protected_checkout_setup_block(failure)
+                    ):
+                        # A leftover supervisor/daemon recovery journal is
+                        # setup contention, not a dispatched provider outcome.
+                        raise DatabasePortalBridgeDeferred(failure)
                     if isinstance(implementation, Mapping):
                         consumed_no_progress = (
                             self._consumed_no_progress_failure(
@@ -1334,6 +1363,7 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA",
+    "PROTECTED_CHECKOUT_SETUP_BLOCK_REASONS",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeConsumedNoProgressError",
@@ -1342,5 +1372,6 @@ __all__ = (
     "PortalDaemonFactory",
     "database_portal_authoritative_repository_tree_id",
     "database_portal_consumed_no_progress_fingerprint",
+    "is_protected_checkout_setup_block",
     "database_portal_task_contract_digest",
 )

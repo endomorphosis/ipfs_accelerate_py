@@ -37,6 +37,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
     DatabasePortalBridgeConsumedNoProgressError,
@@ -44,6 +48,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeError,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
+    is_protected_checkout_setup_block,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_BLOCKED,
@@ -1502,6 +1507,85 @@ def test_portal_setup_error_requeues_instead_of_unknown_callback_quarantine(
         current = daemon.task_source.get(attempt.task_cid)
         assert current is not None
         assert current.status != "quarantined"
+        stale = daemon.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status != "running"
+    finally:
+        daemon.close()
+
+
+def _write_supervisor_protected_recovery_journal(repo: Path) -> Path:
+    lock_path = checkout_mutation_lock_path(repo)
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="APMC-013",
+        attempt=1,
+        extra={"operation": "generated_board_update"},
+    )
+    metadata.update(
+        {
+            "pid": 999999999,
+            "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_supervisor",
+            "protected_paths": ["docs/generated.todo.md"],
+        }
+    )
+    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
+    return lock_path
+
+
+def test_protected_checkout_setup_block_classifier() -> None:
+    assert is_protected_checkout_setup_block(
+        "external_protected_checkout_recovery_required"
+    )
+    assert is_protected_checkout_setup_block(
+        "DatabasePortalBridgeError: external protected checkout recovery required"
+    )
+    assert not is_protected_checkout_setup_block("portal_consumed_no_progress")
+
+
+def test_supervisor_recovery_journal_defers_before_callback_intent(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    lock_path = _write_supervisor_protected_recovery_journal(repo)
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.task_cid)
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        provider_fn=provider,
+        strict_task_sharding=True,
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        result = daemon._resume_attempt_without_process_crash(attempt)
+        assert result["retryable"] is True
+        assert "external_protected_checkout_recovery_required" in str(
+            result.get("reason") or ""
+        )
+        current = daemon.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status != "quarantined"
+        assert current.status == "todo"
+        assert provider_calls == []
+        recorded = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert recorded is None
+        assert lock_path.is_file()
         stale = daemon.get_attempt(attempt.attempt_id)
         assert stale is not None
         assert stale.status != "running"
