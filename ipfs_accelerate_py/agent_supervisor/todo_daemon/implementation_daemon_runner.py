@@ -13,14 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ..objectives.scan_receipts import RefillScanResult
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_repeated_default,
 )
+from ..objectives.scan_receipts import RefillScanResult
 from ..runtime.event_log import append_jsonl_event
-
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
@@ -1152,10 +1151,10 @@ def resolve_database_implementation_paths(
     mode = str(authority_mode or getattr(parsed, "authority_mode", "") or "")
     mode = mode.strip().lower().replace("-", "_")
     if mode == "quack":
-        # Quack owns the shared task-state boundary.  Each execution lane still
-        # needs a private embedded database for its local claim/attempt journal;
-        # deriving that sidecar from the shared store ID makes every lane open
-        # the same DuckDB file as a writer and prevents parallel startup.
+        # Quack owns the shared task-state boundary.  Lane-local
+        # execution/coordination sidecars must be derived from the expanded
+        # lane state directory, never from the shared remote store identity,
+        # or every lane would open the same DuckDB file as a writer.
         state_dir = Path(getattr(parsed, "state_dir", Path("state")))
         database_path: Path | None = state_dir / "quack-lane-control.duckdb"
     else:
@@ -1378,6 +1377,10 @@ def build_portal_implementation_daemon_from_args(
                 parsed, "strict_task_sharding", False
             ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            repo_root=repo_root,
+            merge_target_ref=str(
+                getattr(parsed, "merge_target_branch", "") or "HEAD"
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -1527,6 +1530,10 @@ def build_database_implementation_daemon_from_args(
         task_shard_count=getattr(parsed, "task_shard_count", 1),
         task_shard_index=getattr(parsed, "task_shard_index", 0),
         strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
+        repo_root=getattr(parsed, "repo_root", None),
+        merge_target_ref=str(
+            getattr(parsed, "merge_target_branch", "") or "HEAD"
+        ),
     )
 
 

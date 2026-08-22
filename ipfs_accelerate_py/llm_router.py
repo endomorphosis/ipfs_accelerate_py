@@ -3620,6 +3620,9 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
+    found = find_grok_cli()
+    if found:
+        return found
     return (
         _coalesce_env(
             "ipfs_accelerate_py_GROK_CLI_CMD",
@@ -5098,7 +5101,14 @@ def find_grok_cli() -> Optional[str]:
             found = shutil.which(parts[0])
             if found:
                 return found
-    return shutil.which("grok")
+    found = shutil.which("grok")
+    if found:
+        return found
+    # systemd --user units often use a minimal PATH that omits ~/.local/bin.
+    home_local = Path.home() / ".local" / "bin" / "grok"
+    if home_local.is_file() and os.access(home_local, os.X_OK):
+        return str(home_local)
+    return None
 
 
 def _grok_default_model() -> str:

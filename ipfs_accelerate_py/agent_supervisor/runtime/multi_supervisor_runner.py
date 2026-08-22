@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -461,6 +462,7 @@ FORBIDDEN_QUACK_FAILOVER_TARGETS = frozenset(
 
 STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
 STATE_QUACK_ENDPOINT_ENV = "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT"
+STATE_QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 STATE_ENDPOINT_SECRET_HANDLE_ENV = (
     "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
 )
@@ -477,6 +479,7 @@ DATABASE_PROGRAM_JSON_ENV = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
 DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_AUTHORITY_MODE_ENV,
     STATE_QUACK_ENDPOINT_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
     STATE_ENDPOINT_SECRET_HANDLE_ENV,
     STATE_STORE_ID_ENV,
     STATE_STORE_GENERATION_ENV,
@@ -495,6 +498,8 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
         "QUACK_TOKEN",
         "QUACK_PASSWORD",
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        STATE_QUACK_MUTATION_DIR_ENV,
+        RUNTIME_REGISTRY_PATH_ENV,
         "QUACK_SECRET",
         "DUCKDB_TOKEN",
         "DUCKDB_PASSWORD",
@@ -836,7 +841,11 @@ class DatabaseProgramConfig:
             args.append("--explicit-legacy-task-source")
         return args
 
-    def environment(self) -> dict[str, str]:
+    def environment(
+        self,
+        *,
+        repository_root: str | Path | None = None,
+    ) -> dict[str, str]:
         """Return non-secret environment bindings for child supervisors/daemons."""
 
         env = {
@@ -861,7 +870,27 @@ class DatabaseProgramConfig:
             env[STATE_SCHEMA_REVISION_ENV] = self.schema_revision
         if self.event_store_path:
             env[EVENT_STORE_PATH_ENV] = self.event_store_path
-        if self.runtime_registry_path:
+        if self.authority_mode == AUTHORITY_MODE_QUACK:
+            if not self.runtime_registry_path:
+                raise DatabaseProgramConfigError(
+                    "quack authority requires runtime_registry_path for "
+                    "owner/worker mutation binding"
+                )
+            from ..task_sources.duckdb_state import (
+                DuckDBConnectionPolicyError,
+                quack_owner_mutation_inbox_path,
+            )
+
+            try:
+                mutation_inbox = quack_owner_mutation_inbox_path(
+                    self.runtime_registry_path,
+                    repository_root=repository_root,
+                )
+            except DuckDBConnectionPolicyError as exc:
+                raise DatabaseProgramConfigError(str(exc)) from exc
+            env[RUNTIME_REGISTRY_PATH_ENV] = str(mutation_inbox.parent)
+            env[STATE_QUACK_MUTATION_DIR_ENV] = str(mutation_inbox)
+        elif self.runtime_registry_path:
             env[RUNTIME_REGISTRY_PATH_ENV] = self.runtime_registry_path
         if self.export_profile:
             env[EXPORT_PROFILE_ENV] = self.export_profile

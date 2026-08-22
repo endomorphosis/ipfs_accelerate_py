@@ -1,0 +1,58 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/autonomy/release-report@1",
+  "interface": "APMCReleaseReport@1",
+  "program_id": "agent-supervisor-autonomous-meta-controller-v1",
+  "root_objective_id": "APMC-G000",
+  "operator_authorization_id": "operator:starworks5:apmc-g110",
+  "promotion_status": "non_promoted",
+  "policy_pointer_mutated": false,
+  "promotion_eligible": false,
+  "blocker_codes": [
+    "token_input_reduction_bps",
+    "model_call_reduction_bps",
+    "retry_input_reduction_bps",
+    "distilled_class_coverage_bps",
+    "low_risk_without_large_model_bps",
+    "human_intervention_reduction_bps",
+    "deterministic_question_resolution_bps",
+    "held_out_decision_accuracy_bps"
+  ],
+  "tests": {
+    "autonomy_pytest": {
+      "command": "python3 -m pytest -q test/api/autonomy",
+      "passed": 318,
+      "failed": 0,
+      "status": "passed"
+    },
+    "benchmark_validate": {
+      "command": "python3 benchmarks/agent_supervisor/autonomous_meta_controller/validate.py",
+      "valid": true,
+      "measurement_status": "not_run",
+      "promotion_eligible": false
+    },
+    "board_validate": {
+      "command": "python3 scripts/validate_agent_supervisor_autonomous_meta_controller_board.py --check-all",
+      "valid": false,
+      "reason": "markdown_headings_include_generated_APMC-021_through_APMC-026"
+    }
+  },
+  "git": {
+    "branch": "codex/agent-supervisor-autonomous-meta-controller-v1",
+    "merge_base_origin_main": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "ahead_of_origin_main": 56,
+    "behind_origin_main": 68
+  },
+  "safety_gates_vocabulary": [
+    "false_completions",
+    "unauthorized_mutations",
+    "simulated_as_live",
+    "stale_authoritative_cache_hits",
+    "confirmation_replays",
+    "path_or_scope_escapes",
+    "hidden_validation_reductions",
+    "escaped_critical_seeded_defects",
+    "self_authorized_policy_promotions"
+  ],
+  "simulated_as_live": false,
+  "mutates_policy": false
+}
