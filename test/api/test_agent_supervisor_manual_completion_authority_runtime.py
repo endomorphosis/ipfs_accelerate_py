@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -251,6 +253,8 @@ def _implementation_revalidation_daemon(
     shard_index: int = 0,
     max_task_attempts: int = 1,
     revalidation_only: bool = False,
+    use_ephemeral_worktree: bool = False,
+    worktree_pool_enabled: bool = True,
 ) -> daemon_module.PortalImplementationDaemon:
     state_dir = tmp_path / f"state-{suffix}"
     return daemon_module.PortalImplementationDaemon(
@@ -261,11 +265,11 @@ def _implementation_revalidation_daemon(
         repo_root=repo,
         task_header_prefix="## TEST-",
         implement=True,
-        use_ephemeral_worktree=False,
+        use_ephemeral_worktree=use_ephemeral_worktree,
         worktree_root=tmp_path / "worktrees",
         merge_queue_dir=tmp_path / "merge-queue",
         validation_cache_dir=tmp_path / "validation-cache",
-        worktree_pool_enabled=True,
+        worktree_pool_enabled=worktree_pool_enabled,
         max_task_attempts=max_task_attempts,
         task_shard_count=shard_count,
         task_shard_index=shard_index,
@@ -2415,9 +2419,19 @@ def test_todo_descendant_remains_on_provider_route(
         descendants=[("TEST-002", "todo", "TEST-001")],
     )
     daemon = _implementation_revalidation_daemon(
-        tmp_path, repo, board, suffix="todo-provider"
+        tmp_path,
+        repo,
+        board,
+        suffix="todo-provider",
+        use_ephemeral_worktree=True,
+        worktree_pool_enabled=False,
     )
     calls: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_require_primary_provider_readiness",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(
         daemon,
         "_build_implementation_prompt",
@@ -3195,3 +3209,69 @@ def test_validated_tree_identity_accepts_ancestor_of_current_head(
     main_branch = daemon._main_branch_name()
     _git(repo, "branch", "-M", main_branch)
     assert daemon._manual_completion_validated_tree_is_current(identity) is False
+
+
+def test_authority_validation_user_docker_endpoint_is_uid_owned() -> None:
+    endpoint = (
+        daemon_module.PortalImplementationDaemon._authority_validation_user_docker_endpoint()
+    )
+    assert endpoint == f"unix:///run/user/{os.getuid()}/docker.sock"
+    allowed = (
+        daemon_module.PortalImplementationDaemon._authority_validation_allowed_docker_hosts()
+    )
+    assert "" in allowed
+    assert "unix:///run/docker.sock" in allowed
+    assert endpoint in allowed
+
+
+def test_authority_validation_socket_record_rejects_non_socket(
+    tmp_path: Path,
+) -> None:
+    fake = tmp_path / "docker.sock"
+    fake.write_text("", encoding="utf-8")
+    fake.chmod(0o666)
+    record = (
+        daemon_module.PortalImplementationDaemon._authority_validation_socket_record(
+            f"unix://{fake}",
+            require_rootless=True,
+        )
+    )
+    assert record is None
+
+
+def test_user_docker_socket_record_is_fail_closed() -> None:
+    endpoint = (
+        daemon_module.PortalImplementationDaemon._authority_validation_user_docker_endpoint()
+    )
+    record = (
+        daemon_module.PortalImplementationDaemon._authority_validation_socket_record(
+            endpoint,
+            require_rootless=True,
+        )
+    )
+    socket_path = Path(endpoint.removeprefix("unix://"))
+    if record is None:
+        assert not socket_path.is_socket() or not socket_path.exists()
+        return
+    assert record["rootless"] is True
+    assert int(record["stat"].st_uid) == os.getuid()
+    assert stat.S_IMODE(record["stat"].st_mode) & 0o007 == 0
+    assert Path(record["path"]) == socket_path.resolve()
+
+
+def test_authority_validation_rootless_gpu_arguments_bind_host_devices() -> None:
+    arguments = (
+        daemon_module.PortalImplementationDaemon._authority_validation_rootless_gpu_arguments()
+    )
+    assert any(item.startswith("--device=/dev/nvidia") for item in arguments)
+    assert any("libcuda.so" in item or "libnvidia-ml.so" in item for item in arguments)
+    assert any(item.endswith("dst=/usr/bin/nvidia-smi,readonly") for item in arguments)
+    assert all(
+        not item.startswith("--gpus=") for item in arguments
+    )
+    assert daemon_module.AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST in (
+        daemon_module.AUTHORITY_VALIDATION_CONTAINER_IDS
+    )
+    assert daemon_module.DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE in (
+        daemon_module.AUTHORITY_VALIDATION_CONTAINER_IDS
+    )

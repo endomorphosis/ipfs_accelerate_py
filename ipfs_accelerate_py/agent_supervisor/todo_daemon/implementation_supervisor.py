@@ -7720,6 +7720,14 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
     ) -> dict[str, Any]:
+        if self.config.manual_completion_authority_revalidation_only:
+            return {
+                "stuck": False,
+                "maintenance_blocked": False,
+                "reason": "manual_completion_authority_revalidation_only",
+                "manual_completion_authority_revalidation_only": True,
+                "ordinary_provider_dispatch_allowed": False,
+            }
         if not self.config.implementation_protected_paths:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
