@@ -1,0 +1,39 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-training-gate@1",
+  "program_identifier": "agent-supervisor-verified-residual-intelligence-foundry-v1",
+  "decision": "training_unavailable",
+  "training_attempted": false,
+  "checkpoint_created": false,
+  "promotion_attempted": false,
+  "simulated_checkpoint_created": false,
+  "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+  "pgir": {
+    "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+    "current_freeze_result_cid": "baguqeerai2ipwhyywztjob62ju5pokmm4o6unqqee3poyrabj37aby6fuoca",
+    "decision": "no_go",
+    "source_count": 7173,
+    "training_admitted_rows": 0,
+    "rights_quarantined_rows": 7173,
+    "corpus_materialized": false,
+    "learned_tokenizer_status": "no_learned_tokenizer_admitted",
+    "candidate_checkpoint": null,
+    "publication_authorized": false
+  },
+  "reason_codes": [
+    "corpus_not_materialized",
+    "historical_semantic_baseline_not_currently_qualified",
+    "no_candidate_checkpoint",
+    "no_learned_tokenizer_admitted",
+    "no_rights_admitted_training_rows",
+    "publication_not_authorized",
+    "required_holdouts_insufficient"
+  ],
+  "evidence": [
+    "data/agent_supervisor/proof_grounded_ir_learning/freeze/campaign_input_root.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/freeze/result.v3.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/freeze/tokenizer_policy.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/verify_qualification.py",
+    "docs/architecture/proof_grounded_ir_learning/final_report.md"
+  ],
+  "supersession_policy": "Only a new TrainingCorpusAdmission with exact rights, privacy, split, tokenizer, compiler, label, environment, and leakage identities may supersede this gate."
+}

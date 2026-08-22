@@ -1,0 +1,91 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-model-call-surface-inventory@1",
+  "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+  "source_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+  "observation_scope": "committed call surfaces; no unadmitted trajectory rows",
+  "trajectory_observation_count": 0,
+  "training_examples_created": 0,
+  "reason": "Committed source identifies invocation surfaces, but accepted/rejected trajectory payloads do not carry a VRIF TrainingCorpusAdmission. Invented observations are forbidden.",
+  "surfaces": [
+    {
+      "surface_id": "residual-provider-invocation-v1",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/residual_provider_invocation.py",
+      "interface": "ResidualProviderInvocation@1",
+      "stage": "implementation",
+      "candidate_families": ["PATCH_SKETCH_GENERATION", "NOVEL_UNBOUNDED_REASONING"],
+      "input_contract": "ResidualLlmPacket",
+      "output_contract": "injected provider callable result plus typed invocation receipt",
+      "bounded_context": true,
+      "authoritative": false,
+      "inventory_disposition": "requires_trajectory_join_and_family_boundary_validation"
+    },
+    {
+      "surface_id": "todo-daemon-llm-router-child",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py:596",
+      "interface": "llm_router.generate_text",
+      "stage": "provider_execution",
+      "candidate_families": ["NOVEL_UNBOUNDED_REASONING"],
+      "input_contract": "LlmRouterInvocation plus bounded prompt file",
+      "output_contract": "LLM child result envelope",
+      "bounded_context": true,
+      "authoritative": false,
+      "inventory_disposition": "generic surface; classify from sealed task semantics, never prompt similarity"
+    },
+    {
+      "surface_id": "legal-parser-improvement-proposal",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py:476",
+      "interface": "strict JSON LegalParserCycleProposal",
+      "stage": "proposal_generation",
+      "candidate_families": ["PATCH_SKETCH_GENERATION"],
+      "input_contract": "bounded cycle evaluation and feedback",
+      "output_contract": "parsed cycle proposal",
+      "bounded_context": true,
+      "authoritative": false,
+      "inventory_disposition": "eligible only after exact validation and rights-qualified trajectory join"
+    },
+    {
+      "surface_id": "contract-packet-provider-router",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py",
+      "interface": "bounded implementation and independent-review provider route",
+      "stage": "implementation_and_review",
+      "candidate_families": ["PATCH_SKETCH_GENERATION", "DOCUMENTATION_CLAIM_CLASSIFICATION", "HUMAN_ESCALATION_CLASSIFICATION"],
+      "input_contract": "sealed contract packet",
+      "output_contract": "closed provider execution receipt",
+      "bounded_context": true,
+      "authoritative": false,
+      "inventory_disposition": "retain implementation/review provenance; model review never becomes independent validator"
+    },
+    {
+      "surface_id": "task-execution-provider-pair",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/task_execution_policy.py:696",
+      "interface": "TaskExecutionPolicy model execution",
+      "stage": "implementation_and_review",
+      "candidate_families": ["NOVEL_UNBOUNDED_REASONING"],
+      "input_contract": "TaskExecutionRequest",
+      "output_contract": "TaskExecutionReceipt",
+      "bounded_context": true,
+      "authoritative": false,
+      "inventory_disposition": "implementation and review are separate producers; neither accepts completion"
+    }
+  ],
+  "required_join_fields": [
+    "stage",
+    "task_family",
+    "question_type",
+    "input_contract",
+    "output_contract",
+    "context_size",
+    "provider",
+    "model",
+    "tokens",
+    "latency",
+    "cost",
+    "validation",
+    "terminal_outcome",
+    "deterministic_answerability",
+    "procedure_answerability",
+    "smaller_model_answerability",
+    "decision_impact",
+    "authoritative"
+  ]
+}
