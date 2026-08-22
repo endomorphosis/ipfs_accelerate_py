@@ -81,6 +81,10 @@ from ..planning.plan_revision_contracts import (
     PopulationKind,
 )
 from ..proof.formal_verification_contracts import content_identity
+from ..task_sources.board_control_plane import (
+    board_merge_lock_name,
+    resolve_board_implementation_branch,
+)
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from ..task_sources.task_identity import canonical_task_identity
 from ..task_sources.task_source import recompute_readiness_statuses
@@ -4331,15 +4335,21 @@ def configured_board_common_args(
         if program_for_paths.worktree_root
         else str(board.path(board.runtime_paths["worktrees"]))
     )
+    implementation_branch = resolve_board_implementation_branch(
+        board.merge_target_branch,
+        board.board_namespace,
+    )
     args: list[str] = [
         "--todo-path",
         str(board.path(board.taskboard_path)),
         "--task-prefix",
         board.task_header_prefix,
+        "--board-namespace",
+        board.board_namespace,
         "--worktree-root",
         worktree_root,
         "--merge-target-branch",
-        board.merge_target_branch,
+        implementation_branch,
         "--merge-queue-dir",
         str(board.path(board.runtime_paths["merge_queue"])),
         "--stale-seconds",
@@ -4451,6 +4461,10 @@ def configured_board_launch_plan(
     """Render the exact existing multi-supervisor runner invocation."""
 
     recovery_admission = _verify_fresh_recovery_launch_admission(board)
+    implementation_branch = resolve_board_implementation_branch(
+        board.merge_target_branch,
+        board.board_namespace,
+    )
     run_stamp = stamp or utc_run_stamp()
     runtime_root = board.path(board.runtime_paths["root"])
     state_dir = board.path(board.runtime_paths["state"])
@@ -4628,6 +4642,8 @@ def configured_board_launch_plan(
             "configured-board-launch-plan@1"
         ),
         "board_namespace": board.board_namespace,
+        "implementation_branch": implementation_branch,
+        "merge_lock_name": board_merge_lock_name(board.board_namespace),
         "implement": bool(implement),
         "detach": bool(detach),
         "lanes": board.max_lanes,

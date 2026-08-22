@@ -6319,6 +6319,7 @@ class PortalSupervisorConfig:
     max_task_attempts: int = 0
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
+    board_namespace: str = ""
     state_prefix: str = "portal"
     database_program: DatabaseProgramConfig | None = None
     reconciliation_only: bool = False
@@ -6624,6 +6625,7 @@ class PortalImplementationSupervisor:
         self._last_control_plane_source_probe_monotonic = 0.0
         todo_path = Path(config.todo_path)
         self.board_namespace = infer_board_namespace(
+            board_namespace=config.board_namespace,
             merge_target_branch=config.merge_target_branch,
             todo_path=todo_path,
             state_prefix=config.state_prefix,
@@ -6636,13 +6638,20 @@ class PortalImplementationSupervisor:
             todo_path=todo_path,
             state_prefix=config.state_prefix,
             source_kind="" if ingest_todo else "duckdb",
-            ensure_branch=False,
+            ensure_branch=True,
             ensure_worktree=False,
             ingest_todo=ingest_todo,
         )
         self.board_control_plane_status = isolated
         resolved_branch = str(isolated.get("implementation_branch") or "").strip()
-        if resolved_branch and not str(self.config.merge_target_branch or "").strip():
+        branch_reason = str(
+            (isolated.get("branch_result") or {}).get("reason") or ""
+        )
+        if (
+            resolved_branch
+            and not str(self.config.merge_target_branch or "").strip()
+            and branch_reason in {"created", "already_exists"}
+        ):
             self.config.merge_target_branch = resolved_branch
 
     @staticmethod
@@ -12818,6 +12827,7 @@ class PortalImplementationSupervisor:
                 / f"{self.config.state_prefix}_events.jsonl"
             ),
             repo_root=self.config.repo_root,
+            board_namespace=self.board_namespace,
             task_header_prefix=self.config.task_prefix,
             implement=False,
             implementation_command=self.config.implementation_command,
@@ -18365,6 +18375,8 @@ class PortalImplementationSupervisor:
                     str(self.config.state_dir),
                     "--task-prefix",
                     self.config.task_prefix,
+                    "--board-namespace",
+                    self.board_namespace,
                     "--state-prefix",
                     self.config.state_prefix,
                     "--max-task-attempts",
@@ -18787,6 +18799,8 @@ class PortalImplementationSupervisor:
             str(self.config.task_shard_index)
         }:
             return False
+        if option_values("--board-namespace") != {self.board_namespace}:
+            return False
 
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
@@ -18869,6 +18883,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--task-prefix",
         default=TASK_HEADER_PREFIX,
         help="Markdown heading prefix for tasks, for example '## PORTAL-' or '## AGENT-'",
+    )
+    parser.add_argument(
+        "--board-namespace",
+        default="",
+        help="Canonical task-board namespace for branch and lock isolation.",
     )
     parser.add_argument(
         "--state-prefix",
@@ -19600,6 +19619,7 @@ def supervisor_config_from_args(
         max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
+        board_namespace=str(getattr(args, "board_namespace", "") or ""),
         state_prefix=args.state_prefix,
         database_program=database_program,
         reconciliation_only=reconciliation_only,

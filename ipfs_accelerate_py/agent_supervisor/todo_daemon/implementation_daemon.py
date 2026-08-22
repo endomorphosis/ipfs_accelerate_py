@@ -107,10 +107,11 @@ from ..merge.checkout_lock import (
     CheckoutMutationLease,
     DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
-    PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
     CheckoutMaintenanceLease,
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
+    board_scoped_checkout_mutation_lock_path,
+    board_scoped_protected_path_maintenance_lock_path,
     checkout_lock_metadata,
     checkout_lock_repository_matches,
     checkout_mutation_lock_path,
@@ -168,6 +169,11 @@ from ..merge.merge_conflict_repair import (
     resolve_reconciliation_guardrail_todo_conflicts,
 )
 from ..core.submodule_degradation import DegradationState
+from ..task_sources.board_control_plane import (
+    ensure_board_implementation_branch,
+    infer_board_namespace,
+    resolve_board_implementation_branch,
+)
 from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
@@ -4795,6 +4801,7 @@ class PortalImplementationDaemon:
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
         merge_target_branch: str | None = None,
+        board_namespace: str = "",
         worktree_submodule_paths: Any = None,
         implementation_protected_paths: Any = None,
         manual_completion_authority_task_ids: Sequence[str] = (),
@@ -5160,7 +5167,30 @@ class PortalImplementationDaemon:
             self.worktree_pool.reuse_authorizer = (
                 self._authorize_pooled_worktree_reuse
             )
-        self.merge_target_branch = str(merge_target_branch or "").strip()
+        configured_merge_target_branch = str(
+            merge_target_branch or ""
+        ).strip()
+        self.board_namespace = infer_board_namespace(
+            board_namespace=board_namespace,
+            merge_target_branch=configured_merge_target_branch,
+            todo_path=self.todo_path,
+            state_prefix=self.state_path.stem,
+        )
+        isolated_merge_target_branch = resolve_board_implementation_branch(
+            configured_merge_target_branch,
+            self.board_namespace,
+        )
+        if isolated_merge_target_branch != configured_merge_target_branch:
+            branch_result = ensure_board_implementation_branch(
+                self.repo_root,
+                isolated_merge_target_branch,
+            )
+            if str(branch_result.get("reason") or "") in {
+                "created",
+                "already_exists",
+            }:
+                configured_merge_target_branch = isolated_merge_target_branch
+        self.merge_target_branch = configured_merge_target_branch
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
         self.generated_status_paths = tuple(Path(path) for path in generated_status_paths)
@@ -26333,6 +26363,7 @@ class PortalImplementationDaemon:
                 )
             ),
             repo_root=self.repo_root,
+            board_namespace=infer_board_namespace(todo_path=request_todo_path),
             task_header_prefix=str(
                 metadata.get("task_header_prefix")
                 or self.task_header_prefix
@@ -55825,9 +55856,9 @@ class PortalImplementationDaemon:
         return self.state_path.parent / "implementation.lock"
 
     def _protected_path_maintenance_lock_path(self) -> Path:
-        return checkout_mutation_lock_path(
+        return board_scoped_protected_path_maintenance_lock_path(
             self.repo_root,
-            lock_name=PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
+            self.board_namespace,
         )
 
     def _active_protected_path_maintenance_claim(
@@ -60361,7 +60392,10 @@ class PortalImplementationDaemon:
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def _repo_merge_lock_path(self) -> Path:
-        return checkout_mutation_lock_path(self.repo_root)
+        return board_scoped_checkout_mutation_lock_path(
+            self.repo_root,
+            self.board_namespace,
+        )
 
     @staticmethod
     def _git_merge_head_in_repo(repo: Path) -> str:
@@ -76837,6 +76871,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Markdown heading prefix for tasks, for example '## PORTAL-' or '## AGENT-'",
     )
     parser.add_argument(
+        "--board-namespace",
+        default="",
+        help="Canonical task-board namespace for branch and lock isolation.",
+    )
+    parser.add_argument(
         "--state-prefix",
         default="portal",
         help="State file prefix inside --state-dir",
@@ -77299,6 +77338,7 @@ def main(argv: list[str] | None = None) -> None:
             strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
             events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
             repo_root=REPO_ROOT,
+            board_namespace=str(getattr(args, "board_namespace", "") or ""),
             task_header_prefix=args.task_prefix,
             implement=args.implement,
             implementation_command=args.implementation_command or None,
