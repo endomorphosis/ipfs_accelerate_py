@@ -68233,6 +68233,22 @@ _DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
+# Leftover-wait deferrals already have dedicated auto-recovery.  Counting
+# them toward the anti-spin budget turns a live wait into a permanent
+# block after max_task_attempts identical leftovers (PCAR-011).
+_LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
+    {
+        "worktree_lifecycle_claim_exists",
+        "worktree_lifecycle_active_transition_failed",
+        "worktree_lifecycle_transition_failed",
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    }
+)
+_DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-leftover-wait-deferral-budget-recovery@1"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -68980,6 +68996,7 @@ class DatabaseImplementationDaemon:
             "external_protected_checkout_recovery_reconciliations": [],
             "inflight_process_recovery_reconciliations": [],
             "validation_retry_seed_conflict_recovery_reconciliations": [],
+            "leftover_wait_deferral_budget_recovery_reconciliations": [],
         }
 
     def projections_required(self) -> bool:
@@ -71976,11 +71993,18 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_FAILED,
                 attempt.task_cid,
                 fingerprint_marker,
-                self.max_task_attempts,
+                min(
+                    64,
+                    max(
+                        self.max_task_attempts * 4,
+                        _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW,
+                    ),
+                ),
             ],
         )
         matching: list[dict[str, Any]] = []
         verified_count = 0
+        leftover_wait_count = 0
         observed_current = False
         matching_digest = hashlib.sha256()
         # The query is scoped and limited before the DuckDB adapter
@@ -72004,11 +72028,15 @@ class DatabaseImplementationDaemon:
             observed_current = observed_current or (
                 candidate.attempt_id == attempt.attempt_id
             )
+            reason_text = str(receipt["reason"] or "")
+            if reason_text in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                leftover_wait_count += 1
+                continue
             verified_count += 1
             identity = {
                 "attempt_id": candidate.attempt_id,
                 "attempt_number": int(candidate.attempt_number),
-                "reason": str(receipt["reason"]),
+                "reason": reason_text,
                 "deferral_fingerprint": str(
                     receipt["deferral_fingerprint"]
                 ),
@@ -72022,7 +72050,15 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "current typed deferral is absent from durable attempt history"
             )
-        if verified_count != min(candidate_count, self.max_task_attempts):
+        budget_candidate_count = verified_count
+        if leftover_wait_count and verified_count == 0:
+            budget_candidate_count = 0
+        elif (
+            verified_count
+            and leftover_wait_count == 0
+            and verified_count != min(candidate_count, self.max_task_attempts)
+            and candidate_count <= self.max_task_attempts
+        ):
             raise DatabaseImplementationAuthorityError(
                 "typed deferral candidate count did not reproduce"
             )
@@ -72037,14 +72073,14 @@ class DatabaseImplementationDaemon:
             # The SQL marker count bounds the omitted population but grants
             # no authority.  Only replayed receipts below contribute to the
             # verified count used by the exhaustion decision.
-            "typed_deferral_candidate_count": candidate_count,
+            "typed_deferral_candidate_count": budget_candidate_count,
             "typed_deferral_count": verified_count,
             "typed_deferral_count_is_lower_bound": (
-                candidate_count > self.max_task_attempts
+                budget_candidate_count > self.max_task_attempts
             ),
             "verified_typed_deferral_count": verified_count,
             "verified_count_complete": (
-                candidate_count <= self.max_task_attempts
+                budget_candidate_count <= self.max_task_attempts
             ),
             "max_task_attempts": int(self.max_task_attempts),
             "exhausted": verified_count >= self.max_task_attempts,
@@ -72055,11 +72091,11 @@ class DatabaseImplementationDaemon:
                 "sha256:" + matching_digest.hexdigest()
             ),
             "matching_attempts_truncated": (
-                candidate_count > len(matching)
+                budget_candidate_count > len(matching)
             ),
             "omitted_matching_attempt_count": max(
                 0,
-                candidate_count - len(matching),
+                budget_candidate_count - len(matching),
             ),
         }
         observation["observation_id"] = self._database_portal_evidence_digest(
@@ -72910,6 +72946,8 @@ class DatabaseImplementationDaemon:
         inflight_process_recovery_evidence: Mapping[str, Any] | None = None,
         validation_retry_seed_conflict_recovery_evidence: Mapping[str, Any]
         | None = None,
+        leftover_wait_deferral_budget_recovery_evidence: Mapping[str, Any]
+        | None = None,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
 
@@ -72919,6 +72957,7 @@ class DatabaseImplementationDaemon:
             external_protected_checkout_recovery_evidence is not None,
             inflight_process_recovery_evidence is not None,
             validation_retry_seed_conflict_recovery_evidence is not None,
+            leftover_wait_deferral_budget_recovery_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
@@ -72995,6 +73034,14 @@ class DatabaseImplementationDaemon:
                         validation_retry_seed_conflict_recovery_evidence
                     ),
                 )
+            if leftover_wait_deferral_budget_recovery_evidence is not None:
+                self._verified_leftover_wait_deferral_budget_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        leftover_wait_deferral_budget_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 (
@@ -73003,6 +73050,8 @@ class DatabaseImplementationDaemon:
                     or external_protected_checkout_recovery_evidence is not None
                     or inflight_process_recovery_evidence is not None
                     or validation_retry_seed_conflict_recovery_evidence
+                    is not None
+                    or leftover_wait_deferral_budget_recovery_evidence
                     is not None
                 )
                 and existing_entry is not None
@@ -73051,6 +73100,7 @@ class DatabaseImplementationDaemon:
                 or external_protected_checkout_recovery_evidence is not None
                 or inflight_process_recovery_evidence is not None
                 or validation_retry_seed_conflict_recovery_evidence is not None
+                or leftover_wait_deferral_budget_recovery_evidence is not None
             )
         )
         if task_status != "in_progress" and not blocked_recovery:
@@ -73112,6 +73162,8 @@ class DatabaseImplementationDaemon:
                     if inflight_process_recovery_evidence is not None
                     else "database_portal_validation_retry_seed_conflict_retry_recovery"
                     if validation_retry_seed_conflict_recovery_evidence is not None
+                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -73185,6 +73237,15 @@ class DatabaseImplementationDaemon:
                     if validation_retry_seed_conflict_recovery_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "leftover_wait_deferral_budget_recovery_seed": dict(
+                            leftover_wait_deferral_budget_recovery_evidence
+                        ),
+                    }
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -73218,6 +73279,14 @@ class DatabaseImplementationDaemon:
                     )
                 ]
                 if validation_retry_seed_conflict_recovery_evidence is not None
+                else [
+                    str(
+                        leftover_wait_deferral_budget_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if leftover_wait_deferral_budget_recovery_evidence is not None
                 else None
             ),
         )
@@ -74137,6 +74206,483 @@ class DatabaseImplementationDaemon:
                         "changed": False,
                         "reason": (
                             "validation_retry_seed_conflict_recovery_not_admitted"
+                        ),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def _finalize_leftover_wait_deferral_budget_recovery_receipt(
+        self,
+        *,
+        attempt: DatabaseTaskAttempt,
+        exhausting_reasons: Sequence[str],
+    ) -> dict[str, Any]:
+        reasons = sorted({str(reason) for reason in exhausting_reasons})
+        receipt = {
+            "schema": (
+                _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
+            ),
+            "disposition": "retry",
+            "reason": "leftover_wait_deferral_budget_cleared",
+            "source_reason": "typed_portal_deferral_budget_exhausted",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(attempt.task_alias or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(attempt.lease_id or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "exhausting_reasons": reasons,
+            "identity_bound": True,
+            "backoff_seconds": 0,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = self._database_portal_evidence_digest(receipt)
+        return receipt
+
+    def _verified_leftover_wait_deferral_budget_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed leftover-wait deferral-budget recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "exhausting_reasons",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed leftover-wait deferral-budget recovery evidence has "
+                "unknown or missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        reasons = raw.get("exhausting_reasons")
+        if (
+            raw.get("schema")
+            != _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason") != "leftover_wait_deferral_budget_cleared"
+            or raw.get("source_reason")
+            != "typed_portal_deferral_budget_exhausted"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or not isinstance(reasons, list)
+            or not reasons
+            or any(
+                type(reason) is not str
+                or reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                for reason in reasons
+            )
+            or reasons != sorted(set(reasons))
+            or raw.get("identity_bound") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed leftover-wait deferral-budget recovery evidence failed "
+                "independent verification"
+            )
+        return dict(raw)
+
+    def _verified_leftover_wait_deferral_budget_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "leftover_wait_deferral_budget_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery control receipt has "
+                "unknown or missing fields"
+            )
+        recovery_seed = self._verified_leftover_wait_deferral_budget_recovery_receipt(
+            attempt,
+            receipt.get("leftover_wait_deferral_budget_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery control receipt has a "
+                "foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task has no exact revision"
+            )
+        reason = "leftover_wait_deferral_budget_cleared"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_leftover_wait_deferral_budget_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery control receipt does "
+                "not match its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery has an invalid queue "
+                "deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify leftover-wait deferral-budget "
+                "recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery queue state does not "
+                "match its receipt"
+            )
+        return {
+            "receipt": dict(receipt),
+            "leftover_wait_deferral_budget_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def recover_blocked_leftover_wait_deferral_budget_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm leftover-wait budget exhaustion so waits no longer terminalize."""
+
+        self._require_execution_authority(
+            "leftover-wait deferral-budget retry recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery requires an exact "
+                "failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery rejected a superseded "
+                "attempt"
+            )
+        verified = self._verified_leftover_wait_deferral_budget_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery rejected a "
+                "manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery requires blocked or "
+                f"exact retrying control state, observed {status!r}"
+            )
+        task_body = getattr(task, "body", None)
+        blocked_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        if status == "blocked" and (
+            not isinstance(blocked_receipt, Mapping)
+            or blocked_receipt.get("operation")
+            != "database_portal_typed_deferral_budget_exhausted"
+            or blocked_receipt.get("reason")
+            != "typed_portal_deferral_budget_exhausted"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery is limited to an "
+                "exact leftover-wait budget-exhausted block"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason="leftover_wait_deferral_budget_cleared",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_leftover_wait_deferral_budget_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            leftover_wait_deferral_budget_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["leftover_wait_deferral_budget_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_leftover_wait_deferral_budget_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Rearm leftover-wait budget exhaustion so those waits stay waits."""
+
+        self._require_execution_authority(
+            "leftover-wait deferral-budget recovery reconciliation"
+        )
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                operation = (
+                    str(receipt.get("operation") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
+                if (
+                    operation
+                    == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ):
+                    self._verified_leftover_wait_deferral_budget_recovery_state(
+                        attempt,
+                        task,
+                    )
+                    self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            task_body = getattr(task, "body", None)
+            blocked_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(blocked_receipt, Mapping)
+                or blocked_receipt.get("operation")
+                != "database_portal_typed_deferral_budget_exhausted"
+                or blocked_receipt.get("reason")
+                != "typed_portal_deferral_budget_exhausted"
+            ):
+                continue
+            budget = blocked_receipt.get("retry_budget")
+            matching = (
+                budget.get("matching_attempts")
+                if isinstance(budget, Mapping)
+                else None
+            )
+            if not isinstance(matching, list) or not matching:
+                continue
+            exhausting_reasons = [
+                str(item.get("reason") or "")
+                for item in matching
+                if isinstance(item, Mapping)
+            ]
+            if (
+                len(exhausting_reasons) != len(matching)
+                or not exhausting_reasons
+                or any(
+                    reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                    for reason in exhausting_reasons
+                )
+            ):
+                continue
+            try:
+                evidence = self._finalize_leftover_wait_deferral_budget_recovery_receipt(
+                    attempt=attempt,
+                    exhausting_reasons=exhausting_reasons,
+                )
+                outcome = self.recover_blocked_leftover_wait_deferral_budget_retry(
+                    attempt,
+                    recovery_evidence=evidence,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "leftover-wait deferral-budget recovery not admitted "
+                    "for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": (
+                            "leftover_wait_deferral_budget_recovery_not_admitted"
                         ),
                         "error_type": type(exc).__name__,
                         "error": str(exc)[:512],
@@ -75313,6 +75859,14 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
+                elif (
+                    operation
+                    == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ):
+                    self._verified_leftover_wait_deferral_budget_recovery_state(
+                        attempt,
+                        task,
+                    )
                 else:
                     self._verified_validation_retry_recovery_state(
                         attempt,
@@ -75747,6 +76301,9 @@ class DatabaseImplementationDaemon:
         validation_retry_seed_conflict_recovery_reconciliations = (
             self.reconcile_blocked_validation_retry_seed_conflict_recoveries()
         )
+        leftover_wait_deferral_budget_recovery_reconciliations = (
+            self.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+        )
         terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
         reconciliation_write_count = (
             len(completion_reconciliations)
@@ -75774,6 +76331,13 @@ class DatabaseImplementationDaemon:
                 1
                 for item in (
                     validation_retry_seed_conflict_recovery_reconciliations
+                )
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in (
+                    leftover_wait_deferral_budget_recovery_reconciliations
                 )
                 if item.get("changed") is True
             )
@@ -75814,6 +76378,9 @@ class DatabaseImplementationDaemon:
                 "validation_retry_seed_conflict_recovery_reconciliations": (
                     validation_retry_seed_conflict_recovery_reconciliations
                 ),
+                "leftover_wait_deferral_budget_recovery_reconciliations": (
+                    leftover_wait_deferral_budget_recovery_reconciliations
+                ),
             }
 
         attempt = self.claim_next()
@@ -75851,6 +76418,9 @@ class DatabaseImplementationDaemon:
                 "validation_retry_seed_conflict_recovery_reconciliations": (
                     validation_retry_seed_conflict_recovery_reconciliations
                 ),
+                "leftover_wait_deferral_budget_recovery_reconciliations": (
+                    leftover_wait_deferral_budget_recovery_reconciliations
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -75879,6 +76449,9 @@ class DatabaseImplementationDaemon:
             ),
             "validation_retry_seed_conflict_recovery_reconciliations": (
                 validation_retry_seed_conflict_recovery_reconciliations
+            ),
+            "leftover_wait_deferral_budget_recovery_reconciliations": (
+                leftover_wait_deferral_budget_recovery_reconciliations
             ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,

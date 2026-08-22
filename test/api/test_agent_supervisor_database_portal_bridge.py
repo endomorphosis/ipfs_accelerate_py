@@ -799,6 +799,41 @@ def test_bridge_keeps_other_skipped_reasons_terminal(tmp_path: Path) -> None:
     assert str(caught.value) == "provider_capacity_backoff"
 
 
+def test_bridge_defers_worktree_lifecycle_claim_skip(tmp_path: Path) -> None:
+    class LifecycleSkipPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "lifecycle_race": True,
+                    "reason": "worktree_lifecycle_claim_exists",
+                    "attempt_consumed": False,
+                    "backoff_seconds": 30,
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = LifecycleSkipPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "worktree_lifecycle_claim_exists"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.attempt_consumed is False
+    assert portal.closed is True
+
+
 def test_bridge_recovers_inflight_process_only_when_runner_absent(
     tmp_path: Path,
 ) -> None:

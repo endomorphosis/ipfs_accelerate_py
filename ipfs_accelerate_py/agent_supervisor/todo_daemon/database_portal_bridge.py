@@ -1563,6 +1563,43 @@ class DatabasePortalExecutionBridge:
         return (reason, _INFLIGHT_PROCESS_DEFERRAL_BACKOFF_SECONDS)
 
     @staticmethod
+    def _worktree_lifecycle_claim_deferral(
+        result: Mapping[str, Any],
+    ) -> tuple[str, int] | None:
+        """Defer a leftover worktree lifecycle claim instead of terminalizing it.
+
+        Portal reports ``skipped``/``worktree_lifecycle_claim_exists`` when a
+        prior attempt still holds the fenced workspace.  That is a wait, not
+        a failed provider.  Mapping it through ``_terminal_failure`` burned
+        the typed deferral budget after leftover seed-conflict recovery.
+        """
+
+        implementation = result.get("implementation_result")
+        payload = implementation if isinstance(implementation, Mapping) else result
+        if not isinstance(payload, Mapping):
+            return None
+        reason = str(payload.get("reason") or "")
+        if reason not in {
+            "worktree_lifecycle_claim_exists",
+            "worktree_lifecycle_active_transition_failed",
+            "worktree_lifecycle_transition_failed",
+        }:
+            return None
+        if payload.get("deferred") is True:
+            return None
+        if payload.get("skipped") is not True and payload.get("lifecycle_race") is not True:
+            return None
+        backoff = payload.get("backoff_seconds", 30)
+        if (
+            isinstance(backoff, bool)
+            or not isinstance(backoff, int)
+            or backoff < 0
+            or backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+        ):
+            backoff = 30
+        return (reason, int(backoff))
+
+    @staticmethod
     def _looks_like_validation_retry(
         implementation: Mapping[str, Any],
     ) -> bool:
@@ -3903,6 +3940,15 @@ class DatabasePortalExecutionBridge:
                 inflight_deferral = self._inflight_process_deferral(raw_result)
                 if inflight_deferral is not None:
                     reason, backoff_seconds = inflight_deferral
+                    raise DatabasePortalBridgeDeferred(
+                        reason,
+                        backoff_seconds=backoff_seconds,
+                    )
+                lifecycle_deferral = self._worktree_lifecycle_claim_deferral(
+                    raw_result
+                )
+                if lifecycle_deferral is not None:
+                    reason, backoff_seconds = lifecycle_deferral
                     raise DatabasePortalBridgeDeferred(
                         reason,
                         backoff_seconds=backoff_seconds,

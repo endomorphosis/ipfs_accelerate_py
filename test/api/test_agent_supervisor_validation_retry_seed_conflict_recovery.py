@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
+    DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -231,5 +232,105 @@ def test_automatic_seed_conflict_recovery_fails_closed_for_foreign_state(
             "validation_retry_seed_conflict_recovery_not_admitted"
         )
         assert daemon.task_source.get(source_attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_leftover_wait_deferrals_do_not_exhaust_typed_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+
+    def provider(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        provider_calls.append(_attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "worktree_lifecycle_claim_exists",
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population())
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        assert first["implementation_result"]["retry_budget_exhausted"] is False
+        assert daemon.task_source.get(task_cid).status == "retrying"
+
+        for offset in (40_000, 80_000, 120_000):
+            now["ms"] = offset
+            result = daemon.run_once()
+            implementation = result.get("implementation_result")
+            if isinstance(implementation, Mapping):
+                assert implementation.get("retry_budget_exhausted") is not True
+        assert daemon.task_source.get(task_cid).status == "retrying"
+        assert len(provider_calls) >= 1
+    finally:
+        daemon.close()
+
+
+def test_run_once_rearms_leftover_wait_budget_exhaustion(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "worktree_lifecycle_claim_exists",
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source is not None
+        task = daemon.task_source.get(source.task_cid)
+        assert task is not None and task.status == "retrying"
+        cas = daemon.task_source.compare_and_set_status
+        cas(
+            source.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_typed_deferral_budget_exhausted",
+                "reason": "typed_portal_deferral_budget_exhausted",
+                "attempt_id": source.attempt_id,
+                "retry_budget": {
+                    "matching_attempts": [
+                        {"reason": "worktree_lifecycle_claim_exists"},
+                        {
+                            "reason": (
+                                "external_protected_checkout_recovery_required"
+                            )
+                        },
+                    ]
+                },
+            },
+        )
+        blocked = daemon.task_source.get(source.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        recovery = repaired[
+            "leftover_wait_deferral_budget_recovery_reconciliations"
+        ]
+        assert recovery
+        assert recovery[0]["changed"] is True
+        rearmed = daemon.task_source.get(source.task_cid)
+        assert rearmed is not None
+        assert rearmed.status in {"retrying", "in_progress", "completed"}
     finally:
         daemon.close()
