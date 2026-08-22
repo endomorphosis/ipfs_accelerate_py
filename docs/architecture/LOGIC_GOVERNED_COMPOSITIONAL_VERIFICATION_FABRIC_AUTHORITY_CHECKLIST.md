@@ -30,8 +30,10 @@ moves, stop and re-bind. Do not authorize a previous tree.
 | Benchmark projection CID | `baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a` |
 | Release report SHA256 | `sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616` |
 | Evidence cohort | `hermetic_local_execution` |
-| Last committed accelerator HEAD | `4ee047a46b59f94be4aa70de20f14effe7ddad60` |
-| Last committed accelerator tree | `663f2766c3f9ff70edb127f7e8d52f2c234d1635` |
+| Closeout-bound accelerator HEAD (122/124) | `4ee047a46b59f94be4aa70de20f14effe7ddad60` |
+| Closeout-bound accelerator tree | `663f2766c3f9ff70edb127f7e8d52f2c234d1635` |
+| Hermetic 081–124 commit | `e802713a851f71c0be2226191eedad1e5cd6d435` |
+| Hermetic 081–124 tree | `54d3b46c54c700a005b4471c3bdc4dece8ad5300` |
 | Datasets gitlink / HEAD | `af1d2d76d2cd6332baf8cea50df6b2eb4e988203` |
 | Datasets tree | `8f44e00a49d6f67c67ee6810e04e4aae4d869af5` |
 | Branch | `agent/logic-governed-compositional-verification-fabric-v1` |
@@ -40,9 +42,10 @@ Hermetic 113/120 **excluded** these cohorts: `simulated`,
 `live_local_model_execution`, `live_remote_model_execution`,
 `production_authoritative_evidence`.
 
-Uncommitted 081–124 source was present when 113 was replayed. A verifier
-judging “the current working tree” must hash that dirty forest themselves or
-wait until those paths are committed and 113/120/122 are reconstructed.
+Accelerator 081–124 source is commit `e802713a851f71c0be2226191eedad1e5cd6d435`.
+Nested datasets 090 files remain uncommitted, so the datasets gitlink is still
+`af1d2d76d2cd6332baf8cea50df6b2eb4e988203`. A verifier judging the nested
+datasets working tree must hash those untracked files themselves.
 
 ## LGCVF-121 external qualification
 
