@@ -510,8 +510,28 @@ def test_authenticated_bootstrap_routes_to_real_pid_coordinator_and_stops_cleanl
             ),
             timeout_seconds=12.0,
         )
+        owner_projection = _eventually(
+            lambda: (
+                projection
+                if int(projection["outbox_worker"]["watermark"])
+                >= transition_watermark
+                and int(projection["outbox_worker"]["committed_sequence"])
+                >= transition_watermark
+                else None
+            )
+            if (
+                projection := json.loads(
+                    server.status_path().read_text(encoding="utf-8")
+                )
+            )
+            else None,
+            timeout_seconds=3.0,
+            failure="owner status did not publish the drained event watermark",
+        )
         assert processed["runtime_process_birth_id"] == birth_id
         assert lifecycle_drained["events_processed"] >= processed["events_processed"]
+        assert owner_projection["outbox_worker"]["thread_alive"] is True
+        assert owner_projection["outbox_worker"]["last_error_type"] == ""
         assert observed_ack_capacity_wakes
         assert all(
             sequence > 0 and after > before

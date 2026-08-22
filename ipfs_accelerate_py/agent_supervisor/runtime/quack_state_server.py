@@ -1678,7 +1678,16 @@ class QuackStateServer:
                             deadline_monotonic=time.monotonic() + deadline
                         )
                         if receipt is not None:
-                            self._outbox_drain_count += 1
+                            with self._lock:
+                                self._outbox_drain_count += 1
+                            # The operator's fail-closed health classifier
+                            # compares this owner-published watermark with the
+                            # authoritative event cursor.  Publish every
+                            # advancing/notification-backed drain so that a
+                            # healthy event-driven worker is not represented
+                            # by its stale startup snapshot.  Timeouts remain
+                            # write-free because they return ``None``.
+                            self._write_status()
                     except BaseException as exc:
                         self._outbox_last_error_type = type(exc).__name__
                         # Publish the terminal worker observation immediately.
