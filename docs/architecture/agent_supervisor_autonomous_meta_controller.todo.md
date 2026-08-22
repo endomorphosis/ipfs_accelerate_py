@@ -941,7 +941,7 @@ control/lease/fence/merge authorities.
 
 ## APMC-025 Resolve 1 preflight-conflicting backlogged worktree merges
 
-- Status: completed
+- Status: blocked
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -958,7 +958,7 @@ control/lease/fence/merge authorities.
 - Parallel lane: release
 - Resource class: cpu-large
 - Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-025-reconciliation-efa95e2d5613.md
-- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-025-reconciliation-efa95e2d5613.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-025-reconciliation-efa95e2d5613.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
 
 ## APMC-026 Resolve dirty main checkout blocking 1 worktree merges
 
