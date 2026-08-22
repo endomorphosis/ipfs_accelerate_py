@@ -11,27 +11,29 @@ self-authoring those receipts. Leaving both tasks blocked is valid.
 
 Current hermetic closeout (122) is `partial`. Completing 121/123 does not
 erase missed benchmark thresholds unless a later current evaluation meets
-them.
+them. This session cannot issue 121 or 123.
 
 ## Current roots packet (bind these, or refuse)
 
 These identities were current when this checklist was written. If any of them
-moves, stop and re-bind. Do not authorize a previous tree.
+moves, stop and re-bind. Do not authorize a previous tree. Committing this
+packet changes the 113 fingerprint; reconstruct 113 before treating the
+qualification result CID as live.
 
 | Binding | Value |
 |---|---|
 | Formal plan CID | `baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq` |
 | Predecessor plan CID | `baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q` |
-| Qualification result CID | `baguqeera5kvq2ifiedvw33n4cckhnkfuru3p3jkk5dct7jycrfxr7naakvdq` |
-| Qualification authority CID | `baguqeera2pevsm7imsl56ifjav4of5oloyyzoeivkqnkd2mztnqbjwgkof7a` |
-| Qualification checkout fingerprint | `baguqeeraeia2gslrbndethw2r3yaw2q3cbcb6vrzz5b4lja7ybcezdu3duzq` |
-| Benchmark report CID | `baguqeerak5pvb5q4tlmqfzxuceblhlpefg52mjzycgg6coagztsnm6m4nrxq` |
-| Benchmark authority CID | `baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa` |
-| Benchmark projection CID | `baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a` |
-| Release report SHA256 | `sha256:810530db7f703648869b113685f23b7b80d2c26f7f791c15ab366735bf41fb28` |
+| Qualification result CID | `baguqeeraspgepzggkrge5oldkbrfjp373awn7dcov277tiedxnetkmhx7vmq` |
+| Qualification authority CID | `baguqeerabesacj5ta45r7effwhw6rjzcqv5lbbez3xu4pocyrmv42bqgcmbq` |
+| Qualification checkout fingerprint | `baguqeerammf2wqnzod7clabqmdept3ss3qw5h6m5nnwxlaipptdafeiddx3q` |
+| Benchmark report CID | `baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza` |
+| Benchmark authority CID | `baguqeera6yzqqcs2dod46s7h5jnean7axorhbju34wamwksin5ez7nkoynra` |
+| Benchmark projection CID | `baguqeerafmcvv3yszair43dgqn4shvo2odjzziuqyyuxapsn77esp3qqouia` |
+| Release report SHA256 | `sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db` |
 | Evidence cohort | `hermetic_local_execution` |
-| Source accelerator HEAD | `f64208fc851d9e474d759427cdbfdf2dcd63d537` |
-| Source accelerator tree | `f89dffdf0a3ac5548876e67a916601e8821be1cc` |
+| Source accelerator HEAD | `6ce8fc6e937b815a8285ac9a4d9a2092e8075a42` |
+| Source accelerator tree | `5505489ab374f27c9533f760f867c74e99e373a4` |
 | Datasets gitlink / HEAD | `66a02063496fd200f2372b3083e376f1978c6be1` |
 | Datasets tree | `11d9c74504512e45c3ccc78d55e0e2f25d2a9a92` |
 | Branch | `agent/logic-governed-compositional-verification-fabric-v1` |
@@ -40,9 +42,10 @@ Hermetic 113/120 **excluded** these cohorts: `simulated`,
 `live_local_model_execution`, `live_remote_model_execution`,
 `production_authoritative_evidence`.
 
-Source for the reconstructed 113/120/122 closeout is accelerator
-`f64208fc851d9e474d759427cdbfdf2dcd63d537` with datasets gitlink
-`66a02063496fd200f2372b3083e376f1978c6be1`. If either moves, re-bind.
+Paired benchmark coverage is 12/12 and median context reduction is 5452 bps.
+Warm-cache model-call displacement remains `not_evaluated`. Source for this
+packet is accelerator `6ce8fc6e937b815a8285ac9a4d9a2092e8075a42` with datasets
+gitlink `66a02063496fd200f2372b3083e376f1978c6be1`. If either moves, re-bind.
 
 ## LGCVF-121 external qualification
 

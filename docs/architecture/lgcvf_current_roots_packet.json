@@ -1,20 +1,10 @@
 {
-  "schema": "lgcvf-current-roots-packet@1",
-  "not_external_qualification_receipt": true,
-  "not_production_authorization_receipt": true,
-  "issuer": "checklist-only; not an independent verifier; not an operator grant",
-  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
-  "predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
-  "qualification_result_cid": "baguqeera5kvq2ifiedvw33n4cckhnkfuru3p3jkk5dct7jycrfxr7naakvdq",
-  "qualification_authority_cid": "baguqeera2pevsm7imsl56ifjav4of5oloyyzoeivkqnkd2mztnqbjwgkof7a",
-  "checkout_fingerprint_cid": "baguqeeraeia2gslrbndethw2r3yaw2q3cbcb6vrzz5b4lja7ybcezdu3duzq",
-  "benchmark_report_cid": "baguqeerak5pvb5q4tlmqfzxuceblhlpefg52mjzycgg6coagztsnm6m4nrxq",
-  "benchmark_authority_cid": "baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa",
-  "benchmark_projection_cid": "baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a",
+  "benchmark_authority_cid": "baguqeera6yzqqcs2dod46s7h5jnean7axorhbju34wamwksin5ez7nkoynra",
   "benchmark_overall_disposition": "partial",
-  "release_report_sha256": "sha256:810530db7f703648869b113685f23b7b80d2c26f7f791c15ab366735bf41fb28",
-  "successor_tasks_cid": "baguqeeratgqa7vm5g2sffmmc4jt2tweynqygjm2n2q6qinbkdfzuxpmp64oa",
-  "closeout_implementation_validation_cid": "baguqeerav6looomfqmq64gz6bh3cf5q3nxajmtgauieta6zv665u3uenlwiq",
+  "benchmark_projection_cid": "baguqeerafmcvv3yszair43dgqn4shvo2odjzziuqyyuxapsn77esp3qqouia",
+  "benchmark_report_cid": "baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza",
+  "checkout_fingerprint_cid": "baguqeerammf2wqnzod7clabqmdept3ss3qw5h6m5nnwxlaipptdafeiddx3q",
+  "closeout_implementation_validation_cid": "baguqeera6tggs4rhbxux5d53nhkvb3h3m32yikufuspi5l6vh6fd2rmwlk5a",
   "evidence_cohort": "hermetic_local_execution",
   "excluded_cohorts": [
     "simulated",
@@ -22,16 +12,43 @@
     "live_remote_model_execution",
     "production_authoritative_evidence"
   ],
-  "task_implementation_complete": false,
-  "test_qualification_complete": true,
+  "file_sha256": {
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:0fa1e9e65e49e143da28da61b114e45753774f645e1c33a455e1ea2b65716dc9",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:0934875a3224df8e0b7e006993adda8f6485bae2c80041945bf246a365f7503d",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:6789198ee90637faee5de9c5b6b299cec31cb185caf8670fe3a47ee5783d64d9",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:c129bae3770eb1e65098f47dd5c34ac8d54ba1b4c59aa9791f5c913312ca50fd",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md": "sha256:8aa817f81347ca11b5ce987c35da5228850811e64f8f88c752725856c6132774",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db",
+    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md": "sha256:aadaebdb7f7e9292e08a2e2c26769c588e46168708591c265b07df5a22231873"
+  },
+  "issuer": "checklist-only; not an independent verifier; not an operator grant",
+  "not_external_qualification_receipt": true,
+  "not_production_authorization_receipt": true,
+  "notes": [
+    "hermetic 113 and 120 did not judge live local, live remote, or production-authoritative cohorts",
+    "paired benchmark observed all twelve representative task classes",
+    "median context reduction met 5452 bps against the 5000 bps target",
+    "warm-cache model-call displacement remains not_evaluated because both routes made zero calls",
+    "datasets 090 is nested commit 66a02063496fd200f2372b3083e376f1978c6be1, recorded as the parent gitlink",
+    "closeout implementation --check passed with validation_cid baguqeera6tggs4rhbxux5d53nhkvb3h3m32yikufuspi5l6vh6fd2rmwlk5a",
+    "run-v16 donor is absent; recovery-preview fails because ipfs_datasets_py HEAD differs from the frozen planning revision",
+    "this packet cannot be copied to the 121 or 123 output paths as issuance",
+    "committing this packet changes the 113 checkout fingerprint; reconstruct 113 before treating qualification_result_cid as live"
+  ],
   "objective_complete": false,
-  "release_qualified": false,
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
   "production_authorized": false,
+  "qualification_authority_cid": "baguqeerabesacj5ta45r7effwhw6rjzcqv5lbbez3xu4pocyrmv42bqgcmbq",
+  "qualification_result_cid": "baguqeeraspgepzggkrge5oldkbrfjp373awn7dcov277tiedxnetkmhx7vmq",
+  "release_qualified": false,
+  "release_report_sha256": "sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db",
+  "schema": "lgcvf-current-roots-packet@1",
   "source_revision": {
     "branch": "agent/logic-governed-compositional-verification-fabric-v1",
     "ipfs_accelerate_py": {
-      "head": "f64208fc851d9e474d759427cdbfdf2dcd63d537",
-      "tree": "f89dffdf0a3ac5548876e67a916601e8821be1cc"
+      "head": "6ce8fc6e937b815a8285ac9a4d9a2092e8075a42",
+      "tree": "5505489ab374f27c9533f760f867c74e99e373a4"
     },
     "ipfs_datasets_py": {
       "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
@@ -39,21 +56,75 @@
       "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
     }
   },
-  "file_sha256": {
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md": "sha256:8aa817f81347ca11b5ce987c35da5228850811e64f8f88c752725856c6132774",
-    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md": "sha256:aadaebdb7f7e9292e08a2e2c26769c588e46168708591c265b07df5a22231873",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:16b55b9eca8d6952da6a401a95591525dea8997f4679f40314415f8c3af21808",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:3e28b722b4bff1289445fb8e6ff2fbafddbf50e3c1d86789304828d999000b1d",
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:810530db7f703648869b113685f23b7b80d2c26f7f791c15ab366735bf41fb28",
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:de77e4ebd03f4a76f830a81f4615305ef2f89e77e150d8e1dc6d2bf844cd10fc",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:f78a57393caa7d40e1af64ed38395d918b24ba14eae5838ed2cde932c7edf123"
-  },
-  "uncommitted_remaining_auto_work": false,
+  "successor_tasks_cid": "baguqeerasvdhm4jfllqq7k3bjkrdqdf47uvh4zm7c7wr7aijn47lwanlwr5q",
+  "task_implementation_complete": false,
+  "test_qualification_complete": true,
+  "thresholds": [
+    {
+      "comparison": "equal",
+      "disposition": "met",
+      "observed": 0,
+      "reason": "",
+      "target": 0,
+      "threshold_id": "zero_safety_floor_violations"
+    },
+    {
+      "comparison": "equal",
+      "disposition": "met",
+      "observed": 0,
+      "reason": "",
+      "target": 0,
+      "threshold_id": "zero_critical_omissions_accepted"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "met",
+      "observed": 5452,
+      "reason": "",
+      "target": 5000,
+      "threshold_id": "median_context_reduction_bps"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "not_evaluated",
+      "observed": null,
+      "reason": "both fixture routes made zero model calls; a repeated task with a nonzero baseline is required to measure displacement",
+      "target": 5000,
+      "threshold_id": "warm_cache_model_call_reduction_bps"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "met",
+      "observed": 10000,
+      "reason": "",
+      "target": 2500,
+      "threshold_id": "symbolically_closable_deterministic_route_share_bps"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "met",
+      "observed": 10000,
+      "reason": "",
+      "target": 8000,
+      "threshold_id": "unaffected_proof_test_reuse_bps"
+    },
+    {
+      "comparison": "equal",
+      "disposition": "met",
+      "observed": true,
+      "reason": "",
+      "target": true,
+      "threshold_id": "accepted_patch_quality_not_lower"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "met",
+      "observed": 12,
+      "reason": "",
+      "target": 12,
+      "threshold_id": "representative_task_class_coverage"
+    }
+  ],
   "uncommitted_datasets_090_paths": [],
-  "notes": [
-    "hermetic 113 and 120 did not judge live local, live remote, or production-authoritative cohorts",
-    "datasets 090 is nested commit 66a02063496fd200f2372b3083e376f1978c6be1, recorded as the parent gitlink",
-    "closeout implementation --check passed with validation_cid baguqeerav6looomfqmq64gz6bh3cf5q3nxajmtgauieta6zv665u3uenlwiq",
-    "this packet cannot be copied to the 121 or 123 output paths as issuance"
-  ]
+  "uncommitted_remaining_auto_work": false
 }
