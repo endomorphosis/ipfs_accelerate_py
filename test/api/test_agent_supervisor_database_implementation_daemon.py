@@ -2810,6 +2810,33 @@ def test_idle_run_once_idles_on_quack_attach_lock_timeout(
         daemon.close()
 
 
+def test_idle_run_once_idles_on_quack_authorization_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-authorization-idle",
+    )
+
+    def boom() -> None:
+        raise RuntimeError("Invalid Input Error: Authorization failed")
+
+    try:
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("authorization failure claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["implementation_result"] is None
+        assert result["control_plane_error"]["error_type"] == "RuntimeError"
+    finally:
+        daemon.close()
+
+
 def test_idle_run_once_settles_invalid_metadata_portal_quarantine_before_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

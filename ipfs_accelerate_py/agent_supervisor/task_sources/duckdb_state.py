@@ -447,6 +447,7 @@ class DuckDBConnection:
                 "command for DatabaseTaskSource mutations"
             )
         if catalog and not normalized.startswith("USE "):
+            statement = _qualify_quack_statement(statement, catalog)
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
         if parameters is None:
@@ -1137,6 +1138,26 @@ def _consume_duckdb_result(connection: Any) -> None:
         connection.fetchall()
     except Exception:
         pass
+
+
+_QUACK_RELATION_RE = re.compile(
+    r"\b(FROM|JOIN)\s+(?![\w]+\.)([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _qualify_quack_statement(sql: str, catalog: str) -> str:
+    """Prefix unqualified FROM/JOIN tables with the attached Quack catalog.
+
+    TOKEN sessions accept ``control_plane.tasks`` at ATTACH probe time but
+    reject later unqualified ``FROM tasks`` with Authorization failed even
+    after USE. Qualification keeps the attached catalog explicit.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        return f"{match.group(1)} {catalog}.{match.group(2)}"
+
+    return _QUACK_RELATION_RE.sub(_replace, str(sql))
 
 
 def open_quack_transport_connection(

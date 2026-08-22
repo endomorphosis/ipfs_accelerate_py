@@ -70149,13 +70149,19 @@ def _is_quack_attach_error(exc: BaseException) -> bool:
     return (
         name == "DuckDBConnectionPolicyError"
         or "Authentication failed" in detail
+        or "Authorization failed" in detail
         or "quack attach authentication failed" in lowered
         or "timed out acquiring duckdb process lock" in lowered
         or "timed out acquiring duckdb thread lock" in lowered
         or "attach.lock" in lowered
         or (
-            name == "TimeoutError"
-            and ("timed out" in lowered or "timeout" in lowered)
+            name in {"TimeoutError", "InvalidInputException"}
+            and (
+                "timed out" in lowered
+                or "timeout" in lowered
+                or "authentication failed" in lowered
+                or "authorization failed" in lowered
+            )
         )
     )
 
