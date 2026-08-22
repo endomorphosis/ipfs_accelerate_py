@@ -875,3 +875,24 @@ control/lease/fence/merge authorities.
 - Resource class: cpu-large
 - Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-20-apmc-021-reconciliation-d9c52644fa20.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-20-apmc-021-reconciliation-d9c52644fa20.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## APMC-022 Resolve 1 dirty backlogged worktrees blocked by content_not_in_target
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P2
+- Track: ops
+- Fingerprint: 785fbbd92ae690729883c5988853f0959a12ea75
+- Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-022-reconciliation-785fbbd92ae6.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by content_not_in_target. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-022-reconciliation-785fbbd92ae6.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
