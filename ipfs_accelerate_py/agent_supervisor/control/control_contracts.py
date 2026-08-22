@@ -8350,6 +8350,43 @@ CONTROL_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
 CONTROL_CAPABILITY_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
 DEFAULT_CONTROL_CATALOG: Final[OperationCatalog] = OPERATION_CATALOG_V2
 
+# APMC-017 autonomy surface names.  These are not a second Operation catalog;
+# they name the bounded reads/mutations the autonomy adapters must expose
+# through SupervisorControlService without minting authority.
+AUTONOMY_CONTROL_INTERFACE: Final[str] = "AutonomyControlSurface@1"
+AUTONOMY_READ_OPERATION_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "capabilities",
+        "status",
+        "metrics",
+        "graph",
+        "questions",
+        "budget",
+        "experience",
+        "route_policy",
+        "distillation",
+        "repair_history",
+        "escalations",
+        "shadow",
+    }
+)
+AUTONOMY_MUTATION_OPERATION_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "pause",
+        "resume",
+        "set_level",
+        "approve_policy",
+        "reject_policy",
+        "rollback_policy",
+        "approve_repair",
+        "cancel",
+        "bind_escalation",
+    }
+)
+AUTONOMY_CONTROL_OPERATION_NAMES: Final[frozenset[str]] = (
+    AUTONOMY_READ_OPERATION_NAMES | AUTONOMY_MUTATION_OPERATION_NAMES
+)
+
 
 def canonical_control_json_bytes(value: Any) -> bytes:
     """Return canonical DAG-JSON bytes for a control value."""
@@ -8814,6 +8851,10 @@ __all__ = [
     "CONTROL_SURFACE_PARITY_REQUIREMENT_ID",
     "CONTROL_TARGET_DESCRIPTOR_SCHEMA",
     "DEFAULT_CONTROL_CATALOG",
+    "AUTONOMY_CONTROL_INTERFACE",
+    "AUTONOMY_CONTROL_OPERATION_NAMES",
+    "AUTONOMY_MUTATION_OPERATION_NAMES",
+    "AUTONOMY_READ_OPERATION_NAMES",
     "EVENT_CURSOR_SCHEMA",
     "EVENT_PAGE_SCHEMA",
     "OPERATION_CATALOG",
