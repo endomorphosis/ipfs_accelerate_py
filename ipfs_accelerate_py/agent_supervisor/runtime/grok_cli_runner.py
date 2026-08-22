@@ -1336,6 +1336,15 @@ def _isolated_grok_home(
             else user_home_from_env(base_env) / ".grok"
         )
         source_auth = source_home / "auth.json"
+        if not source_auth.is_file():
+            try:
+                import pwd
+
+                source_auth = (
+                    Path(pwd.getpwuid(os.getuid()).pw_dir) / ".grok" / "auth.json"
+                )
+            except Exception:
+                source_auth = Path.home() / ".grok" / "auth.json"
         if source_auth.is_file():
             # Preserve Grok's own authority without copying a credential.  The
             # alternate-provider stores are independently kernel-denied.
