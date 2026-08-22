@@ -70922,7 +70922,6 @@ class DatabaseImplementationDaemon:
                 self.metadata = metadata if isinstance(metadata, Mapping) else {}
 
         snapshots: list[Any] = []
-        seen: set[str] = set()
         completed_dir = getattr(self._merge_queue, "completed_dir", None)
         if isinstance(completed_dir, Path) and completed_dir.is_dir():
             files = sorted(
@@ -70941,12 +70940,7 @@ class DatabaseImplementationDaemon:
                     continue
                 if not isinstance(payload, Mapping):
                     continue
-                snapshot = _Snapshot(payload)
-                key = snapshot.canonical_task_id or snapshot.task_id or path.name
-                if key in seen:
-                    continue
-                seen.add(key)
-                snapshots.append(snapshot)
+                snapshots.append(_Snapshot(payload))
         if snapshots:
             return tuple(snapshots)
         completed = getattr(self._merge_queue, "completed_requests", None)

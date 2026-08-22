@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -2863,6 +2864,83 @@ def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
         assert rearm["schema"] == DATABASE_DECLARED_OUTPUT_REARM_SCHEMA
         assert rearm["rearmed"] == 1
         assert rearm["results"][0]["task_alias"] == "VRIF-010"
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_rearms_from_older_repair_receipt_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    output = repo / "ipfs_accelerate_py" / "agent_supervisor" / "residual_intelligence"
+    output.mkdir(parents=True)
+    (output / "expert_specs.py").write_text("spec = True\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "vrif@example.test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "VRIF"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "declared outputs"], cwd=repo, check=True, capture_output=True)
+
+    completed = tmp_path / "completed"
+    completed.mkdir()
+    later = {
+        "task_id": "VRIF-010",
+        "canonical_task_id": "task:cid:blocked-010",
+        "metadata": {"completion": {"reason": "merged"}},
+    }
+    repair = {
+        "task_id": "VRIF-010",
+        "canonical_task_id": "task:cid:blocked-010",
+        "metadata": {
+            "completion": {
+                "reason": "post_merge_declared_outputs_repaired",
+                "candidate_commit": "c9791a30e",
+                "repair_receipt": {
+                    "entries": [
+                        {
+                            "path": (
+                                "ipfs_accelerate_py/agent_supervisor/"
+                                "residual_intelligence/expert_specs.py"
+                            )
+                        }
+                    ]
+                },
+            }
+        },
+    }
+    (completed / "later.json").write_text(json.dumps(later), encoding="utf-8")
+    (completed / "repair.json").write_text(json.dumps(repair), encoding="utf-8")
+    later_path = completed / "later.json"
+    repair_path = completed / "repair.json"
+    os.utime(repair_path, (1_000_000, 1_000_000))
+    os.utime(later_path, (2_000_000, 2_000_000))
+
+    daemon = _open_daemon(tmp_path, session="session:older-repair-json")
+    cas_calls: list[str] = []
+
+    def rearm(task_cid: str, *, receipt: dict[str, object] | None = None) -> SimpleNamespace:
+        cas_calls.append(task_cid)
+        return SimpleNamespace(changed=True, task=SimpleNamespace(task_cid=task_cid))
+
+    try:
+        daemon.open()
+        daemon._merge_repo_root = repo
+        daemon._merge_queue = SimpleNamespace(
+            completed_dir=completed,
+            completed_requests=lambda **_kwargs: (),
+        )
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", lambda: [])
+        monkeypatch.setattr(daemon, "reconcile_expired_running_attempts", lambda: [])
+        monkeypatch.setattr(daemon, "reconcile_terminal_portal_failures", lambda: [])
+        monkeypatch.setattr(daemon, "reconcile_terminal_retry_states", lambda: [])
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        monkeypatch.setattr(daemon.task_source, "rearm_blocked_task", rearm)
+        result = daemon.run_once()
+        assert cas_calls == ["task:cid:blocked-010"]
+        assert result["declared_output_rearm"]["rearmed"] == 1
     finally:
         daemon.close()
 
