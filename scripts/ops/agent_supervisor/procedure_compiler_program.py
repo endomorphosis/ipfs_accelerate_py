@@ -3556,7 +3556,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "program": PROGRAM,
             "valid": False,
             "error_code": "unexpected_launch_failure",
-            "error": type(exc).__name__,
+            "error": f"{type(exc).__name__}: {exc!r}",
         }
         payload = {**unsigned, "receipt_cid": content_identity(unsigned)}
         sys.stdout.write(json.dumps(payload, sort_keys=True, indent=2) + "\n")
