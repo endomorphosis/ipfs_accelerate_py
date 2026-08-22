@@ -8357,6 +8357,7 @@ class PortalImplementationSupervisor:
         )
         child_environment = _managed_daemon_child_environment(
             database_program=self.config.database_program,
+            repo_root=self.config.repo_root,
         )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
@@ -8378,10 +8379,7 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
-            launch_env=_managed_daemon_child_environment(
-                database_program=self.config.database_program,
-                repo_root=self.config.repo_root,
-            ),
+            launch_env=child_environment,
         )
         return SupervisorLoopConfig(
             spec=spec,
