@@ -9,6 +9,8 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -623,10 +625,18 @@ class DuckDBConnection:
         sql: str,
         parameters: Iterable[Iterable[Any]],
     ) -> DuckDBCursor:
+        if getattr(self, "_default_catalog", None):
+            raise DuckDBConnectionPolicyError(
+                "quack transport does not admit executemany"
+            )
         self._connection.executemany(sql, parameters)
         return DuckDBCursor(self._connection, dml=True)
 
     def executescript(self, sql: str) -> DuckDBCursor:
+        if getattr(self, "_default_catalog", None):
+            raise DuckDBConnectionPolicyError(
+                "quack transport does not admit scripts"
+            )
         self._connection.execute(sql)
         return DuckDBCursor(self._connection)
 
@@ -764,6 +774,619 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
     "contention",
 )
 
+
+_QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+_QUACK_SECRET_HANDLE_ENV = "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
+
+def resolve_quack_attach_token(
+    token: str = "",
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    """Return the admitted attach token without logging it.
+
+    Resolution order: explicit argument, ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``,
+    then the environment variable named by an ``env://`` secret handle.
+    """
+
+    source = os.environ if environment is None else environment
+    secret = str(token or source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
+    if secret:
+        return secret
+    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
+    if handle.startswith("env://"):
+        target = handle[len("env://") :].strip()
+        if target:
+            secret = str(source.get(target, "") or "").strip()
+    return secret
+
+
+def _quack_token_fingerprint(token: str) -> str:
+    secret = str(token or "").strip()
+    if not secret:
+        return "none"
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
+
+
+QUACK_OWNER_COMMAND_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/quack-owner-command-request@1"
+)
+QUACK_OWNER_COMMAND_RESPONSE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/quack-owner-command-response@1"
+)
+QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS = "compare_and_set_status"
+QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK = "rearm_blocked_task"
+QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF = "record_queue_backoff"
+QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY = "record_queue_retry"
+QUACK_OWNER_COMMAND_RECORD_EVIDENCE = "record_evidence"
+QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT = "record_validation_result"
+QUACK_OWNER_COMMANDS = frozenset(
+    {
+        QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+        QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+        QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
+        QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+    }
+)
+QUACK_OWNER_COMMAND_MAX_BYTES = 262_144
+QUACK_OWNER_COMMAND_MAX_AGE_MS = 10_000
+_QUACK_OWNER_REQUEST_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_QUACK_OWNER_WRITER_RE = re.compile(r"^supervisor-process:[1-9][0-9]{0,19}$")
+
+_QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS: (
+        frozenset({"task_cid_or_alias", "expected_revision", "status"}),
+        frozenset({"receipt", "evidence_digests"}),
+    ),
+    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK: (
+        frozenset({"task_cid_or_alias"}),
+        frozenset({"receipt"}),
+    ),
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF: (
+        frozenset({"task_cid", "delay_ms"}),
+        frozenset({"reason", "selection_penalty"}),
+    ),
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY: (
+        frozenset({"task_cid"}),
+        frozenset(),
+    ),
+    QUACK_OWNER_COMMAND_RECORD_EVIDENCE: (
+        frozenset({"task_cid", "evidence_kind", "digest"}),
+        frozenset({"body"}),
+    ),
+    QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT: (
+        frozenset({"task_cid", "outcome", "evidence_digest"}),
+        frozenset({"argv", "attempt_id", "body"}),
+    ),
+}
+
+
+class QuackOwnerCommandRemoteError(DuckDBConnectionPolicyError):
+    """A typed owner command was rejected by the exclusive state owner."""
+
+    def __init__(self, code: str, message: str, *, request_id: str = "") -> None:
+        self.code = str(code or "owner_error")
+        self.message = str(message or "quack owner command rejected")
+        self.request_id = str(request_id or "")
+        super().__init__(self.message)
+
+
+def _owner_command_text(value: Any, *, field: str) -> str:
+    if type(value) is not str or not value or "\x00" in value:
+        raise DuckDBConnectionPolicyError(
+            f"quack owner command field {field!r} must be a non-empty string"
+        )
+    if len(value.encode("utf-8")) > 16_384:
+        raise DuckDBConnectionPolicyError(f"quack owner command field {field!r} exceeds byte bound")
+    return value
+
+
+def validate_quack_owner_command(
+    command: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate and copy one command from the closed owner vocabulary.
+
+    The request carries domain arguments only.  SQL, statement templates, and
+    executable callbacks are deliberately absent; the owner maps the command
+    name back to a canonical :class:`IntentRepository` method.
+    """
+
+    if type(command) is not str or command not in QUACK_OWNER_COMMANDS:
+        raise DuckDBConnectionPolicyError(f"unsupported quack owner command: {command!r}")
+    if not isinstance(payload, Mapping):
+        raise DuckDBConnectionPolicyError("quack owner command payload must be a mapping")
+    required, optional = _QUACK_OWNER_COMMAND_FIELDS[command]
+    fields = frozenset(payload)
+    if not required.issubset(fields) or not fields.issubset(required | optional):
+        raise DuckDBConnectionPolicyError(
+            f"quack owner command {command!r} fields do not match its closed schema"
+        )
+    copied = dict(payload)
+    text_fields = {
+        "task_cid_or_alias",
+        "task_cid",
+        "status",
+        "reason",
+        "evidence_kind",
+        "digest",
+        "outcome",
+        "evidence_digest",
+    }
+    for field in text_fields & fields:
+        _owner_command_text(copied[field], field=field)
+    if "attempt_id" in fields:
+        attempt_id = copied["attempt_id"]
+        if type(attempt_id) is not str or "\x00" in attempt_id:
+            raise DuckDBConnectionPolicyError(
+                "quack owner command field 'attempt_id' must be a string"
+            )
+    for field in {"expected_revision", "delay_ms", "selection_penalty"} & fields:
+        value = copied[field]
+        if type(value) is not int or value < 0:
+            raise DuckDBConnectionPolicyError(
+                f"quack owner command field {field!r} must be a non-negative integer"
+            )
+    for field in {"receipt", "body"} & fields:
+        value = copied[field]
+        if value is not None and not isinstance(value, Mapping):
+            raise DuckDBConnectionPolicyError(
+                f"quack owner command field {field!r} must be a mapping or null"
+            )
+        if isinstance(value, Mapping):
+            copied[field] = dict(value)
+    for field in {"argv", "evidence_digests"} & fields:
+        value = copied[field]
+        if value is None:
+            continue
+        if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+            raise DuckDBConnectionPolicyError(
+                f"quack owner command field {field!r} must be a sequence or null"
+            )
+        items = list(value)
+        if len(items) > 4_096 or any(type(item) is not str for item in items):
+            raise DuckDBConnectionPolicyError(
+                f"quack owner command field {field!r} has invalid items"
+            )
+        copied[field] = items
+    try:
+        encoded = json.dumps(
+            copied,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner command payload is not canonical JSON"
+        ) from exc
+    if len(encoded) > QUACK_OWNER_COMMAND_MAX_BYTES:
+        raise DuckDBConnectionPolicyError("quack owner command payload exceeds byte bound")
+    return copied
+
+
+def quack_owner_command_signature(
+    payload: Mapping[str, Any],
+    token: str,
+) -> str:
+    """Return the HMAC for one exact typed owner-command envelope.
+
+    The raw Quack token never enters the request file.  The state owner verifies
+    this signature, the request identity, store binding, generation, and
+    freshness before it maps a closed command to repository code.
+    """
+
+    secret = str(token or "").strip()
+    if not _QUACK_TOKEN_RE.fullmatch(secret):
+        raise DuckDBConnectionPolicyError(
+            "quack owner command requires the admitted opaque transport token"
+        )
+    unsigned = {key: value for key, value in payload.items() if key != "signature"}
+    try:
+        encoded = json.dumps(
+            unsigned,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner command envelope is not canonical JSON"
+        ) from exc
+    return hmac.new(secret.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
+
+
+def validate_quack_owner_command_request(
+    request: Mapping[str, Any],
+    *,
+    token: str,
+    expected_request_id: str,
+    expected_store_id: str,
+    expected_store_generation: str,
+    now_ms: int | None = None,
+    max_age_ms: int = QUACK_OWNER_COMMAND_MAX_AGE_MS,
+) -> tuple[str, dict[str, Any]]:
+    """Authenticate and bind one owner-side request before dispatch.
+
+    Callers remain responsible for same-user, regular-file, size, and replay
+    checks around the inbox.  This helper seals the content-level identity,
+    HMAC, freshness, store generation, and closed command payload.
+    """
+
+    if not isinstance(request, Mapping):
+        raise DuckDBConnectionPolicyError("quack owner command request must be a mapping")
+    expected_fields = {
+        "schema",
+        "request_id",
+        "issued_at_ms",
+        "writer_identity",
+        "store_id",
+        "store_generation",
+        "command",
+        "payload",
+        "signature",
+    }
+    if set(request) != expected_fields:
+        raise DuckDBConnectionPolicyError(
+            "quack owner command request fields do not match the closed envelope"
+        )
+    request_id = str(request.get("request_id") or "")
+    if (
+        request.get("schema") != QUACK_OWNER_COMMAND_REQUEST_SCHEMA
+        or _QUACK_OWNER_REQUEST_ID_RE.fullmatch(request_id) is None
+        or request_id != expected_request_id
+    ):
+        raise DuckDBConnectionPolicyError("quack owner command request identity is invalid")
+    issued_at_ms = request.get("issued_at_ms")
+    if type(issued_at_ms) is not int:
+        raise DuckDBConnectionPolicyError("quack owner command issued_at_ms must be an integer")
+    if type(max_age_ms) is not int or not 1 <= max_age_ms <= 60_000:
+        raise DuckDBConnectionPolicyError("quack owner command freshness bound is invalid")
+    observed_now = int(time.time() * 1000) if now_ms is None else now_ms
+    if type(observed_now) is not int:
+        raise DuckDBConnectionPolicyError("quack owner command current time must be an integer")
+    age_ms = observed_now - issued_at_ms
+    if age_ms < -5_000 or age_ms > max_age_ms:
+        raise DuckDBConnectionPolicyError("quack owner command request is stale or future-dated")
+    if _QUACK_OWNER_WRITER_RE.fullmatch(str(request.get("writer_identity") or "")) is None:
+        raise DuckDBConnectionPolicyError("quack owner command writer identity is invalid")
+    if (
+        request.get("store_id") != expected_store_id
+        or request.get("store_generation") != expected_store_generation
+        or not expected_store_id
+        or not expected_store_generation
+    ):
+        raise DuckDBConnectionPolicyError(
+            "quack owner command store or generation binding is stale"
+        )
+    observed_signature = str(request.get("signature") or "")
+    expected_signature = quack_owner_command_signature(request, token)
+    if not hmac.compare_digest(observed_signature, expected_signature):
+        raise DuckDBConnectionPolicyError("quack owner command authorization is invalid")
+    command = str(request.get("command") or "")
+    payload = request.get("payload")
+    if not isinstance(payload, Mapping):
+        raise DuckDBConnectionPolicyError("quack owner command payload must be a mapping")
+    return command, validate_quack_owner_command(command, payload)
+
+
+def quack_owner_command_response(
+    request: Mapping[str, Any],
+    *,
+    token: str,
+    result: Mapping[str, Any] | None = None,
+    error_code: str = "",
+    error_message: str = "",
+) -> dict[str, Any]:
+    """Build and owner-sign the exact response consumed by command clients."""
+
+    common: dict[str, Any] = {
+        "schema": QUACK_OWNER_COMMAND_RESPONSE_SCHEMA,
+        "request_id": str(request.get("request_id") or ""),
+        "command": str(request.get("command") or ""),
+        "store_id": str(request.get("store_id") or ""),
+        "store_generation": str(request.get("store_generation") or ""),
+    }
+    if result is not None and not error_code and not error_message:
+        response = {**common, "ok": True, "result": dict(result)}
+    else:
+        code = str(error_code or "owner_error")
+        message = str(error_message or "typed owner command rejected")
+        response = {
+            **common,
+            "ok": False,
+            "error_code": code,
+            "error_message": message,
+        }
+    response["signature"] = quack_owner_command_signature(response, token)
+    return response
+
+
+def quack_attach_lock_path(uri: str = "") -> Path:
+    """Return the process-shared lock that serializes Quack ATTACH storms."""
+
+    command_dir = quack_owner_command_dir()
+    if command_dir is not None:
+        return command_dir.parent / "attach.lock"
+    digest = hashlib.sha256(
+        str(uri or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "")).encode(
+            "utf-8"
+        )
+    ).hexdigest()[:16]
+    return Path(os.environ.get("TMPDIR", "/tmp")) / (
+        f"ipfs-accelerate-quack-attach-{digest}.lock"
+    )
+
+
+def _is_transient_quack_attach_error(detail: str) -> bool:
+    """Return whether ATTACH may retry without wedging the exclusive owner.
+
+    ``Authentication failed`` is not transient: eight retries from each lane
+    fill Quack's small listen backlog and turn a live token into a board-wide
+    stall. Retry only connect-time transport failures while the owner is
+    still binding its port.
+    """
+
+    text = str(detail or "")
+    lowered = text.lower()
+    if "Authentication failed" in text or "authentication token" in lowered:
+        return False
+    return (
+        "connection refused" in lowered
+        or "connection reset" in lowered
+        or "timed out" in lowered
+        or "timeout" in lowered
+        or "could not connect" in lowered
+    )
+
+
+def _is_quack_session_dead(exc: BaseException) -> bool:
+    """Return whether a Quack SQL error means the ATTACH session is gone.
+
+    Query-level ``Authorization failed`` is not session death: dropping the
+    attached connection forces a new ATTACH, which is what wedges the
+    owner and turns later ticks into ``quack_attach_failed``.
+    """
+
+    detail = str(exc)
+    lowered = detail.lower()
+    return (
+        "Authentication failed" in detail
+        or "connection refused" in lowered
+        or "connection reset" in lowered
+        or "connection closed" in lowered
+        or "not connected" in lowered
+        or "could not connect" in lowered
+    )
+
+
+def quack_session_is_live(connection: Any) -> bool:
+    """Probe one attached Quack session without opening another ATTACH."""
+
+    if connection is None or getattr(connection, "_closed", False):
+        return False
+    catalog = str(getattr(connection, "_default_catalog", "") or _QUACK_CONTROL_CATALOG)
+    raw = getattr(connection, "_connection", connection)
+    execute = getattr(raw, "execute", None)
+    if not callable(execute):
+        return False
+    try:
+        probed = execute(f"SELECT count(*) FROM {catalog}.tasks")
+        _consume_duckdb_result(probed)
+    except Exception:
+        return False
+    return True
+
+
+def quack_owner_command_dir(store_id: object = "") -> Path | None:
+    """Return the exclusive owner's local typed-command inbox, if configured."""
+
+    explicit = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "") or "").strip()
+    if explicit:
+        return Path(explicit)
+    store = str(
+        store_id or os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+    ).strip()
+    if not store:
+        return None
+    path = Path(store)
+    if path.suffix.lower() in {".duckdb", ".ddb"}:
+        return path.expanduser().resolve().parent / "quack-owner" / "mutations"
+    return None
+
+
+def _read_quack_owner_command_response(path: Path) -> Mapping[str, Any]:
+    """Read one same-UID, bounded, regular response without following links."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise DuckDBConnectionPolicyError(
+            "this platform cannot safely open Quack owner command responses"
+        )
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | nofollow)
+    except OSError as exc:
+        raise DuckDBConnectionPolicyError(
+            "quack owner command response is not a safe regular file"
+        ) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_size <= 0
+            or metadata.st_size > QUACK_OWNER_COMMAND_MAX_BYTES
+        ):
+            raise DuckDBConnectionPolicyError(
+                "quack owner command response owner, type, or size is invalid"
+            )
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            encoded = handle.read(QUACK_OWNER_COMMAND_MAX_BYTES + 1)
+        if len(encoded) != metadata.st_size:
+            raise DuckDBConnectionPolicyError(
+                "quack owner command response changed while being read"
+            )
+        try:
+            payload = json.loads(encoded.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DuckDBConnectionPolicyError(
+                "quack owner command response is not valid JSON"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise DuckDBConnectionPolicyError("quack owner command response must be a mapping")
+        return payload
+    finally:
+        os.close(descriptor)
+
+
+def submit_quack_owner_command(
+    command: str,
+    payload: Mapping[str, Any],
+    *,
+    timeout_seconds: float = 15.0,
+) -> Mapping[str, Any]:
+    """Submit one typed command and return its typed result mapping.
+
+    This filesystem rendezvous exists only because the currently admitted
+    Quack build cannot update attached base tables.  It is not a SQL tunnel.
+    """
+
+    import uuid
+
+    command_name = str(command or "")
+    command_payload = validate_quack_owner_command(command_name, payload)
+    if (
+        not isinstance(timeout_seconds, (int, float))
+        or isinstance(timeout_seconds, bool)
+        or not 0 < float(timeout_seconds) <= 60
+    ):
+        raise DuckDBConnectionPolicyError("quack owner command timeout must be in (0, 60] seconds")
+    target = quack_owner_command_dir()
+    if target is None:
+        raise DuckDBConnectionPolicyError(
+            "quack ATTACH cannot mutate remote base tables; set "
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR or "
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID so the state-owner can "
+            "apply a typed command"
+        )
+    target.mkdir(parents=True, exist_ok=True)
+    os.chmod(target, 0o700)
+    request_id = uuid.uuid4().hex
+    request_path = target / f"{request_id}.request.json"
+    done_path = target / f"{request_id}.done.json"
+    token = resolve_quack_attach_token()
+    request_payload: dict[str, Any] = {
+        "schema": QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000),
+        "writer_identity": f"supervisor-process:{os.getpid()}",
+        "store_id": str(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or "").strip(),
+        "store_generation": str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
+        ).strip(),
+        "command": command_name,
+        "payload": command_payload,
+    }
+    if not request_payload["store_id"] or not request_payload["store_generation"]:
+        raise DuckDBConnectionPolicyError(
+            "quack owner command requires exact store and generation bindings"
+        )
+    request_payload["signature"] = quack_owner_command_signature(
+        request_payload,
+        token,
+    )
+    encoded_request = (
+        json.dumps(
+            request_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    temporary_path = target / f".{request_id}.request.tmp"
+    descriptor = os.open(
+        temporary_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(encoded_request)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, request_path)
+        os.chmod(request_path, 0o600)
+    except BaseException:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    deadline = time.monotonic() + float(timeout_seconds)
+    while time.monotonic() < deadline:
+        if done_path.is_file():
+            response = _read_quack_owner_command_response(done_path)
+            common = {
+                "schema",
+                "request_id",
+                "command",
+                "store_id",
+                "store_generation",
+                "ok",
+                "signature",
+            }
+            variant = (
+                {"result"}
+                if response.get("ok") is True
+                else {
+                    "error_code",
+                    "error_message",
+                }
+            )
+            if (
+                set(response) != common | variant
+                or response.get("schema") != QUACK_OWNER_COMMAND_RESPONSE_SCHEMA
+                or response.get("request_id") != request_id
+                or response.get("command") != command_name
+                or response.get("store_id") != request_payload["store_id"]
+                or response.get("store_generation") != request_payload["store_generation"]
+                or type(response.get("ok")) is not bool
+            ):
+                raise DuckDBConnectionPolicyError("quack owner command response binding is invalid")
+            observed_signature = str(response.get("signature") or "")
+            expected_signature = quack_owner_command_signature(response, token)
+            if not hmac.compare_digest(observed_signature, expected_signature):
+                raise DuckDBConnectionPolicyError(
+                    "quack owner command response authorization is invalid"
+                )
+            # Only an owner-authenticated response may retire the request.
+            # A forged same-UID completion file can cause a closed failure but
+            # cannot cancel a command that the owner may still recover.
+            try:
+                request_path.unlink(missing_ok=True)
+                done_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if response["ok"] is not True:
+                raise QuackOwnerCommandRemoteError(
+                    str(response.get("error_code") or "owner_error"),
+                    str(response.get("error_message") or "owner command rejected"),
+                    request_id=request_id,
+                )
+            result = response.get("result")
+            if not isinstance(result, Mapping):
+                raise DuckDBConnectionPolicyError("quack owner command result must be a mapping")
+            return dict(result)
+        time.sleep(0.05)
+    raise DuckDBConnectionPolicyError(
+        "timed out waiting for quack state-owner to apply typed command"
+    )
 
 def quack_owner_mutation_inbox_path(
     runtime_registry_path: str | os.PathLike[str],

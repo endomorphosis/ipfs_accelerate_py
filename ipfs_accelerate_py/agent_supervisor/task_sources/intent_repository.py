@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -46,10 +47,13 @@ from .control_plane_contracts import (
 from .control_plane_migrations import duckdb_available
 from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
+    DuckDBConnectionPolicyError,
     STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    _is_quack_session_dead,
     exclusive_file_lock,
     is_quack_transport_target,
     open_duckdb_connection,
+    quack_session_is_live,
     quack_transport_uri,
     unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
@@ -81,15 +85,11 @@ INTENT_COMPLETION_PROJECTION_SCHEMA: Final[str] = (
 TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"
 )
-TASK_AUTHORITY_SPEC_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/task-authority-spec@1"
-)
+TASK_AUTHORITY_SPEC_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/task-authority-spec@1"
 TASK_REVISION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
 )
-PLAN_HEAD_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-plan-head@1"
-)
+PLAN_HEAD_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-plan-head@1"
 
 INTENT_STREAM_ID: Final[str] = "stream:intent"
 DEFAULT_OWNER_ID: Final[str] = "intent-repository:local"
@@ -348,9 +348,7 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
     try:
         return json.loads(text, object_pairs_hook=closed_object)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise IntentRepositoryIntegrityError(
-            f"{noun} is not valid unambiguous JSON"
-        ) from exc
+        raise IntentRepositoryIntegrityError(f"{noun} is not valid unambiguous JSON") from exc
 
 
 def _receipt_with_preserved_reopen_count(
@@ -417,19 +415,13 @@ def _projection_sequence(
 
 
 def _projection_task_cids(task_cids: Sequence[str]) -> tuple[str, ...]:
-    if isinstance(task_cids, (str, bytes, bytearray)) or not isinstance(
-        task_cids, Sequence
-    ):
+    if isinstance(task_cids, (str, bytes, bytearray)) or not isinstance(task_cids, Sequence):
         raise IntentRepositoryError("task_cids must be a sequence")
     if len(task_cids) > MAX_PAGE_LIMIT:
         raise IntentRepositoryBoundsError("projection task count exceeds bound")
-    resolved = tuple(
-        _identifier(task_cid, noun="task_cid") for task_cid in task_cids
-    )
+    resolved = tuple(_identifier(task_cid, noun="task_cid") for task_cid in task_cids)
     if len(set(resolved)) != len(resolved):
-        raise IntentRepositoryIntegrityError(
-            "projection task_cids must not contain duplicates"
-        )
+        raise IntentRepositoryIntegrityError("projection task_cids must not contain duplicates")
     return tuple(sorted(resolved))
 
 
@@ -445,13 +437,9 @@ def _task_projection_spec(record: Mapping[str, Any]) -> dict[str, Any]:
 
     task = _mapping(record, noun="task projection record")
     task_cid = _identifier(task.get("task_cid"), noun="task_cid")
-    task_alias = _identifier(
-        task.get("task_alias") or task.get("task_id"), noun="task_alias"
-    )
+    task_alias = _identifier(task.get("task_alias") or task.get("task_id"), noun="task_alias")
     goal_cid = _identifier(task.get("goal_cid"), noun="goal_cid")
-    objective_id = _optional_identifier(
-        task.get("objective_id"), noun="objective_id"
-    )
+    objective_id = _optional_identifier(task.get("objective_id"), noun="objective_id")
 
     dependencies: list[dict[str, str]] = []
     for raw in _projection_sequence(
@@ -462,35 +450,24 @@ def _task_projection_spec(record: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(raw, Mapping):
             dependency = _mapping(raw, noun="task dependency")
             dependency_cid = _identifier(
-                dependency.get("dependency_task_cid")
-                or dependency.get("task_cid"),
+                dependency.get("dependency_task_cid") or dependency.get("task_cid"),
                 noun="dependency_task_cid",
             )
-            kind = _identifier(
-                dependency.get("kind") or "depends_on", noun="dependency kind"
-            )
+            kind = _identifier(dependency.get("kind") or "depends_on", noun="dependency kind")
         else:
             dependency_cid = _identifier(raw, noun="dependency_task_cid")
             kind = "depends_on"
-        dependencies.append(
-            {"dependency_task_cid": dependency_cid, "kind": kind}
-        )
-    dependencies.sort(
-        key=lambda item: (item["dependency_task_cid"], item["kind"])
-    )
+        dependencies.append({"dependency_task_cid": dependency_cid, "kind": kind})
+    dependencies.sort(key=lambda item: (item["dependency_task_cid"], item["kind"]))
 
     outputs: list[dict[str, Any]] = []
     for index, raw in enumerate(
-        _projection_sequence(
-            task.get("outputs"), noun="task outputs", maximum=MAX_OUTPUTS
-        )
+        _projection_sequence(task.get("outputs"), noun="task outputs", maximum=MAX_OUTPUTS)
     ):
         output = _mapping(raw, noun="task output")
         outputs.append(
             {
-                "ordinal": _nonneg_int(
-                    output.get("ordinal", index), noun="output ordinal"
-                ),
+                "ordinal": _nonneg_int(output.get("ordinal", index), noun="output ordinal"),
                 "path": _identifier(output.get("path"), noun="output path"),
                 "effect": _jsonable(output.get("effect", {})),
             }
@@ -511,9 +488,7 @@ def _task_projection_spec(record: Mapping[str, Any]) -> dict[str, Any]:
             raise IntentRepositoryError("acceptance criterion must not be empty")
         acceptance.append(
             {
-                "ordinal": _nonneg_int(
-                    item.get("ordinal", index), noun="acceptance ordinal"
-                ),
+                "ordinal": _nonneg_int(item.get("ordinal", index), noun="acceptance ordinal"),
                 "criterion": criterion,
                 "evidence_policy": _jsonable(item.get("evidence_policy", {})),
             }
@@ -534,9 +509,7 @@ def _task_projection_spec(record: Mapping[str, Any]) -> dict[str, Any]:
         )
         validations.append(
             {
-                "ordinal": _nonneg_int(
-                    item.get("ordinal", index), noun="validation ordinal"
-                ),
+                "ordinal": _nonneg_int(item.get("ordinal", index), noun="validation ordinal"),
                 "argv": [str(part) for part in argv],
                 "policy": _jsonable(item.get("policy", {})),
             }
@@ -612,9 +585,7 @@ def _content_addressed_projection(
     encoded = canonical_json_bytes(normalized)
     if len(encoded) > maximum_bytes:
         raise IntentRepositoryBoundsError(f"{noun} exceeds byte bound")
-    return MappingProxyType(
-        {**normalized, "projection_cid": content_identity(normalized)}
-    )
+    return MappingProxyType({**normalized, "projection_cid": content_identity(normalized)})
 
 
 # ---------------------------------------------------------------------------
@@ -752,8 +723,9 @@ class IntentRepository:
 
     def __init__(
         self,
-        database_path: str | Path,
+        database_path: str | Path | None = None,
         *,
+        bound_connection: Any | None = None,
         owner_id: str = DEFAULT_OWNER_ID,
         session_id: str = DEFAULT_SESSION_ID,
         install_schema: bool = True,
@@ -762,14 +734,40 @@ class IntentRepository:
         clock_ms: Any | None = None,
     ) -> None:
         _require_duckdb()
-        if is_quack_transport_target(database_path):
+        if bound_connection is not None:
+            if database_path is not None and is_quack_transport_target(database_path):
+                raise IntentRepositoryError(
+                    "a bound owner connection cannot also target Quack transport"
+                )
+            if install_schema:
+                raise IntentRepositoryError("bound owner connections require install_schema=False")
+            if not callable(getattr(bound_connection, "execute", None)):
+                raise IntentRepositoryError("bound owner connection must provide execute()")
+            self._open_target = Path(database_path or "bound-owner-control-plane.duckdb")
+            self._quack_transport = False
+            self._bound_connection = bound_connection
+            self._bound_connection_lock = threading.RLock()
+            self._bound_transaction_depth = 0
+            self._quack_read_connection = None
+            self.database_path = self._open_target
+        elif database_path is None:
+            raise IntentRepositoryError("database_path or bound_connection is required")
+        elif is_quack_transport_target(database_path):
             self._open_target = quack_transport_uri(database_path)
             self._quack_transport = True
+            self._bound_connection = None
+            self._bound_connection_lock = threading.RLock()
+            self._bound_transaction_depth = 0
+            self._quack_read_connection = None
             # Path identity is unused for file locks; keep a stable placeholder.
             self.database_path = Path(self._open_target)
         else:
             self._open_target = Path(database_path).absolute()
             self._quack_transport = False
+            self._bound_connection = None
+            self._bound_connection_lock = threading.RLock()
+            self._bound_transaction_depth = 0
+            self._quack_read_connection = None
             self.database_path = self._open_target
         self.owner_id = _identifier(owner_id, noun="owner_id")
         self.session_id = _identifier(session_id, noun="session_id")
@@ -837,9 +835,28 @@ class IntentRepository:
     def is_open(self) -> bool:
         return self._open and not self._closed
 
+    @property
+    def uses_quack_transport(self) -> bool:
+        """Whether reads use Quack and mutations require typed owner commands."""
+
+        return self._quack_transport
+
+    @property
+    def uses_bound_connection(self) -> bool:
+        """Whether lifecycle belongs to an injected exclusive-owner connection."""
+
+        return self._bound_connection is not None
+
     def close(self) -> None:
         self._closed = True
         self._open = False
+        connection = self._quack_read_connection
+        self._quack_read_connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
 
     def __enter__(self) -> IntentRepository:
         self._require_open()
@@ -855,6 +872,58 @@ class IntentRepository:
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
+        if self._bound_connection is not None:
+            # The exclusive state owner retains connection lifecycle authority.
+            # Repository calls serialize on that connection and own only their
+            # transaction boundary; close() never closes the injected handle.
+            with self._bound_connection_lock:
+                connection = self._bound_connection
+                if self._bound_transaction_depth:
+                    yield connection
+                    return
+                if write:
+                    connection.execute("BEGIN TRANSACTION")
+                    self._bound_transaction_depth = 1
+                    try:
+                        yield connection
+                        connection.execute("COMMIT")
+                    except BaseException:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise
+                    finally:
+                        self._bound_transaction_depth = 0
+                else:
+                    yield connection
+            return
+        if self._quack_transport:
+            with self._bound_connection_lock:
+                connection = self._quack_read_connection
+                if connection is not None and not quack_session_is_live(connection):
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    self._quack_read_connection = None
+                    connection = None
+                if connection is None:
+                    self._quack_read_connection = open_duckdb_connection(
+                        self._open_target
+                    )
+                    connection = self._quack_read_connection
+                try:
+                    yield connection
+                except BaseException as exc:
+                    if _is_quack_session_dead(exc):
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        self._quack_read_connection = None
+                    raise
+            return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,
         # commit/rollback with SQL, and always close the adapter explicitly.
         # Avoid relying on DuckDBConnection.__exit__ transaction bookkeeping,
@@ -893,6 +962,98 @@ class IntentRepository:
                 yield connection
         finally:
             connection.close()
+
+    def run_idempotent_owner_command(
+        self,
+        *,
+        request_id: str,
+        command: str,
+        command_payload: Mapping[str, Any],
+        store_id: str,
+        store_generation: str,
+        operation: Callable[[], Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """Run and durably memoize one typed owner command atomically.
+
+        The command mutation and its response share the same transaction on
+        the bound state-owner connection.  A request left in the inbox across
+        an owner crash therefore returns its stored response instead of
+        replaying a non-idempotent repository operation.
+        """
+
+        if not self.uses_bound_connection:
+            raise IntentRepositoryError(
+                "idempotent owner commands require a bound owner connection"
+            )
+        rid = _identifier(request_id, noun="request_id")
+        command_name = _identifier(command, noun="owner command")
+        store = str(store_id or "").strip()
+        if not store or "\x00" in store or len(store.encode("utf-8")) > MAX_ID_BYTES:
+            raise IntentRepositoryError("store_id is empty or exceeds its bound")
+        generation = _identifier(store_generation, noun="store_generation")
+        payload_map = _mapping(command_payload, noun="owner command payload")
+        command_id = content_identity({"command": command_name, "payload": payload_map})
+        idempotency_key = f"quack-owner-command:{rid}"
+        with self._connection(write=True) as connection:
+            prior = connection.execute(
+                """
+                SELECT command_kind, command_id, store_id, result_digest,
+                       body_json
+                FROM idempotency_records
+                WHERE idempotency_key = ?
+                """,
+                [idempotency_key],
+            ).fetchone()
+            if prior is not None:
+                body = _decode_json(prior[4], noun="owner command idempotency body")
+                if not isinstance(body, Mapping):
+                    raise IntentRepositoryIntegrityError(
+                        "owner command idempotency body is malformed"
+                    )
+                result = body.get("result")
+                if (
+                    str(prior[0]) != command_name
+                    or str(prior[1]) != command_id
+                    or str(prior[2]) != store
+                    or body.get("store_generation") != generation
+                    or not isinstance(result, Mapping)
+                    or str(prior[3]) != content_identity(dict(result))
+                ):
+                    raise IntentRepositoryConflictError(
+                        "owner command request identity was reused with stale bindings"
+                    )
+                return MappingProxyType(dict(result))
+            result = operation()
+            if not isinstance(result, Mapping):
+                raise IntentRepositoryIntegrityError(
+                    "owner command operation did not return a mapping"
+                )
+            result_map = dict(result)
+            stored_body = {
+                "request_id": rid,
+                "store_generation": generation,
+                "result": result_map,
+            }
+            connection.execute(
+                """
+                INSERT INTO idempotency_records (
+                    idempotency_key, command_kind, command_id, store_id,
+                    session_id, result_digest, created_at, expires_at, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    idempotency_key,
+                    command_name,
+                    command_id,
+                    store,
+                    self.session_id,
+                    content_identity(result_map),
+                    _utc_iso(),
+                    None,
+                    _canonical(stored_body, noun="owner command idempotency body"),
+                ],
+            )
+            return MappingProxyType(result_map)
 
     # -- event plumbing ------------------------------------------------------
 
@@ -3317,6 +3478,7 @@ class IntentRepository:
         blocker_kind: str,
         blocker_id: str,
         reason: str,
+        expected_revision: int | None = None,
     ) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")
         kind = _identifier(blocker_kind, noun="blocker_kind")
@@ -3338,6 +3500,12 @@ class IntentRepository:
             ).fetchone()
             if task_row is None:
                 raise KeyError(tcid)
+            current_revision = int(task_row[0])
+            if (
+                expected_revision is not None
+                and _positive_int(expected_revision, noun="expected_revision") != current_revision
+            ):
+                raise IntentRepositoryConflictError("task revision CAS is stale while blocking")
             connection.execute(
                 """
                 INSERT INTO task_blocks (
@@ -3347,14 +3515,16 @@ class IntentRepository:
                 """,
                 [block_id, tcid, kind, bid, reason_text, now, "", "active"],
             )
-            current_revision = int(task_row[0])
-            connection.execute(
+            updated = connection.execute(
                 """
                 UPDATE tasks SET status = 'blocked', revision = ?, updated_at = ?
-                WHERE task_cid = ?
+                WHERE task_cid = ? AND revision = ?
+                RETURNING revision
                 """,
-                [current_revision + 1, now, tcid],
-            )
+                [current_revision + 1, now, tcid, current_revision],
+            ).fetchone()
+            if updated is None:
+                raise IntentRepositoryConflictError("task revision CAS changed while blocking")
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_BLOCKED,
@@ -3371,7 +3541,13 @@ class IntentRepository:
                 },
             )
 
-    def unblock_task(self, *, task_cid: str, block_id: str = "") -> IntentReceipt:
+    def unblock_task(
+        self,
+        *,
+        task_cid: str,
+        block_id: str = "",
+        expected_revision: int | None = None,
+    ) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")
         now = _utc_iso()
         with self._connection(write=True) as connection:
@@ -3381,6 +3557,12 @@ class IntentRepository:
             ).fetchone()
             if task_row is None:
                 raise KeyError(tcid)
+            current_revision = int(task_row[0])
+            if (
+                expected_revision is not None
+                and _positive_int(expected_revision, noun="expected_revision") != current_revision
+            ):
+                raise IntentRepositoryConflictError("task revision CAS is stale while unblocking")
             if block_id:
                 bid = _identifier(block_id, noun="block_id")
                 connection.execute(
@@ -3398,14 +3580,17 @@ class IntentRepository:
                     """,
                     [now, tcid],
                 )
-            revision = int(task_row[0]) + 1
-            connection.execute(
+            revision = current_revision + 1
+            updated = connection.execute(
                 """
                 UPDATE tasks SET status = 'ready', revision = ?, updated_at = ?
-                WHERE task_cid = ?
+                WHERE task_cid = ? AND revision = ?
+                RETURNING revision
                 """,
-                [revision, now, tcid],
-            )
+                [revision, now, tcid, current_revision],
+            ).fetchone()
+            if updated is None:
+                raise IntentRepositoryConflictError("task revision CAS changed while unblocking")
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_UNBLOCKED,
@@ -4030,8 +4215,7 @@ class IntentRepository:
                 )
                 raw_evidence_digests = payload.get("evidence_digests", [])
                 if not isinstance(raw_evidence_digests, list) or any(
-                    not isinstance(item, str) or not item
-                    for item in raw_evidence_digests
+                    not isinstance(item, str) or not item for item in raw_evidence_digests
                 ):
                     raise IntentRepositoryIntegrityError(
                         "completion event evidence_digests are malformed"
@@ -4459,9 +4643,7 @@ class IntentRepository:
             recorded_at=_utc_iso(),
         )
 
-    def task_revision_history_projection(
-        self, task_cid_or_alias: str
-    ) -> Mapping[str, Any]:
+    def task_revision_history_projection(self, task_cid_or_alias: str) -> Mapping[str, Any]:
         """Return bounded task-body revisions for legacy spec-CID replay.
 
         Task relations are current plan specification and are deliberately not
@@ -4481,9 +4663,7 @@ class IntentRepository:
             if not rows:
                 raise KeyError(key)
             if len(rows) > 1:
-                raise IntentRepositoryIntegrityError(
-                    "task CID/alias lookup is ambiguous"
-                )
+                raise IntentRepositoryIntegrityError("task CID/alias lookup is ambiguous")
             task_cid = str(rows[0][0])
             count = int(
                 connection.execute(
@@ -4492,9 +4672,7 @@ class IntentRepository:
                 ).fetchone()[0]
             )
             if count > MAX_PROJECTION_RECORDS:
-                raise IntentRepositoryBoundsError(
-                    "task revision history exceeds projection bound"
-                )
+                raise IntentRepositoryBoundsError("task revision history exceeds projection bound")
             revision_rows = connection.execute(
                 "SELECT revision, status, body_json FROM task_revisions "
                 "WHERE task_cid = ? ORDER BY revision",
@@ -4517,9 +4695,7 @@ class IntentRepository:
             noun="task revision history projection",
         )
 
-    def plan_projection(
-        self, *, task_cids: Sequence[str] = ()
-    ) -> Mapping[str, Any]:
+    def plan_projection(self, *, task_cids: Sequence[str] = ()) -> Mapping[str, Any]:
         """Return a bounded, full-fidelity projection of current plan intent.
 
         Unlike :meth:`snapshot`, this projection is suitable for plan CAS and
@@ -4540,15 +4716,9 @@ class IntentRepository:
                     "plans",
                 )
                 for table in bounded_tables:
-                    count = int(
-                        connection.execute(
-                            f"SELECT COUNT(*) FROM {table}"
-                        ).fetchone()[0]
-                    )
+                    count = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
                     if count > MAX_PROJECTION_RECORDS:
-                        raise IntentRepositoryBoundsError(
-                            f"{table} projection count exceeds bound"
-                        )
+                        raise IntentRepositoryBoundsError(f"{table} projection count exceeds bound")
 
                 objective_rows = connection.execute(
                     """
@@ -4597,19 +4767,12 @@ class IntentRepository:
                     missing = sorted(set(requested) - found)
                     if missing:
                         raise KeyError(
-                            "unknown task_cids in plan projection: "
-                            + ", ".join(missing)
+                            "unknown task_cids in plan projection: " + ", ".join(missing)
                         )
                 else:
-                    task_count = int(
-                        connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[
-                            0
-                        ]
-                    )
+                    task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
                     if task_count > MAX_PAGE_LIMIT:
-                        raise IntentRepositoryBoundsError(
-                            "projection task count exceeds bound"
-                        )
+                        raise IntentRepositoryBoundsError("projection task count exceeds bound")
                     task_rows = connection.execute(
                         """
                         SELECT task_cid, task_alias, goal_cid, plan_cid,
@@ -4687,9 +4850,7 @@ class IntentRepository:
                             {
                                 "ordinal": int(row[1]),
                                 "path": str(row[2]),
-                                "effect": _decode_json(
-                                    row[3], noun="output effect"
-                                ),
+                                "effect": _decode_json(row[3], noun="output effect"),
                             }
                         )
                     for row in relation_rows["task_acceptance"]:
@@ -4697,28 +4858,21 @@ class IntentRepository:
                             {
                                 "ordinal": int(row[1]),
                                 "criterion": str(row[2]),
-                                "evidence_policy": _decode_json(
-                                    row[3], noun="acceptance policy"
-                                ),
+                                "evidence_policy": _decode_json(row[3], noun="acceptance policy"),
                             }
                         )
                     for row in relation_rows["task_validations"]:
                         validations_by_task[str(row[0])].append(
                             {
                                 "ordinal": int(row[1]),
-                                "argv": _decode_json(
-                                    row[2], noun="validation argv"
-                                ),
-                                "policy": _decode_json(
-                                    row[3], noun="validation policy"
-                                ),
+                                "argv": _decode_json(row[2], noun="validation argv"),
+                                "policy": _decode_json(row[3], noun="validation policy"),
                             }
                         )
 
                 watermark = int(
                     connection.execute(
-                        "SELECT COALESCE(MAX(global_sequence), 0) "
-                        "FROM domain_events"
+                        "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
                     ).fetchone()[0]
                 )
                 connection.execute("COMMIT")
@@ -4816,9 +4970,7 @@ class IntentRepository:
             noun="intent plan projection",
         )
 
-    def completion_evidence_projection(
-        self, *, task_cids: Sequence[str] = ()
-    ) -> Mapping[str, Any]:
+    def completion_evidence_projection(self, *, task_cids: Sequence[str] = ()) -> Mapping[str, Any]:
         """Return exact current task states and durable completion receipts."""
 
         requested = _projection_task_cids(task_cids)
@@ -4836,22 +4988,16 @@ class IntentRepository:
                     missing = sorted(set(requested) - found)
                     if missing:
                         raise KeyError(
-                            "unknown task_cids in completion projection: "
-                            + ", ".join(missing)
+                            "unknown task_cids in completion projection: " + ", ".join(missing)
                         )
                 else:
-                    task_count = int(
-                        connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[
-                            0
-                        ]
-                    )
+                    task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
                     if task_count > MAX_PAGE_LIMIT:
                         raise IntentRepositoryBoundsError(
                             "completion projection task count exceeds bound"
                         )
                     task_rows = connection.execute(
-                        "SELECT task_cid, status, revision FROM tasks "
-                        "ORDER BY task_cid"
+                        "SELECT task_cid, status, revision FROM tasks ORDER BY task_cid"
                     ).fetchall()
 
                 projected_task_cids = tuple(str(row[0]) for row in task_rows)
@@ -4883,8 +5029,7 @@ class IntentRepository:
                     receipt_rows = []
                 watermark = int(
                     connection.execute(
-                        "SELECT COALESCE(MAX(global_sequence), 0) "
-                        "FROM domain_events"
+                        "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
                     ).fetchone()[0]
                 )
                 connection.execute("COMMIT")
@@ -5085,8 +5230,9 @@ def _parse_iso_ms(value: str) -> int:
 
 
 def open_intent_repository(
-    database_path: str | Path,
+    database_path: str | Path | None = None,
     *,
+    bound_connection: Any | None = None,
     owner_id: str = DEFAULT_OWNER_ID,
     session_id: str = DEFAULT_SESSION_ID,
     install_schema: bool = True,
@@ -5097,6 +5243,7 @@ def open_intent_repository(
 
     return IntentRepository(
         database_path,
+        bound_connection=bound_connection,
         owner_id=owner_id,
         session_id=session_id,
         install_schema=install_schema,

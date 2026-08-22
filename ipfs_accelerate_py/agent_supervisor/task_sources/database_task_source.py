@@ -31,9 +31,18 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+    QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
+    QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+    QuackOwnerCommandRemoteError,
     STALE_IN_PROGRESS_UNSTALL_SECONDS,
     is_quack_transport_target,
     quack_transport_uri,
+    submit_quack_owner_command,
+    validate_quack_owner_command,
 )
 from .intent_repository import (
     DEFAULT_PAGE_LIMIT,
@@ -309,6 +318,187 @@ def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
             MappingProxyType(dict(item)) for item in validations if isinstance(item, Mapping)
         ),
     )
+
+
+def _intent_receipt_from_dict(payload: Mapping[str, Any]) -> IntentReceipt:
+    expected = {
+        "schema",
+        "event_id",
+        "event_type",
+        "global_sequence",
+        "recorded_at",
+        "subject_id",
+        "revision",
+        "changed",
+        "details",
+    }
+    if set(payload) != expected or payload.get("schema") != IntentReceipt.SCHEMA:
+        raise TaskSourceIntegrityError("typed owner receipt is malformed")
+    details = payload.get("details")
+    if not isinstance(details, Mapping):
+        raise TaskSourceIntegrityError("typed owner receipt details are malformed")
+    integer_fields = ("global_sequence", "revision")
+    if any(type(payload.get(field)) is not int for field in integer_fields):
+        raise TaskSourceIntegrityError("typed owner receipt integers are malformed")
+    if type(payload.get("changed")) is not bool:
+        raise TaskSourceIntegrityError("typed owner receipt changed flag is malformed")
+    return IntentReceipt(
+        event_id=str(payload["event_id"]),
+        event_type=str(payload["event_type"]),
+        global_sequence=int(payload["global_sequence"]),
+        recorded_at=str(payload["recorded_at"]),
+        subject_id=str(payload["subject_id"]),
+        revision=int(payload["revision"]),
+        changed=bool(payload["changed"]),
+        details=MappingProxyType(dict(details)),
+    )
+
+
+def _cas_result_from_dict(payload: Mapping[str, Any]) -> CASResult:
+    expected = {
+        "schema",
+        "task",
+        "previous_status",
+        "revision",
+        "event_cursor",
+        "changed",
+        "receipt_cid",
+    }
+    if set(payload) != expected or payload.get("schema") != CASResult.SCHEMA:
+        raise TaskSourceIntegrityError("typed owner CAS result is malformed")
+    task_payload = payload.get("task")
+    if not isinstance(task_payload, Mapping):
+        raise TaskSourceIntegrityError("typed owner CAS task is malformed")
+    if (
+        any(type(payload.get(field)) is not int for field in ("revision", "event_cursor"))
+        or type(payload.get("changed")) is not bool
+    ):
+        raise TaskSourceIntegrityError("typed owner CAS scalars are malformed")
+    return CASResult(
+        task=_as_task_record(task_payload),
+        previous_status=str(payload["previous_status"]),
+        revision=int(payload["revision"]),
+        event_cursor=int(payload["event_cursor"]),
+        changed=bool(payload["changed"]),
+        receipt_cid=str(payload["receipt_cid"]),
+    )
+
+
+def _raise_typed_owner_error(exc: QuackOwnerCommandRemoteError) -> None:
+    if exc.code == "conflict":
+        raise TaskSourceConflictError(exc.message) from exc
+    if exc.code == "completion_refused":
+        raise TaskSourceCompletionError(exc.message) from exc
+    if exc.code == "bounds":
+        raise TaskSourceBoundsError(exc.message) from exc
+    if exc.code == "integrity":
+        raise TaskSourceIntegrityError(exc.message) from exc
+    if exc.code == "not_found":
+        raise KeyError(exc.message) from exc
+    raise DatabaseTaskSourceError(exc.message) from exc
+
+
+def quack_owner_command_error_code(exc: BaseException) -> str:
+    """Map repository failures to the closed client-side error vocabulary."""
+
+    if isinstance(exc, (TaskSourceCompletionError, IntentCompletionError)):
+        return "completion_refused"
+    if isinstance(exc, (TaskSourceConflictError, IntentRepositoryConflictError)):
+        return "conflict"
+    if isinstance(exc, (TaskSourceBoundsError, IntentRepositoryBoundsError)):
+        return "bounds"
+    if isinstance(exc, (TaskSourceIntegrityError, IntentRepositoryIntegrityError)):
+        return "integrity"
+    if isinstance(exc, KeyError):
+        return "not_found"
+    return "owner_error"
+
+
+def execute_quack_owner_command(
+    repository: IntentRepository,
+    command: str,
+    payload: Mapping[str, Any],
+    *,
+    request_id: str = "",
+    store_id: str = "",
+    store_generation: str = "",
+) -> Mapping[str, Any]:
+    """Execute one admitted command through canonical repository methods.
+
+    The repository should be constructed with ``bound_connection=`` on the
+    state owner's already-open DuckDB connection.  No SQL arrives from the
+    requester and every mutation retains the repository's transaction gates.
+    """
+
+    if not isinstance(repository, IntentRepository):
+        raise TaskSourceIntegrityError("typed owner command requires an IntentRepository")
+    if not repository.uses_bound_connection:
+        raise TaskSourceIntegrityError(
+            "typed owner command requires the exclusive owner's bound connection"
+        )
+    args = validate_quack_owner_command(command, payload)
+    source = DatabaseTaskSource(intent=repository)
+
+    def execute_once() -> Mapping[str, Any]:
+        if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS:
+            result = source.compare_and_set_status(
+                args["task_cid_or_alias"],
+                args["expected_revision"],
+                args["status"],
+                args.get("receipt"),
+                evidence_digests=args.get("evidence_digests"),
+            )
+            return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK:
+            result = source.rearm_blocked_task(
+                args["task_cid_or_alias"],
+                receipt=args.get("receipt"),
+            )
+            return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF:
+            receipt = source.record_queue_backoff(
+                task_cid=args["task_cid"],
+                delay_ms=args["delay_ms"],
+                reason=args.get("reason", "backoff"),
+                selection_penalty=args.get("selection_penalty", 0),
+            )
+        elif command == QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY:
+            receipt = source.record_queue_retry(task_cid=args["task_cid"])
+        elif command == QUACK_OWNER_COMMAND_RECORD_EVIDENCE:
+            receipt = source.record_evidence(
+                task_cid=args["task_cid"],
+                evidence_kind=args["evidence_kind"],
+                digest=args["digest"],
+                body=args.get("body"),
+            )
+        elif command == QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT:
+            receipt = source.record_validation_result(
+                task_cid=args["task_cid"],
+                outcome=args["outcome"],
+                evidence_digest=args["evidence_digest"],
+                argv=args.get("argv"),
+                attempt_id=args.get("attempt_id", ""),
+                body=args.get("body"),
+            )
+        else:  # validate_quack_owner_command keeps this branch unreachable.
+            raise TaskSourceIntegrityError("typed owner command is not implemented")
+        return receipt.to_dict()
+
+    bindings = (request_id, store_id, store_generation)
+    if any(bindings):
+        if not all(bindings):
+            raise TaskSourceIntegrityError(
+                "durable owner command replay requires request, store, and generation bindings"
+            )
+        return repository.run_idempotent_owner_command(
+            request_id=request_id,
+            command=command,
+            command_payload=args,
+            store_id=store_id,
+            store_generation=store_generation,
+            operation=execute_once,
+        )
+    return execute_once()
 
 
 # ---------------------------------------------------------------------------
@@ -703,23 +893,17 @@ class DatabaseTaskSource:
             plan_count=snap.plan_count,
         )
 
-    def plan_projection(
-        self, *, task_cids: Sequence[str] = ()
-    ) -> Mapping[str, Any]:
+    def plan_projection(self, *, task_cids: Sequence[str] = ()) -> Mapping[str, Any]:
         """Forward the full-fidelity intent plan projection."""
 
         return self._intent.plan_projection(task_cids=task_cids)
 
-    def task_revision_history_projection(
-        self, task_cid_or_alias: str
-    ) -> Mapping[str, Any]:
+    def task_revision_history_projection(self, task_cid_or_alias: str) -> Mapping[str, Any]:
         """Forward bounded lifecycle bodies used for legacy spec-CID replay."""
 
         return self._intent.task_revision_history_projection(task_cid_or_alias)
 
-    def completion_evidence_projection(
-        self, *, task_cids: Sequence[str] = ()
-    ) -> Mapping[str, Any]:
+    def completion_evidence_projection(self, *, task_cids: Sequence[str] = ()) -> Mapping[str, Any]:
         """Forward exact completion receipts without creating new authority."""
 
         return self._intent.completion_evidence_projection(task_cids=task_cids)
@@ -765,9 +949,7 @@ class DatabaseTaskSource:
                 raise TaskSourceIntegrityError(f"{noun} task record is malformed")
             task_cid = str(item.get("task_cid") or "")
             if not task_cid or task_cid in tasks:
-                raise TaskSourceIntegrityError(
-                    f"{noun} task identities are missing or duplicated"
-                )
+                raise TaskSourceIntegrityError(f"{noun} task identities are missing or duplicated")
             tasks[task_cid] = item
         return tasks
 
@@ -806,38 +988,24 @@ class DatabaseTaskSource:
             if isinstance(item, Mapping)
         ]
         if any(not dependency for dependency in dependencies):
-            raise TaskSourceIntegrityError(
-                "candidate task contains an empty dependency identity"
-            )
+            raise TaskSourceIntegrityError("candidate task contains an empty dependency identity")
         outputs: list[Mapping[str, Any]] = []
         for item in task.get("outputs", []):
-            if not isinstance(item, Mapping) or not isinstance(
-                item.get("effect"), Mapping
-            ):
-                raise TaskSourceIntegrityError(
-                    "candidate task output effect must be a mapping"
-                )
+            if not isinstance(item, Mapping) or not isinstance(item.get("effect"), Mapping):
+                raise TaskSourceIntegrityError("candidate task output effect must be a mapping")
             outputs.append(dict(item["effect"]))
         acceptance: list[Any] = []
         for item in task.get("acceptance", []):
             if not isinstance(item, Mapping) or not isinstance(
                 item.get("evidence_policy"), Mapping
             ):
-                raise TaskSourceIntegrityError(
-                    "candidate task acceptance policy must be a mapping"
-                )
+                raise TaskSourceIntegrityError("candidate task acceptance policy must be a mapping")
             acceptance.append(dict(item["evidence_policy"]))
         validations: list[Any] = []
         for item in task.get("validations", []):
-            if not isinstance(item, Mapping) or not isinstance(
-                item.get("policy"), Mapping
-            ):
-                raise TaskSourceIntegrityError(
-                    "candidate task validation policy must be a mapping"
-                )
-            validations.append(
-                {"argv": list(item.get("argv") or ()), **dict(item["policy"])}
-            )
+            if not isinstance(item, Mapping) or not isinstance(item.get("policy"), Mapping):
+                raise TaskSourceIntegrityError("candidate task validation policy must be a mapping")
+            validations.append({"argv": list(item.get("argv") or ()), **dict(item["policy"])})
         return dependencies, outputs, acceptance, validations
 
     def apply_plan_revision(
@@ -892,9 +1060,7 @@ class DatabaseTaskSource:
         if not normalized_origin.endswith("steer"):
             raise TaskSourceIntegrityError(f"unsupported plan origin: {origin!r}")
         if store_continuation is None or not idempotency_key:
-            raise TaskSourceConflictError(
-                "steer requires PlanRevisionStore rollback authority"
-            )
+            raise TaskSourceConflictError("steer requires PlanRevisionStore rollback authority")
         if isinstance(fencing_token, bool) or not isinstance(fencing_token, int):
             raise TaskSourceConflictError("steer requires a fencing token")
         if fencing_token < 1:
@@ -903,9 +1069,7 @@ class DatabaseTaskSource:
             raise TaskSourceIntegrityError("steer requires a revision and closed delta")
 
         current_projection = self.plan_projection()
-        current_tasks = self._projection_tasks(
-            current_projection, noun="current plan projection"
-        )
+        current_tasks = self._projection_tasks(current_projection, noun="current plan projection")
         source_root = str(self.plan_root_cid or "")
         if not source_root:
             active_plans = [
@@ -914,9 +1078,7 @@ class DatabaseTaskSource:
                 if isinstance(item, Mapping) and item.get("status") == "active"
             ]
             if len(active_plans) != 1:
-                raise TaskSourceIntegrityError(
-                    "steer requires one exact active predecessor plan"
-                )
+                raise TaskSourceIntegrityError("steer requires one exact active predecessor plan")
             source_root = str(active_plans[0].get("plan_cid") or "")
         predecessor = self._intent.get_plan(source_root)
         if predecessor is None:
@@ -934,9 +1096,7 @@ class DatabaseTaskSource:
                 candidate_source.materialize(
                     population,
                     repository_tree_id=repository_tree_id,
-                    plan_root_cid=str(
-                        getattr(revision, "plan_root_cid", "") or ""
-                    ),
+                    plan_root_cid=str(getattr(revision, "plan_root_cid", "") or ""),
                 )
                 candidate_projection = candidate_source.plan_projection()
             finally:
@@ -978,9 +1138,7 @@ class DatabaseTaskSource:
             }:
                 target = str(getattr(item, "target_cid", "") or "")
                 if not target or target in amendments:
-                    raise TaskSourceIntegrityError(
-                        "amend delta target is missing or duplicated"
-                    )
+                    raise TaskSourceIntegrityError("amend delta target is missing or duplicated")
                 amendments[target] = item
             elif operation is PlanDeltaOperation.ADD_TASK:
                 task_cid = str(getattr(item, "after_record_cid", "") or "")
@@ -1037,9 +1195,7 @@ class DatabaseTaskSource:
                 )
             live_spec = task_projection_spec_cid(current)
             if str(getattr(item, "expected_target_spec_revision", "")) != live_spec:
-                raise TaskSourceConflictError(
-                    f"task {task_cid} specification CAS is stale"
-                )
+                raise TaskSourceConflictError(f"task {task_cid} specification CAS is stale")
             candidate_spec = task_projection_spec_cid(candidate)
             if str(getattr(item, "after_record_cid", "")) != candidate_spec:
                 raise TaskSourceConflictError(
@@ -1048,14 +1204,12 @@ class DatabaseTaskSource:
         if claimed & changed_existing:
             raise TaskSourceConflictError("steer would amend claimed task history")
 
-        for task_cid in sorted(amendments, key=lambda cid: (
-            int(candidate_tasks[cid].get("ordinal") or 0), cid
-        )):
+        for task_cid in sorted(
+            amendments, key=lambda cid: (int(candidate_tasks[cid].get("ordinal") or 0), cid)
+        ):
             candidate = candidate_tasks[task_cid]
             live = current_tasks[task_cid]
-            dependencies, outputs, acceptance, validations = (
-                self._task_upsert_relations(candidate)
-            )
+            dependencies, outputs, acceptance, validations = self._task_upsert_relations(candidate)
             self._intent.upsert_task(
                 task_cid=task_cid,
                 task_alias=str(candidate["task_alias"]),
@@ -1077,13 +1231,11 @@ class DatabaseTaskSource:
         candidate_root = str(getattr(revision, "plan_root_cid", "") or "")
         if not candidate_root:
             raise TaskSourceIntegrityError("steer revision has no plan root CID")
-        for task_cid in sorted(additions, key=lambda cid: (
-            int(candidate_tasks[cid].get("ordinal") or 0), cid
-        )):
+        for task_cid in sorted(
+            additions, key=lambda cid: (int(candidate_tasks[cid].get("ordinal") or 0), cid)
+        ):
             candidate = candidate_tasks[task_cid]
-            candidate_lifecycle = self._lifecycle_for_status(
-                str(candidate.get("status") or "")
-            )
+            candidate_lifecycle = self._lifecycle_for_status(str(candidate.get("status") or ""))
             if candidate_lifecycle not in {
                 LifecycleState.PROPOSED,
                 LifecycleState.ADMITTED,
@@ -1094,9 +1246,7 @@ class DatabaseTaskSource:
                 raise TaskSourceConflictError(
                     f"new task {task_cid} has a non-admissible initial lifecycle"
                 )
-            dependencies, outputs, acceptance, validations = (
-                self._task_upsert_relations(candidate)
-            )
+            dependencies, outputs, acceptance, validations = self._task_upsert_relations(candidate)
             self._intent.upsert_task(
                 task_cid=task_cid,
                 task_alias=str(candidate["task_alias"]),
@@ -1128,9 +1278,7 @@ class DatabaseTaskSource:
         )
         self.plan_root_cid = candidate_root
         projection = self.plan_projection()
-        projected_tasks = self._projection_tasks(
-            projection, noun="applied plan projection"
-        )
+        projected_tasks = self._projection_tasks(projection, noun="applied plan projection")
         for task_cid in set(amendments) | set(additions):
             if task_projection_spec_cid(projected_tasks[task_cid]) != (
                 task_projection_spec_cid(candidate_tasks[task_cid])
@@ -1272,6 +1420,23 @@ class DatabaseTaskSource:
         evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
         key = _task_key(task_cid_or_alias)
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+                    {
+                        "task_cid_or_alias": key,
+                        "expected_revision": expected_revision,
+                        "status": status,
+                        "receipt": dict(receipt) if receipt is not None else None,
+                        "evidence_digests": (
+                            list(evidence_digests) if evidence_digests is not None else None
+                        ),
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _cas_result_from_dict(result)
         prior = self._intent.get_task(key)
         if prior is None:
             raise KeyError(key)
@@ -1321,6 +1486,56 @@ class DatabaseTaskSource:
             now=now, stale_seconds=stale_seconds
         )
 
+    def rearm_blocked_task(
+        self,
+        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
+        *,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> CASResult:
+        """CAS a blocked task to retrying using the owner's current revision.
+
+        Quack clients must not ATTACH only to read ``expected_revision``.
+        The exclusive owner reads and mutates on its bound connection.
+        """
+
+        key = _task_key(task_cid_or_alias)
+        compact = dict(receipt or {})
+        compact.setdefault("operation", "database_declared_outputs_on_head_rearm")
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+                    {
+                        "task_cid_or_alias": key,
+                        "receipt": compact,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _cas_result_from_dict(result)
+        record = self.get_task(key)
+        if record is None:
+            raise KeyError(key)
+        status = str(record.status or "").strip().lower()
+        if status == "retrying":
+            return CASResult(
+                task=record,
+                previous_status="retrying",
+                revision=int(record.revision),
+                event_cursor=0,
+                changed=False,
+            )
+        if status != "blocked":
+            raise TaskSourceConflictError(
+                f"rearm requires blocked status, observed {status!r}"
+            )
+        return self.compare_and_set_status(
+            record.task_cid,
+            int(record.revision),
+            "retrying",
+            compact,
+        )
+
     def record_queue_backoff(
         self,
         *,
@@ -1338,6 +1553,20 @@ class DatabaseTaskSource:
         authority while avoiding private repository access by callers.
         """
 
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+                    {
+                        "task_cid": task_cid,
+                        "delay_ms": delay_ms,
+                        "reason": reason,
+                        "selection_penalty": selection_penalty,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
         return self._intent.record_queue_backoff(
             task_cid=task_cid,
             delay_ms=delay_ms,
@@ -1348,6 +1577,15 @@ class DatabaseTaskSource:
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
         """Clear one canonical task cooldown through the intent authority."""
 
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
+                    {"task_cid": task_cid},
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
         return self._intent.record_queue_retry(task_cid=task_cid)
 
     def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
@@ -1363,6 +1601,20 @@ class DatabaseTaskSource:
         digest: str,
         body: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+                    {
+                        "task_cid": task_cid,
+                        "evidence_kind": evidence_kind,
+                        "digest": digest,
+                        "body": dict(body) if body is not None else None,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
         return self._intent.record_evidence(
             task_cid=task_cid,
             evidence_kind=evidence_kind,
@@ -1380,6 +1632,22 @@ class DatabaseTaskSource:
         attempt_id: str = "",
         body: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+                    {
+                        "task_cid": task_cid,
+                        "outcome": outcome,
+                        "evidence_digest": evidence_digest,
+                        "argv": list(argv) if argv is not None else None,
+                        "attempt_id": attempt_id,
+                        "body": dict(body) if body is not None else None,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
         return self._intent.record_validation_result(
             task_cid=task_cid,
             outcome=outcome,
