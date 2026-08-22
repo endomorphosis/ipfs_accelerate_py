@@ -6,6 +6,12 @@ reserves objective budget before exposing the selected meta-action.  It does
 not execute an action, call a model, write durable state, admit a repository
 effect, or authorize task completion.
 
+``AutonomyRuntime@1`` is the event-driven loop around that shell.  It consumes
+closed wake kinds, runs at most the nearest safe segment, acknowledges
+cursors only after a cycle, and stays idle on unchanged complete or healthily
+exhausted boards.  It never refills a budget, never calls a model, and never
+rewrites a checkpoint whose durable identity is unchanged.
+
 The effect boundary remains
 ``agent_supervisor.context.decision_runtime.DecisionRuntime``.  A downstream
 adapter must translate an ``ACTION_ADMITTED`` result into that authority's
@@ -23,10 +29,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from ..proof.formal_verification_contracts import canonical_json, content_identity
 from .cognitive_budget import CognitiveCost, ObjectiveCognitiveBudgetLedger
@@ -34,6 +40,7 @@ from .cognitive_scheduler import CognitiveScheduler, CognitiveSchedulingContext
 from .contracts import (
     AUTONOMOUS_META_CONTROLLER_PROGRAM_ID,
     MAX_CANONICAL_RECORD_BYTES,
+    MAX_IDENTIFIER_BYTES,
     BudgetExhaustion,
     BudgetLedger,
     BudgetPurpose,
@@ -46,15 +53,174 @@ from .contracts import (
     ResolutionCandidate,
 )
 from .decision_graph import DecisionGraphController, question_is_admissibly_terminal
+from .metrics import AUTONOMY_METRICS_INTERFACE, AutonomyMetrics
+from .receding_horizon import (
+    PlanSuffixInvalidationReceipt,
+    RecedingHorizonController,
+    RecedingHorizonEvidence,
+)
 
+AUTONOMOUS_META_CONTROLLER_INTERFACE: Final[str] = "AutonomousMetaController@1"
 AUTONOMOUS_META_CONTROLLER_SNAPSHOT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/autonomy/runtime-snapshot@1"
 )
+AUTONOMY_RUNTIME_INTERFACE: Final[str] = "AutonomyRuntime@1"
+AUTONOMY_RUNTIME_SNAPSHOT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy/runtime-loop-snapshot@1"
+)
+AUTONOMY_CYCLE_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy/cycle-receipt@1"
+)
+AUTONOMY_WAKE_EVENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/autonomy/wake-event@1"
+)
 MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES = 4 * MAX_CANONICAL_RECORD_BYTES
+MAX_ACKNOWLEDGED_CURSORS: Final[int] = 256
+DEFAULT_SAFETY_INTERVAL_MS: Final[int] = 300_000
+_MAX_SEQUENCE: Final[int] = (1 << 63) - 1
+
+_RUNTIME_WAKE_KIND_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "task_board": "task",
+        "task": "task",
+        "objective": "objective",
+        "repository": "repository",
+        "child_process": "provider",
+        "lease": "lease",
+        "validation": "validation",
+        "proof": "proof",
+        "provider_capacity": "provider",
+        "provider": "provider",
+        "policy": "objective",
+        "human": "human",
+        "budget": "budget",
+        "counterexample": "counterexample",
+        "freshness": "freshness",
+        "observation_window": "window",
+        "window": "window",
+        "cancellation": "cancellation",
+    }
+)
 
 
 class AutonomousMetaControllerError(ValueError):
     """Raised when a composition invariant or restart binding is invalid."""
+
+
+def _bounded_identifier(value: Any, name: str, *, required: bool = True) -> str:
+    text = "" if value is None else str(value).strip()
+    if not text:
+        if required:
+            raise AutonomousMetaControllerError(f"{name} must be a bounded identifier")
+        return ""
+    if (
+        len(text.encode("utf-8")) > MAX_IDENTIFIER_BYTES
+        or any(char.isspace() for char in text)
+        or "\x00" in text
+    ):
+        raise AutonomousMetaControllerError(f"{name} must be a compact bounded identifier")
+    return text
+
+
+def _bounded_int(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise AutonomousMetaControllerError(f"{name} must be a non-negative integer")
+    if value < 0 or value > _MAX_SEQUENCE:
+        raise AutonomousMetaControllerError(f"{name} is out of bounds")
+    return value
+
+
+def _bounded_bool(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise AutonomousMetaControllerError(f"{name} must be a boolean")
+    return value
+
+
+def _parse_snapshot_mapping(
+    snapshot: Mapping[str, Any] | str | bytes,
+    *,
+    max_bytes: int,
+) -> dict[str, Any]:
+    if isinstance(snapshot, (bytes, str)):
+        encoded = snapshot if isinstance(snapshot, bytes) else snapshot.encode("utf-8")
+        if len(encoded) > max_bytes:
+            raise AutonomousMetaControllerError("runtime snapshot exceeds its bounded size")
+        duplicates: set[str] = set()
+
+        def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            value: dict[str, Any] = {}
+            for key, item in pairs:
+                if key in value:
+                    duplicates.add(key)
+                value[key] = item
+            return value
+
+        try:
+            decoded = encoded.decode("utf-8")
+            raw = json.loads(decoded, object_pairs_hook=pairs_hook)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise AutonomousMetaControllerError("runtime snapshot is malformed") from exc
+        if duplicates:
+            raise AutonomousMetaControllerError("runtime snapshot contains duplicate fields")
+    elif isinstance(snapshot, Mapping):
+        raw = dict(snapshot)
+        try:
+            encoded = canonical_json(raw).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise AutonomousMetaControllerError("runtime snapshot is malformed") from exc
+        if len(encoded) > max_bytes:
+            raise AutonomousMetaControllerError("runtime snapshot exceeds its bounded size")
+    else:
+        raise AutonomousMetaControllerError("unsupported runtime snapshot")
+    if not isinstance(raw, Mapping):
+        raise AutonomousMetaControllerError("runtime snapshot must contain an object")
+    return dict(raw)
+
+
+class AutonomyWakeKind(str, Enum):  # noqa: UP042 - Python 3.8 support
+    """Closed vocabulary of meaningful autonomy wakes."""
+
+    REPOSITORY = "repository"
+    OBJECTIVE = "objective"
+    TASK = "task"
+    VALIDATION = "validation"
+    PROOF = "proof"
+    PROVIDER = "provider"
+    LEASE = "lease"
+    HUMAN = "human"
+    BUDGET = "budget"
+    COUNTEREXAMPLE = "counterexample"
+    FRESHNESS = "freshness"
+    WINDOW = "window"
+    CANCELLATION = "cancellation"
+
+
+AUTONOMY_WAKE_KINDS: Final[tuple[str, ...]] = tuple(item.value for item in AutonomyWakeKind)
+
+
+def coerce_autonomy_wake_kind(value: Any) -> AutonomyWakeKind:
+    """Map a runtime/coordinator kind onto the closed autonomy vocabulary."""
+
+    if isinstance(value, AutonomyWakeKind):
+        return value
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    mapped = _RUNTIME_WAKE_KIND_ALIASES.get(raw, raw)
+    try:
+        return AutonomyWakeKind(mapped)
+    except ValueError as exc:
+        raise AutonomousMetaControllerError("unknown autonomy wake kind") from exc
+
+
+class AutonomyRuntimeStatus(str, Enum):  # noqa: UP042 - Python 3.8 support
+    """Closed outcome of one event-driven cycle."""
+
+    IDLE = "idle"
+    PROGRESSING = "progressing"
+    BLOCKED = "blocked"
+    EXHAUSTED = "exhausted"
+    UNAVAILABLE = "unavailable"
+    CANCELLED = "cancelled"
+    QUARANTINED = "quarantined"
 
 
 class BudgetAdmissionStatus(str, Enum):  # noqa: UP042 - Python 3.8 support
@@ -341,6 +507,272 @@ class DecisionRuntimeAdapter(Protocol):
         """Return a DecisionRuntime decision/permit for an admitted step."""
 
 
+@dataclass(frozen=True)
+class AutonomyWakeEvent:
+    """One content-bound wake.  Cursors, not timestamps, are the identity."""
+
+    kind: AutonomyWakeKind
+    cursor_id: str
+    sequence: int = 0
+    subject_id: str = ""
+    evidence_id: str = ""
+    cancelled: bool = False
+    stale: bool = False
+    safety_timer: bool = False
+    reason: str = "notification"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", coerce_autonomy_wake_kind(self.kind))
+        object.__setattr__(
+            self, "cursor_id", _bounded_identifier(self.cursor_id, "cursor_id")
+        )
+        object.__setattr__(self, "sequence", _bounded_int(self.sequence, "sequence"))
+        object.__setattr__(
+            self,
+            "subject_id",
+            _bounded_identifier(self.subject_id, "subject_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "evidence_id",
+            _bounded_identifier(self.evidence_id, "evidence_id", required=False),
+        )
+        object.__setattr__(self, "cancelled", _bounded_bool(self.cancelled, "cancelled"))
+        object.__setattr__(self, "stale", _bounded_bool(self.stale, "stale"))
+        object.__setattr__(
+            self, "safety_timer", _bounded_bool(self.safety_timer, "safety_timer")
+        )
+        reason = str(self.reason or "notification").strip() or "notification"
+        if len(reason.encode("utf-8")) > MAX_IDENTIFIER_BYTES:
+            raise AutonomousMetaControllerError("wake reason is unbounded")
+        object.__setattr__(self, "reason", reason)
+        if self.kind is AutonomyWakeKind.WINDOW:
+            object.__setattr__(self, "safety_timer", True)
+            if self.reason == "notification":
+                object.__setattr__(self, "reason", "safety_timer")
+        elif self.safety_timer:
+            raise AutonomousMetaControllerError(
+                "only a window wake may be marked as the safety timer"
+            )
+        if self.kind is AutonomyWakeKind.CANCELLATION:
+            object.__setattr__(self, "cancelled", True)
+
+    @property
+    def event_id(self) -> str:
+        return content_identity(
+            {
+                "schema": AUTONOMY_WAKE_EVENT_SCHEMA,
+                "kind": self.kind.value,
+                "cursor_id": self.cursor_id,
+                "sequence": self.sequence,
+                "subject_id": self.subject_id,
+                "evidence_id": self.evidence_id,
+                "cancelled": self.cancelled,
+                "stale": self.stale,
+                "safety_timer": self.safety_timer,
+            }
+        )
+
+    def to_record(self) -> Mapping[str, Any]:
+        payload = {
+            "schema": AUTONOMY_WAKE_EVENT_SCHEMA,
+            "kind": self.kind.value,
+            "cursor_id": self.cursor_id,
+            "sequence": self.sequence,
+            "subject_id": self.subject_id,
+            "evidence_id": self.evidence_id,
+            "cancelled": self.cancelled,
+            "stale": self.stale,
+            "safety_timer": self.safety_timer,
+            "reason": self.reason,
+        }
+        payload["event_id"] = self.event_id
+        return MappingProxyType(payload)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any] | AutonomyWakeEvent) -> AutonomyWakeEvent:
+        if isinstance(payload, AutonomyWakeEvent):
+            return payload
+        if not isinstance(payload, Mapping):
+            raise AutonomousMetaControllerError("wake event must be an object")
+        return cls(
+            kind=payload.get("kind", ""),
+            cursor_id=payload.get("cursor_id", ""),
+            sequence=int(payload.get("sequence", 0) or 0),
+            subject_id=str(payload.get("subject_id") or ""),
+            evidence_id=str(payload.get("evidence_id") or ""),
+            cancelled=bool(payload.get("cancelled", False)),
+            stale=bool(payload.get("stale", False)),
+            safety_timer=bool(payload.get("safety_timer", False)),
+            reason=str(payload.get("reason") or "notification"),
+        )
+
+    @classmethod
+    def from_runtime_wake(cls, event: Any) -> AutonomyWakeEvent:
+        """Adapt a coordinator wake without absorbing that coordinator."""
+
+        if isinstance(event, AutonomyWakeEvent):
+            return event
+        kinds = getattr(event, "kinds", None)
+        if kinds:
+            kind = kinds[0]
+        else:
+            kind = getattr(event, "kind", "")
+        cursor_ids = tuple(getattr(event, "cursor_ids", ()) or ())
+        cursor_id = cursor_ids[0] if cursor_ids else str(getattr(event, "cursor_id", "") or "")
+        semantic = getattr(event, "semantic_cursors", None) or {}
+        if not cursor_id and isinstance(semantic, Mapping) and semantic:
+            cursor_id = str(next(iter(semantic.values())))
+        return cls(
+            kind=kind,
+            cursor_id=cursor_id,
+            sequence=_bounded_int(getattr(event, "sequence", 0) or 0, "sequence"),
+            subject_id=str(getattr(event, "subject_id", "") or ""),
+            evidence_id=str(getattr(event, "evidence_id", "") or ""),
+            cancelled=bool(getattr(event, "cancelled", False)),
+            stale=bool(getattr(event, "stale", False)),
+            safety_timer=bool(getattr(event, "safety_timer", False)),
+            reason=str(getattr(event, "reason", "") or "notification"),
+        )
+
+
+class AutonomyCheckpointSink(Protocol):
+    """Optional durable sink.  Implementations must skip unchanged payloads."""
+
+    def persist(self, snapshot: Mapping[str, Any]) -> bool:
+        """Return True only when a durable write actually occurred."""
+
+
+class InMemoryAutonomyCheckpointSink:
+    """Test/helper sink that refuses to rewrite an identical snapshot."""
+
+    def __init__(self) -> None:
+        self._encoded = ""
+        self.write_count = 0
+        self.last_snapshot: Mapping[str, Any] | None = None
+
+    def persist(self, snapshot: Mapping[str, Any]) -> bool:
+        encoded = canonical_json(dict(snapshot))
+        if encoded == self._encoded:
+            return False
+        self._encoded = encoded
+        self.write_count += 1
+        self.last_snapshot = MappingProxyType(dict(snapshot))
+        return True
+
+
+@dataclass(frozen=True)
+class AutonomyCycleResult:
+    """One cycle's compact receipt.  Never an effect or completion permit."""
+
+    status: AutonomyRuntimeStatus
+    cursor_id: str
+    acknowledged: bool
+    wrote_state: bool
+    model_called: bool
+    scanned: bool
+    refilled: bool
+    safety_timer: bool
+    reason_codes: tuple[str, ...] = ()
+    step: MetaControllerStep | None = None
+    suffix_receipt: PlanSuffixInvalidationReceipt | None = None
+    nearest_safe_segment_ids: tuple[str, ...] = ()
+    metrics: Mapping[str, Any] = field(default_factory=dict)
+    receipt_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, AutonomyRuntimeStatus):
+            raise AutonomousMetaControllerError("invalid cycle status")
+        object.__setattr__(
+            self, "cursor_id", _bounded_identifier(self.cursor_id, "cursor_id")
+        )
+        for name in (
+            "acknowledged",
+            "wrote_state",
+            "model_called",
+            "scanned",
+            "refilled",
+            "safety_timer",
+        ):
+            object.__setattr__(self, name, _bounded_bool(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(_bounded_identifier(item, "reason_codes") for item in self.reason_codes),
+        )
+        if self.step is not None and not isinstance(self.step, MetaControllerStep):
+            raise AutonomousMetaControllerError("cycle step must be a MetaControllerStep")
+        if self.suffix_receipt is not None and not isinstance(
+            self.suffix_receipt, PlanSuffixInvalidationReceipt
+        ):
+            raise AutonomousMetaControllerError("suffix receipt is not a plan-suffix adapter")
+        object.__setattr__(
+            self,
+            "nearest_safe_segment_ids",
+            tuple(
+                _bounded_identifier(item, "nearest_safe_segment_ids")
+                for item in self.nearest_safe_segment_ids
+            ),
+        )
+        if self.model_called:
+            raise AutonomousMetaControllerError(
+                "the autonomy runtime is provider-free and cannot call a model"
+            )
+        if self.refilled:
+            raise AutonomousMetaControllerError(
+                "the autonomy runtime cannot refill an objective budget"
+            )
+        metrics = dict(self.metrics) if self.metrics else {}
+        object.__setattr__(self, "metrics", MappingProxyType(metrics))
+        body = {
+            "schema": AUTONOMY_CYCLE_RECEIPT_SCHEMA,
+            "status": self.status.value,
+            "cursor_id": self.cursor_id,
+            "acknowledged": self.acknowledged,
+            "wrote_state": self.wrote_state,
+            "model_called": False,
+            "scanned": self.scanned,
+            "refilled": False,
+            "safety_timer": self.safety_timer,
+            "reason_codes": list(self.reason_codes),
+            "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
+            "step_status": None if self.step is None else self.step.status.value,
+            "suffix_disposition": (
+                None if self.suffix_receipt is None else self.suffix_receipt.disposition.value
+            ),
+        }
+        claimed = self.receipt_id
+        identity = content_identity(body)
+        if claimed and claimed != identity:
+            raise AutonomousMetaControllerError("cycle receipt identity mismatch")
+        object.__setattr__(self, "receipt_id", identity)
+
+    @property
+    def authorizes_effect(self) -> bool:
+        return False
+
+    @property
+    def authorizes_completion(self) -> bool:
+        return False
+
+    def to_record(self) -> Mapping[str, Any]:
+        payload = {
+            "schema": AUTONOMY_CYCLE_RECEIPT_SCHEMA,
+            "receipt_id": self.receipt_id,
+            "status": self.status.value,
+            "cursor_id": self.cursor_id,
+            "acknowledged": self.acknowledged,
+            "wrote_state": self.wrote_state,
+            "model_called": self.model_called,
+            "scanned": self.scanned,
+            "refilled": self.refilled,
+            "safety_timer": self.safety_timer,
+            "reason_codes": list(self.reason_codes),
+            "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
+        }
+        return MappingProxyType(payload)
+
+
 def _budget_reason(reason_codes: Sequence[str]) -> bool:
     return any(
         "budget_exhausted" in item
@@ -363,6 +795,8 @@ class AutonomousMetaController:
     It has no provider client, tool runner, filesystem mutator, planner,
     context compiler, persistence handle, or ``DecisionRuntime`` permit issuer.
     """
+
+    interface: Final[str] = AUTONOMOUS_META_CONTROLLER_INTERFACE
 
     def __init__(
         self,
@@ -394,6 +828,11 @@ class AutonomousMetaController:
     @property
     def scheduler(self) -> CognitiveScheduler:
         return self._scheduler
+
+    def has_work(self) -> bool:
+        """Whether at least one mandatory question is still eligible."""
+
+        return self._next_question() is not None
 
     def _next_question(self) -> DecisionQuestion | None:
         graph = self._decision_graph.graph
@@ -596,40 +1035,9 @@ class AutonomousMetaController:
     ) -> AutonomousMetaController:
         """Rebuild from a checked snapshot using the budget owner's loader."""
 
-        if isinstance(snapshot, (bytes, str)):
-            encoded = snapshot if isinstance(snapshot, bytes) else snapshot.encode("utf-8")
-            if len(encoded) > MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES:
-                raise AutonomousMetaControllerError("runtime snapshot exceeds its bounded size")
-            duplicates: set[str] = set()
-
-            def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-                value: dict[str, Any] = {}
-                for key, item in pairs:
-                    if key in value:
-                        duplicates.add(key)
-                    value[key] = item
-                return value
-
-            try:
-                decoded = encoded.decode("utf-8")
-                raw = json.loads(decoded, object_pairs_hook=pairs_hook)
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise AutonomousMetaControllerError("runtime snapshot is malformed") from exc
-            if duplicates:
-                raise AutonomousMetaControllerError("runtime snapshot contains duplicate fields")
-        elif isinstance(snapshot, Mapping):
-            raw = dict(snapshot)
-            try:
-                encoded = canonical_json(raw).encode("utf-8")
-            except (TypeError, ValueError) as exc:
-                raise AutonomousMetaControllerError("runtime snapshot is malformed") from exc
-            if len(encoded) > MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES:
-                raise AutonomousMetaControllerError("runtime snapshot exceeds its bounded size")
-        else:
-            raise AutonomousMetaControllerError("unsupported runtime snapshot")
-        if not isinstance(raw, Mapping):
-            raise AutonomousMetaControllerError("runtime snapshot must contain an object")
-        raw = dict(raw)
+        raw = _parse_snapshot_mapping(
+            snapshot, max_bytes=MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES
+        )
         expected_fields = {
             "schema",
             "program_id",
@@ -667,16 +1075,504 @@ class AutonomousMetaController:
         )
 
 
+def _status_from_step(step: MetaControllerStep) -> AutonomyRuntimeStatus:
+    mapping = {
+        MetaControllerStepStatus.IDLE: AutonomyRuntimeStatus.IDLE,
+        MetaControllerStepStatus.ACTION_ADMITTED: AutonomyRuntimeStatus.PROGRESSING,
+        MetaControllerStepStatus.BUDGET_EXHAUSTED: AutonomyRuntimeStatus.EXHAUSTED,
+        MetaControllerStepStatus.UNAVAILABLE: AutonomyRuntimeStatus.UNAVAILABLE,
+        MetaControllerStepStatus.BLOCKED: AutonomyRuntimeStatus.BLOCKED,
+        MetaControllerStepStatus.QUARANTINED: AutonomyRuntimeStatus.QUARANTINED,
+    }
+    try:
+        return mapping[step.status]
+    except KeyError as exc:
+        raise AutonomousMetaControllerError("unmapped meta-controller step status") from exc
+
+
+class AutonomyRuntime:
+    """Event-driven loop over the provider-free meta-controller.
+
+    Lower services retain their own state.  This class consumes already
+    characterized wake events, selects at most one nearest-safe action, and
+    emits compact receipts.  A two-phase acknowledgement advances a cursor
+    only after the cycle; a crash before acknowledgement therefore replays.
+    """
+
+    interface: Final[str] = AUTONOMY_RUNTIME_INTERFACE
+
+    def __init__(
+        self,
+        *,
+        controller: AutonomousMetaController,
+        metrics: AutonomyMetrics | None = None,
+        horizon: RecedingHorizonController | None = None,
+        checkpoint_sink: AutonomyCheckpointSink | None = None,
+        safety_interval_ms: int = DEFAULT_SAFETY_INTERVAL_MS,
+        now_ms: int = 0,
+    ) -> None:
+        if not isinstance(controller, AutonomousMetaController):
+            raise AutonomousMetaControllerError(
+                "controller must be an AutonomousMetaController"
+            )
+        if horizon is not None and not isinstance(horizon, RecedingHorizonController):
+            raise AutonomousMetaControllerError(
+                "horizon must be a RecedingHorizonController or None"
+            )
+        interval = _bounded_int(safety_interval_ms, "safety_interval_ms")
+        if interval <= 0:
+            raise AutonomousMetaControllerError("safety_interval_ms must be positive")
+        self._controller = controller
+        self._metrics = metrics if metrics is not None else AutonomyMetrics()
+        if not isinstance(self._metrics, AutonomyMetrics):
+            raise AutonomousMetaControllerError("metrics must be AutonomyMetrics")
+        self._horizon = horizon
+        self._checkpoint_sink = checkpoint_sink
+        self._safety_interval_ms = interval
+        self._next_safety_deadline_ms = _bounded_int(now_ms, "now_ms") + interval
+        self._acknowledged_cursor_ids: list[str] = []
+        self._acked_index: set[str] = set()
+        self._ephemeral_cursor_ids: set[str] = set()
+        self._pending_cursor_id = ""
+        self._healthy_idle = self._board_is_idle()
+        self._healthy_exhausted = False
+        self._last_durable_identity = self._durable_identity()
+
+    @property
+    def controller(self) -> AutonomousMetaController:
+        return self._controller
+
+    @property
+    def metrics(self) -> AutonomyMetrics:
+        return self._metrics
+
+    @property
+    def horizon(self) -> RecedingHorizonController | None:
+        return self._horizon
+
+    @property
+    def safety_interval_ms(self) -> int:
+        return self._safety_interval_ms
+
+    @property
+    def healthy_idle(self) -> bool:
+        return self._healthy_idle
+
+    @property
+    def healthy_exhausted(self) -> bool:
+        return self._healthy_exhausted
+
+    @property
+    def acknowledged_cursor_ids(self) -> tuple[str, ...]:
+        return tuple(self._acknowledged_cursor_ids)
+
+    def _board_is_idle(self) -> bool:
+        horizon_idle = True if self._horizon is None else self._horizon.idle
+        return (not self._controller.has_work()) and horizon_idle
+
+    def _remember_cursor(self, cursor_id: str) -> None:
+        if cursor_id in self._acked_index:
+            return
+        self._acknowledged_cursor_ids.append(cursor_id)
+        self._acked_index.add(cursor_id)
+        overflow = len(self._acknowledged_cursor_ids) - MAX_ACKNOWLEDGED_CURSORS
+        if overflow > 0:
+            dropped = self._acknowledged_cursor_ids[:overflow]
+            del self._acknowledged_cursor_ids[:overflow]
+            for item in dropped:
+                self._acked_index.discard(item)
+
+    def acknowledge(self, event: AutonomyWakeEvent | Mapping[str, Any]) -> None:
+        bound = AutonomyWakeEvent.from_dict(event)
+        if bound.safety_timer or bound.kind is AutonomyWakeKind.WINDOW:
+            self._ephemeral_cursor_ids.add(bound.cursor_id)
+            if len(self._ephemeral_cursor_ids) > MAX_ACKNOWLEDGED_CURSORS:
+                self._ephemeral_cursor_ids.clear()
+                self._ephemeral_cursor_ids.add(bound.cursor_id)
+        else:
+            self._remember_cursor(bound.cursor_id)
+        if self._pending_cursor_id == bound.cursor_id:
+            self._pending_cursor_id = ""
+
+    def safety_timer_event(self, *, now_ms: int) -> AutonomyWakeEvent | None:
+        """Emit a window wake only when the bounded safety interval elapsed."""
+
+        current = _bounded_int(now_ms, "now_ms")
+        if current < self._next_safety_deadline_ms:
+            return None
+        self._next_safety_deadline_ms = current + self._safety_interval_ms
+        return AutonomyWakeEvent(
+            kind=AutonomyWakeKind.WINDOW,
+            cursor_id=f"window:{current}",
+            sequence=current,
+            safety_timer=True,
+            reason="safety_timer",
+        )
+
+    def _persist_if_changed(self) -> bool:
+        durable = self._durable_identity()
+        if durable == self._last_durable_identity:
+            return False
+        snapshot = self.snapshot()
+        wrote = True
+        if self._checkpoint_sink is not None:
+            wrote = bool(self._checkpoint_sink.persist(snapshot))
+        if wrote:
+            self._metrics.record_write()
+            self._last_durable_identity = self._durable_identity()
+        else:
+            self._last_durable_identity = durable
+        return wrote
+
+    def _result(
+        self,
+        *,
+        status: AutonomyRuntimeStatus,
+        event: AutonomyWakeEvent,
+        reason_codes: tuple[str, ...],
+        scanned: bool,
+        wrote_state: bool,
+        acknowledged: bool,
+        step: MetaControllerStep | None = None,
+        suffix_receipt: PlanSuffixInvalidationReceipt | None = None,
+    ) -> AutonomyCycleResult:
+        segment_ids: tuple[str, ...] = ()
+        if suffix_receipt is not None:
+            segment_ids = suffix_receipt.nearest_safe_segment_ids
+        elif self._horizon is not None and scanned:
+            segment_ids = self._horizon.select_nearest_safe_segment().step_ids
+        return AutonomyCycleResult(
+            status=status,
+            cursor_id=event.cursor_id,
+            acknowledged=acknowledged,
+            wrote_state=wrote_state,
+            model_called=False,
+            scanned=scanned,
+            refilled=False,
+            safety_timer=event.safety_timer,
+            reason_codes=reason_codes,
+            step=step,
+            suffix_receipt=suffix_receipt,
+            nearest_safe_segment_ids=segment_ids,
+            metrics=self._metrics.snapshot(),
+        )
+
+    def handle_wake(
+        self,
+        event: AutonomyWakeEvent | Mapping[str, Any] | Any,
+        *,
+        candidates: Sequence[ResolutionCandidate] = (),
+        context: CognitiveSchedulingContext,
+        horizon_evidence: RecedingHorizonEvidence | Mapping[str, Any] | None = None,
+        auto_acknowledge: bool = True,
+        cancelled: bool = False,
+        now_ms: int | None = None,
+        deadline_milliseconds: int | None = None,
+    ) -> AutonomyCycleResult:
+        """Process one wake without executing an effect or calling a model."""
+
+        bound = (
+            event
+            if isinstance(event, AutonomyWakeEvent)
+            else AutonomyWakeEvent.from_runtime_wake(event)
+            if not isinstance(event, Mapping)
+            else AutonomyWakeEvent.from_dict(event)
+        )
+        if cancelled:
+            bound = replace(bound, cancelled=True)
+        if now_ms is not None:
+            current = _bounded_int(now_ms, "now_ms")
+            if current >= self._next_safety_deadline_ms:
+                self._next_safety_deadline_ms = current + self._safety_interval_ms
+        self._metrics.record_wake(bound.kind, safety_timer=bound.safety_timer)
+        if bound.cursor_id in self._acked_index or bound.cursor_id in self._ephemeral_cursor_ids:
+            self._metrics.record_idle(
+                status="idle",
+                reason_codes=("duplicate_cursor",),
+            )
+            return self._result(
+                status=AutonomyRuntimeStatus.IDLE,
+                event=bound,
+                reason_codes=("duplicate_cursor",),
+                scanned=False,
+                wrote_state=False,
+                acknowledged=True,
+            )
+
+        self._pending_cursor_id = bound.cursor_id
+        if bound.cancelled or bound.kind is AutonomyWakeKind.CANCELLATION:
+            self._metrics.record_status("cancelled", reason_codes=("cancelled",))
+            self._healthy_idle = False
+            wrote = self._persist_if_changed()
+            acknowledged = False
+            if auto_acknowledge:
+                self.acknowledge(bound)
+                acknowledged = True
+            return self._result(
+                status=AutonomyRuntimeStatus.CANCELLED,
+                event=bound,
+                reason_codes=("cancelled",),
+                scanned=False,
+                wrote_state=wrote,
+                acknowledged=acknowledged,
+            )
+        if bound.stale:
+            self._metrics.record_status(
+                "blocked", reason_codes=("stale_evidence",)
+            )
+            wrote = self._persist_if_changed()
+            acknowledged = False
+            if auto_acknowledge:
+                self.acknowledge(bound)
+                acknowledged = True
+            return self._result(
+                status=AutonomyRuntimeStatus.BLOCKED,
+                event=bound,
+                reason_codes=("stale_evidence",),
+                scanned=False,
+                wrote_state=wrote,
+                acknowledged=acknowledged,
+            )
+
+        cached_idle = self._healthy_idle or self._healthy_exhausted
+        if bound.safety_timer and cached_idle:
+            reason = (
+                "healthy_exhaustion"
+                if self._healthy_exhausted
+                else "unchanged_complete_board"
+            )
+            self._metrics.record_idle(status="idle", reason_codes=(reason,))
+            acknowledged = False
+            if auto_acknowledge:
+                self.acknowledge(bound)
+                acknowledged = True
+            return self._result(
+                status=(
+                    AutonomyRuntimeStatus.EXHAUSTED
+                    if self._healthy_exhausted
+                    else AutonomyRuntimeStatus.IDLE
+                ),
+                event=bound,
+                reason_codes=(reason,),
+                scanned=False,
+                wrote_state=False,
+                acknowledged=acknowledged,
+            )
+
+        suffix_receipt: PlanSuffixInvalidationReceipt | None = None
+        if self._horizon is not None and horizon_evidence is not None:
+            suffix_receipt = self._horizon.observe(
+                horizon_evidence,
+                now_milliseconds=now_ms,
+                deadline_milliseconds=deadline_milliseconds,
+                cancelled=bound.cancelled,
+            )
+
+        self._metrics.record_scan()
+        idle_now = self._board_is_idle()
+        self._healthy_idle = idle_now and not self._healthy_exhausted
+        if idle_now and not self._healthy_exhausted:
+            self._metrics.record_idle(
+                status="idle",
+                reason_codes=("no_unresolved_mandatory_question",),
+            )
+            wrote = self._persist_if_changed()
+            acknowledged = False
+            if auto_acknowledge:
+                self.acknowledge(bound)
+                acknowledged = True
+            return self._result(
+                status=AutonomyRuntimeStatus.IDLE,
+                event=bound,
+                reason_codes=("no_unresolved_mandatory_question",),
+                scanned=True,
+                wrote_state=wrote,
+                acknowledged=acknowledged,
+                suffix_receipt=suffix_receipt,
+            )
+
+        step = self._controller.step(
+            candidates=candidates,
+            context=context,
+            meaningful_change=True,
+        )
+        status = _status_from_step(step)
+        if step.admitted:
+            action = (
+                None
+                if step.candidate is None
+                else step.candidate.resolution_action.action
+            )
+            self._metrics.record_model_action(action)
+        self._metrics.record_status(status.value, reason_codes=step.reason_codes)
+        self._healthy_exhausted = status is AutonomyRuntimeStatus.EXHAUSTED
+        self._healthy_idle = status is AutonomyRuntimeStatus.IDLE
+        wrote = self._persist_if_changed()
+        acknowledged = False
+        if auto_acknowledge:
+            self.acknowledge(bound)
+            acknowledged = True
+        return self._result(
+            status=status,
+            event=bound,
+            reason_codes=step.reason_codes,
+            scanned=True,
+            wrote_state=wrote,
+            acknowledged=acknowledged,
+            step=step,
+            suffix_receipt=suffix_receipt,
+        )
+
+    ingest = handle_wake
+    run_cycle = handle_wake
+
+    def _durable_body(self) -> dict[str, Any]:
+        horizon_payload: Mapping[str, Any] | None
+        if self._horizon is None:
+            horizon_payload = None
+        else:
+            horizon_payload = dict(self._horizon.snapshot())
+        return {
+            "schema": AUTONOMY_RUNTIME_SNAPSHOT_SCHEMA,
+            "program_id": AUTONOMOUS_META_CONTROLLER_PROGRAM_ID,
+            "interface": AUTONOMY_RUNTIME_INTERFACE,
+            "controller": dict(self._controller.snapshot()),
+            "metrics": dict(self._metrics.durable_snapshot()),
+            "acknowledged_cursor_ids": list(self._acknowledged_cursor_ids),
+            "healthy_idle": self._healthy_idle,
+            "healthy_exhausted": self._healthy_exhausted,
+            "safety_interval_ms": self._safety_interval_ms,
+            "horizon": horizon_payload,
+            "metrics_interface": AUTONOMY_METRICS_INTERFACE,
+        }
+
+    def _material_body(self) -> dict[str, Any]:
+        payload = self._durable_body()
+        payload.pop("acknowledged_cursor_ids", None)
+        return payload
+
+    def _durable_identity(self) -> str:
+        return content_identity(self._material_body())
+
+    def snapshot(self) -> Mapping[str, Any]:
+        payload = self._durable_body()
+        payload["snapshot_id"] = content_identity(payload)
+        encoded = canonical_json(payload).encode("utf-8")
+        if len(encoded) > MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES:
+            raise AutonomousMetaControllerError("runtime snapshot exceeds its bounded size")
+        return MappingProxyType(payload)
+
+    def snapshot_json(self) -> str:
+        return canonical_json(dict(self.snapshot()))
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: Mapping[str, Any] | str | bytes,
+        *,
+        budget_loader: Callable[[Mapping[str, Any]], BudgetController],
+        scheduler: CognitiveScheduler | None = None,
+        metrics: AutonomyMetrics | None = None,
+        horizon: RecedingHorizonController | None = None,
+        checkpoint_sink: AutonomyCheckpointSink | None = None,
+        now_ms: int = 0,
+    ) -> AutonomyRuntime:
+        raw = _parse_snapshot_mapping(
+            snapshot, max_bytes=MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES
+        )
+        expected = {
+            "schema",
+            "program_id",
+            "interface",
+            "controller",
+            "metrics",
+            "acknowledged_cursor_ids",
+            "healthy_idle",
+            "healthy_exhausted",
+            "safety_interval_ms",
+            "horizon",
+            "metrics_interface",
+            "snapshot_id",
+        }
+        if set(raw) != expected:
+            raise AutonomousMetaControllerError(
+                "runtime snapshot contains missing or unknown fields"
+            )
+        if raw["schema"] != AUTONOMY_RUNTIME_SNAPSHOT_SCHEMA:
+            raise AutonomousMetaControllerError("runtime snapshot schema mismatch")
+        if raw["program_id"] != AUTONOMOUS_META_CONTROLLER_PROGRAM_ID:
+            raise AutonomousMetaControllerError("runtime program identity mismatch")
+        if raw["interface"] != AUTONOMY_RUNTIME_INTERFACE:
+            raise AutonomousMetaControllerError("runtime interface mismatch")
+        if raw["metrics_interface"] != AUTONOMY_METRICS_INTERFACE:
+            raise AutonomousMetaControllerError("metrics interface mismatch")
+        claimed_id = raw.pop("snapshot_id")
+        if claimed_id != content_identity(raw):
+            raise AutonomousMetaControllerError("runtime snapshot identity mismatch")
+        if not isinstance(raw["controller"], Mapping) or not isinstance(
+            raw["metrics"], Mapping
+        ):
+            raise AutonomousMetaControllerError("runtime snapshot bodies are malformed")
+        controller = AutonomousMetaController.from_snapshot(
+            raw["controller"],
+            budget_loader=budget_loader,
+            scheduler=scheduler,
+        )
+        restored_metrics = metrics or AutonomyMetrics.from_snapshot(raw["metrics"])
+        restored_horizon = horizon
+        if restored_horizon is None and raw["horizon"] is not None:
+            if not isinstance(raw["horizon"], Mapping):
+                raise AutonomousMetaControllerError("horizon snapshot is malformed")
+            restored_horizon = RecedingHorizonController.from_snapshot(raw["horizon"])
+        runtime = cls(
+            controller=controller,
+            metrics=restored_metrics,
+            horizon=restored_horizon,
+            checkpoint_sink=checkpoint_sink,
+            safety_interval_ms=raw["safety_interval_ms"],
+            now_ms=now_ms,
+        )
+        cursors = raw["acknowledged_cursor_ids"]
+        if isinstance(cursors, str) or not isinstance(cursors, (list, tuple)):
+            raise AutonomousMetaControllerError("acknowledged cursors must be a sequence")
+        if len(cursors) > MAX_ACKNOWLEDGED_CURSORS:
+            raise AutonomousMetaControllerError("acknowledged cursors exceed the bound")
+        for cursor_id in cursors:
+            runtime._remember_cursor(_bounded_identifier(cursor_id, "cursor_id"))
+        runtime._healthy_idle = _bounded_bool(raw["healthy_idle"], "healthy_idle")
+        runtime._healthy_exhausted = _bounded_bool(
+            raw["healthy_exhausted"], "healthy_exhausted"
+        )
+        runtime._last_durable_identity = runtime._durable_identity()
+        return runtime
+
+
 __all__ = [
+    "AUTONOMOUS_META_CONTROLLER_INTERFACE",
     "AUTONOMOUS_META_CONTROLLER_SNAPSHOT_SCHEMA",
+    "AUTONOMY_CYCLE_RECEIPT_SCHEMA",
+    "AUTONOMY_RUNTIME_INTERFACE",
+    "AUTONOMY_RUNTIME_SNAPSHOT_SCHEMA",
+    "AUTONOMY_WAKE_EVENT_SCHEMA",
+    "AUTONOMY_WAKE_KINDS",
+    "DEFAULT_SAFETY_INTERVAL_MS",
+    "MAX_ACKNOWLEDGED_CURSORS",
     "MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES",
+    "AutonomyCheckpointSink",
+    "AutonomyCycleResult",
+    "AutonomyRuntime",
+    "AutonomyRuntimeStatus",
+    "AutonomyWakeEvent",
+    "AutonomyWakeKind",
     "AutonomousMetaController",
     "AutonomousMetaControllerError",
     "BudgetAdmission",
     "BudgetAdmissionStatus",
     "BudgetController",
     "DecisionRuntimeAdapter",
+    "InMemoryAutonomyCheckpointSink",
     "MetaControllerStep",
     "MetaControllerStepStatus",
     "ObjectiveBudgetControllerAdapter",
+    "coerce_autonomy_wake_kind",
 ]

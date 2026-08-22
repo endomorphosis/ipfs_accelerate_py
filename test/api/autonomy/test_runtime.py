@@ -32,14 +32,27 @@ from ipfs_accelerate_py.agent_supervisor.autonomy.contracts import (
 from ipfs_accelerate_py.agent_supervisor.autonomy.decision_graph import (
     DecisionGraphController,
 )
+from ipfs_accelerate_py.agent_supervisor.autonomy.metrics import (
+    AUTONOMY_METRICS_INTERFACE,
+    AutonomyMetrics,
+)
 from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
+    AUTONOMOUS_META_CONTROLLER_INTERFACE,
+    AUTONOMY_RUNTIME_INTERFACE,
+    DEFAULT_SAFETY_INTERVAL_MS,
     MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES,
+    AutonomyRuntime,
+    AutonomyRuntimeStatus,
+    AutonomyWakeEvent,
+    AutonomyWakeKind,
     AutonomousMetaController,
     AutonomousMetaControllerError,
     BudgetAdmission,
     BudgetAdmissionStatus,
+    InMemoryAutonomyCheckpointSink,
     MetaControllerStepStatus,
     ObjectiveBudgetControllerAdapter,
+    coerce_autonomy_wake_kind,
 )
 
 
@@ -480,3 +493,321 @@ def test_restart_snapshot_rejects_duplicate_malformed_and_unbounded_json() -> No
                 payload,
                 budget_loader=lambda value: _FakeBudgetController.from_snapshot(dict(value)),
             )
+
+
+def _controller(
+    *questions: DecisionQuestion,
+    budget: _FakeBudgetController | None = None,
+) -> AutonomousMetaController:
+    return AutonomousMetaController(
+        decision_graph=_graph(*questions),
+        budget_controller=budget or _FakeBudgetController(),
+    )
+
+
+def _wake(
+    kind: AutonomyWakeKind | str = AutonomyWakeKind.TASK,
+    *,
+    cursor_id: str = "cursor:task-1",
+    sequence: int = 1,
+    **overrides: object,
+) -> AutonomyWakeEvent:
+    values: dict[str, object] = {
+        "kind": kind,
+        "cursor_id": cursor_id,
+        "sequence": sequence,
+    }
+    values.update(overrides)
+    return AutonomyWakeEvent(**values)  # type: ignore[arg-type]
+
+
+def test_interfaces_are_versioned() -> None:
+    assert AUTONOMOUS_META_CONTROLLER_INTERFACE == "AutonomousMetaController@1"
+    assert AUTONOMY_RUNTIME_INTERFACE == "AutonomyRuntime@1"
+    assert AUTONOMY_METRICS_INTERFACE == "AutonomyMetrics@1"
+    assert AutonomousMetaController.interface == AUTONOMOUS_META_CONTROLLER_INTERFACE
+    assert AutonomyRuntime.interface == AUTONOMY_RUNTIME_INTERFACE
+    assert AutonomyMetrics.INTERFACE == AUTONOMY_METRICS_INTERFACE
+
+
+@pytest.mark.parametrize("kind", list(AutonomyWakeKind))
+def test_all_wake_kinds_are_consumed_and_acknowledged(kind: AutonomyWakeKind) -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    sink = InMemoryAutonomyCheckpointSink()
+    runtime = AutonomyRuntime(
+        controller=_controller(question),
+        checkpoint_sink=sink,
+        safety_interval_ms=DEFAULT_SAFETY_INTERVAL_MS,
+    )
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    event = _wake(kind, cursor_id=f"cursor:{kind.value}:1")
+
+    result = runtime.handle_wake(
+        event,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+        auto_acknowledge=True,
+    )
+
+    assert result.acknowledged
+    assert result.cursor_id == event.cursor_id
+    assert not result.model_called
+    assert not result.refilled
+    assert not result.authorizes_effect
+    assert not result.authorizes_completion
+    if kind is AutonomyWakeKind.CANCELLATION:
+        assert result.status is AutonomyRuntimeStatus.CANCELLED
+        assert result.reason_codes == ("cancelled",)
+        assert not result.scanned
+    elif kind is AutonomyWakeKind.WINDOW:
+        assert result.safety_timer
+        assert result.status is AutonomyRuntimeStatus.PROGRESSING
+        assert result.scanned
+    else:
+        assert result.status is AutonomyRuntimeStatus.PROGRESSING
+        assert result.scanned
+        assert result.step is not None
+        assert result.step.status is MetaControllerStepStatus.ACTION_ADMITTED
+
+
+def test_duplicate_reorder_and_restart_are_idempotent() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    budget = _FakeBudgetController()
+    runtime = AutonomyRuntime(controller=_controller(question, budget=budget))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    first = _wake(AutonomyWakeKind.TASK, cursor_id="cursor:a", sequence=2)
+    second = _wake(AutonomyWakeKind.LEASE, cursor_id="cursor:b", sequence=1)
+
+    progressing = runtime.handle_wake(
+        first,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    reordered = runtime.handle_wake(
+        second,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    duplicate = runtime.handle_wake(
+        first,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+
+    assert progressing.status is AutonomyRuntimeStatus.PROGRESSING
+    assert reordered.status in {
+        AutonomyRuntimeStatus.PROGRESSING,
+        AutonomyRuntimeStatus.UNAVAILABLE,
+        AutonomyRuntimeStatus.IDLE,
+    }
+    assert duplicate.status is AutonomyRuntimeStatus.IDLE
+    assert duplicate.reason_codes == ("duplicate_cursor",)
+    assert duplicate.scanned is False
+    assert duplicate.wrote_state is False
+    assert budget.reserve_calls == 2
+
+    recovered = AutonomyRuntime.from_snapshot(
+        runtime.snapshot_json(),
+        budget_loader=lambda value: _FakeBudgetController.from_snapshot(dict(value)),
+    )
+    assert recovered.snapshot_json() == runtime.snapshot_json()
+    replayed = recovered.handle_wake(
+        first,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert replayed.status is AutonomyRuntimeStatus.IDLE
+    assert replayed.reason_codes == ("duplicate_cursor",)
+    assert recovered.metrics.model_calls == 0
+    assert recovered.metrics.refills == 0
+
+
+def test_two_phase_acknowledgement_replays_until_cursor_advances() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(controller=_controller(question))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    event = _wake(cursor_id="cursor:pending")
+    candidates = (_candidate(compiled, action),)
+
+    pending = runtime.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    assert pending.acknowledged is False
+    assert pending.status is AutonomyRuntimeStatus.PROGRESSING
+
+    replay = runtime.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    assert replay.status is AutonomyRuntimeStatus.PROGRESSING
+    assert replay.acknowledged is False
+
+    runtime.acknowledge(event)
+    after_ack = runtime.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    assert after_ack.status is AutonomyRuntimeStatus.IDLE
+    assert after_ack.reason_codes == ("duplicate_cursor",)
+    assert after_ack.acknowledged is True
+
+
+def test_cancellation_and_stale_evidence_stop_honestly_without_model_calls() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(controller=_controller(question))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    candidates = (_candidate(compiled, action),)
+
+    cancelled = runtime.handle_wake(
+        _wake(AutonomyWakeKind.CANCELLATION, cursor_id="cursor:cancel"),
+        candidates=candidates,
+        context=_context(),
+    )
+    assert cancelled.status is AutonomyRuntimeStatus.CANCELLED
+    assert cancelled.reason_codes == ("cancelled",)
+    assert cancelled.scanned is False
+    assert cancelled.model_called is False
+    assert runtime.metrics.model_calls == 0
+
+    stale = runtime.handle_wake(
+        _wake(AutonomyWakeKind.FRESHNESS, cursor_id="cursor:stale", stale=True),
+        candidates=candidates,
+        context=_context(),
+    )
+    assert stale.status is AutonomyRuntimeStatus.BLOCKED
+    assert stale.reason_codes == ("stale_evidence",)
+    assert stale.scanned is False
+    assert runtime.metrics.model_calls == 0
+    assert runtime.metrics.refills == 0
+
+
+def test_insufficient_evidence_authority_and_budget_are_typed_stops() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+
+    missing = AutonomyRuntime(controller=_controller(question))
+    unavailable = missing.handle_wake(
+        _wake(cursor_id="cursor:missing"),
+        candidates=(),
+        context=_context(),
+    )
+    assert unavailable.status is AutonomyRuntimeStatus.UNAVAILABLE
+    assert unavailable.reason_codes == ("no_resolution_candidate",)
+    assert unavailable.step is not None
+    assert unavailable.step.reservation is None
+
+    weak_action = replace(
+        action,
+        authority_class=AuthorityClass.ADVISORY,
+        accepted_as_authority=False,
+    )
+    authority_question = _question(criterion="AC-auth", action=weak_action)
+    authority_runtime = AutonomyRuntime(controller=_controller(authority_question))
+    compiled_auth = authority_runtime.controller.decision_graph.graph.questions[0]
+    blocked = authority_runtime.handle_wake(
+        _wake(AutonomyWakeKind.OBJECTIVE, cursor_id="cursor:authority"),
+        candidates=(_candidate(compiled_auth, weak_action),),
+        context=replace(_context(), required_authority_class=AuthorityClass.VERIFIED),
+    )
+    assert blocked.status is AutonomyRuntimeStatus.BLOCKED
+    assert "result_not_accepted_as_authority" in blocked.reason_codes
+    assert blocked.step is not None
+    assert blocked.step.reservation is None
+
+    exhausted_budget = _FakeBudgetController(outcome=BudgetAdmissionStatus.EXHAUSTED)
+    exhausted_runtime = AutonomyRuntime(
+        controller=_controller(question, budget=exhausted_budget)
+    )
+    compiled = exhausted_runtime.controller.decision_graph.graph.questions[0]
+    exhausted = exhausted_runtime.handle_wake(
+        _wake(AutonomyWakeKind.BUDGET, cursor_id="cursor:budget"),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert exhausted.status is AutonomyRuntimeStatus.EXHAUSTED
+    assert exhausted.step is not None
+    assert exhausted.step.reservation is None
+    assert exhausted_runtime.healthy_exhausted
+    assert exhausted_runtime.metrics.model_calls == 0
+    assert exhausted_runtime.metrics.refills == 0
+
+
+def test_provider_lease_human_and_budget_wakes_are_distinct_and_replayable() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(controller=_controller(question))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    kinds = (
+        AutonomyWakeKind.PROVIDER,
+        AutonomyWakeKind.LEASE,
+        AutonomyWakeKind.HUMAN,
+        AutonomyWakeKind.BUDGET,
+    )
+    for index, kind in enumerate(kinds, start=1):
+        event = _wake(kind, cursor_id=f"cursor:{kind.value}", sequence=index)
+        result = runtime.handle_wake(
+            event,
+            candidates=(_candidate(compiled, action),),
+            context=_context(),
+        )
+        assert result.acknowledged
+        replay = runtime.handle_wake(
+            event,
+            candidates=(_candidate(compiled, action),),
+            context=_context(),
+        )
+        assert replay.reason_codes == ("duplicate_cursor",)
+    assert runtime.metrics.wake_counts["provider"] == 2
+    assert runtime.metrics.wake_counts["lease"] == 2
+    assert runtime.metrics.wake_counts["human"] == 2
+    assert runtime.metrics.wake_counts["budget"] == 2
+
+
+def test_runtime_wake_aliases_map_onto_the_closed_vocabulary() -> None:
+    assert coerce_autonomy_wake_kind("task_board") is AutonomyWakeKind.TASK
+    assert coerce_autonomy_wake_kind("observation_window") is AutonomyWakeKind.WINDOW
+    assert coerce_autonomy_wake_kind("provider_capacity") is AutonomyWakeKind.PROVIDER
+    adapted = AutonomyWakeEvent.from_runtime_wake(
+        type(
+            "CoordinatorWake",
+            (),
+            {
+                "kinds": ("validation",),
+                "cursor_ids": ("path-metadata:sha256:abc",),
+                "semantic_cursors": {},
+                "safety_timer": False,
+                "reason": "notification",
+                "sequence": 4,
+            },
+        )()
+    )
+    assert adapted.kind is AutonomyWakeKind.VALIDATION
+    assert adapted.cursor_id == "path-metadata:sha256:abc"
+
+
+def test_bounded_safety_timer_does_not_poll_between_intervals() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(
+        controller=_controller(question),
+        safety_interval_ms=1_000,
+        now_ms=0,
+    )
+    assert runtime.safety_timer_event(now_ms=999) is None
+    fired = runtime.safety_timer_event(now_ms=1_000)
+    assert fired is not None
+    assert fired.kind is AutonomyWakeKind.WINDOW
+    assert fired.safety_timer
+    assert runtime.safety_timer_event(now_ms=1_500) is None
+    assert runtime.safety_timer_event(now_ms=2_000) is not None
