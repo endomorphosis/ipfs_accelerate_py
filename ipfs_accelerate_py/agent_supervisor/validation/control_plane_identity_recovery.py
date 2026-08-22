@@ -119,6 +119,14 @@ def identity_control_projection(control: Mapping[str, Any] | None) -> dict[str, 
     ):
         if key in projected:
             projected[key] = identity_rows(projected.get(key))
+    projected.pop("projection_root", None)
+    snapshot = projected.get("intent_snapshot")
+    if isinstance(snapshot, Mapping):
+        snapshot = dict(snapshot)
+        snapshot.pop("projection_cid", None)
+        projected["intent_snapshot"] = snapshot
+    # Relation fingerprints hash live overlay rows, including status.
+    projected.pop("exact_relations", None)
     return projected
 
 

@@ -1247,6 +1247,10 @@ def _drop_stale_launch_blockers(blockers: list[str]) -> list[str]:
             continue
         if "differs from current source" in blocker and bundle_admitted:
             continue
+        if "unable to open authority read-only" in blocker and bundle_admitted:
+            continue
+        if bundle_admitted and _classify_blocker(blocker) == "host_gated_external_authority":
+            continue
         kept.append(blocker)
     return kept
 

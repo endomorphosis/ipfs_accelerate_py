@@ -65,10 +65,14 @@ def test_identity_projection_ignores_live_status() -> None:
             {"task_cid": "sha256:" + "a" * 64, "status": "completed", "revision": 4}
         ],
         "projection_root": "sha256:" + "b" * 64,
+        "intent_snapshot": {"task_count": 1, "projection_cid": "baguqeera" + "1" * 50},
+        "exact_relations": {"tasks": {"status": "completed"}},
     }
     receipt = {
         "tasks": [{"task_cid": "sha256:" + "a" * 64, "status": "todo", "revision": 1}],
-        "projection_root": "sha256:" + "b" * 64,
+        "projection_root": "sha256:" + "c" * 64,
+        "intent_snapshot": {"task_count": 1, "projection_cid": "baguqeera" + "2" * 50},
+        "exact_relations": {"tasks": {"status": "todo"}},
     }
     assert identity_control_projection(live) == identity_control_projection(receipt)
 
