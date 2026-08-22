@@ -73,6 +73,9 @@ DATABASE_COORDINATION_SCHEMA: Final[str] = (
 COORDINATION_REGISTRY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/coordination-registry-projection@1"
 )
+COORDINATION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/coordination-history-projection@1"
+)
 FENCED_LEASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/fenced-lease@1"
 )
@@ -100,6 +103,9 @@ MAX_PREPARED_COMPLETION_QUERY: Final[int] = 1_000
 PREPARED_COMPLETION_STATUS: Final[str] = "prepared"
 TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-preparation@1"
+)
+TASK_DEPENDENCY_AMENDMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-dependency-amendment@1"
 )
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
@@ -1290,11 +1296,23 @@ def _decode_coordination_body(
     table: str,
     identity: str,
 ) -> dict[str, Any]:
-    try:
-        decoded = json.loads(str(value or "{}"))
-    except json.JSONDecodeError as exc:
+    def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = item
+        return result
+
+    if value is None or not str(value):
         raise DatabaseCoordinationStaleFenceError(
-            f"{table} body for {identity} is not valid JSON"
+            f"{table} body for {identity} is not valid unambiguous JSON"
+        )
+    try:
+        decoded = json.loads(str(value), object_pairs_hook=closed_object)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            f"{table} body for {identity} is not valid unambiguous JSON"
         ) from exc
     if not isinstance(decoded, Mapping):
         raise DatabaseCoordinationStaleFenceError(
@@ -1323,6 +1341,10 @@ def _validate_coordination_authority(connection: Any) -> None:
                 str(_coordination_row_value(row, 2, "data_type") or "").upper(),
             )
         )
+    if set(actual) != set(_COORDINATION_REQUIRED_COLUMNS):
+        raise DatabaseCoordinationStaleFenceError(
+            "coordination authority table inventory differs"
+        )
     for table, expected_columns in _COORDINATION_REQUIRED_COLUMNS.items():
         if tuple(actual.get(table, ())) != expected_columns:
             raise DatabaseCoordinationStaleFenceError(
@@ -1341,11 +1363,9 @@ def _validate_coordination_authority(connection: Any) -> None:
         str(_coordination_row_value(row, 0, "index_name") or "")
         for row in index_rows
     }
-    missing_indexes = _COORDINATION_REQUIRED_INDEXES - index_names
-    if missing_indexes:
+    if index_names != _COORDINATION_REQUIRED_INDEXES:
         raise DatabaseCoordinationStaleFenceError(
-            "coordination authority is missing required indexes: "
-            + ", ".join(sorted(missing_indexes))
+            "coordination authority index inventory differs"
         )
 
     metadata_rows = connection.execute(
@@ -1361,8 +1381,11 @@ def _validate_coordination_authority(connection: Any) -> None:
         "interface": DATABASE_COORDINATOR_INTERFACE,
         "schema": DATABASE_COORDINATION_SCHEMA,
     }
-    for key, expected in expected_metadata.items():
-        if metadata.get(key) != expected:
+    if metadata != expected_metadata:
+        differing = sorted(set(metadata) ^ set(expected_metadata))
+        if not differing:
+            differing = sorted(expected_metadata)
+        for key in differing[:1]:
             raise DatabaseCoordinationStaleFenceError(
                 f"coordination authority metadata mismatch for {key}"
             )
@@ -7132,6 +7155,149 @@ def read_coordination_registry_projection(
         connection.close()
 
 
+def read_coordination_history_projection(
+    database_path: Path | str,
+) -> dict[str, Any]:
+    """Read the complete fencing-token and lease-event history without writes.
+
+    This is deliberately a separate, versioned projection rather than a shape
+    change to ``coordination-registry-projection@1``.  Recovery admission uses
+    it to prove that a fresh generation contains no inherited fencing history.
+    Timestamps are excluded from the content identity, as in the registry
+    projection, while every semantic event field and body remains exact.
+    """
+
+    path = Path(database_path)
+    if not path.is_file():
+        raise DatabaseCoordinationStaleFenceError(
+            f"coordination authority does not exist: {path}"
+        )
+    if not duckdb_available():
+        raise DuckDBUnavailableError(
+            "DuckDB is required for coordination projection; install the optional "
+            "duckdb dependency"
+        )
+    import duckdb  # type: ignore
+
+    try:
+        connection = connect_duckdb_with_policy(
+            duckdb,
+            path,
+            read_only=True,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+    except DatabaseCoordinationError:
+        raise
+    except Exception as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            f"could not open coordination authority read-only: {path}"
+        ) from exc
+    try:
+        _validate_coordination_authority(connection)
+        token_rows = connection.execute(
+            """
+            SELECT scope_key, fencing_token, fence_epoch
+            FROM token_history
+            ORDER BY scope_key, fencing_token, fence_epoch
+            """
+        ).fetchall()
+        event_rows = connection.execute(
+            """
+            SELECT event_id, lease_id, scope_key, event_type,
+                   fencing_token, fence_epoch, body_json
+            FROM lease_events
+            ORDER BY event_id
+            """
+        ).fetchall()
+        table_rows = connection.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'main' ORDER BY table_name"
+        ).fetchall()
+        column_rows = connection.execute(
+            """
+            SELECT table_name, column_name, data_type, is_nullable,
+                   COALESCE(column_default, ''), ordinal_position
+            FROM information_schema.columns
+            WHERE table_schema = 'main'
+            ORDER BY table_name, ordinal_position
+            """
+        ).fetchall()
+        index_rows = connection.execute(
+            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+            "WHERE schema_name = 'main' ORDER BY index_name"
+        ).fetchall()
+        metadata_rows = connection.execute(
+            "SELECT key, value FROM coordination_metadata ORDER BY key"
+        ).fetchall()
+        projection: dict[str, Any] = {
+            "schema": COORDINATION_HISTORY_PROJECTION_SCHEMA,
+            "authority_schema": DATABASE_COORDINATION_SCHEMA,
+            "schema_inventory": {
+                "tables": [str(row[0]) for row in table_rows],
+                "columns": [
+                    {
+                        "table": str(row[0]),
+                        "column": str(row[1]),
+                        "type": str(row[2]),
+                        "nullable": str(row[3]),
+                        "default": str(row[4] or ""),
+                        "ordinal": int(row[5]),
+                    }
+                    for row in column_rows
+                ],
+                "indexes": [
+                    {
+                        "index": str(row[0]),
+                        "table": str(row[1]),
+                        "sql": str(row[2]),
+                    }
+                    for row in index_rows
+                ],
+                "metadata": {
+                    str(row[0]): str(row[1]) for row in metadata_rows
+                },
+            },
+            "token_history": [
+                {
+                    "scope_key": str(row[0] or ""),
+                    "fencing_token": int(row[1] or 0),
+                    "fence_epoch": int(row[2] or 0),
+                }
+                for row in token_rows
+            ],
+            "lease_events": [
+                {
+                    "event_id": str(row[0] or ""),
+                    "lease_id": str(row[1] or ""),
+                    "scope_key": str(row[2] or ""),
+                    "event_type": str(row[3] or ""),
+                    "fencing_token": int(row[4] or 0),
+                    "fence_epoch": int(row[5] or 0),
+                    "body": _decode_coordination_body(
+                        row[6], table="lease_events", identity=str(row[0] or "")
+                    ),
+                }
+                for row in event_rows
+            ],
+            "counts": {
+                "token_history": len(token_rows),
+                "lease_events": len(event_rows),
+            },
+        }
+        projection["projection_root"] = _sha256_hex(
+            _canonical_json(projection).encode("utf-8")
+        )
+        return projection
+    except DatabaseCoordinationError:
+        raise
+    except Exception as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            "coordination history could not be projected read-only"
+        ) from exc
+    finally:
+        connection.close()
+
+
 __all__ = [
     "DATABASE_COORDINATOR_INTERFACE",
     "FENCED_LEASE_INTERFACE",
@@ -7140,6 +7306,8 @@ __all__ = [
     "MAINTENANCE_LEASE_INTERFACE",
     "DATABASE_COORDINATION_SCHEMA",
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
+    "COORDINATION_HISTORY_PROJECTION_SCHEMA",
+    "TASK_DEPENDENCY_AMENDMENT_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",
@@ -7173,4 +7341,5 @@ __all__ = [
     "exclusive_scope_key",
     "open_database_coordinator",
     "read_coordination_registry_projection",
+    "read_coordination_history_projection",
 ]
