@@ -22,30 +22,27 @@ moves, stop and re-bind. Do not authorize a previous tree.
 |---|---|
 | Formal plan CID | `baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq` |
 | Predecessor plan CID | `baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q` |
-| Qualification result CID | `baguqeeraf3z4orey2z4ziu2ova5qsuf2b5lgwti62pn5prj7u76bv3o4x5uq` |
-| Qualification authority CID | `baguqeera27kvd2aqkl5jm4hgisisygd2jukokjvhbm3q4ovmubguuvm6pekq` |
-| Qualification checkout fingerprint | `baguqeeraxvbzhhhpmqukfwzntza2klxjirawoxer76vgeny7duln5ne65una` |
-| Benchmark report CID | `baguqeera2lz7qz5bjolufndbrayp7tz4p3hsx244zaqhksvcf5m3zezawlwa` |
+| Qualification result CID | `baguqeera5kvq2ifiedvw33n4cckhnkfuru3p3jkk5dct7jycrfxr7naakvdq` |
+| Qualification authority CID | `baguqeera2pevsm7imsl56ifjav4of5oloyyzoeivkqnkd2mztnqbjwgkof7a` |
+| Qualification checkout fingerprint | `baguqeeraeia2gslrbndethw2r3yaw2q3cbcb6vrzz5b4lja7ybcezdu3duzq` |
+| Benchmark report CID | `baguqeerak5pvb5q4tlmqfzxuceblhlpefg52mjzycgg6coagztsnm6m4nrxq` |
 | Benchmark authority CID | `baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa` |
 | Benchmark projection CID | `baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a` |
-| Release report SHA256 | `sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616` |
+| Release report SHA256 | `sha256:810530db7f703648869b113685f23b7b80d2c26f7f791c15ab366735bf41fb28` |
 | Evidence cohort | `hermetic_local_execution` |
-| Closeout-bound accelerator HEAD (122/124) | `4ee047a46b59f94be4aa70de20f14effe7ddad60` |
-| Closeout-bound accelerator tree | `663f2766c3f9ff70edb127f7e8d52f2c234d1635` |
-| Hermetic 081–124 commit | `e802713a851f71c0be2226191eedad1e5cd6d435` |
-| Hermetic 081–124 tree | `54d3b46c54c700a005b4471c3bdc4dece8ad5300` |
-| Datasets gitlink / HEAD | `af1d2d76d2cd6332baf8cea50df6b2eb4e988203` |
-| Datasets tree | `8f44e00a49d6f67c67ee6810e04e4aae4d869af5` |
+| Source accelerator HEAD | `f64208fc851d9e474d759427cdbfdf2dcd63d537` |
+| Source accelerator tree | `f89dffdf0a3ac5548876e67a916601e8821be1cc` |
+| Datasets gitlink / HEAD | `66a02063496fd200f2372b3083e376f1978c6be1` |
+| Datasets tree | `11d9c74504512e45c3ccc78d55e0e2f25d2a9a92` |
 | Branch | `agent/logic-governed-compositional-verification-fabric-v1` |
 
 Hermetic 113/120 **excluded** these cohorts: `simulated`,
 `live_local_model_execution`, `live_remote_model_execution`,
 `production_authoritative_evidence`.
 
-Accelerator 081–124 source is commit `e802713a851f71c0be2226191eedad1e5cd6d435`.
-Nested datasets 090 files remain uncommitted, so the datasets gitlink is still
-`af1d2d76d2cd6332baf8cea50df6b2eb4e988203`. A verifier judging the nested
-datasets working tree must hash those untracked files themselves.
+Source for the reconstructed 113/120/122 closeout is accelerator
+`f64208fc851d9e474d759427cdbfdf2dcd63d537` with datasets gitlink
+`66a02063496fd200f2372b3083e376f1978c6be1`. If either moves, re-bind.
 
 ## LGCVF-121 external qualification
 

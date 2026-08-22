@@ -5,14 +5,16 @@
   "issuer": "checklist-only; not an independent verifier; not an operator grant",
   "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
   "predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
-  "qualification_result_cid": "baguqeeraf3z4orey2z4ziu2ova5qsuf2b5lgwti62pn5prj7u76bv3o4x5uq",
-  "qualification_authority_cid": "baguqeera27kvd2aqkl5jm4hgisisygd2jukokjvhbm3q4ovmubguuvm6pekq",
-  "checkout_fingerprint_cid": "baguqeeraxvbzhhhpmqukfwzntza2klxjirawoxer76vgeny7duln5ne65una",
-  "benchmark_report_cid": "baguqeera2lz7qz5bjolufndbrayp7tz4p3hsx244zaqhksvcf5m3zezawlwa",
+  "qualification_result_cid": "baguqeera5kvq2ifiedvw33n4cckhnkfuru3p3jkk5dct7jycrfxr7naakvdq",
+  "qualification_authority_cid": "baguqeera2pevsm7imsl56ifjav4of5oloyyzoeivkqnkd2mztnqbjwgkof7a",
+  "checkout_fingerprint_cid": "baguqeeraeia2gslrbndethw2r3yaw2q3cbcb6vrzz5b4lja7ybcezdu3duzq",
+  "benchmark_report_cid": "baguqeerak5pvb5q4tlmqfzxuceblhlpefg52mjzycgg6coagztsnm6m4nrxq",
   "benchmark_authority_cid": "baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa",
   "benchmark_projection_cid": "baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a",
   "benchmark_overall_disposition": "partial",
-  "release_report_sha256": "sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616",
+  "release_report_sha256": "sha256:810530db7f703648869b113685f23b7b80d2c26f7f791c15ab366735bf41fb28",
+  "successor_tasks_cid": "baguqeeratgqa7vm5g2sffmmc4jt2tweynqygjm2n2q6qinbkdfzuxpmp64oa",
+  "closeout_implementation_validation_cid": "baguqeerav6looomfqmq64gz6bh3cf5q3nxajmtgauieta6zv665u3uenlwiq",
   "evidence_cohort": "hermetic_local_execution",
   "excluded_cohorts": [
     "simulated",
@@ -25,47 +27,33 @@
   "objective_complete": false,
   "release_qualified": false,
   "production_authorized": false,
-  "closeout_source_revision": {
-    "note": "122/124 reports bind this 080 source snapshot; hermetic 113 ran on the dirty forest later committed as hermetic_081_124_commit",
-    "ipfs_accelerate_py": {
-      "head": "4ee047a46b59f94be4aa70de20f14effe7ddad60",
-      "tree": "663f2766c3f9ff70edb127f7e8d52f2c234d1635"
-    },
-    "ipfs_datasets_py": {
-      "gitlink": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
-      "head": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
-      "tree": "8f44e00a49d6f67c67ee6810e04e4aae4d869af5"
-    }
-  },
-  "hermetic_081_124_commit": {
+  "source_revision": {
     "branch": "agent/logic-governed-compositional-verification-fabric-v1",
     "ipfs_accelerate_py": {
-      "head": "e802713a851f71c0be2226191eedad1e5cd6d435",
-      "tree": "54d3b46c54c700a005b4471c3bdc4dece8ad5300"
+      "head": "f64208fc851d9e474d759427cdbfdf2dcd63d537",
+      "tree": "f89dffdf0a3ac5548876e67a916601e8821be1cc"
     },
     "ipfs_datasets_py": {
-      "gitlink": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
-      "head": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
-      "tree": "8f44e00a49d6f67c67ee6810e04e4aae4d869af5"
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "head": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
     }
   },
   "file_sha256": {
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md": "sha256:8aa817f81347ca11b5ce987c35da5228850811e64f8f88c752725856c6132774",
     "docs/architecture/logic_governed_compositional_verification_fabric.todo.md": "sha256:aadaebdb7f7e9292e08a2e2c26769c588e46168708591c265b07df5a22231873",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:ad780df4ef461e99635ba2b200bbd574077daef1e535fa73c2989b65a448e6dc",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:1ec9187e50181a7aadc7b82cc17c952837512475b6e685c802ca028e63fe8150",
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616",
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:a23e5b3cf3a88e545942f6975ac1ad7c0432e1dd670929ab872fefdae0cabdf0",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:556a756779011f46c5b717bbf804f57cfc0575c787580ab4a30bec3b00055a4a"
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:16b55b9eca8d6952da6a401a95591525dea8997f4679f40314415f8c3af21808",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:3e28b722b4bff1289445fb8e6ff2fbafddbf50e3c1d86789304828d999000b1d",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:810530db7f703648869b113685f23b7b80d2c26f7f791c15ab366735bf41fb28",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:de77e4ebd03f4a76f830a81f4615305ef2f89e77e150d8e1dc6d2bf844cd10fc",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:f78a57393caa7d40e1af64ed38395d918b24ba14eae5838ed2cde932c7edf123"
   },
   "uncommitted_remaining_auto_work": false,
-  "uncommitted_datasets_090_paths": [
-    "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/proof_carrying_artifact.py",
-    "ipfs_datasets_py/tests/unit/logic/software_verification/test_proof_carrying_artifact.py"
-  ],
+  "uncommitted_datasets_090_paths": [],
   "notes": [
     "hermetic 113 and 120 did not judge live local, live remote, or production-authoritative cohorts",
-    "accelerator 081-124 source is commit e802713a851f71c0be2226191eedad1e5cd6d435; nested datasets 090 files remain uncommitted so gitlink still af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
+    "datasets 090 is nested commit 66a02063496fd200f2372b3083e376f1978c6be1, recorded as the parent gitlink",
+    "closeout implementation --check passed with validation_cid baguqeerav6looomfqmq64gz6bh3cf5q3nxajmtgauieta6zv665u3uenlwiq",
     "this packet cannot be copied to the 121 or 123 output paths as issuance"
   ]
 }
