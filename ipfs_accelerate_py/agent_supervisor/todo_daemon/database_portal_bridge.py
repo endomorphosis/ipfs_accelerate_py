@@ -1555,6 +1555,7 @@ class DatabasePortalExecutionBridge:
         except ValueError:
             return None
 
+    @staticmethod
     def _typed_deferral(
         result: Mapping[str, Any],
     ) -> tuple[str, int] | None:
@@ -1567,6 +1568,13 @@ class DatabasePortalExecutionBridge:
         # describe a successful deterministic zero-provider closure.  Only
         # the explicit closed deferral signal grants retry semantics.
         if implementation.get("deferred") is not True:
+            return None
+        structured = DatabasePortalExecutionBridge._explicit_retryable_deferral(
+            implementation
+        )
+        # Free-text ``deferred=true`` without a closed schema or an explicit
+        # backoff is not retry authority.
+        if not structured and "backoff_seconds" not in implementation:
             return None
         # Older typed deferrals predate the duration field.  They retain a
         # conservative bounded default instead of silently becoming a

@@ -6295,12 +6295,16 @@ class DatabaseCoordinator:
         owner_session_id: str,
         lease_ms: int | None = None,
         exclude_task_cids: Iterable[str] = (),
+        eligible_task_cids: Sequence[str] | None = None,
         now_ms: int | None = None,
     ) -> TaskClaim | None:
-        """Fair-schedule: claim the oldest ready unclaimed task.
+        """Claim a ready task, optionally in caller-provided eligibility order.
 
         Selection and acceptance share one transaction (LeaseCoordinator
-        ``claim_ready`` algorithm).
+        ``claim_ready`` algorithm).  ``None`` preserves registration-time
+        fairness.  An explicit sequence is an authority boundary: only those
+        tasks are considered, in exactly that order, and an empty sequence
+        claims nothing.
         """
 
         owner = _text(owner_session_id, "owner_session_id")
@@ -6311,6 +6315,23 @@ class DatabaseCoordinator:
         )
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         excluded = {str(item) for item in exclude_task_cids}
+        eligible: tuple[str, ...] | None = None
+        if eligible_task_cids is not None:
+            if len(eligible_task_cids) > MAX_PREPARED_COMPLETION_QUERY:
+                raise DatabaseCoordinationBoundsError(
+                    "eligible task population exceeds the bounded claim query"
+                )
+            ordered: list[str] = []
+            seen: set[str] = set()
+            for raw_task_cid in eligible_task_cids:
+                task_cid = _text(raw_task_cid, "eligible_task_cid")
+                if task_cid in seen:
+                    raise DatabaseCoordinationError(
+                        "eligible_task_cids must be unique"
+                    )
+                seen.add(task_cid)
+                ordered.append(task_cid)
+            eligible = tuple(ordered)
         with self._lock:
             connection = self._require()
             self._begin(connection)
@@ -6329,12 +6350,28 @@ class DatabaseCoordinator:
                         str(_row_get(_row_mapping(row), "scope_key", "0")),
                         now,
                     )
-                candidates = connection.execute(
-                    """
-                    SELECT * FROM coordination_tasks WHERE ready = TRUE
-                    ORDER BY registered_at_ms, task_cid
-                    """
-                ).fetchall()
+                if eligible is None:
+                    candidates = connection.execute(
+                        """
+                        SELECT * FROM coordination_tasks WHERE ready = TRUE
+                        ORDER BY registered_at_ms, task_cid
+                        """
+                    ).fetchall()
+                else:
+                    candidates = []
+                    for task_cid in eligible:
+                        row = connection.execute(
+                            "SELECT * FROM coordination_tasks WHERE task_cid = ?",
+                            [task_cid],
+                        ).fetchone()
+                        if row is None:
+                            raise DatabaseCoordinationError(
+                                "eligible task is absent from the coordination "
+                                f"registry: {task_cid}"
+                            )
+                        mapping = _row_mapping(row)
+                        if bool(_row_get(mapping, "ready", default=False)):
+                            candidates.append(row)
                 for task in candidates:
                     mapping = _row_mapping(task)
                     cid = str(_row_get(mapping, "task_cid", default=""))

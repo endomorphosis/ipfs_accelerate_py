@@ -804,7 +804,6 @@ def test_configured_production_runner_binds_real_portal_bridge(
     finally:
         daemon.close()
 
-
 def _owned_record(owner: str) -> SimpleNamespace:
     record = _record()
     record.outputs = (
@@ -1056,8 +1055,12 @@ def test_bridge_uses_safe_default_for_legacy_typed_deferral(
                     "returncode": 1,
                     "reason": "legacy_typed_deferral",
                     "deferred": True,
+                    "retryable": True,
                     "attempt_consumed": False,
                     "provider_dispatched": False,
+                    "provider_call_allowed": False,
+                    "deferral_schema": DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
+                    "failure_kind": "lifecycle_setup",
                 }
             }
 
@@ -1245,6 +1248,10 @@ def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     assert authority["authorized_paths"] == ["inventory/result.json"]
 
 
+@pytest.mark.parametrize(
+    ("max_task_attempts", "denied_paths"),
+    ((1, ()), (3, ("outside.py",))),
+)
 def test_bridge_keeps_exhausted_or_policy_denied_validation_failure_terminal(
     tmp_path: Path,
     max_task_attempts: int,
@@ -1468,7 +1475,7 @@ def test_bridge_rejects_task_body_cid_conflicting_with_database_authority(
 
     with pytest.raises(
         DatabasePortalBridgeError,
-        match="task body conflicts with its canonical CID",
+        match="canonical CID|authoritative task CID",
     ):
         bridge.run_provider(_attempt())
     assert factory_calls == []
@@ -1502,6 +1509,19 @@ def test_bridge_preserves_root_repository_output_paths(tmp_path: Path) -> None:
     assert "ipfs_accelerate_py/ipfs_accelerate_py" not in projection
 
 
+@pytest.mark.parametrize(
+    "output",
+    (
+        "/tmp/escape.py",
+        "../escape.py",
+        "pkg/../../escape.py",
+        "./pkg/module.py",
+        "pkg//module.py",
+        "pkg/one.py,pkg/two.py",
+        "pkg\\module.py",
+        "C:/escape.py",
+    ),
+)
 def test_bridge_rejects_output_paths_that_cannot_be_scoped_losslessly(
     tmp_path: Path,
     output: str,
@@ -1602,6 +1622,16 @@ def test_bridge_projects_multiple_validations_under_one_repository_transition(
     assert validation_command_repository_root(command) == "ipfs_datasets_py"
 
 
+@pytest.mark.parametrize(
+    "argv",
+    (
+        ["python -m pytest -q tests/unit/test_safe.py\n&& rm -rf target"],
+        ["python -m pytest -q tests/unit/test_safe.py\x00"],
+        [" python -m pytest -q tests/unit/test_safe.py"],
+        ["python", 7, "-m", "pytest"],
+        [],
+    ),
+)
 def test_bridge_rejects_noncanonical_validation_argv_before_projection(
     tmp_path: Path,
     argv: list[object],
@@ -1626,6 +1656,13 @@ def test_bridge_rejects_noncanonical_validation_argv_before_projection(
     assert not list((tmp_path / "attempts").glob("*/task-projection.md"))
 
 
+@pytest.mark.parametrize(
+    ("owner", "message"),
+    (
+        ("../outside", "owning repository metadata is unsafe"),
+        ("other_repository", "not a configured worktree submodule"),
+    ),
+)
 def test_bridge_rejects_unsafe_or_unconfigured_owning_repository(
     tmp_path: Path,
     owner: str,
@@ -1675,4 +1712,3 @@ def test_bridge_rejects_validation_root_conflicting_with_owner(
         match="repository root conflicts with owning repository",
     ):
         bridge.run_provider(_attempt())
-

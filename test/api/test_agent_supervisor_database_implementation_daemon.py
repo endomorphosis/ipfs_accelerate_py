@@ -4202,7 +4202,6 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
     finally:
         daemon.close()
 
-
 def test_provider_cold_execution_schema_installer_matches_daemon_contract(
     tmp_path: Path,
 ) -> None:
@@ -4773,6 +4772,14 @@ def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    ("mutation", "error_type"),
+    [
+        ("foreign_operation", DatabaseImplementationConflictError),
+        ("missing_seed", DatabaseImplementationAuthorityError),
+        ("wrong_seed_receipt", DatabaseImplementationAuthorityError),
+    ],
+)
 def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5693,4 +5700,3 @@ def test_portal_builder_with_inherited_database_program_without_implement_is_obs
         assert tuple(int(counts[index]) for index in range(3)) == (0, 0, 0)
     finally:
         daemon.close()
-
