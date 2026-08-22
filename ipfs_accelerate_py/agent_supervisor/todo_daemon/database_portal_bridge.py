@@ -1296,7 +1296,24 @@ class DatabasePortalExecutionBridge:
             return ""
         try:
             record = getter(task_cid)
-        except Exception:
+        except Exception as exc:
+            # Attach/session failures must not look like "not our row".
+            # Swallowing them advanced the recovery cursor past blocked
+            # tasks and left the DuckDB frontier stuck.
+            name = type(exc).__name__
+            detail = str(exc)
+            if (
+                name
+                in {
+                    "DuckDBConnectionPolicyError",
+                    "InvalidInputException",
+                    "TimeoutError",
+                }
+                or "Authentication failed" in detail
+                or "Authorization failed" in detail
+                or "quack attach" in detail.lower()
+            ):
+                raise
             return ""
         if (
             record is None
