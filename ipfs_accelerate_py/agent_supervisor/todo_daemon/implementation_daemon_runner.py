@@ -1381,6 +1381,7 @@ def build_portal_implementation_daemon_from_args(
             merge_target_ref=str(
                 getattr(parsed, "merge_target_branch", "") or "HEAD"
             ),
+            task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
         )
         bind_database_portal_execution_from_args(
             daemon,

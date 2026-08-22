@@ -6297,6 +6297,7 @@ class DatabaseCoordinator:
         exclude_task_cids: Iterable[str] = (),
         eligible_task_cids: Sequence[str] | None = None,
         now_ms: int | None = None,
+        accept_task_cid: Callable[[str], bool] | None = None,
     ) -> TaskClaim | None:
         """Claim a ready task, optionally in caller-provided eligibility order.
 
@@ -6304,7 +6305,8 @@ class DatabaseCoordinator:
         ``claim_ready`` algorithm).  ``None`` preserves registration-time
         fairness.  An explicit sequence is an authority boundary: only those
         tasks are considered, in exactly that order, and an empty sequence
-        claims nothing.
+        claims nothing.  ``accept_task_cid`` is evaluated before the exclusive
+        scope is taken so sharded lanes never steal off-home work.
         """
 
         owner = _text(owner_session_id, "owner_session_id")
@@ -6376,6 +6378,8 @@ class DatabaseCoordinator:
                     mapping = _row_mapping(task)
                     cid = str(_row_get(mapping, "task_cid", default=""))
                     if not cid or cid in excluded:
+                        continue
+                    if accept_task_cid is not None and not accept_task_cid(cid):
                         continue
                     scope_key = exclusive_scope_key(
                         lease_kind=LeaseKind.TASK, scope=cid, task_cid=cid

@@ -2691,7 +2691,6 @@ def _validated_created_grok_container_id(
     return created_fields[0]
 
 
-
 def _create_grok_container_and_build_start_command(
     create_command: Sequence[str],
     *,

@@ -190,6 +190,7 @@ def _open_daemon(
     control_path: Path | None = None,
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
+    task_prefix: str = "",
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"
@@ -251,6 +252,7 @@ def _open_daemon(
         clock_ms=clock_ms,
         repo_root=repo_root,
         merge_target_ref=merge_target_ref,
+        task_prefix=task_prefix,
     )
 
 
@@ -3083,6 +3085,36 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
         assert converged_retry.attempt_number == 3
     finally:
         daemon.close()
+
+
+def test_strict_shards_claim_only_home_lane_tasks(tmp_path: Path) -> None:
+    seed = _open_daemon(tmp_path, session="session:seed")
+    try:
+        seed.materialize_population(_population(8))
+    finally:
+        seed.close()
+
+    claimed: dict[int, str] = {}
+    for index in range(4):
+        daemon = _open_daemon(
+            tmp_path,
+            session=f"session:shard-{index}",
+            task_shard_count=4,
+            task_shard_index=index,
+            strict_task_sharding=True,
+            task_prefix="DQP-T",
+        )
+        try:
+            attempt = daemon.claim_next()
+            assert attempt is not None, f"shard {index} found no home-lane work"
+            alias = str(attempt.task_alias or "")
+            home = daemon._task_home_shard_index(alias)
+            assert home == index, f"{alias} home={home} claimed by shard {index}"
+            claimed[index] = alias
+        finally:
+            daemon.close()
+
+    assert len(set(claimed.values())) == 4
 
 
 def test_no_markdown_status_update_under_database_authority(tmp_path: Path) -> None:
