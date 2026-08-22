@@ -1102,6 +1102,91 @@ def test_bridge_does_not_infer_retryability_from_generic_failure_text(
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
 
 
+def test_bridge_defers_protected_recovery_fence_contention(
+    tmp_path: Path,
+) -> None:
+    class FenceBlockedPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "unchanged": True,
+                "reason": "external_protected_checkout_recovery_required",
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: FenceBlockedPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert (
+        str(caught.value) == "external_protected_checkout_recovery_required"
+    )
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
+def test_bridge_defers_live_inflight_process_skip(
+    tmp_path: Path,
+) -> None:
+    class InflightPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "inflight_process",
+                    "task_id": "PCCE-021",
+                    "attempt": 1,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: InflightPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "inflight_process"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
+def test_bridge_still_terminals_non_fence_blocked_portal(
+    tmp_path: Path,
+) -> None:
+    class OtherBlockedPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "reason": "crash_reconciliation_inputs_drifted",
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: OtherBlockedPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "crash_reconciliation_inputs_drifted"
+
+
 def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     tmp_path: Path,
 ) -> None:

@@ -47,6 +47,11 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
+from ..merge.protected_recovery_fence import (
+    generated_board_output_paths,
+    is_protected_recovery_fence_contention,
+    is_worktree_merge_operation,
+)
 from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
     PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
@@ -9865,15 +9870,53 @@ class PortalImplementationSupervisor:
             if not item.get("trusted_generator")
         ]
         if untrusted_commits:
-            return {
-                **result_base,
-                "release_allowed": False,
-                "reason": "protected_generated_history_untrusted",
-                "before_head": before_head,
-                "after_head": after_head,
-                "commits": commits,
-                "untrusted_commits": untrusted_commits,
-            }
+            board_paths = generated_board_output_paths(paths)
+            if not board_paths:
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_untrusted",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": commits,
+                    "untrusted_commits": untrusted_commits,
+                }
+            board_revision = (
+                f"{before_head}..{after_head}" if before_head else after_head
+            )
+            board_history = self._git_protected_history(
+                git_root,
+                board_revision,
+                board_paths,
+            )
+            if not board_history.get("ok"):
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_query_failed",
+                    "history_query": board_history,
+                }
+            board_untrusted = [
+                str(item.get("commit") or "")
+                for item in board_history.get("commits") or ()
+                if not item.get("trusted_generator")
+            ]
+            if board_untrusted:
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_untrusted",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": commits,
+                    "untrusted_commits": board_untrusted,
+                    "generated_board_paths": list(board_paths),
+                }
+            result_base["unrelated_untrusted_commits"] = untrusted_commits
+            result_base["generated_board_paths"] = list(board_paths)
+            result_base["automatic_fence_resolution"] = (
+                "protected_generated_history_unrelated_protected_code"
+            )
 
         confirmed_head = self._git_head_state(git_root)
         confirmed_status = self._git_scope_dirty_paths(git_root, paths)
@@ -9896,9 +9939,12 @@ class PortalImplementationSupervisor:
             **result_base,
             "release_allowed": True,
             "reason": (
-                "protected_generated_history_trusted"
-                if commits
-                else "protected_outputs_clean_unrelated_history"
+                str(result_base.get("automatic_fence_resolution") or "")
+                or (
+                    "protected_generated_history_trusted"
+                    if commits
+                    else "protected_outputs_clean_history_unchanged"
+                )
             ),
             "before_head": before_head,
             "after_head": after_head,
@@ -13810,6 +13856,125 @@ class PortalImplementationSupervisor:
             "owner_lease_pid": str(owner.get("lease_pid") or ""),
         }
 
+    def _commit_dirty_submodules_for_rescue(
+        self,
+        worktree_path: Path,
+        *,
+        rescue_branch: str,
+        reason: str,
+    ) -> list[dict[str, Any]]:
+        """Commit dirty submodule trees so failed-test work can be rescued.
+
+        Parent ``git add -A`` only sees a gitlink. Uncommitted files inside
+        ``external/ipfs_accelerate`` (or other configured submodules) would
+        otherwise vanish as ``no_staged_rescue_delta``.
+        """
+
+        results: list[dict[str, Any]] = []
+        for relative in self.config.worktree_submodule_paths:
+            target = worktree_path / relative
+            if not target.is_dir():
+                continue
+            git_dir = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if git_dir.returncode != 0 or git_dir.stdout.strip() != "true":
+                continue
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if status.returncode != 0 or not status.stdout.strip():
+                continue
+            add = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "stage_submodule_rescue_failed",
+                        "returncode": add.returncode,
+                        "stderr": add.stderr[-2000:],
+                    }
+                )
+                continue
+            staged = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if staged.returncode == 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "no_staged_submodule_delta",
+                    }
+                )
+                continue
+            commit = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Supervisor",
+                    "-c",
+                    "user.email=implementation-supervisor@example.invalid",
+                    "commit",
+                    "-m",
+                    f"Rescue dirty submodule {relative}",
+                    "-m",
+                    f"Rescue branch: {rescue_branch}",
+                    "-m",
+                    f"Cleanup reason: {reason}",
+                ],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if commit.returncode != 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "commit_submodule_rescue_failed",
+                        "returncode": commit.returncode,
+                        "stderr": commit.stderr[-2000:],
+                    }
+                )
+                continue
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            results.append(
+                {
+                    "path": relative,
+                    "committed": True,
+                    "commit": head.stdout.strip(),
+                    "reason": "dirty_submodule_committed_for_rescue",
+                }
+            )
+        return results
+
     @staticmethod
     def _safe_rescue_branch_fragment(value: str) -> str:
         normalized = []
@@ -13899,6 +14064,12 @@ class PortalImplementationSupervisor:
             self._record_event("dirty_worktree_rescue_failed", result)
             return result
 
+        submodule_results = self._commit_dirty_submodules_for_rescue(
+            worktree_path,
+            rescue_branch=rescue_branch,
+            reason=reason,
+        )
+
         add = subprocess.run(
             ["git", "add", "-A"],
             cwd=worktree_path,
@@ -13945,6 +14116,7 @@ class PortalImplementationSupervisor:
                 "rescue_branch": rescue_branch,
                 "rescue_commit": rescue_commit,
                 "status_short": status_lines[:20],
+                "submodule_results": submodule_results,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -14004,6 +14176,7 @@ class PortalImplementationSupervisor:
             "rescue_branch": rescue_branch,
             "rescue_commit": rescue_commit,
             "status_short": status_lines[:20],
+            "submodule_results": submodule_results,
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
@@ -16981,6 +17154,55 @@ class PortalImplementationSupervisor:
                             if key != "lease"
                         },
                         "leftover_release": leftover,
+                    }
+                existing = read_checkout_mutation_lease(
+                    self._repo_merge_lock_path()
+                )
+                peer_merge = bool(
+                    is_protected_recovery_fence_contention(
+                        adoption.get("reason")
+                    )
+                    or (
+                        existing is not None
+                        and is_worktree_merge_operation(
+                            existing.metadata.get("operation")
+                        )
+                    )
+                )
+                if peer_merge:
+                    # Another worktree/daemon still owns the merge lock, or
+                    # that merge already completed. This is not a supervisor
+                    # generated-board recovery fence; do not freeze in
+                    # agentic_maintenance_started.
+                    released_stale_merge = False
+                    if (
+                        existing is not None
+                        and is_worktree_merge_operation(
+                            existing.metadata.get("operation")
+                        )
+                    ):
+                        try:
+                            owner_pid = int(existing.metadata.get("pid") or 0)
+                        except (TypeError, ValueError):
+                            owner_pid = 0
+                        if owner_pid <= 0 or not process_is_running(owner_pid):
+                            released_stale_merge = bool(
+                                release_checkout_mutation_lease(
+                                    existing,
+                                    timeout_seconds=2.0,
+                                )
+                            )
+                    return {
+                        **adoption,
+                        "attempted": False,
+                        "recovered": False,
+                        "retained_lease": False,
+                        "peer_merge_lock": True,
+                        "released_stale_merge_lock": released_stale_merge,
+                        "reason": str(
+                            adoption.get("reason")
+                            or "external_protected_checkout_recovery_required"
+                        ),
                     }
                 return {
                     **adoption,

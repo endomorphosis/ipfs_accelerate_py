@@ -338,7 +338,9 @@ def _journal_basis(
         raise ProtectedRecoveryClearanceError("recovery_owner_mismatch")
     if str(metadata.get("kind") or "") != "merge":
         raise ProtectedRecoveryClearanceError("kind_mismatch")
-    if str(metadata.get("owner_script") or "") != "implementation_supervisor.py":
+    from .protected_recovery_fence import is_supervisor_recovery_owner_script
+
+    if not is_supervisor_recovery_owner_script(metadata.get("owner_script")):
         raise ProtectedRecoveryClearanceError("owner_script_mismatch")
     if not lock.lease_id:
         raise ProtectedRecoveryClearanceError("lease_id_missing")
