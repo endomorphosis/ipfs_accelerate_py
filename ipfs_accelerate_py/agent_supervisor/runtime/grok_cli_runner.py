@@ -1384,19 +1384,20 @@ def _isolated_grok_home(
             except Exception:
                 source_auth = Path.home() / ".grok" / "auth.json"
         if source_auth.is_file():
-            # Preserve Grok's own authority without copying a credential.  The
-            # alternate-provider stores are independently kernel-denied.
-            resolved_auth = source_auth.resolve(strict=True)
-            (grok_home / "auth.json").symlink_to(resolved_auth)
-            # Grok 1.0.5 also reads $HOME/.grok/auth.json when HOME==GROK_HOME.
+            # Copy, do not bind-mount, the operator credential.  A read-only
+            # bind of ~/.grok/auth.json cannot refresh OIDC tokens; a host-path
+            # bind is also hideable by later ~/.grok deny-masks.
             nested_home = grok_home / ".grok"
             nested_home.mkdir(mode=0o700)
-            (nested_home / "auth.json").symlink_to(resolved_auth)
-            operator_config = source_auth.parent / "config.toml"
-            if operator_config.is_file():
-                (nested_home / "config.toml").symlink_to(
-                    operator_config.resolve(strict=True)
-                )
+            _install_ephemeral_credential(source_auth, grok_home / "auth.json")
+            _install_ephemeral_credential(source_auth, nested_home / "auth.json")
+            for name in ("config.toml", "agent_id"):
+                extra = source_auth.parent / name
+                if extra.is_file():
+                    try:
+                        _install_ephemeral_credential(extra, nested_home / name)
+                    except ValueError:
+                        continue
 
         isolated_env = dict(child_env)
         isolated_env["GROK_HOME"] = str(grok_home)
@@ -1415,6 +1416,80 @@ def user_home_from_env(env: dict[str, str]) -> Path:
 
     configured = str(env.get("HOME") or "").strip()
     return Path(configured).expanduser() if configured else Path.home()
+
+
+_MAX_ISOLATED_CREDENTIAL_BYTES = 256 * 1024
+_MAX_ISOLATED_CREDENTIAL_LEASES = 16
+_ISOLATED_CREDENTIAL_LEASES: list[tempfile.TemporaryDirectory[str]] = []
+
+
+def _retain_isolated_credential_home() -> Path:
+    """Keep an ephemeral 0700 directory alive for the Docker argv lifetime."""
+
+    lease = tempfile.TemporaryDirectory(prefix="asref-isol-cred-")
+    path = Path(lease.name)
+    try:
+        path.chmod(0o700)
+    except OSError:
+        lease.cleanup()
+        raise
+    _ISOLATED_CREDENTIAL_LEASES.append(lease)
+    while len(_ISOLATED_CREDENTIAL_LEASES) > _MAX_ISOLATED_CREDENTIAL_LEASES:
+        old = _ISOLATED_CREDENTIAL_LEASES.pop(0)
+        try:
+            old.cleanup()
+        except OSError:
+            pass
+    return path
+
+
+def _install_ephemeral_credential(source: Path, destination: Path) -> None:
+    """Copy a bounded operator credential into ephemeral isolated state.
+
+    The operator file is never bind-mounted and never appears in argv.  The
+    container may refresh tokens only on this copy, so host login state cannot
+    be mutated and deny-masks of ``~/.grok`` cannot hide auth.
+    """
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        source_fd = os.open(source, flags)
+    except OSError as exc:
+        raise ValueError("isolated credential is unavailable") from exc
+    try:
+        info = os.fstat(source_fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("isolated credential is not a regular file")
+        if info.st_size > _MAX_ISOLATED_CREDENTIAL_BYTES or info.st_size < 1:
+            raise ValueError("isolated credential is not bounded regular data")
+        data = os.read(source_fd, info.st_size)
+        if len(data) != info.st_size:
+            raise ValueError("isolated credential changed while read")
+    finally:
+        os.close(source_fd)
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    write_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        dest_fd = os.open(destination, write_flags, 0o600)
+    except OSError as exc:
+        raise ValueError("isolated credential copy could not be created") from exc
+    try:
+        written = os.write(dest_fd, data)
+        if written != len(data):
+            raise ValueError("isolated credential copy is incomplete")
+        os.fchmod(dest_fd, 0o600)
+    finally:
+        os.close(dest_fd)
 
 
 def _grok_executable_extension_paths(workspace: Path) -> tuple[Path, ...]:
@@ -2712,49 +2787,9 @@ def _docker_grok_command(
         _docker_mount(grok_bin, destination=container_grok, read_only=True)
     )
 
-    source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
-    source_home = (
-        Path(source_home_raw).expanduser()
-        if source_home_raw
-        else user_home_from_env(base_env) / ".grok"
-    )
-    source_auth = _existing_path(source_home / "auth.json")
-    if source_auth is not None:
-        # Replace ephemeral symlinks with file binds at both GROK_HOME/auth.json
-        # and HOME/.grok/auth.json. Grok 1.0.5 consults the nested path when
-        # HOME and GROK_HOME are the same ephemeral directory.
-        nested_dir = grok_home / ".grok"
-        nested_dir.mkdir(mode=0o700, exist_ok=True)
-        for auth_link in (grok_home / "auth.json", nested_dir / "auth.json"):
-            try:
-                if auth_link.is_symlink() or auth_link.is_file():
-                    auth_link.unlink()
-            except OSError:
-                pass
-        command.extend(_docker_mount(source_auth, read_only=True))
-        command.extend(
-            _docker_mount(
-                source_auth,
-                destination=grok_home / "auth.json",
-                read_only=True,
-            )
-        )
-        command.extend(
-            _docker_mount(
-                source_auth,
-                destination=nested_dir / "auth.json",
-                read_only=True,
-            )
-        )
-        operator_config = source_auth.parent / "config.toml"
-        if operator_config.is_file():
-            command.extend(
-                _docker_mount(
-                    operator_config,
-                    destination=nested_dir / "config.toml",
-                    read_only=True,
-                )
-            )
+    # Operator secrets stay in the ephemeral grok_home copy.  Do not bind-mount
+    # ~/.grok/auth.json: argv would name the operator path, and a later deny
+    # mask of ~/.grok would hide it.
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
@@ -2767,7 +2802,6 @@ def _docker_grok_command(
                 Path("/dev"),
                 container_grok,
                 git_control_path,
-                source_auth,
             }
             or denied.is_relative_to(grok_home)
         ):
@@ -2928,6 +2962,8 @@ def _docker_codex_fallback_command(
         source_auth=source_auth,
         workspace=workspace,
     )
+    isolated_auth = _retain_isolated_credential_home() / "auth.json"
+    _install_ephemeral_credential(source_auth, isolated_auth)
     host_python = _host_codex_task_toolchain_python()
     expected_environment = _codex_task_container_environment()
     if child_env != expected_environment:
@@ -3042,9 +3078,9 @@ def _docker_codex_fallback_command(
         command.extend(_docker_mount(git_control_path, read_only=True))
     command.extend(
         _docker_mount(
-            source_auth,
+            isolated_auth,
             destination=_CODEX_CONTAINER_AUTH_PATH,
-            read_only=True,
+            read_only=False,
         )
     )
     # The authority-validation image contains a large CUDA-oriented Config.Env.

@@ -2117,22 +2117,30 @@ def _host_cli_projected_credentials(family: str) -> tuple[tuple[Path, str], ...]
     """Config/auth files only — skip CLI session caches and logs."""
 
     projected: list[tuple[Path, str]] = []
-    seen: set[Path] = set()
+    seen: set[tuple[int, int]] = set()
 
     def add(path: Path) -> None:
         try:
-            resolved = path.resolve(strict=True)
+            entry = path.lstat()
         except OSError:
             return
-        if resolved in seen or not path.is_file():
+        if not stat_module.S_ISREG(entry.st_mode):
             return
-        try:
-            if path.stat().st_size > _MAX_PROVIDER_CREDENTIAL_BYTES:
-                return
-        except OSError:
+        identity = (entry.st_dev, entry.st_ino)
+        if identity in seen:
             return
-        seen.add(resolved)
-        projected.append((path, _host_cli_relative_credential(path)))
+        if entry.st_size > _MAX_PROVIDER_CREDENTIAL_BYTES or entry.st_size < 1:
+            return
+        relative = _host_cli_relative_credential(path)
+        relative_path = Path(relative)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or not relative_path.parts
+        ):
+            return
+        seen.add(identity)
+        projected.append((path, relative))
 
     for credential in _host_cli_credential_paths(family):
         try:
@@ -2164,22 +2172,127 @@ def _host_cli_projected_credentials(family: str) -> tuple[tuple[Path, str], ...]
     return tuple(projected)
 
 
-def _host_cli_admitted_environment(family: str) -> list[str]:
-    """Closed credential/config env projected into the isolation image."""
+def _host_cli_admitted_environment(family: str) -> list[tuple[str, str]]:
+    """Closed credential/config env loaded inside the isolation image.
 
-    admitted: list[str] = []
+    Values stay out of Docker argv.  A bounded env file in the ephemeral CLI
+    home is exec'd by ``.isolated-env-exec`` after ``env -i`` clears image ENV.
+    """
+
+    admitted: list[tuple[str, str]] = []
     for name in _HOST_CLI_ENV_NAMES.get(family, ()):
         value = str(os.environ.get(name, "") or "")
         if (
             not value
+            or re.fullmatch(r"[A-Z][A-Z0-9_]*", name) is None
             or len(value.encode("utf-8")) > 8192
             or "\x00" in value
             or "\n" in value
             or "\r" in value
         ):
             continue
-        admitted.append(f"{name}={value}")
+        admitted.append((name, value))
     return admitted
+
+
+def _retain_isolated_credential_home() -> Path:
+    """Keep an ephemeral 0700 directory alive for the Docker argv lifetime."""
+
+    lease = tempfile.TemporaryDirectory(prefix="asref-isol-cred-")
+    path = Path(lease.name)
+    try:
+        path.chmod(0o700)
+    except OSError:
+        lease.cleanup()
+        raise
+    _ISOLATED_CREDENTIAL_LEASES.append(lease)
+    while len(_ISOLATED_CREDENTIAL_LEASES) > _MAX_ISOLATED_CREDENTIAL_LEASES:
+        old = _ISOLATED_CREDENTIAL_LEASES.pop(0)
+        try:
+            old.cleanup()
+        except OSError:
+            pass
+    return path
+
+
+def _install_isolated_credential_copy(source: Path, destination: Path) -> None:
+    """Copy a bounded operator credential; never bind-mount the operator file."""
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        source_fd = os.open(source, flags)
+    except OSError as exc:
+        raise ValueError("isolated credential is unavailable") from exc
+    try:
+        info = os.fstat(source_fd)
+        if not stat_module.S_ISREG(info.st_mode):
+            raise ValueError("isolated credential is not a regular file")
+        if info.st_size > _MAX_PROVIDER_CREDENTIAL_BYTES or info.st_size < 1:
+            raise ValueError("isolated credential is not bounded regular data")
+        data = os.read(source_fd, info.st_size)
+        if len(data) != info.st_size:
+            raise ValueError("isolated credential changed while read")
+    finally:
+        os.close(source_fd)
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    write_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        dest_fd = os.open(destination, write_flags, 0o600)
+    except OSError as exc:
+        raise ValueError("isolated credential copy could not be created") from exc
+    try:
+        written = os.write(dest_fd, data)
+        if written != len(data):
+            raise ValueError("isolated credential copy is incomplete")
+        os.fchmod(dest_fd, 0o600)
+    finally:
+        os.close(dest_fd)
+
+
+def _write_isolated_env_file(
+    path: Path,
+    pairs: Sequence[tuple[str, str]],
+) -> None:
+    """Serialize admitted env without placing values on Docker argv."""
+
+    lines: list[str] = []
+    for name, value in pairs:
+        if re.fullmatch(r"[A-Z][A-Z0-9_]*", name) is None:
+            raise ValueError("isolated environment name is invalid")
+        encoded = value.encode("utf-8")
+        if b"\n" in encoded or b"\r" in encoded or b"\x00" in encoded:
+            raise ValueError("isolated environment value is malformed")
+        lines.append(f"{name}={value}")
+    body = ("\n".join(lines) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise ValueError("isolated environment file could not be created") from exc
+    try:
+        written = os.write(fd, body)
+        if written != len(body):
+            raise ValueError("isolated environment file is incomplete")
+        os.fchmod(fd, 0o600)
+    finally:
+        os.close(fd)
 
 
 def _follow_host_cli_runtime_paths(
@@ -2722,6 +2835,79 @@ _LIFECYCLE_REPOSITORY_ROOT_ENV = (
 )
 _MAX_EXTERNAL_ISOLATION_JSON_BYTES = 16 * 1024
 _MAX_PROVIDER_CREDENTIAL_BYTES = 256 * 1024
+_MAX_ISOLATED_CREDENTIAL_LEASES = 16
+_ISOLATED_CREDENTIAL_LEASES: list[tempfile.TemporaryDirectory[str]] = []
+_ISOLATED_ENV_FILE_NAME = ".isolated-env"
+_ISOLATED_ENV_EXEC_NAME = ".isolated-env-exec"
+_ISOLATED_ENV_EXEC_SOURCE = '''\
+"""Load a bounded isolated env file, then exec the provider command."""
+from __future__ import annotations
+
+import os
+import re
+import stat
+import sys
+
+_ENV_PATH = "/opt/cli-home/.isolated-env"
+_MAX_BYTES = 256 * 1024
+_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _load() -> dict[str, str]:
+    env = dict(os.environ)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        fd = os.open(_ENV_PATH, flags)
+    except OSError:
+        return env
+    try:
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_size < 1
+            or info.st_size > _MAX_BYTES
+        ):
+            raise SystemExit("isolated environment is not bounded regular data")
+        body = os.read(fd, info.st_size)
+        if len(body) != info.st_size:
+            raise SystemExit("isolated environment changed while read")
+    finally:
+        os.close(fd)
+    for raw in body.splitlines():
+        if not raw or raw.startswith(b"#"):
+            continue
+        name, separator, value = raw.partition(b"=")
+        if (
+            not separator
+            or not name
+            or b"\\x00" in name
+            or b"\\x00" in value
+        ):
+            raise SystemExit("isolated environment is malformed")
+        try:
+            key = name.decode("ascii")
+            decoded = value.decode("utf-8")
+        except UnicodeError as exc:
+            raise SystemExit("isolated environment is malformed") from exc
+        if _NAME_RE.fullmatch(key) is None:
+            raise SystemExit("isolated environment is malformed")
+        env[key] = decoded
+    return env
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        raise SystemExit("isolated environment loader lost its command")
+    os.execvpe(sys.argv[1], sys.argv[1:], _load())
+
+
+if __name__ == "__main__":
+    main()
+'''
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.6"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
@@ -3738,6 +3924,8 @@ def _docker_codex_implementation_command(
     if not workspace.is_dir() or workspace == Path("/"):
         raise ValueError("external isolation workspace is not a bounded directory")
     credential = Path(config.credential_file)
+    isolated_auth = _retain_isolated_credential_home() / "auth.json"
+    _install_isolated_credential_copy(credential, isolated_auth)
     container_command = [str(item) for item in inner_command]
     if not container_command:
         raise ValueError("external isolation Codex command is empty")
@@ -3795,9 +3983,9 @@ def _docker_codex_implementation_command(
             repository_root=repository_root,
         ),
         *_external_isolation_mount(
-            credential,
+            isolated_auth,
             destination=_CODEX_CONTAINER_HOME / "auth.json",
-            read_only=True,
+            read_only=False,
         ),
         *_docker_codex_host_vendor_mounts(),
         config.image_id,
@@ -3834,9 +4022,10 @@ def _docker_host_cli_implementation_command(
     """Run a host CLI (Claude, Gemini, Goose, Mistral, Copilot) in Docker.
 
     Codex bind-mounts the host npm vendor pair when present; other CLIs are
-    bind-mounted from the operator host into the same isolation image, with
-    operator credentials projected into an ephemeral CLI home.  Grok stays on
-    ``grok_cli_runner`` so its inner Docker wrap is not nested.
+    bind-mounted from the operator host into the same isolation image.
+    Operator credentials are copied into an ephemeral 0700 home (never
+    bind-mounted, never placed on argv).  Grok stays on ``grok_cli_runner``
+    so its inner Docker wrap is not nested.
     """
 
     config = validate_external_provider_isolation_config(config.to_dict())
@@ -3891,18 +4080,56 @@ def _docker_host_cli_implementation_command(
             )
         except (OSError, ValueError):
             continue
+    isolated_home = _retain_isolated_credential_home()
     for credential, relative in _host_cli_projected_credentials(family):
+        relative_path = Path(relative)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or not relative_path.parts
+        ):
+            continue
+        copied = isolated_home / relative_path
         try:
+            _install_isolated_credential_copy(credential, copied)
             _extend_unique_bind_mounts(
                 mounts,
                 _external_isolation_mount(
-                    credential,
-                    destination=_CLI_CONTAINER_HOME / relative,
-                    read_only=True,
+                    copied,
+                    destination=_CLI_CONTAINER_HOME / relative_path,
+                    read_only=False,
                 ),
             )
         except (OSError, ValueError):
             continue
+    admitted_env = _host_cli_admitted_environment(family)
+    if admitted_env:
+        env_file = isolated_home / _ISOLATED_ENV_FILE_NAME
+        exec_file = isolated_home / _ISOLATED_ENV_EXEC_NAME
+        _write_isolated_env_file(env_file, admitted_env)
+        exec_file.write_text(_ISOLATED_ENV_EXEC_SOURCE, encoding="utf-8")
+        exec_file.chmod(0o600)
+        _extend_unique_bind_mounts(
+            mounts,
+            _external_isolation_mount(
+                env_file,
+                destination=_CLI_CONTAINER_HOME / _ISOLATED_ENV_FILE_NAME,
+                read_only=True,
+            ),
+        )
+        _extend_unique_bind_mounts(
+            mounts,
+            _external_isolation_mount(
+                exec_file,
+                destination=_CLI_CONTAINER_HOME / _ISOLATED_ENV_EXEC_NAME,
+                read_only=True,
+            ),
+        )
+        container_command = [
+            str(_VALIDATION_CONTAINER_PYTHON),
+            str(_CLI_CONTAINER_HOME / _ISOLATED_ENV_EXEC_NAME),
+            *container_command,
+        ]
 
     uid = os.getuid()
     gid = os.getgid()
@@ -3973,7 +4200,6 @@ def _docker_host_cli_implementation_command(
         "PYTHONNOUSERSITE=1",
         f"PYTHONPATH={workspace}",
         "TERM=dumb",
-        *_host_cli_admitted_environment(family),
         *container_command,
     ]
     return docker_command

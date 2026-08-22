@@ -186,9 +186,18 @@ def test_direct_codex_command_has_a_fail_closed_external_boundary(
     writable_mounts = [
         item for item in mounts if item.endswith(",readonly=false")
     ]
-    assert writable_mounts == [
+    assert (
         f"type=bind,src={workspace},dst={workspace},readonly=false"
+        in writable_mounts
+    )
+    auth_mounts = [
+        item for item in mounts if "dst=/opt/codex-home/auth.json" in item
     ]
+    assert len(auth_mounts) == 1
+    assert str(credential) not in auth_mounts[0]
+    assert auth_mounts[0].endswith(",readonly=false")
+    assert not any(str(credential) in item for item in mounts)
+    assert not any(str(credential) in item for item in command)
     assert (
         f"type=bind,src={repository / '.git'},"
         f"dst={repository / '.git'},readonly"
@@ -196,10 +205,6 @@ def test_direct_codex_command_has_a_fail_closed_external_boundary(
     assert (
         f"type=bind,src={workspace / '.git'},"
         f"dst={workspace / '.git'},readonly"
-    ) in mounts
-    assert (
-        f"type=bind,src={credential},"
-        "dst=/opt/codex-home/auth.json,readonly"
     ) in mounts
     assert not any(str(runtime_root) in item for item in mounts)
     vendor = daemon_module._host_codex_vendor_binaries()
@@ -747,6 +752,7 @@ def test_live_direct_provider_boundary_denies_host_and_keeps_auth_read_only(
     token = control_root / "quack-owner" / "handle_pcpc-v1.quack-token"
     token.parent.mkdir(parents=True, exist_ok=True)
     token.write_text("host-secret-must-not-cross\n", encoding="utf-8")
+    host_auth_before = Path(config.credential_file).read_bytes()
     inner = [
         config.container_executable,
         "exec",
@@ -781,11 +787,11 @@ def test_live_direct_provider_boundary_denies_host_and_keeps_auth_read_only(
             "except OSError:",
             "    auth_readable = False",
             "try:",
-            "    auth_target.write_bytes(b'denied')",
+            "    auth_target.write_bytes(b'refreshed-copy')",
             "    auth_writable = True",
             "except OSError:",
             "    auth_writable = False",
-            "results['auth_read_only'] = auth_readable and not auth_writable",
+            "results['auth_copy_writable'] = auth_readable and auth_writable",
             "try:",
             "    token.read_bytes()",
             "    token_readable = True",
@@ -834,7 +840,7 @@ def test_live_direct_provider_boundary_denies_host_and_keeps_auth_read_only(
     results = json.loads(completed.stdout.strip().splitlines()[-1])
     assert results == {
         "auth_at_intended_target": True,
-        "auth_read_only": True,
+        "auth_copy_writable": True,
         "auth_source_path_absent": True,
         "docker_socket_absent": True,
         "host_pid_absent": True,
@@ -843,6 +849,8 @@ def test_live_direct_provider_boundary_denies_host_and_keeps_auth_read_only(
         "root_write_denied": True,
         "workspace_writable": True,
     }
+    assert Path(config.credential_file).read_bytes() == host_auth_before
+    assert host_auth_before != b"refreshed-copy"
 
 
 def test_sealed_isolation_survives_profile_gate_and_daemon_handoffs(
@@ -1319,7 +1327,14 @@ def test_isolation_wraps_goose_host_cli_in_docker(
         command, config=config, family="goose", workspace=workspace
     )
     assert "ipfs_accelerate_py.agent_supervisor.integrations.meta_spark_goose_runner" in command
-    assert any(item.startswith("OPENAI_API_KEY=") for item in command)
+    assert not any(item.startswith("OPENAI_API_KEY=") for item in command)
+    assert not any("test-key" in item for item in command)
+    assert any(
+        f"dst={daemon_module._CLI_CONTAINER_HOME / daemon_module._ISOLATED_ENV_FILE_NAME}"
+        in item
+        for item in _mounts(command)
+    )
+    assert str(daemon_module._CLI_CONTAINER_HOME / daemon_module._ISOLATED_ENV_EXEC_NAME) in command
 
 
 def test_isolation_wraps_copilot_host_cli_in_docker(
@@ -1541,6 +1556,114 @@ def test_scheduler_accepts_auto_provider_with_codex_isolation(
     assert environment[scheduler_module.PROVIDER_ENV] == "auto"
     sealed = environment[scheduler_module.EXTERNAL_PROVIDER_ISOLATION_ENV]
     assert json.loads(sealed)["provider_id"] == "codex"
+
+
+def test_install_ephemeral_credential_rejects_symlink(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    real = tmp_path / "real.json"
+    real.write_text("{}\n", encoding="utf-8")
+    real.chmod(0o600)
+    link = tmp_path / "auth.json"
+    link.symlink_to(real)
+    dest = tmp_path / "copy" / "auth.json"
+    with pytest.raises(ValueError, match="unavailable"):
+        grok_cli_runner._install_ephemeral_credential(link, dest)
+    assert not dest.exists()
+
+
+def test_isolated_grok_home_copies_operator_auth(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    operator_home = tmp_path / "operator-grok"
+    operator_home.mkdir()
+    auth = operator_home / "auth.json"
+    payload = b'{"access_token":"operator-secret"}\n'
+    auth.write_bytes(payload)
+    auth.chmod(0o600)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+
+    temporary_home, env, _policy, denied = grok_cli_runner._isolated_grok_home(
+        base_env={
+            "GROK_HOME": str(operator_home),
+            "HOME": str(tmp_path / "sealed"),
+            "PATH": "/usr/bin:/bin",
+        },
+        child_env={"PATH": "/usr/bin:/bin"},
+        codex_fallback_command=(),
+        workspace=workspace,
+    )
+    try:
+        grok_home = Path(temporary_home.name)
+        copied = grok_home / "auth.json"
+        nested = grok_home / ".grok" / "auth.json"
+        assert copied.is_file()
+        assert not copied.is_symlink()
+        assert nested.is_file()
+        assert copied.read_bytes() == payload
+        assert nested.read_bytes() == payload
+        assert copied.stat().st_mode & 0o777 == 0o600
+        assert copied.stat().st_ino != auth.stat().st_ino
+        assert auth.read_bytes() == payload
+        assert env["GROK_HOME"] == str(grok_home)
+        assert env["HOME"] == str(grok_home)
+        assert any(path == auth or Path(path) == auth for path in denied)
+    finally:
+        temporary_home.cleanup()
+
+
+def test_host_cli_wrap_keeps_secret_values_off_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator_home = tmp_path / "operator"
+    goose_dir = operator_home / ".config" / "goose"
+    goose_dir.mkdir(parents=True)
+    secrets = goose_dir / "secrets.yaml"
+    secrets.write_text("key: host-secret-file\n", encoding="utf-8")
+    secrets.chmod(0o600)
+    config, workspace, fake = _configure_host_cli_isolation(
+        tmp_path, monkeypatch, binary_name="goose"
+    )
+    monkeypatch.setattr(daemon_module, "_goose_binary", lambda: str(fake))
+    monkeypatch.setattr(daemon_module, "_operator_home_dir", lambda: operator_home)
+    monkeypatch.setattr(
+        daemon_module, "_resolve_meta_spark_api_key", lambda: "env-secret-value"
+    )
+    for name in daemon_module._HOST_CLI_ENV_NAMES["goose"]:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "env-secret-value")
+    command = daemon_module._goose_meta_spark_command(workspace_path=workspace)
+    _assert_host_cli_docker_wrap(
+        command, config=config, family="goose", workspace=workspace
+    )
+    assert not any("env-secret-value" in item for item in command)
+    assert not any("host-secret-file" in item for item in command)
+    assert not any(item.startswith("OPENAI_API_KEY=") for item in command)
+    assert not any(str(secrets) in item for item in command)
+    mounts = _mounts(command)
+    secret_mounts = [
+        item for item in mounts if "dst=/opt/cli-home/.config/goose/secrets.yaml" in item
+    ]
+    assert len(secret_mounts) == 1
+    assert str(secrets) not in secret_mounts[0]
+    env_file_dst = (
+        f"dst={daemon_module._CLI_CONTAINER_HOME / daemon_module._ISOLATED_ENV_FILE_NAME},"
+    )
+    env_file_mounts = [item for item in mounts if env_file_dst in item]
+    assert len(env_file_mounts) == 1
+    env_src = None
+    for part in env_file_mounts[0].split(","):
+        if part.startswith("src="):
+            env_src = Path(part[4:])
+            break
+    assert env_src is not None
+    assert env_src.read_text(encoding="utf-8") == "OPENAI_API_KEY=env-secret-value\n"
+    assert env_src.stat().st_mode & 0o777 == 0o600
 
 
 def test_isolated_codex_without_code_mode_host_is_not_auto_ready(
