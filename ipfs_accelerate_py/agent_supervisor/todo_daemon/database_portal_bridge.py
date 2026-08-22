@@ -991,6 +991,7 @@ class DatabasePortalExecutionBridge:
         """Select only the closed post-dispatch validation-failure shape."""
 
         validation = implementation.get("validation_result")
+        reason = str(validation.get("reason") or "") if isinstance(validation, Mapping) else ""
         return bool(
             implementation.get("returncode") not in (None, 0)
             and implementation.get("attempt_consumed") is True
@@ -998,7 +999,11 @@ class DatabasePortalExecutionBridge:
             and isinstance(validation, Mapping)
             and validation.get("attempted") is True
             and validation.get("passed") is False
-            and validation.get("reason") == "declared_validation_failed"
+            and reason
+            in {
+                "declared_validation_failed",
+                "validation_command_failed",
+            }
         )
 
     @staticmethod

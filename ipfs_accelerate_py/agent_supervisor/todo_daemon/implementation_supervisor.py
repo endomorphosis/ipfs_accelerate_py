@@ -13816,6 +13816,125 @@ class PortalImplementationSupervisor:
             "owner_lease_pid": str(owner.get("lease_pid") or ""),
         }
 
+    def _commit_dirty_submodules_for_rescue(
+        self,
+        worktree_path: Path,
+        *,
+        rescue_branch: str,
+        reason: str,
+    ) -> list[dict[str, Any]]:
+        """Commit dirty submodule trees so failed-test work can be rescued.
+
+        Parent ``git add -A`` only sees a gitlink. Uncommitted files inside
+        ``external/ipfs_accelerate`` (or other configured submodules) would
+        otherwise vanish as ``no_staged_rescue_delta``.
+        """
+
+        results: list[dict[str, Any]] = []
+        for relative in self.config.worktree_submodule_paths:
+            target = worktree_path / relative
+            if not target.is_dir():
+                continue
+            git_dir = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if git_dir.returncode != 0 or git_dir.stdout.strip() != "true":
+                continue
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if status.returncode != 0 or not status.stdout.strip():
+                continue
+            add = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "stage_submodule_rescue_failed",
+                        "returncode": add.returncode,
+                        "stderr": add.stderr[-2000:],
+                    }
+                )
+                continue
+            staged = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if staged.returncode == 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "no_staged_submodule_delta",
+                    }
+                )
+                continue
+            commit = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Supervisor",
+                    "-c",
+                    "user.email=implementation-supervisor@example.invalid",
+                    "commit",
+                    "-m",
+                    f"Rescue dirty submodule {relative}",
+                    "-m",
+                    f"Rescue branch: {rescue_branch}",
+                    "-m",
+                    f"Cleanup reason: {reason}",
+                ],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if commit.returncode != 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "commit_submodule_rescue_failed",
+                        "returncode": commit.returncode,
+                        "stderr": commit.stderr[-2000:],
+                    }
+                )
+                continue
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            results.append(
+                {
+                    "path": relative,
+                    "committed": True,
+                    "commit": head.stdout.strip(),
+                    "reason": "dirty_submodule_committed_for_rescue",
+                }
+            )
+        return results
+
     @staticmethod
     def _safe_rescue_branch_fragment(value: str) -> str:
         normalized = []
@@ -13905,6 +14024,12 @@ class PortalImplementationSupervisor:
             self._record_event("dirty_worktree_rescue_failed", result)
             return result
 
+        submodule_results = self._commit_dirty_submodules_for_rescue(
+            worktree_path,
+            rescue_branch=rescue_branch,
+            reason=reason,
+        )
+
         add = subprocess.run(
             ["git", "add", "-A"],
             cwd=worktree_path,
@@ -13951,6 +14076,7 @@ class PortalImplementationSupervisor:
                 "rescue_branch": rescue_branch,
                 "rescue_commit": rescue_commit,
                 "status_short": status_lines[:20],
+                "submodule_results": submodule_results,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -14010,6 +14136,7 @@ class PortalImplementationSupervisor:
             "rescue_branch": rescue_branch,
             "rescue_commit": rescue_commit,
             "status_short": status_lines[:20],
+            "submodule_results": submodule_results,
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],

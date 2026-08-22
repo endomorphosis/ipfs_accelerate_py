@@ -1272,6 +1272,38 @@ def test_proposal_gate_failure_retries_instead_of_blocking(
         daemon.close()
 
 
+def test_quack_attach_contention_defers_instead_of_crashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-defer",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> list[object]:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("skipped") is True
+        assert result.get("reason") == "quack_attach_contended"
+        assert result.get("portal_retryable_failure") is True
+        assert result.get("portal_terminal_failure") is False
+        assert result.get("attempt_consumed") is False
+        assert result.get("provider_dispatched") is False
+    finally:
+        daemon.close()
+
+
 def test_inflight_process_failure_retries_instead_of_blocking(
     tmp_path: Path,
 ) -> None:

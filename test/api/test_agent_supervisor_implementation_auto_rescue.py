@@ -90,6 +90,24 @@ def test_plan_stage_and_revalidate_for_empty_patch_with_dirty_outputs() -> None:
     assert plan.reason == "stage_declared_outputs_and_revalidate"
 
 
+def test_looks_like_validation_retry_accepts_command_failure() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalExecutionBridge,
+    )
+
+    payload = {
+        "returncode": 1,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "reason": "validation_command_failed",
+        },
+    }
+    assert DatabasePortalExecutionBridge._looks_like_validation_retry(payload) is True
+
+
 def test_plan_inline_provider_rescue_for_validation_command_failed() -> None:
     plan = plan_automatic_implementation_rescue(
         validation_result={

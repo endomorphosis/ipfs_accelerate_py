@@ -67675,8 +67675,13 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "proposal_gate_failed",
         "proposal_validation_failed",
         "inflight_process",
+        "validation_command_failed",
+        "declared_validation_failed",
+        "quack_attach_contended",
+        "authentication_failed",
     }
 )
+_QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
 _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(
     {
         "blocked",
@@ -69946,7 +69951,50 @@ class DatabaseImplementationDaemon:
     @staticmethod
     def _database_portal_reason(value: Any) -> str:
         reason = str(value or "portal_execution_deferred").strip()
+        lowered = reason.lower()
+        if (
+            "authentication failed" in lowered
+            or "quack control-plane attach contended" in lowered
+            or "could not connect to server" in lowered
+        ):
+            return "quack_attach_contended"
         return (reason or "portal_execution_deferred")[:1024]
+
+    @staticmethod
+    def _is_quack_attach_contention(exc: BaseException) -> bool:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            QuackTransportContentionError,
+            quack_attach_error_is_contention,
+        )
+
+        return isinstance(exc, QuackTransportContentionError) or (
+            quack_attach_error_is_contention(exc)
+        )
+
+    def _quack_attach_contention_deferral(
+        self,
+        exc: BaseException,
+    ) -> dict[str, Any]:
+        """Keep the process alive when Quack ATTACH is contended.
+
+        Auth-callback errors are reported as Authentication failed. Crashing
+        here burns supervisor restart budget and drops a rescue-branch retry.
+        """
+
+        return {
+            "unchanged": True,
+            "deferred": True,
+            "skipped": True,
+            "reason": "quack_attach_contended",
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "backoff_seconds": _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS,
+            "portal_retryable_failure": True,
+            "portal_terminal_failure": False,
+            "error_class": type(exc).__name__,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+        }
 
     @staticmethod
     def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
@@ -72465,6 +72513,16 @@ class DatabaseImplementationDaemon:
             }
 
     def run_once(self) -> dict[str, Any]:
+        """One database-authoritative pass: resume inflight or claim new work."""
+
+        try:
+            return self._run_once_impl()
+        except Exception as exc:
+            if self._is_quack_attach_contention(exc):
+                return self._quack_attach_contention_deferral(exc)
+            raise
+
+    def _run_once_impl(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
         if not self.require_real_execution:
