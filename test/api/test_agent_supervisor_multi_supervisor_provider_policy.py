@@ -138,6 +138,30 @@ def test_direct_multi_supervisor_preserves_provider_only_codex_selector(
     }
 
 
+def test_direct_multi_supervisor_preserves_provider_only_auto_selector(
+    tmp_path, monkeypatch
+) -> None:
+    _clear_ordered_route(monkeypatch)
+    provider_env = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+    monkeypatch.setenv(provider_env, "auto")
+    captured: dict[str, str | None] = {}
+
+    def fake_launch(_args, _argv):
+        captured.update({name: os.environ.get(name) for name in ORDERED_ROUTE})
+        return _fake_detached_payload()
+
+    monkeypatch.setattr(multi_supervisor_runner, "launch_detached", fake_launch)
+
+    assert (
+        multi_supervisor_runner.main(_detached_implementation_args(tmp_path))
+        == 0
+    )
+    assert captured == {
+        name: "auto" if name == provider_env else None
+        for name in ORDERED_ROUTE
+    }
+
+
 def test_direct_codex_selector_rejects_ordered_route_metadata_atomically(
 ) -> None:
     environment = {

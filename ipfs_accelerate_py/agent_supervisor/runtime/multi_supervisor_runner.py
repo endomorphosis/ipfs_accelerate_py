@@ -3553,8 +3553,9 @@ def seal_ordered_implementation_provider_route(
         name: str(target.get(name, "") or "").strip()
         for name in _ROUTE_AUTHORIZATION_ENV_NAMES
     }
+    selected_name = route_environment[_IMPLEMENTATION_PROVIDER_ENV].lower()
     if (
-        route_environment[_IMPLEMENTATION_PROVIDER_ENV].lower() == "codex"
+        selected_name in {"codex", "auto"}
         and not any(
             value
             for name, value in route_environment.items()
@@ -3562,7 +3563,7 @@ def seal_ordered_implementation_provider_route(
         )
         and not any(authorization_environment.values())
     ):
-        selected_provider = {_IMPLEMENTATION_PROVIDER_ENV: "codex"}
+        selected_provider = {_IMPLEMENTATION_PROVIDER_ENV: selected_name}
         target.update(selected_provider)
         return selected_provider
     authorization = None
@@ -3893,10 +3894,12 @@ def build_repo_implementation_multi_supervisor_launcher(
         caller_route_defaults,
         repo_root=repo_root,
     )
-    if sealed_route_defaults == {_IMPLEMENTATION_PROVIDER_ENV: "codex"}:
-        # The direct provider selector must not be overlaid onto the ordered
-        # Grok-to-Codex defaults.  Doing so creates a hybrid six-field tuple
-        # that the canonical route resolver correctly rejects.
+    if sealed_route_defaults.keys() == {_IMPLEMENTATION_PROVIDER_ENV} and (
+        sealed_route_defaults.get(_IMPLEMENTATION_PROVIDER_ENV) in {"codex", "auto"}
+    ):
+        # Direct Codex and automatic host-CLI selectors must not be overlaid
+        # onto the ordered Grok-to-Codex defaults.  Doing so creates a hybrid
+        # six-field tuple that the canonical route resolver correctly rejects.
         effective_env_defaults = implementation_multi_supervisor_env_defaults()
         for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE:
             effective_env_defaults.pop(name, None)
