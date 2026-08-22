@@ -2247,9 +2247,9 @@ def load_configured_board(
                 "provider.external_isolation is supported only for a direct "
                 "Codex route"
             )
-        if provider_id != "codex":
+        if provider_id not in {"codex", "auto"}:
             raise ConfiguredBoardError(
-                "provider.external_isolation requires provider_id 'codex'"
+                "provider.external_isolation requires provider_id 'codex' or 'auto'"
             )
         if not isinstance(external_isolation, dict):
             raise ConfiguredBoardError(

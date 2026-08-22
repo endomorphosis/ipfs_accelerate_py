@@ -2278,6 +2278,8 @@ _DOCKER_LOCAL_ENDPOINTS = frozenset(
 )
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_EXECUTABLE = Path("/usr/local/bin/codex")
+_CODEX_CONTAINER_CODE_MODE_HOST = Path("/usr/local/bin/codex-code-mode-host")
+_ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE: dict[str, bool] = {}
 _VALIDATION_CONTAINER_HOME = Path("/opt/validation-home")
 _VALIDATION_CONTAINER_PYTHON = Path("/opt/pcpc-runtime/bin/python")
 _LIFECYCLE_REPOSITORY_ROOT_ENV = (
@@ -2614,6 +2616,14 @@ GEMINI_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
         "google-gemini",
     }
 )
+MISTRAL_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "mistral",
+        "mistral_vibe",
+        "mistral-vibe",
+        "vibe",
+    }
+)
 SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {"auto", "copilot"}
     | set(GROK_IMPLEMENTATION_PROVIDER_NAMES)
@@ -2621,6 +2631,7 @@ SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     | set(CODEX_IMPLEMENTATION_PROVIDER_NAMES)
     | set(CLAUDE_IMPLEMENTATION_PROVIDER_NAMES)
     | set(GEMINI_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(MISTRAL_IMPLEMENTATION_PROVIDER_NAMES)
 )
 _CLAUDE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CLAUDE_MODEL"
 _GEMINI_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GEMINI_MODEL"
@@ -2976,6 +2987,112 @@ def validate_external_provider_isolation_config(
     ):
         raise ValueError("external isolation Codex executable digest mismatch")
     return config
+
+
+def _sealed_external_isolation_config() -> ExternalProviderIsolationConfig | None:
+    """Parse the sealed isolation env without repeating host admission."""
+
+    raw = os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "").strip()
+    if not raw:
+        return None
+    return validate_external_provider_isolation_config(
+        raw,
+        verify_host=False,
+    )
+
+
+def _isolated_codex_code_mode_host_ready(
+    config: ExternalProviderIsolationConfig,
+    *,
+    probe: bool = False,
+) -> bool:
+    """Return whether the sealed Codex image can run Code Mode.
+
+    gpt-5.6-terra fail-closes without ``codex-code-mode-host``. A newer host
+    npm companion must not be bind-mounted onto a different image digest.
+    """
+
+    cached = _ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.get(config.image_id)
+    if cached is not None:
+        return cached
+    if not probe:
+        return False
+    command = [
+        config.runtime_executable,
+        f"--host={config.runtime_endpoint}",
+        "run",
+        "--rm",
+        "--pull=never",
+        "--network=none",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "--pids-limit=16",
+        "--memory=268435456",
+        "--memory-swap=268435456",
+        "--cpus=0.25",
+        "--user",
+        "65534:65534",
+        "--entrypoint=/usr/bin/test",
+        config.image_id,
+        "-x",
+        str(_CODEX_CONTAINER_CODE_MODE_HOST),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            env={"HOME": "/nonexistent", "PATH": "/usr/bin:/bin"},
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        _ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE[config.image_id] = False
+        return False
+    ready = completed.returncode == 0
+    _ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE[config.image_id] = ready
+    return ready
+
+
+def _codex_ready_for_automatic_routing() -> bool:
+    """Codex is auto-eligible only when the sealed runtime can actually write."""
+
+    try:
+        config = _sealed_external_isolation_config()
+    except ValueError:
+        return False
+    if config is not None:
+        return _isolated_codex_code_mode_host_ready(config, probe=True)
+    return bool(shutil.which("codex"))
+
+
+def _secondary_implementation_cli_ready() -> bool:
+    """Return whether a non-Grok host CLI can implement without isolation."""
+
+    if _goose_meta_spark_available() and _goose_binary():
+        return True
+    copilot = shutil.which("copilot")
+    if copilot and _copilot_has_auth():
+        return True
+    try:
+        from .cli_provider_balance import probe_all_cli_provider_readiness
+
+        readiness = probe_all_cli_provider_readiness()
+    except Exception:
+        return False
+    for name in (
+        "claude",
+        "gemini",
+        "copilot",
+        "meta_spark",
+        "mistral",
+    ):
+        probe = readiness.get(name) or {}
+        if probe.get("binary_available") and probe.get("authenticated"):
+            return True
+    return False
 
 
 def _external_isolation_mount(
@@ -3737,19 +3854,11 @@ def _codex_implementation_command(
         command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
     if codex_max_depth:
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-    # gpt-5.6-terra prefers Code Mode. The sealed runtime image ships Codex
-    # 0.148.0 without ``codex-code-mode-host``, and that fail-closed surface
-    # produces empty candidates. Force Direct tools so apply_patch/shell work.
-    command.extend(
-        [
-            "-c",
-            "features.code_mode=false",
-            "-c",
-            "features.code_mode_only=false",
-            "-c",
-            "features.code_mode_host=false",
-        ]
-    )
+    # gpt-5.6-terra prefers Code Mode. Forcing Direct tools fail-closes when
+    # the host is disabled and produces empty candidates. Leave Code Mode
+    # enabled; automatic routing skips isolated Codex when the sealed image
+    # lacks ``codex-code-mode-host``. Do not bind-mount a newer npm companion
+    # onto a different image digest.
     command.append("-")
     external_isolation = os.environ.get(
         PROVIDER_EXTERNAL_ISOLATION_ENV,
@@ -19715,6 +19824,8 @@ class PortalImplementationDaemon:
             return {"claude", "anthropic", "provider"}
         if provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES:
             return {"gemini", "provider"}
+        if provider in MISTRAL_IMPLEMENTATION_PROVIDER_NAMES:
+            return {"mistral", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
@@ -19994,12 +20105,12 @@ class PortalImplementationDaemon:
         return states
 
     def _auto_implementation_provider_families(self) -> tuple[str, ...]:
-        """Return the only provider families authorized for automatic routing.
+        """Return provider families authorized for automatic routing.
 
-        Automatic implementation is a two-provider policy: Grok is primary and
-        Codex is a quota-only fallback. Copilot, Goose, and other providers can
-        still be selected explicitly, but their availability must never widen
-        this default authority boundary.
+        Grok remains the preferred implementer. Ready host CLIs (Claude,
+        Gemini, Copilot, Goose, Mistral) stay eligible so a sealed Codex
+        image without ``codex-code-mode-host`` cannot stall the board.
+        Isolated Codex is included only when that image can actually write.
         """
 
         families: list[str] = []
@@ -20011,9 +20122,26 @@ class PortalImplementationDaemon:
         grok_ready = _grok_cli_available()
         if grok_ready and _grok_binary():
             add("grok")
-        codex = shutil.which("codex")
-        if codex:
+        if _codex_ready_for_automatic_routing():
             add("codex")
+        if _goose_meta_spark_available() and _goose_binary():
+            add("goose")
+        copilot = shutil.which("copilot")
+        if copilot and _copilot_has_auth():
+            add("copilot")
+        try:
+            from .cli_provider_balance import probe_all_cli_provider_readiness
+
+            readiness = probe_all_cli_provider_readiness()
+        except Exception:
+            readiness = {}
+        for family in ("claude", "gemini", "copilot", "mistral"):
+            probe = readiness.get(family) or {}
+            if probe.get("binary_available") and probe.get("authenticated"):
+                add(family)
+        meta = readiness.get("meta_spark") or {}
+        if meta.get("binary_available") and meta.get("authenticated"):
+            add("goose")
         return tuple(families)
 
     @staticmethod
@@ -60654,9 +60782,13 @@ class PortalImplementationDaemon:
                 return
             if _grok_cli_available() and _grok_binary():
                 return
+            if _secondary_implementation_cli_ready():
+                return
+            if _codex_ready_for_automatic_routing():
+                return
             raise ImplementationRetryDeferred(
-                "authenticated Grok 4.5 primary is unavailable; Codex "
-                "requires typed hard-quota exhaustion authority",
+                "no automatic implementation CLI is ready "
+                "(grok, claude, gemini, copilot, goose, mistral, or Codex)",
                 backoff_seconds=300,
             )
         if provider in {
@@ -61310,6 +61442,7 @@ class PortalImplementationDaemon:
             PROVIDER_EXTERNAL_ISOLATION_ENV,
             "",
         ).strip()
+        isolation_config: ExternalProviderIsolationConfig | None = None
         if external_isolation:
             try:
                 isolation_config = validate_external_provider_isolation_config(
@@ -61321,9 +61454,13 @@ class PortalImplementationDaemon:
                     f"invalid sealed provider isolation: {exc}",
                     backoff_seconds=300,
                 ) from exc
-            if provider != isolation_config.provider_id:
+            # Isolation wraps Codex only. Auto and host CLIs remain eligible
+            # so a sealed Codex image without code-mode-host cannot stall
+            # the board. Direct command overrides stay forbidden.
+            if provider not in SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES:
                 raise ImplementationRetryDeferred(
-                    "sealed provider isolation rejects a provider override",
+                    f"Unsupported implementation provider {provider!r}; "
+                    "automatic routing fails closed on unknown values",
                     backoff_seconds=300,
                 )
             if self.implementation_command or env_command:
@@ -61457,6 +61594,7 @@ class PortalImplementationDaemon:
         force_codex = provider in {"codex", "openai"}
         force_claude = provider in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES
         force_gemini = provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES
+        force_mistral = provider in MISTRAL_IMPLEMENTATION_PROVIDER_NAMES
         force_copilot = provider == "copilot"
         automatic_latches = (
             self._provider_capacity_latch_states()
@@ -61539,14 +61677,17 @@ class PortalImplementationDaemon:
                     _resolve_meta_spark_api_key()
                     or os.environ.get("OPENAI_API_KEY", "").strip()
                 )
+            grok_is_ready = bool(
+                grok_constructible or (grok_ready and _grok_binary())
+            )
+            codex_auto_ready = _codex_ready_for_automatic_routing()
             auto_selection = select_auto_implementation_provider(
                 grok_binary=bool(_grok_binary()),
                 grok_authenticated=bool(grok_auth or grok_ready),
-                grok_constructible=bool(
-                    grok_constructible or (grok_ready and _grok_binary())
-                ),
-                codex_binary=bool(shutil.which("codex")),
-                codex_authenticated=True,
+                grok_constructible=grok_is_ready,
+                codex_binary=codex_auto_ready,
+                codex_authenticated=codex_auto_ready,
+                allow_secondary_without_grok_quota=not grok_is_ready,
                 claude_binary=claude_binary,
                 claude_authenticated=claude_authenticated,
                 gemini_binary=gemini_binary,
@@ -61640,16 +61781,31 @@ class PortalImplementationDaemon:
                         "implement a task that requires independent Codex "
                         "review"
                     )
-                codex = shutil.which("codex")
-                if not codex:
-                    raise RuntimeError(
-                        "Grok quota is exhausted, but the authorized Codex "
-                        "fallback is unavailable"
-                    )
                 if not automatic_family_allowed("codex"):
                     raise RuntimeError(
                         "Grok quota is exhausted and the authorized Codex "
                         "fallback is in capacity cooldown"
+                    )
+                if isolation_config is not None:
+                    isolated_codex = str(isolation_config.container_executable)
+                else:
+                    isolated_codex = shutil.which("codex")
+                if not isolated_codex:
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but the authorized Codex "
+                        "fallback is unavailable"
+                    )
+                if (
+                    isolation_config is not None
+                    and not _isolated_codex_code_mode_host_ready(
+                        isolation_config,
+                        probe=True,
+                    )
+                ):
+                    raise RuntimeError(
+                        "isolated Codex cannot write without "
+                        "codex-code-mode-host; automatic routing must select "
+                        "a host CLI"
                     )
                 codex_context_window = (
                     self._implementation_provider_context_window_for_task(
@@ -61659,7 +61815,7 @@ class PortalImplementationDaemon:
                     else None
                 )
                 return _codex_implementation_command(
-                    codex=str(codex),
+                    codex=str(isolated_codex),
                     workspace_path=workspace_path,
                     repository_root=self.repo_root,
                     codex_context_window=codex_context_window,
@@ -61781,6 +61937,8 @@ class PortalImplementationDaemon:
                     f"Implementation provider {provider!r} requires Gemini CLI"
                 ) from exc
             return _gemini_implementation_command(workspace_path=workspace_path)
+        if force_mistral:
+            return _mistral_implementation_command(workspace_path=workspace_path)
         if force_copilot:
             if not copilot_allowed:
                 raise RuntimeError(

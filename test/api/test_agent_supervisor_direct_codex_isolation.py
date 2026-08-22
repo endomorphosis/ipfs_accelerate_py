@@ -1172,3 +1172,251 @@ def test_host_validation_hashes_image_codex_bytes_and_rejects_mismatch(
     assert "--cpus=0.25" in digest_command
     assert "--mount" not in digest_command
     assert digest_command[-2:] == [IMAGE_ID, "/usr/local/bin/codex"]
+
+
+def _implementation_daemon(
+    repository: Path,
+    *,
+    implementation_command: str = "",
+) -> daemon_module.PortalImplementationDaemon:
+    return daemon_module.PortalImplementationDaemon(
+        todo_path=repository / "tasks.todo.md",
+        state_path=repository / "state.json",
+        strategy_path=repository / "strategy.json",
+        events_path=repository / "events.jsonl",
+        repo_root=repository,
+        worktree_root=repository,
+        implementation_command=implementation_command,
+    )
+
+
+def test_isolation_allows_host_grok_without_wrapping_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    repository, workspace = _linked_workspace(tmp_path)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setenv(
+        daemon_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        config.environment_json(),
+    )
+    monkeypatch.setenv(daemon_module.IMPLEMENTATION_PROVIDER_ENV, "grok")
+    monkeypatch.setattr(
+        daemon_module,
+        "_configured_agent_implementation_route_plan",
+        lambda _repo: None,
+    )
+    monkeypatch.setattr(daemon_module, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        daemon_module,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_grok_cli_command",
+        lambda **kwargs: [
+            "/opt/providers/grok",
+            "agent",
+            str(kwargs["workspace_path"]),
+        ],
+    )
+    daemon_module._ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.clear()
+    daemon = _implementation_daemon(repository)
+
+    command = daemon._build_implementation_command(workspace)
+
+    assert command[:2] == ["/opt/providers/grok", "agent"]
+    assert "docker" not in command
+    assert config.image_id not in command
+
+
+def test_isolation_auto_selects_grok_when_isolated_codex_cannot_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    repository, workspace = _linked_workspace(tmp_path)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setenv(
+        daemon_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        config.environment_json(),
+    )
+    monkeypatch.delenv(daemon_module.IMPLEMENTATION_PROVIDER_ENV, raising=False)
+    monkeypatch.setattr(
+        daemon_module,
+        "_configured_agent_implementation_route_plan",
+        lambda _repo: None,
+    )
+    monkeypatch.setattr(daemon_module, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        daemon_module,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_codex_ready_for_automatic_routing",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_secondary_implementation_cli_ready",
+        lambda: False,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_provider_auto import (
+        AutoProviderDecision,
+        AutoProviderSelection,
+    )
+
+    def _select_grok(**_kwargs):
+        return AutoProviderSelection(
+            decision=AutoProviderDecision.GROK,
+            selected_provider="grok",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_provider_auto.select_auto_implementation_provider",
+        _select_grok,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "resolve_agent_implementation_route",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_grok_cli_command",
+        lambda **kwargs: [
+            "/opt/providers/grok",
+            "agent",
+            str(kwargs["workspace_path"]),
+        ],
+    )
+    daemon_module._ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.clear()
+    daemon = _implementation_daemon(repository)
+    monkeypatch.setattr(daemon, "_provider_capacity_latch_states", lambda: {})
+
+    command = daemon._build_implementation_command(workspace)
+
+    assert command[:2] == ["/opt/providers/grok", "agent"]
+    assert "docker" not in command
+
+
+def test_scheduler_accepts_auto_provider_with_codex_isolation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    isolation = _isolation_payload(credential)
+    repo = tmp_path / "repo"
+    config_path = repo / "config" / "scheduler.json"
+    config_path.parent.mkdir(parents=True)
+    payload = _scheduler_payload(isolation)
+    payload["provider"]["provider_id"] = "auto"
+    config_path.write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+
+    board = scheduler_module.load_configured_board(
+        config_path,
+        repo_root=repo,
+    )
+    plan = scheduler_module.configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260820T000000Z",
+    )
+    environment = plan["environment"]
+    assert scheduler_module.PROVIDER_ENV not in environment
+    sealed = environment[scheduler_module.EXTERNAL_PROVIDER_ISOLATION_ENV]
+    assert json.loads(sealed)["provider_id"] == "codex"
+
+
+def test_isolated_codex_without_code_mode_host_is_not_auto_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    daemon_module._ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.clear()
+    assert (
+        daemon_module._isolated_codex_code_mode_host_ready(config, probe=False)
+        is False
+    )
+
+    def missing_host(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(daemon_module.subprocess, "run", missing_host)
+    assert (
+        daemon_module._isolated_codex_code_mode_host_ready(config, probe=True)
+        is False
+    )
+    assert (
+        daemon_module._ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE[config.image_id]
+        is False
+    )
+
+
+def test_isolation_still_wraps_explicit_codex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    repository, workspace = _linked_workspace(tmp_path)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setenv(
+        daemon_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        config.environment_json(),
+    )
+    monkeypatch.setenv(daemon_module.IMPLEMENTATION_PROVIDER_ENV, "codex")
+    monkeypatch.setattr(
+        daemon_module,
+        "_configured_agent_implementation_route_plan",
+        lambda _repo: None,
+    )
+    daemon = _implementation_daemon(repository)
+
+    command = daemon._build_implementation_command(workspace)
+
+    assert command[4:8] == [
+        "/usr/bin/docker",
+        "--host=unix:///run/user/1000/docker.sock",
+        "run",
+        "--pull=never",
+    ]
+    assert config.image_id in command
+    assert "--dangerously-bypass-approvals-and-sandbox" in command
+    assert "features.code_mode=false" not in command

@@ -190,7 +190,7 @@
     "PCPC-G040": ["PCPC-028", "PCPC-029", "PCPC-030", "PCPC-031"]
   },
   "provider": {
-    "provider_id": "codex",
+    "provider_id": "auto",
     "max_concurrency": 4,
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false,
