@@ -28659,6 +28659,35 @@ class PortalImplementationDaemon:
                     "request_todo_path": str(request_todo_path),
                     "consumer_todo_path": str(self.todo_path),
                 }
+        if (
+            foreign_cross_board_request
+            and self.todo_path.name != "task-projection.md"
+        ):
+            from ..merge.merge_train import MergeTrain
+
+            try:
+                queued_task = self._portal_task_from_merge_request(request)
+            except Exception:
+                queued_task = None
+            if (
+                queued_task is not None
+                and MergeTrain._request_is_database_portal_projection_candidate(
+                    request
+                )
+                and MergeTrain._request_has_invalid_completion_authority_metadata(
+                    request
+                )
+                and self._declared_outputs_present_on_head(queued_task)
+            ):
+                return {
+                    "attempted": True,
+                    "merged": False,
+                    "already_merged": True,
+                    "returncode": 0,
+                    "reason": "declared_outputs_already_on_target",
+                    "request_todo_path": str(request_todo_path),
+                    "consumer_todo_path": str(self.todo_path),
+                }
         authority_metadata_fields = {
             "manual_completion_authority_context_id",
             "manual_completion_authority_task_ids",

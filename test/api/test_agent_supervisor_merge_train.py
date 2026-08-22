@@ -1234,6 +1234,84 @@ def test_portal_projection_cross_board_quarantine_revives_when_outputs_landed(
     assert processed
 
 
+def test_invalid_authority_metadata_quarantine_settles_when_outputs_on_target(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/side")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    _git(repo, "add", "side.txt")
+    _git(repo, "commit", "-m", "side")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    head_before = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/side",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="cross_board_manual_completion_authority_metadata_invalid",
+    )
+
+    callback_calls: list[str] = []
+
+    def fail_closed(_request: object) -> dict[str, object]:
+        callback_calls.append("called")
+        return {
+            "attempted": False,
+            "merged": False,
+            "returncode": 2,
+            "reason": "cross_board_manual_completion_authority_metadata_invalid",
+        }
+
+    train = MergeTrain(repo, queue, merge_callback=fail_closed)
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "already_merged"
+    assert result.get("already_merged") is True
+    assert result.get("reason") == "declared_outputs_already_on_target"
+    assert callback_calls == []
+    assert _git(repo, "rev-parse", "HEAD") == head_before
+    side_probe = subprocess.run(
+        ["git", "cat-file", "-e", "HEAD:side.txt"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert side_probe.returncode != 0
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
 def test_database_portal_retry_continues_merge_into_current_projection(
     tmp_path: Path,
 ) -> None:

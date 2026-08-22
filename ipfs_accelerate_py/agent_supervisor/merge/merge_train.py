@@ -105,14 +105,21 @@ INTEGRATED_QUARANTINE_RECOVERY_LIMIT: Final = 32
 INTEGRATED_HANDOFF_MAX_PATHS: Final = 64
 INTEGRATED_HANDOFF_MAX_PATH_BYTES: Final = 1024
 INTEGRATED_HANDOFF_MAX_PATH_COMPONENTS: Final = 64
+CROSS_BOARD_AUTHORITY_METADATA_QUARANTINE_REASONS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "cross_board_manual_completion_authority_unavailable",
+            "cross_board_manual_completion_authority_metadata_missing",
+            "cross_board_manual_completion_authority_metadata_invalid",
+        }
+    )
+)
 AUTHORITY_QUARANTINE_REASONS: Final[frozenset[str]] = frozenset(
     {
         "manual_completion_authority_required",
         "manual_completion_authority_dependency_required",
         "manual_completion_authority_revalidation_required",
-        "cross_board_manual_completion_authority_unavailable",
-        "cross_board_manual_completion_authority_metadata_missing",
-        "cross_board_manual_completion_authority_metadata_invalid",
+        *CROSS_BOARD_AUTHORITY_METADATA_QUARANTINE_REASONS,
     }
 )
 DISTRIBUTED_LANE_PUBLICATION_SCHEMA: Final = (
@@ -3181,11 +3188,7 @@ class MergeTrain:
         if MergeTrain._request_is_database_portal_projection_candidate(
             request
         ):
-            return denied - {
-                "cross_board_manual_completion_authority_unavailable",
-                "cross_board_manual_completion_authority_metadata_missing",
-                "cross_board_manual_completion_authority_metadata_invalid",
-            }
+            return denied - CROSS_BOARD_AUTHORITY_METADATA_QUARANTINE_REASONS
         return denied
 
     @staticmethod
@@ -3250,6 +3253,64 @@ class MergeTrain:
             return True
         return (
             self._request_is_database_portal_projection_candidate(request)
+            and self._quarantined_portal_outputs_present_on_target(request)
+        )
+
+    @staticmethod
+    def _request_has_invalid_completion_authority_metadata(
+        request: MergeRequest,
+    ) -> bool:
+        """Return whether a request carries unusable cross-board authority.
+
+        Database-portal lanes enqueue from a sealed attempt projection with
+        empty manual-completion authority fields.  The shared-board consumer
+        then quarantines the row as metadata invalid.  Those fields, the
+        current failure reason, and the latest revival reason are the same
+        durable cause.
+        """
+
+        failure = str(request.failure_reason or "")
+        if failure in CROSS_BOARD_AUTHORITY_METADATA_QUARANTINE_REASONS:
+            return True
+        metadata = (
+            request.metadata if isinstance(request.metadata, Mapping) else {}
+        )
+        revivals = metadata.get("revivals")
+        if isinstance(revivals, list) and revivals:
+            latest = revivals[-1]
+            if (
+                isinstance(latest, Mapping)
+                and str(latest.get("previous_failure_reason") or "")
+                in CROSS_BOARD_AUTHORITY_METADATA_QUARANTINE_REASONS
+            ):
+                return True
+        raw_task_ids = metadata.get("manual_completion_authority_task_ids")
+        usable_task_ids = (
+            [
+                str(task_id).strip()
+                for task_id in raw_task_ids
+                if str(task_id).strip()
+            ]
+            if isinstance(raw_task_ids, Sequence)
+            and not isinstance(raw_task_ids, (str, bytes, bytearray))
+            else []
+        )
+        epoch = str(
+            metadata.get("manual_completion_authority_epoch_id") or ""
+        ).strip()
+        return not usable_task_ids or not epoch
+
+    def _portal_projection_invalid_metadata_already_on_target(
+        self,
+        request: MergeRequest,
+    ) -> bool:
+        """Return whether invalid-metadata work is already on the target."""
+
+        return (
+            self._request_is_database_portal_projection_candidate(request)
+            and self._request_has_invalid_completion_authority_metadata(
+                request
+            )
             and self._quarantined_portal_outputs_present_on_target(request)
         )
 
@@ -3692,6 +3753,30 @@ class MergeTrain:
                 reason="target_branch_missing",
                 details={"target_branch": self.target_branch},
                 started_at=started_at,
+            )
+        if self._portal_projection_invalid_metadata_already_on_target(
+            request
+        ):
+            # Empty cross-board authority metadata cannot complete a foreign
+            # board, but the declared outputs are already on this target.
+            # Settle without merging the stale candidate or re-entering the
+            # invalid-metadata rejection.
+            return self._finish_success(
+                request,
+                status="already_merged",
+                canonical=canonical,
+                candidate=candidate,
+                target=target,
+                started_at=started_at,
+                extra={
+                    "already_merged": True,
+                    "reason": "declared_outputs_already_on_target",
+                    "mutation_short_circuited": True,
+                    "distributed_publication_admission": dict(
+                        publication_admission
+                    ),
+                },
+                preflight_receipt=preflight_receipt,
             )
 
         proof_gate_receipt: dict[str, Any] = {}
