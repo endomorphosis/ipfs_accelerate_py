@@ -1,0 +1,617 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.causal-event-supervisor-federation.scheduler_config@1",
+  "program_identifier": "agent-supervisor-causal-event-federation-v1",
+  "taskboard_path": "docs/architecture/agent_supervisor_causal_event_federation.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_causal_event_federation.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_CAUSAL_EVENT_FEDERATION_PLAN.md",
+  "validator_path": "scripts/validate_agent_supervisor_causal_event_federation_board.py",
+  "task_prefix": "CASF-",
+  "goal_prefix": "CASF-G",
+  "board_namespace": "agent-supervisor-causal-event-federation-v1",
+  "accepted_plan_revision_alias": "CASF-PLAN-R1",
+  "merge_target_branch": "codex/causal-event-supervisor-federation-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "84a056e41e48a81d4484be43840196578d6c87da",
+    "accelerator_planning_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+    "accelerator_planning_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "accelerator_required_branch": "codex/causal-event-supervisor-federation-v1",
+    "bootstrap_task_source": "duckdb",
+    "require_clean_checkout_at_launch": true,
+    "record_repository_revision_at_launch": true,
+    "require_initialized_gitlinks": false,
+    "require_superproject_gitlink_equals_nested_head": false,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false,
+    "sibling_contracts_are_read_only": true,
+    "missing_sibling_capability_disposition": "typed_blocker"
+  },
+  "initial_projection": {
+    "task_count": 44,
+    "task_dependency_count": 191,
+    "task_dependency_root_cid": "sha256:29be8bb6fbc6f37352ee7a312b2ecf87c15d575624ebcfd7bbc971968d688ecb",
+    "completed_task_ids": [],
+    "ready_task_ids": [
+      "CASF-000"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "CASF-043",
+    "goal_count": 17,
+    "root_goal_id": "CASF-G000"
+  },
+  "database_program": {
+    "authority_mode": "quack",
+    "task_source_kind": "duckdb",
+    "endpoint_secret_handle": "handle:casf-v1",
+    "quack_endpoint": "quack:127.0.0.1:41417",
+    "store_id": "data/agent_supervisor/causal_event_federation/control.duckdb",
+    "store_generation": "casf-v1",
+    "schema_revision": "2",
+    "event_store_path": "data/agent_supervisor/causal_event_federation/events",
+    "runtime_registry_path": "data/agent_supervisor/causal_event_federation/registry",
+    "worktree_root": "data/agent_supervisor/causal_event_federation/worktrees",
+    "export_profile": "casf-v1",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": false
+  },
+  "endpoint_allocation_policy": {
+    "mode": "verified_fixed_loopback",
+    "host": "127.0.0.1",
+    "port": 41417,
+    "seal_observation": "bind succeeded and ss showed no listener on 2026-08-21 UTC",
+    "mandatory_prelaunch_recheck": true,
+    "collision_disposition": "fail_closed_without_starting_or_killing_existing_listener",
+    "state_owner_is_only_binder": true,
+    "agent_supplied_endpoint_permitted": false,
+    "remote_bind_permitted": false,
+    "reservation_note": "the seal observation is not a durable reservation; launch must atomically bind before publishing readiness"
+  },
+  "operational_control_plane": {
+    "name": "authoritative DuckDB through exclusive Quack state owner",
+    "duckdb_role": "authoritative transactional goals, subgoals, plans, tasks, claims, leases, fences, effects, proofs, semantic roots, events, cursors, budgets, commands and audit",
+    "quack_role": "mandatory authenticated loopback typed transport and exclusive mutation/state-owner boundary",
+    "canonical_gateway": "StateRepository/QuackStateRepository plus registered StateCommand transactions",
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "automatic_file_fallback_permitted": false,
+    "arbitrary_sql_from_agents_permitted": false,
+    "outage_policy": "fail_closed_multi_supervisor_unavailable",
+    "embedded_mode_scope": [
+      "hermetic tests",
+      "single-process development",
+      "exclusive offline recovery"
+    ],
+    "embedded_mode_may_claim_multi_supervisor_parallelism": false,
+    "markdown_is_authority": false
+  },
+  "ducklake_projection_program": {
+    "mode": "typed_unavailable_until_CASF-031",
+    "authority": false,
+    "scheduling_prerequisite": false,
+    "lease_prerequisite": false,
+    "policy_prerequisite": false,
+    "acceptance_prerequisite": false,
+    "completion_prerequisite": false,
+    "source_authority": "committed authoritative DuckDB transactional outbox event range",
+    "catalog_path": "data/agent_supervisor/causal_event_federation/ducklake/catalog.duckdb",
+    "data_path": "data/agent_supervisor/causal_event_federation/ducklake/data",
+    "logical_datasets": [
+      "federation_history",
+      "event_history",
+      "supervisor_agent_performance",
+      "token_cost_history",
+      "causal_revisions",
+      "proof_validation_history",
+      "benchmark_release_evidence"
+    ],
+    "permitted_purposes": [
+      "append-only history",
+      "analytics",
+      "benchmarks",
+      "redacted training corpus"
+    ],
+    "outage_policy": "record typed unavailable or lagging state and replay idempotently; never block DuckDB/Quack scheduling or core completion",
+    "may_grant_authority": false
+  },
+  "max_lanes": 1,
+  "strict_task_sharding": true,
+  "idle_lane_work_stealing": "",
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "objective_goal_refinement_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 60,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 60,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 14400,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [],
+  "protected_paths": [
+    "docs/architecture/AGENT_SUPERVISOR_CAUSAL_EVENT_FEDERATION_PLAN.md",
+    "docs/architecture/agent_supervisor_causal_event_federation.objectives.md",
+    "docs/architecture/agent_supervisor_causal_event_federation.todo.md",
+    "config/agent_supervisor_causal_event_federation_scheduler.json",
+    "scripts/validate_agent_supervisor_causal_event_federation_board.py",
+    "test/api/causal_federation/test_board.py",
+    "scripts/run_agent_supervisor_causal_event_federation.py",
+    "test/api/causal_federation/test_operator.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/causal_event_federation",
+    "state": "data/agent_supervisor/causal_event_federation/state",
+    "worktrees": "data/agent_supervisor/causal_event_federation/worktrees",
+    "merge_queue": "data/agent_supervisor/causal_event_federation/merge-queue",
+    "logs": "data/agent_supervisor/causal_event_federation/logs",
+    "evidence": "data/agent_supervisor/causal_event_federation/evidence",
+    "quack_owner": "data/agent_supervisor/causal_event_federation/quack-owner",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "event_wait_policy": {
+    "qualified_target": "server-owned wait_for_events with cursor/subscription/deadline/batch, commit notification and no lost wakeup",
+    "bootstrap_qualification": "CASF-010_server_owned_typed_wait_qualified",
+    "server_owned_typed_wait_qualified": true,
+    "federation_event_driven_execution_qualified": false,
+    "federation_event_driven_execution_gate": "unavailable_until_CASF-021",
+    "compatibility_polling_for_qualified_mode": false,
+    "busy_loop_permitted": false,
+    "idle_full_board_scan_permitted": false,
+    "idle_model_call_permitted": false,
+    "idle_context_rebuild_permitted": false,
+    "idle_unchanged_write_permitted": false,
+    "event_driven_claim_permitted_at_bootstrap": false,
+    "note": "CASF-010 qualifies only the exact server-owned typed wait/no-lost-wakeup path; generic scheduler intervals are not supervisor event delivery, and no federation-wide event-driven claim is permitted before CASF-021"
+  },
+  "bootstrap_capacity": {
+    "supervisors": 1,
+    "registered_logical_subagents": 1,
+    "maximum_active_subagents": 1,
+    "lanes": 1,
+    "provider_concurrency": 1
+  },
+  "federation_bootstrap_policy": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/causal-federation-bootstrap-profile@1",
+    "tenant_id": "tenant:casf-local-v1",
+    "caller_did": "did:local:casf-bootstrap-operator",
+    "issuer_did": "did:local:casf-policy-owner",
+    "audience": "agent-supervisor:casf-local-v1",
+    "policy_ref": "policy:casf-local-bootstrap-v1",
+    "policy_revision": 1,
+    "requested_supervisor_profile": "profile:casf-first-tranche-coordinator-v1",
+    "allowed_operations": [
+      "federation.create",
+      "supervisor.runtime.attest",
+      "supervisor.transition",
+      "event.wait",
+      "event.delivery.record",
+      "event.acknowledge"
+    ],
+    "allowed_effect": "effect.read",
+    "risk_ceiling": "risk.low",
+    "expires_at": "2099-01-01T00:00:00Z",
+    "cpu_millis": 1000000,
+    "processes": 2,
+    "input_tokens": 200000,
+    "output_tokens": 50000,
+    "model_calls": 64,
+    "maximum_supervisors": 1,
+    "maximum_subagents": 1,
+    "maximum_concurrent_subagents": 1
+  },
+  "high_concurrency_gate": {
+    "enabled_at_bootstrap": false,
+    "required_accepted_task_ids": [
+      "CASF-005",
+      "CASF-009",
+      "CASF-010",
+      "CASF-016",
+      "CASF-024",
+      "CASF-029"
+    ],
+    "additional_live_requirements": [
+      "Quack state-owner qualification",
+      "claims and fencing current",
+      "no-lost-wakeup and idle tests",
+      "host/provider/proof/merge/storage telemetry current"
+    ],
+    "target_profile": {
+      "supervisors": 12,
+      "registered_logical_subagents": 256,
+      "maximum_active_subagents": 64
+    },
+    "activation": "typed authorized scale/rebalance command with expected generation, budgets, assignments, leases, fences and audit receipt",
+    "missing_or_stale_telemetry_adds_capacity": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "casf-bootstrap-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "CASF-000"
+      ],
+      "initial_focus": "seal current authority and prerequisite baseline"
+    }
+  ],
+  "promotion_claims": {
+    "high_concurrency_qualified": false,
+    "multi_supervisor_qualified": false,
+    "parallel_execution_qualified": false,
+    "causal_coordination_qualified": false,
+    "production_ready": false,
+    "ducklake_projection_promoted": false
+  },
+  "goal_hierarchy": {
+    "CASF-G000": [
+      "CASF-G010",
+      "CASF-G020",
+      "CASF-G030",
+      "CASF-G040"
+    ],
+    "CASF-G010": [
+      "CASF-G011",
+      "CASF-G012",
+      "CASF-G013"
+    ],
+    "CASF-G020": [
+      "CASF-G021",
+      "CASF-G022",
+      "CASF-G023"
+    ],
+    "CASF-G030": [
+      "CASF-G031",
+      "CASF-G032",
+      "CASF-G033"
+    ],
+    "CASF-G040": [
+      "CASF-G041",
+      "CASF-G042",
+      "CASF-G043"
+    ]
+  },
+  "task_groups": {
+    "CASF-G011": [
+      "CASF-000",
+      "CASF-001"
+    ],
+    "CASF-G012": [
+      "CASF-002",
+      "CASF-004",
+      "CASF-005",
+      "CASF-006",
+      "CASF-007",
+      "CASF-008"
+    ],
+    "CASF-G013": [
+      "CASF-003",
+      "CASF-009",
+      "CASF-010",
+      "CASF-011",
+      "CASF-012"
+    ],
+    "CASF-G021": [
+      "CASF-013",
+      "CASF-014",
+      "CASF-015",
+      "CASF-016",
+      "CASF-017"
+    ],
+    "CASF-G022": [
+      "CASF-018",
+      "CASF-019",
+      "CASF-020"
+    ],
+    "CASF-G023": [
+      "CASF-021"
+    ],
+    "CASF-G031": [
+      "CASF-022",
+      "CASF-023",
+      "CASF-024"
+    ],
+    "CASF-G032": [
+      "CASF-025",
+      "CASF-026",
+      "CASF-027"
+    ],
+    "CASF-G033": [
+      "CASF-028",
+      "CASF-029",
+      "CASF-030"
+    ],
+    "CASF-G041": [
+      "CASF-031",
+      "CASF-032",
+      "CASF-033"
+    ],
+    "CASF-G042": [
+      "CASF-034",
+      "CASF-035",
+      "CASF-036",
+      "CASF-037"
+    ],
+    "CASF-G043": [
+      "CASF-038",
+      "CASF-039",
+      "CASF-040",
+      "CASF-041",
+      "CASF-042",
+      "CASF-043"
+    ]
+  },
+  "waves": [
+    {
+      "id": "W0",
+      "task_ids": [
+        "CASF-000"
+      ]
+    },
+    {
+      "id": "W1",
+      "task_ids": [
+        "CASF-001"
+      ]
+    },
+    {
+      "id": "W2",
+      "task_ids": [
+        "CASF-002"
+      ]
+    },
+    {
+      "id": "W3",
+      "task_ids": [
+        "CASF-003",
+        "CASF-004"
+      ]
+    },
+    {
+      "id": "W4",
+      "task_ids": [
+        "CASF-005"
+      ]
+    },
+    {
+      "id": "W5",
+      "task_ids": [
+        "CASF-006"
+      ]
+    },
+    {
+      "id": "W6",
+      "task_ids": [
+        "CASF-007",
+        "CASF-008",
+        "CASF-009"
+      ]
+    },
+    {
+      "id": "W7",
+      "task_ids": [
+        "CASF-010",
+        "CASF-013"
+      ]
+    },
+    {
+      "id": "W8",
+      "task_ids": [
+        "CASF-011",
+        "CASF-014"
+      ]
+    },
+    {
+      "id": "W9",
+      "task_ids": [
+        "CASF-012",
+        "CASF-015"
+      ]
+    },
+    {
+      "id": "W10",
+      "task_ids": [
+        "CASF-016"
+      ]
+    },
+    {
+      "id": "W11",
+      "task_ids": [
+        "CASF-017"
+      ]
+    },
+    {
+      "id": "W12",
+      "task_ids": [
+        "CASF-018",
+        "CASF-019",
+        "CASF-020"
+      ]
+    },
+    {
+      "id": "W13",
+      "task_ids": [
+        "CASF-021"
+      ]
+    },
+    {
+      "id": "W14",
+      "task_ids": [
+        "CASF-022"
+      ]
+    },
+    {
+      "id": "W15",
+      "task_ids": [
+        "CASF-023"
+      ]
+    },
+    {
+      "id": "W16",
+      "task_ids": [
+        "CASF-024"
+      ]
+    },
+    {
+      "id": "W17",
+      "task_ids": [
+        "CASF-025"
+      ]
+    },
+    {
+      "id": "W18",
+      "task_ids": [
+        "CASF-026"
+      ]
+    },
+    {
+      "id": "W19",
+      "task_ids": [
+        "CASF-027"
+      ]
+    },
+    {
+      "id": "W20",
+      "task_ids": [
+        "CASF-028"
+      ]
+    },
+    {
+      "id": "W21",
+      "task_ids": [
+        "CASF-029"
+      ]
+    },
+    {
+      "id": "W22",
+      "task_ids": [
+        "CASF-030"
+      ]
+    },
+    {
+      "id": "W23",
+      "task_ids": [
+        "CASF-031",
+        "CASF-036"
+      ]
+    },
+    {
+      "id": "W24",
+      "task_ids": [
+        "CASF-032"
+      ]
+    },
+    {
+      "id": "W25",
+      "task_ids": [
+        "CASF-033",
+        "CASF-034"
+      ]
+    },
+    {
+      "id": "W26",
+      "task_ids": [
+        "CASF-035",
+        "CASF-037"
+      ]
+    },
+    {
+      "id": "W27",
+      "task_ids": [
+        "CASF-038",
+        "CASF-039",
+        "CASF-040",
+        "CASF-041"
+      ]
+    },
+    {
+      "id": "W28",
+      "task_ids": [
+        "CASF-042"
+      ]
+    },
+    {
+      "id": "W29",
+      "task_ids": [
+        "CASF-043"
+      ]
+    }
+  ],
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.6",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 1,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "duckdb_transactional_authority": true,
+    "quack_exclusive_state_owner_transport": true,
+    "ducklake_projection_authority": false,
+    "ducklake_projection_is_scheduling_prerequisite": false,
+    "ducklake_projection_is_acceptance_prerequisite": false,
+    "ducklake_projection_is_completion_authority": false,
+    "markdown_is_completion_authority": false,
+    "task_board_status_is_completion_evidence": false,
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "automatic_quack_to_file_fallback": false,
+    "arbitrary_sql_from_agent_permitted": false,
+    "model_created_authority_permitted": false,
+    "model_created_policy_permission_permitted": false,
+    "model_created_completion_permitted": false,
+    "provider_or_model_claim_is_completion_authority": false,
+    "one_authoritative_store_per_mutable_semantic_fact": true,
+    "deterministic_current_tree_admission_required": true,
+    "exact_receipt_identity_required": true,
+    "unknown_ownership_disposition": "typed_blocker",
+    "unknown_dependency_disposition": "widen_or_serialize",
+    "sibling_repositories_are_read_only": true,
+    "retrieval_similarity_is_causal_authority": false,
+    "simulated_evidence_is_live_evidence": false,
+    "cross_tenant_state_leakage_permitted": false
+  },
+  "security_policy": {
+    "default_bind": "loopback_only",
+    "authenticated_client_required": true,
+    "opaque_token_handles_only": true,
+    "secrets_in_argv_logs_prompts_receipts_or_provider_environments": false,
+    "remote_mode_qualified": false,
+    "every_command_binds": [
+      "tenant",
+      "federation",
+      "supervisor",
+      "repository"
+    ],
+    "unverified_payload_may_choose_tenant_or_database_path": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "CASF-043",
+    "all_task_dependencies_terminal_required": true,
+    "goal_completion_contracts_required": true,
+    "current_tree_required": true,
+    "fixed_point_receipt_required": true,
+    "unprocessed_authoritative_events_empty_required": true,
+    "active_mutating_claims_empty_required": true,
+    "active_attempts_empty_required": true,
+    "leases_and_fences_current_required": true,
+    "merge_queue_settled_required": true,
+    "proofs_tests_effects_semantic_roots_current_required": true,
+    "blocking_obligations_empty_required": true,
+    "required_receipts_and_seals_verify": true,
+    "non_success_terminals_never_report_success": true,
+    "ducklake_outage_cannot_block_core_completion": true,
+    "final_report_required": true
+  }
+}

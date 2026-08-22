@@ -14,12 +14,15 @@ import stat
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
+from typing import Any, ClassVar, Protocol
+
+_UTC = timezone.utc  # noqa: UP017 - package supports Python 3.8.
 
 # A datasets-authoritative configured-board process must not import repository
 # code before its complete dependency closure is available as one immutable
@@ -308,16 +311,17 @@ def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_mode,
-        item.st_uid,
-        item.st_nlink,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
+    def identity(item):
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
     if identity(before) != identity(after) or identity(before) != identity(metadata):
         raise ValueError("sealed control-plane Python executable changed")
     return str(executable), "sha256:" + digest.hexdigest()
@@ -380,7 +384,7 @@ class SupervisorTrack:
     module_name: str = ""
     database_program: DatabaseProgramConfig | None = None
 
-    def resolve(self, repo_root: Path) -> "SupervisorTrack":
+    def resolve(self, repo_root: Path) -> SupervisorTrack:
         return SupervisorTrack(
             name=self.name,
             script_path=_resolve_path(repo_root, self.script_path),
@@ -477,6 +481,7 @@ STATE_STORE_LIVE_GENERATION_ENV = (
 STATE_LIVE_SCHEMA_REVISION_ENV = (
     "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION"
 )
+STATE_OWNER_SOCKET_ENV = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TASK_SOURCE_KIND_ENV = "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND"
 EVENT_STORE_PATH_ENV = "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH"
 RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
@@ -506,6 +511,7 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_SCHEMA_REVISION_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_OWNER_SOCKET_ENV,
     TASK_SOURCE_KIND_ENV,
     EVENT_STORE_PATH_ENV,
     RUNTIME_REGISTRY_PATH_ENV,
@@ -1165,7 +1171,7 @@ class DatabaseProgramConfig:
             )
 
     @classmethod
-    def from_mapping(cls, payload: Mapping[str, Any]) -> "DatabaseProgramConfig":
+    def from_mapping(cls, payload: Mapping[str, Any]) -> DatabaseProgramConfig:
         if not isinstance(payload, Mapping):
             raise DatabaseProgramConfigError(
                 "database program config must be an object"
@@ -1197,7 +1203,7 @@ class DatabaseProgramConfig:
         )
 
     @classmethod
-    def explicit_legacy_markdown(cls) -> "DatabaseProgramConfig":
+    def explicit_legacy_markdown(cls) -> DatabaseProgramConfig:
         """Return an explicit legacy Markdown program selection (not implicit)."""
 
         return cls(
@@ -1394,210 +1400,6 @@ class DatabaseImplementationTrack:
 
 
 @dataclass(frozen=True)
-class ImplementationSupervisorNamespaceTrackSpec:
-    """Minimal namespace-based inputs for one implementation-supervisor track."""
-
-    name: str
-    script_path: Path | str
-    namespace: str
-    state_prefix: str | None = None
-
-
-def implementation_supervisor_namespace_track_config(
-    *,
-    name: str,
-    script_path: Path | str,
-    namespace_paths: AgentSupervisorNamespacePaths,
-    state_prefix: str | None = None,
-) -> ImplementationSupervisorTrackConfig:
-    """Return a track config using the standard namespace state directory."""
-
-    return ImplementationSupervisorTrackConfig(
-        name=name,
-        script_path=script_path,
-        state_dir=namespace_paths.state_dir,
-        state_prefix=state_prefix or namespace_paths.namespace,
-    )
-
-
-def _implementation_supervisor_namespace_track_spec(
-    spec: (
-        ImplementationSupervisorNamespaceTrackSpec
-        | tuple[str, Path | str, str]
-        | tuple[str, Path | str, str, str]
-    ),
-) -> ImplementationSupervisorNamespaceTrackSpec:
-    if isinstance(spec, ImplementationSupervisorNamespaceTrackSpec):
-        return spec
-    if len(spec) == 3:
-        name, script_path, namespace = spec
-        state_prefix = None
-    elif len(spec) == 4:
-        name, script_path, namespace, state_prefix = spec
-    else:
-        raise ValueError(
-            "namespace track specs must have NAME|SCRIPT|NAMESPACE or "
-            "NAME|SCRIPT|NAMESPACE|STATE_PREFIX"
-        )
-    return ImplementationSupervisorNamespaceTrackSpec(
-        name=name,
-        script_path=script_path,
-        namespace=namespace,
-        state_prefix=state_prefix,
-    )
-
-
-def implementation_supervisor_namespace_track_configs(
-    *,
-    repo_root: Path | str,
-    track_specs: Sequence[
-        ImplementationSupervisorNamespaceTrackSpec
-        | tuple[str, Path | str, str]
-        | tuple[str, Path | str, str, str]
-    ],
-    data_root: Path | str = "data",
-) -> tuple[ImplementationSupervisorTrackConfig, ...]:
-    """Return implementation-supervisor track configs from namespace-based specs."""
-
-    from ..core.wrapper_utils import agent_supervisor_namespace_paths
-
-    return tuple(
-        implementation_supervisor_namespace_track_config(
-            name=resolved_spec.name,
-            script_path=resolved_spec.script_path,
-            namespace_paths=agent_supervisor_namespace_paths(
-                repo_root,
-                resolved_spec.namespace,
-                data_root=data_root,
-            ),
-            state_prefix=resolved_spec.state_prefix,
-        )
-        for resolved_spec in (
-            _implementation_supervisor_namespace_track_spec(spec) for spec in track_specs
-        )
-    )
-
-
-@dataclass(frozen=True)
-class ConfiguredMultiSupervisorCliRunner:
-    """Project-bound CLI argv for launching the reusable multi-supervisor runner."""
-
-    argv: tuple[str, ...]
-
-    def args(self) -> list[str]:
-        """Return the configured runner argv as a mutable list."""
-
-        return list(self.argv)
-
-    def run(self, extra_argv: Sequence[str] | None = None) -> int:
-        """Run the multi-supervisor CLI with configured args plus any overrides."""
-
-        return main([*self.argv, *(extra_argv or ())])
-
-    def run_cli(self, argv: Sequence[str] | None = None) -> int:
-        """Run from a wrapper CLI, defaulting overrides from ``sys.argv``."""
-
-        return self.run(sys.argv[1:] if argv is None else argv)
-
-
-@dataclass(frozen=True)
-class ConfiguredMultiSupervisorLauncher:
-    """Prepared launcher for a configured multi-supervisor runner."""
-
-    runner: ConfiguredMultiSupervisorCliRunner
-    env_defaults: tuple[tuple[str, str], ...] = ()
-    prepare_environment: Callable[[], None] | None = None
-
-    def args(self) -> list[str]:
-        """Return the configured runner argv as a mutable list."""
-
-        return self.runner.args()
-
-    def prepare(self) -> None:
-        """Apply environment defaults and run the optional preparation callback."""
-
-        if self.env_defaults:
-            apply_env_defaults(dict(self.env_defaults))
-        if self.prepare_environment is not None:
-            self.prepare_environment()
-
-    def run(self, extra_argv: Sequence[str] | None = None) -> int:
-        """Prepare the environment and run the configured multi-supervisor CLI."""
-
-        self.prepare()
-        return self.runner.run(extra_argv)
-
-    def run_cli(self, argv: Sequence[str] | None = None) -> int:
-        """Prepare and run from a wrapper CLI, defaulting overrides from ``sys.argv``."""
-
-        self.prepare()
-        return self.runner.run_cli(argv)
-
-
-class SupervisorRunInterrupted(Exception):
-    """Raised internally when a signal requests orderly shutdown."""
-
-
-def utc_run_stamp() -> str:
-    """Return a UTC run stamp suitable for log/pid filenames."""
-
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def iso_timestamp() -> str:
-    """Return a compact local timestamp for operator logs."""
-
-    return datetime.now().astimezone().isoformat(timespec="seconds")
-
-
-def _resolve_path(repo_root: Path, path: Path) -> Path:
-    return path if path.is_absolute() else repo_root / path
-
-
-def parse_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
-    """Parse ``NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID[|SUPERVISOR_STATUS]`` specs."""
-
-    rendered = spec.format(stamp=stamp) if stamp else spec
-    parts = rendered.split("|")
-    if len(parts) not in {5, 6} or not parts[0].strip():
-        raise ValueError(
-            "track specs must have NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID"
-            "[|SUPERVISOR_STATUS]"
-        )
-    name, script, log, supervisor_pid, daemon_pid = (part.strip() for part in parts[:5])
-    supervisor_status = parts[5].strip() if len(parts) == 6 else ""
-    return SupervisorTrack(
-        name=name,
-        script_path=Path(script),
-        log_path=Path(log),
-        supervisor_pid_path=Path(supervisor_pid),
-        daemon_pid_path=Path(daemon_pid),
-        supervisor_status_path=Path(supervisor_status) if supervisor_status else None,
-    )
-
-
-def implementation_supervisor_track_spec(
-    *,
-    name: str,
-    script_path: Path | str,
-    state_dir: Path | str,
-    state_prefix: str,
-) -> str:
-    """Return a standard implementation-supervisor track spec."""
-
-    state_path = Path(state_dir).as_posix()
-    return "|".join(
-        (
-            str(name),
-            Path(script_path).as_posix(),
-            f"{state_path}/{state_prefix}_8h_run_{{stamp}}.log",
-            f"{state_path}/{state_prefix}_supervisor.pid",
-            f"{state_path}/{state_prefix}_managed_daemon.pid",
-        )
-    )
-
-
-@dataclass(frozen=True)
 class PlanBoundSupervisorChild:
     """One exact nonempty CAS-bound supervisor slice.
 
@@ -1746,7 +1548,7 @@ class PlanBoundSupervisorChild:
         return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
 
     @classmethod
-    def from_cli_record(cls, value: str) -> "PlanBoundSupervisorChild":
+    def from_cli_record(cls, value: str) -> PlanBoundSupervisorChild:
         def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             result: dict[str, Any] = {}
             for key, item in pairs:
@@ -1928,7 +1730,7 @@ def _read_stable_regular_bytes(
                 return None, {"state": "absent", "path": str(artifact)}
             raise _StableArtifactReadError(
                 f"artifact appeared during absent read: {artifact}"
-            )
+            ) from None
         except OSError as exc:
             raise _StableArtifactReadError(
                 f"cannot prove absent artifact {artifact}: {exc}"
@@ -2258,7 +2060,8 @@ def configured_board_live_seal_launch_profile(
                         _profile_option_values(source.extra_args, "--task-shard-index")
                     ),
                 }
-                for item, source in zip(projected_tracks, tracks)
+                # ``strict=`` is unavailable on the supported Python 3.8.
+                for item, source in zip(projected_tracks, tracks)  # noqa: B905
             ],
         },
         "launch_policy": {
@@ -3096,7 +2899,7 @@ def reassign_fenced_plan_bound_child(
                     )
 
     suffix = hashlib.sha256(
-        f"{donor.slice_id}:{generation}:{recipient.lane_id}".encode("utf-8")
+        f"{donor.slice_id}:{generation}:{recipient.lane_id}".encode()
     ).hexdigest()[:12]
     return replace(
         donor,
@@ -3274,7 +3077,7 @@ class PlanBoundProcessBirthError(RuntimeError):
 def utc_run_stamp() -> str:
     """Return a UTC run stamp suitable for log/pid filenames."""
 
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(_UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def iso_timestamp() -> str:
@@ -4249,8 +4052,8 @@ def _parse_status_timestamp(value: object) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=_UTC)
+    return parsed.astimezone(_UTC)
 
 
 def _inferred_supervisor_status_path(track: SupervisorTrack) -> Path | None:
@@ -4417,7 +4220,7 @@ def supervisor_status_health_fields(
             "supervisor_status": "unknown",
             "supervisor_status_path": str(status_path),
         }
-    age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
+    age_seconds = max(0.0, (datetime.now(_UTC) - updated_at).total_seconds())
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
             "supervisor_status": "live",
@@ -5119,7 +4922,7 @@ def start_track(
         run_id=(
             "multi-supervisor:"
             + hashlib.sha256(
-                f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")
+                f"{repo_root.resolve()}:{resolved.name}".encode()
             ).hexdigest()
         ),
         configuration_root=configuration_root,
@@ -5209,7 +5012,7 @@ def start_track(
         os.close(gate_read_fd)
     # Popen is only an observation handle.  The immutable profile is what lets
     # stop/restart rediscover children that have detached or been reparented.
-    setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+    process._agent_supervisor_lifecycle_profile = profile
     if plan_bound_dispatch:
         if gate_write_fd is None:
             raise AssertionError("plan-bound launch gate was not created")
@@ -5223,21 +5026,13 @@ def start_track(
                 raise ProcessIdentityMismatch(
                     "plan-bound launch returned no typed process identity"
                 )
-            setattr(
-                process,
-                "_agent_supervisor_process_identity",
-                process_identity,
-            )
+            process._agent_supervisor_process_identity = process_identity
             birth_cid = _persist_plan_bound_process_birth(
                 profile=profile,
                 process_identity=process_identity,
                 repo_root=Path(repo_root).resolve(),
             )
-            setattr(
-                process,
-                "_agent_supervisor_process_birth_cid",
-                birth_cid,
-            )
+            process._agent_supervisor_process_birth_cid = birth_cid
             if (
                 pid_reservation_fd is None
                 or pid_reservation_identity is None
@@ -5298,11 +5093,7 @@ def start_track(
         ):
             # Legacy tracks retain their previous best-effort observability.
             process_identity = None
-        setattr(
-            process,
-            "_agent_supervisor_process_identity",
-            process_identity,
-        )
+        process._agent_supervisor_process_identity = process_identity
         resolved.supervisor_pid_path.write_text(
             f"{process.pid}\n", encoding="utf-8"
         )
@@ -5544,7 +5335,7 @@ def _plan_bound_recovery_artifact_evidence(
                     f"{current_git_path.relative_to(root).as_posix()}:"
                     f"{stat.S_IMODE(git_stat.st_mode)}:{git_stat.st_uid}:"
                     f"{git_stat.st_nlink}"
-                ).encode("utf-8")
+                ).encode()
             )
             current_git_path /= part
         git_stat = os.lstat(git_dir)
@@ -5560,7 +5351,7 @@ def _plan_bound_recovery_artifact_evidence(
                 f"{git_dir.relative_to(root).as_posix()}:"
                 f"{stat.S_IMODE(git_stat.st_mode)}:{git_stat.st_uid}:"
                 f"{git_stat.st_nlink}"
-            ).encode("utf-8")
+            ).encode()
         )
         top = _plan_bound_git(artifact, "rev-parse", "--show-toplevel")
         common = _plan_bound_git(artifact, "rev-parse", "--git-common-dir")
@@ -7226,9 +7017,7 @@ def run_supervisor_tracks(
         )
         generation = current[1].generation + 1 if current is not None else 1
         token = hashlib.sha256(
-            f"{donor.revision_cid}:{donor.slice_id}:{generation}".encode(
-                "utf-8"
-            )
+            f"{donor.revision_cid}:{donor.slice_id}:{generation}".encode()
         ).hexdigest()[:12]
         lane_id = f"recovery-{generation}-{token}"
         state_parent = PurePosixPath(str(donor.state_dir)).parent
@@ -8404,6 +8193,46 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return 2
     return 0
+
+
+CASF_EVENT_DRIVEN_WAKE_INTERFACE = (
+    "ipfs_accelerate_py/agent-supervisor/casf-event-driven-wake@1"
+)
+
+
+def casf_require_event_driven_wait(wait_capability: Mapping[str, object]) -> None:
+    """Fail closed unless the federation wait path is event-driven qualified."""
+
+    from ipfs_accelerate_py.agent_supervisor.federation.scheduler import (
+        require_event_driven_capability,
+    )
+
+    require_event_driven_capability(wait_capability)
+
+
+def casf_select_tracks_for_frontier(
+    tracks: Sequence[SupervisorTrack],
+    *,
+    must_wake: Sequence[str],
+    may_wake: Sequence[str],
+    do_not_wake: Sequence[str],
+    wait_capability: Mapping[str, object],
+) -> tuple[SupervisorTrack, ...]:
+    """Wake only frontier-eligible tracks. Unchanged do_not_wake tracks stay asleep."""
+
+    casf_require_event_driven_wait(wait_capability)
+    asleep = set(do_not_wake)
+    eligible = set(must_wake) | set(may_wake)
+    overlap = eligible & asleep
+    if overlap:
+        raise ValueError("frontier dispositions overlap")
+    selected: list[SupervisorTrack] = []
+    for track in tracks:
+        if track.name in asleep:
+            continue
+        if track.name in eligible:
+            selected.append(track)
+    return tuple(selected)
 
 
 if __name__ == "__main__":

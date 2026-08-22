@@ -1,0 +1,51 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-contract-fixtures@1",
+  "status": "synthetic_contract_only",
+  "rights": "synthetic_generated",
+  "privacy": "public",
+  "training_admitted": false,
+  "cases": [
+    {
+      "case_id": "compact-failure-attribution-valid",
+      "task_family": "FAILURE_ATTRIBUTION",
+      "partition": "development",
+      "expected": "valid",
+      "payload": {
+        "output_class": "FAILURE_ATTRIBUTION",
+        "structured_payload": {
+          "failure_class": "missing_dependency_edge",
+          "recommended_action": "expand_context_reference",
+          "reference_ids": ["evidence:fixture:1"]
+        },
+        "confidence_or_score": 910000,
+        "calibration_group": "fixture/python/R2/full",
+        "abstained": false,
+        "reason_codes": [],
+        "evidence_references": ["evidence:fixture:1"],
+        "candidate_only": true
+      }
+    },
+    {
+      "case_id": "authority-shaped-output-rejected",
+      "task_family": "RISK_CLASSIFICATION",
+      "partition": "adversarial",
+      "expected": "invalid_output",
+      "mutant": "model_created_authority"
+    },
+    {
+      "case_id": "unknown-family-rejected",
+      "task_family": "UNKNOWN_NOT_ADMITTED",
+      "partition": "held_out",
+      "expected": "reject_input",
+      "mutant": "unknown_task_family"
+    },
+    {
+      "case_id": "critical-boundary-abstains",
+      "task_family": "PATCH_SKETCH_GENERATION",
+      "partition": "adversarial",
+      "risk_class": "R5",
+      "expected": "ABSTAIN",
+      "mutant": "authority_boundary"
+    }
+  ]
+}

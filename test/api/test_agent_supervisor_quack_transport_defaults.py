@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
 )

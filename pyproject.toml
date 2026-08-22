@@ -59,6 +59,12 @@ package-dir = {"" = "."}
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+agent-supervisor = [
+  # Qualified DuckDB minor for the exclusive Quack state-owner service.
+  # The Quack and DuckLake extensions are capability-probed at runtime and
+  # are never installed during import or test collection.
+  "duckdb>=1.5.0,<1.6.0",
+]
 proof-reuse = [
   # Keep the install-time extra non-circular and aligned with
   # requirements-proof-reuse.txt + setup.py extras_require["proof-reuse"].

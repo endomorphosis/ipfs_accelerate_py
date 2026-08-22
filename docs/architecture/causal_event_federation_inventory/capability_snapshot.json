@@ -1,0 +1,157 @@
+{
+  "artifact_type": "casf_capability_snapshot",
+  "artifact_version": 1,
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "root_objective_id": "CASF-G000",
+  "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
+  "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+  "observed_at_utc": "2026-08-21T21:08:48Z",
+  "status_vocabulary": [
+    "available",
+    "available_with_caveats",
+    "stale",
+    "incompatible",
+    "missing"
+  ],
+  "probe_policy": {
+    "network_install_allowed": false,
+    "extension_install_attempted": false,
+    "probe_scope": "current local runtime and extension catalog",
+    "authority_limit": "Runtime presence and LOAD success do not qualify a federation, event-wait implementation, projection pipeline, or promotion gate."
+  },
+  "capabilities": {
+    "duckdb": {
+      "status": "available",
+      "version": "1.5.5",
+      "authoritative_role": "transactional operational records behind one exclusive state-owner boundary",
+      "direct_multi_process_file_mutation_permitted": false
+    },
+    "quack": {
+      "status": "available_with_caveats",
+      "installed_from": "core",
+      "extension_version": "c154811",
+      "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+      "loaded": true,
+      "symbols": {
+        "quack_serve": true,
+        "quack_query": true
+      },
+      "compatibility_status": "compatible",
+      "passes_health_check": true,
+      "experimental_usable": false,
+      "beta_limitations": [
+        "no_server_push_clients_must_poll"
+      ],
+      "promotion_qualified": false,
+      "event_driven_multi_supervisor_qualified": false,
+      "qualification_reason": "The current profile is explicitly client-polling and the state-owner implementation has no qualified server-owned wait_for_events/no-lost-wakeup path."
+    },
+    "ducklake_extension": {
+      "status": "available_with_caveats",
+      "installed_from": "core",
+      "extension_version": "d8a1881e",
+      "loaded": true,
+      "authoritative": false,
+      "scheduling_prerequisite": false,
+      "promotion_qualified": false,
+      "qualification_reason": "LOAD success does not supply a typed catalog binding, idempotent projection, recovery, source-event-range binding, security qualification, or projection receipt."
+    },
+    "httpfs_extension": {
+      "status": "available_with_caveats",
+      "installed_from": "core",
+      "extension_version": "827222f",
+      "loaded": true,
+      "authority_limit": "Transport/storage access is not scheduling, lease, completion, or policy authority."
+    },
+    "ducklake_python_package": {
+      "status": "missing",
+      "installed": false,
+      "is_duckdb_extension_blocker": false,
+      "reason": "The standalone Python package was absent, while the DuckDB DuckLake extension loaded successfully."
+    },
+    "ducklake_projection_pipeline": {
+      "status": "stale",
+      "implementation": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+      "projection_state": "typed_unavailable",
+      "authoritative": false,
+      "reason": "The current four-line placeholder only reports observation and authoritative=false; it has no event range, cursor, checksums, catalog binding, recovery, redaction, schema evolution, or receipt."
+    }
+  },
+  "typed_blockers": [
+    {
+      "blocker_id": "CASF-BLOCKER-EVENT-WAIT-MISSING",
+      "capability": "event_driven_wakeup",
+      "blocking_scope": "event-driven and no-lost-wakeup qualification",
+      "reason": "No server-owned wait_for_events implementation or process-safe commit notification path exists at the starting tree.",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-QUACK-EVENT-QUALIFICATION",
+      "capability": "quack_multi_supervisor_event_transport",
+      "blocking_scope": "event-driven multi-supervisor promotion",
+      "reason": "The extension is compatible and healthy, but experimental_usable=false and its beta profile requires polling clients.",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-DUCKLAKE-PROJECTION-MISSING",
+      "capability": "typed_ducklake_projection",
+      "blocking_scope": "DuckLake promotion only",
+      "reason": "DuckLake and httpfs load, but the projection implementation is a non-authoritative placeholder without qualification evidence.",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-MULTI-SUPERVISOR-QUALIFICATION",
+      "capability": "qualified_parallel_federation",
+      "blocking_scope": "multi-supervisor, parallel, and production claims",
+      "reason": "No current-tree event-driven 12-supervisor process qualification exists.",
+      "independent_work_allowed": true
+    }
+  ],
+  "nonclaims": [
+    {
+      "claim": "event_driven",
+      "allowed": false,
+      "reason": "Polling limitation and missing wait/no-lost-wakeup evidence."
+    },
+    {
+      "claim": "causally_coordinated",
+      "allowed": false,
+      "reason": "No authoritative causal graph, abstraction map, or frontier implementation exists."
+    },
+    {
+      "claim": "multi_supervisor_qualified",
+      "allowed": false,
+      "reason": "No current-tree multi-process qualification receipt exists."
+    },
+    {
+      "claim": "parallel_qualified",
+      "allowed": false,
+      "reason": "No proven conflict-free 12-supervisor benchmark exists."
+    },
+    {
+      "claim": "token_efficient",
+      "allowed": false,
+      "reason": "No frozen comparative token benchmark exists."
+    },
+    {
+      "claim": "production_ready",
+      "allowed": false,
+      "reason": "Non-compensable safety and promotion gates remain open."
+    },
+    {
+      "claim": "exactly_once_delivery",
+      "allowed": false,
+      "reason": "The intended delivery contract is at-least-once delivery with idempotent exactly-once authoritative effects, which is not yet implemented."
+    },
+    {
+      "claim": "quack_event_wait_qualified",
+      "allowed": false,
+      "reason": "Quack runtime compatibility is not event-wait qualification."
+    },
+    {
+      "claim": "ducklake_promotion_qualified",
+      "allowed": false,
+      "reason": "Extension load is not projection-pipeline qualification."
+    }
+  ]
+}

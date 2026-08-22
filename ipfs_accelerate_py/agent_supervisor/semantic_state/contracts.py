@@ -14,6 +14,8 @@ from typing import Any, Mapping
 HARNESS_CONTRACTS_SCHEMA = "semantic-state-harness@1"
 HARNESS_ROOT_MANIFEST_SCHEMA = "ipfs-accelerate.semantic-state-root-manifest@1"
 BOARD_NAMESPACE = "semantic-compression-harness-v1"
+# v0.1 ContextPack construction authority lives in datasets (PCCE-012).
+CONTEXT_PACK_V01_AUTHORITY = "ipfs_datasets_py.proof_context.context_pack"
 
 _CID_ALPHABET = frozenset("abcdefghijklmnopqrstuvwxyz234567")
 

@@ -19,10 +19,10 @@ import stat
 import threading
 import time
 import uuid
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .control_plane_contracts import (
     canonical_json_bytes,
@@ -63,6 +63,7 @@ DUCKDB_CONNECTION_POLICY_SETTINGS = (
     ("autoload_known_extensions", "false", False),
     ("enable_external_access", "false", False),
     ("allow_unsigned_extensions", "false", False),
+    ("allow_persistent_secrets", "false", False),
     ("lock_configuration", "true", True),
 )
 # Quack 1.5.5+c154811 creates an internal connection for each authenticated
@@ -219,7 +220,8 @@ def connect_duckdb_with_policy(
 ) -> Any:
     """Open and verify one configuration-locked supervisor connection.
 
-    The four dynamic-extension/external-access settings and configuration lock
+    The dynamic-extension, external-access, and persistent-secret settings plus
+    the configuration lock
     are passed to ``duckdb.connect`` atomically.  Only the bounded, canonical
     ``threads`` and ``memory_limit`` tuning keys may be supplied by internal
     callers; names and values are never normalized or coerced, and policy
@@ -298,6 +300,50 @@ def connect_duckdb_with_quack_owner_policy(
                 "preloaded Quack extension lacks its required functions"
             )
         _verify_quack_owner_connection_policy(connection)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+def connect_duckdb_quack_owner_with_policy(
+    duckdb_module: Any,
+    database: Path | str,
+    *,
+    configuration: Mapping[str, Any] | None = None,
+) -> Any:
+    """Birth the exclusive typed state-owner connection with Quack preloaded.
+
+    Ordinary supervisor connections deny extension loading from connection
+    birth.  The one typed Quack state owner loads the already-installed,
+    signed ``quack`` extension without installation, then disables external
+    access and seals configuration before exposing the connection.
+    """
+
+    tuning = {
+        "threads": "1",
+        "memory_limit": DEFAULT_MEMORY_LIMIT,
+    }
+    tuning.update(_connection_tuning(configuration))
+    birth_config: dict[str, str] = {
+        "autoinstall_known_extensions": "false",
+        "autoload_known_extensions": "false",
+        "enable_external_access": "true",
+        "allow_unsigned_extensions": "false",
+        "allow_persistent_secrets": "false",
+        **tuning,
+    }
+    connection = duckdb_module.connect(
+        str(database),
+        read_only=False,
+        config=birth_config,
+    )
+    try:
+        connection.execute("LOAD httpfs")
+        connection.execute("LOAD quack")
+        connection.execute("SET enable_external_access=false")
+        connection.execute("SET lock_configuration=true")
+        _verify_duckdb_connection_policy(connection)
     except BaseException:
         connection.close()
         raise
@@ -399,7 +445,9 @@ def exclusive_file_lock(
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(f"timed out acquiring DuckDB process lock: {lock_path}")
+                    raise TimeoutError(
+                        f"timed out acquiring DuckDB process lock: {lock_path}"
+                    ) from None
                 time.sleep(0.01)
         yield
     finally:
@@ -468,9 +516,12 @@ class DuckDBConnection:
         threads: int = 1,
         transaction_on_context: bool = False,
         quack_owner: bool = False,
+        _preload_quack_for_state_owner: bool = False,
     ) -> None:
         if type(quack_owner) is not bool:
             raise TypeError("quack_owner must be a boolean")
+        if type(_preload_quack_for_state_owner) is not bool:
+            raise TypeError("_preload_quack_for_state_owner must be a boolean")
         if is_quack_transport_target(path):
             raise DuckDBConnectionPolicyError(
                 "quack transport URIs cannot be opened as DuckDB files; "
@@ -496,12 +547,13 @@ class DuckDBConnection:
         try:
             import duckdb
 
-            connect = (
-                connect_duckdb_with_quack_owner_policy
-                if quack_owner
-                else connect_duckdb_with_policy
-            )
-            self._connection = connect(
+            if _preload_quack_for_state_owner:
+                connector = connect_duckdb_quack_owner_with_policy
+            elif quack_owner:
+                connector = connect_duckdb_with_quack_owner_policy
+            else:
+                connector = connect_duckdb_with_policy
+            self._connection = connector(
                 duckdb,
                 self.path,
                 configuration={"threads": threads, "memory_limit": memory_limit},
@@ -1616,6 +1668,13 @@ def _execute_quack_owner_mutation(
     statement: str,
     parameters: Iterable[Any] | Mapping[str, Any] | None = None,
 ) -> DuckDBCursor:
+    """Apply UPDATE/DELETE on the exclusive owner connection.
+
+    This Quack ATTACH build can SELECT/INSERT new rows but cannot UPDATE or
+    DELETE attached base tables. Mutations stay on the state-owner that
+    already holds the exclusive file connection.
+    """
+
     target = quack_owner_mutation_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
@@ -1775,7 +1834,6 @@ def _open_quack_transport_connection_once(
         _consume_duckdb_result(attached)
         used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
         _consume_duckdb_result(used)
-        # Prove the attached control catalog is visible on this connection.
         probed = connection.execute(
             f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
         )
@@ -1930,6 +1988,28 @@ def open_duckdb_connection(
         memory_limit=memory_limit,
         threads=threads,
         quack_owner=quack_owner,
+    )
+
+
+def open_quack_state_owner_connection(
+    path: Path | str,
+    *,
+    timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
+    memory_limit: str = DEFAULT_MEMORY_LIMIT,
+    threads: int = 1,
+) -> DuckDBConnection:
+    """Open the sole file-owning connection with signed Quack preloaded."""
+
+    if is_quack_transport_target(path):
+        raise DuckDBConnectionPolicyError(
+            "the Quack state owner requires an exact DuckDB file path"
+        )
+    return DuckDBConnection(
+        path,
+        timeout_seconds=timeout_seconds,
+        memory_limit=memory_limit,
+        threads=threads,
+        _preload_quack_for_state_owner=True,
     )
 
 

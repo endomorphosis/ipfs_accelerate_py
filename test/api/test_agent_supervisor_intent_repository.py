@@ -60,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepositoryBoundsError,
     IntentRepositoryConflictError,
     IntentRepositoryIntegrityError,
+    IntentRepositoryTransitionError,
     PlanRevisionRepository,
     open_intent_repository,
     task_authority_spec_cid,
@@ -578,7 +579,7 @@ def test_quack_concurrent_task_status_cas_has_one_winner(
                 expected_revision=1,
                 new_status=status,
             )
-        except IntentRepositoryConflictError:
+        except (IntentRepositoryConflictError, IntentRepositoryTransitionError):
             return "conflict", status
         return "success", str(receipt.details["status"])
 

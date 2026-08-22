@@ -10,7 +10,7 @@ escalation instead of silent truncation. Capsule facts remain datasets-owned.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any, ClassVar, Mapping, Sequence
 
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     CalibratedTokenEstimator,
@@ -317,7 +317,17 @@ def _escalation_for(
 
 @dataclass
 class ContextPacker:
-    """Compile assurance-aware ContextPacks via existing context infrastructure."""
+    """Compatibility/delegation surface for ContextPack compilation (PCCE-012).
+
+    Production v0.1 pack identity is datasets-owned
+    (``ipfs_datasets_py.proof_context.context_pack``). This class remains the
+    legacy token/budget consumer and is not v0.1 construction authority.
+    """
+
+    V01_PRODUCTION_AUTHORITY: ClassVar[bool] = False
+    V01_DELEGATE: ClassVar[str] = (
+        "ipfs_datasets_py.proof_context.context_pack.build_context_pack"
+    )
 
     budget: ContextBudget = field(default_factory=ContextBudget)
     policy: ContextCoveragePolicy = field(default_factory=ContextCoveragePolicy)
@@ -335,6 +345,14 @@ class ContextPacker:
         self.estimator_version = _text(self.estimator_version, "estimator_version")
         if self._compiler is None:
             self._compiler = ContextCompiler(self.budget)
+
+    def pack_v01(self, **kwargs: Any) -> Any:
+        """Delegate v0.1 construction to datasets. Does not reconstruct packs."""
+        from ipfs_accelerate_py.proof_context.semantic_bridge import (
+            build_v01_context_pack,
+        )
+
+        return build_v01_context_pack(**kwargs)
 
     @property
     def compiler(self) -> ContextCompiler:
