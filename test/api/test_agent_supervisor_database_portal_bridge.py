@@ -515,6 +515,38 @@ def test_bridge_defers_protected_recovery_fence_contention(
     assert caught.value.provider_dispatched is False
 
 
+def test_bridge_defers_live_inflight_process_skip(
+    tmp_path: Path,
+) -> None:
+    class InflightPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "inflight_process",
+                    "task_id": "PCCE-021",
+                    "attempt": 1,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: InflightPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "inflight_process"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
 def test_bridge_still_terminals_non_fence_blocked_portal(
     tmp_path: Path,
 ) -> None:

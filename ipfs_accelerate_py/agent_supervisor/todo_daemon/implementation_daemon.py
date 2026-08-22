@@ -19676,10 +19676,14 @@ class PortalImplementationDaemon:
         if inflight is not None:
             result = {
                 "skipped": True,
+                "deferred": True,
                 "reason": "inflight_process",
                 "task_id": str(inflight.get("task_id") or task.task_id),
                 "attempt": int(inflight.get("attempt") or 0),
                 "worktree_path": str(inflight.get("worktree_path") or ""),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "backoff_seconds": 30,
             }
             self._record_event("implementation_skipped", result)
             return result
@@ -67670,6 +67674,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
     {
         "proposal_gate_failed",
         "proposal_validation_failed",
+        "inflight_process",
     }
 )
 _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(

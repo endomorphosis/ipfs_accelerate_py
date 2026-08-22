@@ -1272,6 +1272,32 @@ def test_proposal_gate_failure_retries_instead_of_blocking(
         daemon.close()
 
 
+def test_inflight_process_failure_retries_instead_of_blocking(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("inflight_process")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-process-retry",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        implementation = failed_result.get("implementation_result") or {}
+        assert implementation.get("portal_retryable_failure") is True
+        assert implementation.get("portal_terminal_failure") is False
+        assert implementation.get("reason") == "inflight_process"
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [

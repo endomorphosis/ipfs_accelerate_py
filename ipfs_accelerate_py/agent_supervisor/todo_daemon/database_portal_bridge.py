@@ -60,6 +60,8 @@ _ROOT_REPOSITORY_AUTHORITY: Final[str] = "ipfs_accelerate_py"
 _MAX_REPOSITORY_PATH_BYTES: Final[int] = 1024
 _MAX_TASK_IDENTITY_BYTES: Final[int] = 4096
 _MAX_DATABASE_PORTAL_BACKOFF_SECONDS: Final[int] = 86_400
+INFLIGHT_PROCESS_BACKOFF_SECONDS: Final[int] = 30
+_INFLIGHT_PROCESS_SKIP_REASON: Final[str] = "inflight_process"
 _MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
 _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
@@ -901,7 +903,12 @@ class DatabasePortalExecutionBridge:
         if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
-            return str(implementation.get("reason") or "portal_execution_skipped")
+            reason = str(implementation.get("reason") or "portal_execution_skipped")
+            if reason == _INFLIGHT_PROCESS_SKIP_REASON:
+                # A live implementer is a wait, not a task defect. Deferral
+                # owns this reason; do not CAS blocked.
+                return ""
+            return reason
         return ""
 
     @staticmethod
@@ -934,6 +941,26 @@ class DatabasePortalExecutionBridge:
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
+        if (
+            implementation.get("skipped") is True
+            and str(implementation.get("reason") or "")
+            == _INFLIGHT_PROCESS_SKIP_REASON
+        ):
+            raw_backoff = implementation.get(
+                "backoff_seconds",
+                INFLIGHT_PROCESS_BACKOFF_SECONDS,
+            )
+            if (
+                isinstance(raw_backoff, bool)
+                or not isinstance(raw_backoff, int)
+                or raw_backoff < 0
+                or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal inflight deferral returned an invalid "
+                    "backoff_seconds value"
+                )
+            return (_INFLIGHT_PROCESS_SKIP_REASON, int(raw_backoff))
         # ``attempt_consumed=false``/``provider_dispatched=false`` also
         # describe a successful deterministic zero-provider closure.  Only
         # the explicit closed deferral signal grants retry semantics.
