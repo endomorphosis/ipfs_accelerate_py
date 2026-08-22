@@ -1696,3 +1696,32 @@ def test_isolation_bind_mounts_newer_host_codex_vendor_pair(
     ) in mounts
     assert config.container_executable in command
     assert "features.code_mode=false" not in command
+
+
+def test_grok_command_attaches_trusted_codex_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        daemon_module,
+        "_grok_binary",
+        lambda: "/home/barberb/.local/bin/grok",
+    )
+    monkeypatch.setattr(daemon_module, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        daemon_module,
+        "_host_cli_binary",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    command = daemon_module._grok_cli_command(
+        workspace_path=workspace,
+        failure_receipt_nonce="ab" * 32,
+    )
+    assert "--codex-fallback-command-json" in command
+    payload = json.loads(
+        command[command.index("--codex-fallback-command-json") + 1]
+    )
+    assert payload[0] == "/usr/local/bin/codex"
+    assert "gpt-5.6-terra" in payload

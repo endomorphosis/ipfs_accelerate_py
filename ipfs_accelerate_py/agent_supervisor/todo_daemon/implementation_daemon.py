@@ -2616,7 +2616,9 @@ def _grok_cli_command(
         workspace=workspace_path.resolve(),
         python_executable=sys.executable,
         grok_bin=grok,
-        codex_bin=str(shutil.which("codex") or ""),
+        codex_bin=str(
+            _host_cli_binary("codex") or shutil.which("codex") or ""
+        ),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
         fallback_reasoning_effort=fallback_reasoning_effort,
         enable_codex_fallback=enable_codex_fallback,

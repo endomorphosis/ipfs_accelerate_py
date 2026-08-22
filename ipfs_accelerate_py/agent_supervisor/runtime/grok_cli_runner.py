@@ -1386,7 +1386,17 @@ def _isolated_grok_home(
         if source_auth.is_file():
             # Preserve Grok's own authority without copying a credential.  The
             # alternate-provider stores are independently kernel-denied.
-            (grok_home / "auth.json").symlink_to(source_auth.resolve(strict=True))
+            resolved_auth = source_auth.resolve(strict=True)
+            (grok_home / "auth.json").symlink_to(resolved_auth)
+            # Grok 1.0.5 also reads $HOME/.grok/auth.json when HOME==GROK_HOME.
+            nested_home = grok_home / ".grok"
+            nested_home.mkdir(mode=0o700)
+            (nested_home / "auth.json").symlink_to(resolved_auth)
+            operator_config = source_auth.parent / "config.toml"
+            if operator_config.is_file():
+                (nested_home / "config.toml").symlink_to(
+                    operator_config.resolve(strict=True)
+                )
 
         isolated_env = dict(child_env)
         isolated_env["GROK_HOME"] = str(grok_home)
@@ -1764,6 +1774,36 @@ def _docker_codex_task_toolchain_image_id(
 ) -> str:
     """Verify the immutable image that supplies the bounded test toolchain."""
 
+    sealed = _sealed_provider_isolation_image_id()
+    if sealed:
+        try:
+            completed = subprocess.run(
+                [
+                    docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(docker_config),
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    sealed,
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        candidate = completed.stdout.strip()
+        return (
+            sealed
+            if completed.returncode == 0 and candidate == sealed
+            else ""
+        )
     try:
         completed = subprocess.run(
             [
@@ -2680,22 +2720,41 @@ def _docker_grok_command(
     )
     source_auth = _existing_path(source_home / "auth.json")
     if source_auth is not None:
-        # Replace the ephemeral symlink with a file bind so Docker does not
-        # have to follow a host path that later deny-masks may hide.
-        auth_link = grok_home / "auth.json"
-        try:
-            if auth_link.is_symlink() or auth_link.is_file():
-                auth_link.unlink()
-        except OSError:
-            pass
+        # Replace ephemeral symlinks with file binds at both GROK_HOME/auth.json
+        # and HOME/.grok/auth.json. Grok 1.0.5 consults the nested path when
+        # HOME and GROK_HOME are the same ephemeral directory.
+        nested_dir = grok_home / ".grok"
+        nested_dir.mkdir(mode=0o700, exist_ok=True)
+        for auth_link in (grok_home / "auth.json", nested_dir / "auth.json"):
+            try:
+                if auth_link.is_symlink() or auth_link.is_file():
+                    auth_link.unlink()
+            except OSError:
+                pass
         command.extend(_docker_mount(source_auth, read_only=True))
         command.extend(
             _docker_mount(
                 source_auth,
-                destination=auth_link,
+                destination=grok_home / "auth.json",
                 read_only=True,
             )
         )
+        command.extend(
+            _docker_mount(
+                source_auth,
+                destination=nested_dir / "auth.json",
+                read_only=True,
+            )
+        )
+        operator_config = source_auth.parent / "config.toml"
+        if operator_config.is_file():
+            command.extend(
+                _docker_mount(
+                    operator_config,
+                    destination=nested_dir / "config.toml",
+                    read_only=True,
+                )
+            )
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
@@ -2852,7 +2911,11 @@ def _docker_codex_fallback_command(
 
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    if not docker or image != AGENT_IMPLEMENTATION_CODEX_IMAGE_ID:
+    allowed_images = {AGENT_IMPLEMENTATION_CODEX_IMAGE_ID}
+    sealed = _sealed_provider_isolation_image_id()
+    if sealed:
+        allowed_images.add(sealed)
+    if not docker or image not in allowed_images:
         raise ValueError(
             "Codex fallback requires the exact pinned task-toolchain image"
         )
@@ -2935,6 +2998,31 @@ def _docker_codex_fallback_command(
     if host_usr is None:
         raise ValueError("Codex fallback requires the pinned host /usr toolchain")
     command.extend(_docker_mount(host_usr, read_only=True))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+            _host_codex_vendor_binaries,
+        )
+
+        vendor = _host_codex_vendor_binaries()
+    except Exception:
+        vendor = None
+    if vendor is not None:
+        host_codex, host_companion = vendor
+        command.extend(
+            _docker_mount(
+                host_codex,
+                destination=Path("/usr/local/bin/codex"),
+                read_only=True,
+            )
+        )
+        command.extend(
+            _docker_mount(
+                host_companion,
+                destination=Path("/usr/local/bin/codex-code-mode-host"),
+                read_only=True,
+            )
+        )
+        inner[0] = "/usr/local/bin/codex"
     host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
     if host_ca_certificates is None:
         raise ValueError("Codex fallback requires pinned host CA certificates")
