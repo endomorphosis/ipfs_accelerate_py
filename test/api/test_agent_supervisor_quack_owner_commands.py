@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_MAX_BYTES,
+    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
@@ -409,6 +410,62 @@ def test_owner_dispatches_exact_five_live_mutations(tmp_path: Path) -> None:
             )
             == 5
         )
+        repository.close()
+    finally:
+        owner_connection.close()
+
+
+def test_owner_rearms_blocked_task_without_client_revision(tmp_path: Path) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    with IntentRepository(
+        path,
+        install_schema=False,
+        owner_id="owner:typed-test",
+        session_id="session:block",
+    ) as repository:
+        task = repository.get_task("task:typed-owner-test")
+        assert task is not None
+        repository.block_task(
+            task_cid="task:typed-owner-test",
+            blocker_kind="dependency",
+            blocker_id="task:other",
+            reason="waiting",
+            expected_revision=int(task["revision"]),
+        )
+    owner_connection = open_duckdb_connection(path)
+    try:
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:rearm",
+        )
+        result = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+            {
+                "task_cid_or_alias": "task:typed-owner-test",
+                "receipt": {"operation": "database_declared_outputs_on_head_rearm"},
+            },
+            request_id="c" * 32,
+            store_id="data/control.duckdb",
+            store_generation="generation-1",
+        )
+        assert result["changed"] is True
+        assert result["previous_status"] == "blocked"
+        assert result["task"]["status"] == "retrying"
+        replay = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+            {"task_cid_or_alias": "task:typed-owner-test"},
+            request_id="d" * 32,
+            store_id="data/control.duckdb",
+            store_generation="generation-1",
+        )
+        assert replay["changed"] is False
+        assert replay["task"]["status"] == "retrying"
         repository.close()
     finally:
         owner_connection.close()

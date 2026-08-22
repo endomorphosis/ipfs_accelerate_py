@@ -2777,38 +2777,55 @@ def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
         tmp_path,
         session="session:declared-output-rearm",
     )
-    blocked = SimpleNamespace(
-        task_cid="task:cid:blocked-010",
-        task_alias="VRIF-010",
-        status="blocked",
-        revision=4,
-        body={
-            "predicted files": (
-                "ipfs_accelerate_py/agent_supervisor/residual_intelligence/"
-                "expert_specs.py"
-            )
+    repair_snapshot = SimpleNamespace(
+        task_id="VRIF-010",
+        canonical_task_id="task:cid:blocked-010",
+        metadata={
+            "completion": {
+                "reason": "post_merge_declared_outputs_repaired",
+                "candidate_commit": "c9791a30e",
+                "repair_receipt": {
+                    "entries": [
+                        {
+                            "path": (
+                                "ipfs_accelerate_py/agent_supervisor/"
+                                "residual_intelligence/expert_specs.py"
+                            )
+                        }
+                    ]
+                },
+            }
         },
-        outputs=(),
     )
     cas_calls: list[tuple[str, str]] = []
+    list_calls: list[dict[str, object]] = []
 
-    def cas(
+    def rearm(
         task_cid: str,
         *,
-        expected_revision: int,
-        status: str,
         receipt: dict[str, object] | None = None,
-        evidence_digests: object = None,
     ) -> SimpleNamespace:
-        del expected_revision, evidence_digests
-        cas_calls.append((task_cid, status))
+        cas_calls.append((task_cid, "retrying"))
         assert receipt is not None
         assert receipt["operation"] == "database_declared_outputs_on_head_rearm"
-        return SimpleNamespace(to_dict=lambda: {"changed": True})
+        return SimpleNamespace(
+            changed=True,
+            task=SimpleNamespace(task_cid=task_cid),
+        )
+
+    def list_tasks(**kwargs: object) -> SimpleNamespace:
+        list_calls.append(dict(kwargs))
+        raise DuckDBConnectionPolicyError(
+            "quack attach authentication failed uri='quack:127.0.0.1:41327' "
+            "token_present=True token_sha16=deadbeefdeadbeef"
+        )
 
     try:
         daemon.open()
         daemon._merge_repo_root = repo
+        daemon._merge_queue = SimpleNamespace(
+            completed_requests=lambda **_kwargs: (repair_snapshot,),
+        )
         monkeypatch.setattr(
             daemon,
             "reconcile_prepared_task_completions",
@@ -2831,17 +2848,14 @@ def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
         )
         monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
         monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        monkeypatch.setattr(daemon.task_source, "list_tasks", list_tasks)
         monkeypatch.setattr(
             daemon.task_source,
-            "list_tasks",
-            lambda **_kwargs: SimpleNamespace(tasks=(blocked,)),
-        )
-        monkeypatch.setattr(
-            daemon.task_source,
-            "compare_and_set_status",
-            cas,
+            "rearm_blocked_task",
+            rearm,
         )
         result = daemon.run_once()
+        assert list_calls == []
         assert cas_calls == [("task:cid:blocked-010", "retrying")]
         assert result["selection_idle_reason"] == "no_ready_tasks"
         assert result["write_count"] == 1
@@ -2849,6 +2863,49 @@ def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
         assert rearm["schema"] == DATABASE_DECLARED_OUTPUT_REARM_SCHEMA
         assert rearm["rearmed"] == 1
         assert rearm["results"][0]["task_alias"] == "VRIF-010"
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_rearms_before_attach_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-before-attach",
+    )
+    rearm = {
+        "schema": DATABASE_DECLARED_OUTPUT_REARM_SCHEMA,
+        "attempted": True,
+        "rearmed": 1,
+        "results": [{"task_alias": "VRIF-010", "changed": True, "status": "retrying"}],
+        "write_count": 1,
+    }
+
+    def boom() -> None:
+        raise DuckDBConnectionPolicyError(
+            "quack attach authentication failed uri='quack:127.0.0.1:41327' "
+            "token_present=True token_sha16=deadbeefdeadbeef"
+        )
+
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_rearm_blocked_tasks_with_outputs_on_head",
+            lambda: rearm,
+        )
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("attach failure claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["write_count"] == 1
+        assert result["declared_output_rearm"]["rearmed"] == 1
+        assert result["unchanged"] is False
     finally:
         daemon.close()
 

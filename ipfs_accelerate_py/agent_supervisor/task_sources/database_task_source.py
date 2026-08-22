@@ -32,6 +32,7 @@ from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
@@ -445,6 +446,12 @@ def execute_quack_owner_command(
                 args["status"],
                 args.get("receipt"),
                 evidence_digests=args.get("evidence_digests"),
+            )
+            return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK:
+            result = source.rearm_blocked_task(
+                args["task_cid_or_alias"],
+                receipt=args.get("receipt"),
             )
             return result.to_dict()
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF:
@@ -1449,6 +1456,56 @@ class DatabaseTaskSource:
         )
 
     cas_status = compare_and_set_status
+
+    def rearm_blocked_task(
+        self,
+        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
+        *,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> CASResult:
+        """CAS a blocked task to retrying using the owner's current revision.
+
+        Quack clients must not ATTACH only to read ``expected_revision``.
+        The exclusive owner reads and mutates on its bound connection.
+        """
+
+        key = _task_key(task_cid_or_alias)
+        compact = dict(receipt or {})
+        compact.setdefault("operation", "database_declared_outputs_on_head_rearm")
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+                    {
+                        "task_cid_or_alias": key,
+                        "receipt": compact,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _cas_result_from_dict(result)
+        record = self.get_task(key)
+        if record is None:
+            raise KeyError(key)
+        status = str(record.status or "").strip().lower()
+        if status == "retrying":
+            return CASResult(
+                task=record,
+                previous_status="retrying",
+                revision=int(record.revision),
+                event_cursor=0,
+                changed=False,
+            )
+        if status != "blocked":
+            raise TaskSourceConflictError(
+                f"rearm requires blocked status, observed {status!r}"
+            )
+        return self.compare_and_set_status(
+            record.task_cid,
+            int(record.revision),
+            "retrying",
+            compact,
+        )
 
     def record_queue_backoff(
         self,

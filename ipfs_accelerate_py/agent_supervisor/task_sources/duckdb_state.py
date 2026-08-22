@@ -606,6 +606,7 @@ QUACK_OWNER_COMMAND_RESPONSE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/quack-owner-command-response@1"
 )
 QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS = "compare_and_set_status"
+QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK = "rearm_blocked_task"
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF = "record_queue_backoff"
 QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY = "record_queue_retry"
 QUACK_OWNER_COMMAND_RECORD_EVIDENCE = "record_evidence"
@@ -613,6 +614,7 @@ QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT = "record_validation_result"
 QUACK_OWNER_COMMANDS = frozenset(
     {
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
         QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
@@ -628,6 +630,10 @@ _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = 
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS: (
         frozenset({"task_cid_or_alias", "expected_revision", "status"}),
         frozenset({"receipt", "evidence_digests"}),
+    ),
+    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK: (
+        frozenset({"task_cid_or_alias"}),
+        frozenset({"receipt"}),
     ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF: (
         frozenset({"task_cid", "delay_ms"}),

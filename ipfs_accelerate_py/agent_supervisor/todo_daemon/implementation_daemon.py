@@ -70925,8 +70925,7 @@ class DatabaseImplementationDaemon:
         """
 
         schema = DATABASE_DECLARED_OUTPUT_REARM_SCHEMA
-        list_tasks = getattr(self.task_source, "list_tasks", None)
-        if not callable(list_tasks) or self._merge_repo_root is None:
+        if self._merge_repo_root is None:
             return {
                 "schema": schema,
                 "attempted": False,
@@ -70934,72 +70933,18 @@ class DatabaseImplementationDaemon:
                 "results": [],
                 "write_count": 0,
             }
-        try:
-            page = list_tasks(status="blocked", limit=32)
-        except Exception as exc:
-            if _is_quack_attach_error(exc):
-                raise
-            return {
-                "schema": schema,
-                "attempted": True,
-                "rearmed": 0,
-                "reason": "blocked_task_list_failed",
-                "error_type": type(exc).__name__,
-                "error": str(exc)[-2000:],
-                "results": [],
-                "write_count": 0,
-            }
-        tasks = tuple(getattr(page, "tasks", ()) or ())
-        results: list[dict[str, Any]] = []
-        rearmed = 0
-        for task in tasks:
-            alias = str(getattr(task, "task_alias", "") or "")
-            task_cid = str(getattr(task, "task_cid", "") or "")
-            paths = self._database_task_declared_output_paths(task)
-            if not task_cid or not paths:
-                continue
-            if not self._head_contains_declared_outputs(paths):
-                continue
-            try:
-                self._cas_task_status_database(
-                    task_cid,
-                    expected_revision=int(getattr(task, "revision", 0) or 0),
-                    new_status="retrying",
-                    receipt={
-                        "operation": "database_declared_outputs_on_head_rearm",
-                        "task_alias": alias,
-                    },
-                )
-            except Exception as exc:
-                if _is_quack_attach_error(exc):
-                    raise
-                results.append(
-                    {
-                        "task_cid": task_cid,
-                        "task_alias": alias,
-                        "changed": False,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc)[-500:],
-                    }
-                )
-                continue
-            rearmed += 1
-            results.append(
-                {
-                    "task_cid": task_cid,
-                    "task_alias": alias,
-                    "changed": True,
-                    "previous_status": "blocked",
-                    "status": "retrying",
-                    "outputs": list(paths),
-                }
-            )
-        seen = {str(item.get("task_cid") or "") for item in results}
+        rearm_fn = getattr(self.task_source, "rearm_blocked_task", None)
         getter = getattr(self.task_source, "get", None) or getattr(
             self.task_source, "get_task", None
         )
+        results: list[dict[str, Any]] = []
+        rearmed = 0
+        seen: set[str] = set()
+        # Prefer merge-queue repair receipts and the typed owner command.
+        # Listing blocked rows requires Quack ATTACH and can wedge the
+        # exclusive owner before the attach-free unstall runs.
         completed = getattr(self._merge_queue, "completed_requests", None)
-        if callable(getter) and callable(completed):
+        if callable(completed) and (callable(rearm_fn) or callable(getter)):
             try:
                 snapshots = completed(limit=32)
             except Exception as exc:
@@ -71028,17 +70973,97 @@ class DatabaseImplementationDaemon:
                 if not self._head_contains_declared_outputs(paths):
                     continue
                 alias = str(getattr(snapshot, "task_id", "") or "")
+                cid = str(getattr(snapshot, "canonical_task_id", "") or "")
+                if (cid and cid in seen) or (alias and alias in seen):
+                    continue
+                receipt_payload = {
+                    "operation": "database_declared_outputs_on_head_rearm",
+                    "task_alias": alias,
+                    "repair_commit": str(completion.get("candidate_commit") or ""),
+                }
                 try:
-                    task = getter(alias)
+                    if callable(rearm_fn):
+                        cas = rearm_fn(cid or alias, receipt=receipt_payload)
+                        task_cid = str(
+                            getattr(getattr(cas, "task", None), "task_cid", "")
+                            or cid
+                            or alias
+                        )
+                        if not bool(getattr(cas, "changed", False)):
+                            seen.add(task_cid)
+                            if alias:
+                                seen.add(alias)
+                            continue
+                    else:
+                        task = getter(alias)
+                        if task is None:
+                            continue
+                        task_cid = str(getattr(task, "task_cid", "") or "")
+                        status = str(getattr(task, "status", "") or "").strip().lower()
+                        if not task_cid or task_cid in seen or status != "blocked":
+                            continue
+                        self._cas_task_status_database(
+                            task_cid,
+                            expected_revision=int(getattr(task, "revision", 0) or 0),
+                            new_status="retrying",
+                            receipt=receipt_payload,
+                        )
                 except Exception as exc:
-                    if _is_quack_attach_error(exc):
+                    if _is_quack_attach_error(exc) and not callable(rearm_fn):
                         raise
+                    results.append(
+                        {
+                            "task_cid": cid or alias,
+                            "task_alias": alias,
+                            "changed": False,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[-500:],
+                        }
+                    )
+                    if cid:
+                        seen.add(cid)
+                    if alias:
+                        seen.add(alias)
                     continue
-                if task is None:
-                    continue
+                rearmed += 1
+                seen.add(task_cid)
+                if alias:
+                    seen.add(alias)
+                results.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": alias,
+                        "changed": True,
+                        "previous_status": "blocked",
+                        "status": "retrying",
+                        "outputs": list(paths),
+                    }
+                )
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(rearm_fn) and callable(list_tasks):
+            try:
+                page = list_tasks(status="blocked", limit=32)
+                tasks = tuple(getattr(page, "tasks", ()) or ())
+            except Exception as exc:
+                if _is_quack_attach_error(exc):
+                    raise
+                return {
+                    "schema": schema,
+                    "attempted": True,
+                    "rearmed": rearmed,
+                    "reason": "blocked_task_list_failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-2000:],
+                    "results": results,
+                    "write_count": rearmed,
+                }
+            for task in tasks:
+                alias = str(getattr(task, "task_alias", "") or "")
                 task_cid = str(getattr(task, "task_cid", "") or "")
-                status = str(getattr(task, "status", "") or "").strip().lower()
-                if not task_cid or task_cid in seen or status != "blocked":
+                if not task_cid or task_cid in seen or (alias and alias in seen):
+                    continue
+                paths = self._database_task_declared_output_paths(task)
+                if not paths or not self._head_contains_declared_outputs(paths):
                     continue
                 try:
                     self._cas_task_status_database(
@@ -71048,9 +71073,6 @@ class DatabaseImplementationDaemon:
                         receipt={
                             "operation": "database_declared_outputs_on_head_rearm",
                             "task_alias": alias,
-                            "repair_commit": str(
-                                completion.get("candidate_commit") or ""
-                            ),
                         },
                     )
                 except Exception as exc:
@@ -71066,9 +71088,13 @@ class DatabaseImplementationDaemon:
                         }
                     )
                     seen.add(task_cid)
+                    if alias:
+                        seen.add(alias)
                     continue
                 rearmed += 1
                 seen.add(task_cid)
+                if alias:
+                    seen.add(alias)
                 results.append(
                     {
                         "task_cid": task_cid,
@@ -76577,6 +76603,8 @@ class DatabaseImplementationDaemon:
         merge_quarantine_write_count = int(
             merge_quarantine_settlement.get("write_count", 0) or 0
         )
+        output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
+        rearm_write_count = int(output_rearm.get("write_count", 0) or 0)
         try:
             completion_reconciliations = self.reconcile_prepared_task_completions()
             expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
@@ -76594,8 +76622,8 @@ class DatabaseImplementationDaemon:
             if not _is_quack_attach_error(exc):
                 raise
             return {
-                "unchanged": merge_quarantine_write_count == 0,
-                "write_count": merge_quarantine_write_count,
+                "unchanged": merge_quarantine_write_count + rearm_write_count == 0,
+                "write_count": merge_quarantine_write_count + rearm_write_count,
                 "active_task_id": "",
                 "selection_idle_reason": "quack_attach_failed",
                 "implementation_result": None,
@@ -76605,6 +76633,7 @@ class DatabaseImplementationDaemon:
                 "projections_required": False,
                 "control_schema_evidence": dict(self.control_schema_evidence),
                 "merge_quarantine_settlement": merge_quarantine_settlement,
+                "declared_output_rearm": output_rearm,
                 "control_plane_error": {
                     "error_type": type(exc).__name__,
                     "error": str(exc)[-2000:],
@@ -76612,6 +76641,7 @@ class DatabaseImplementationDaemon:
             }
         reconciliation_write_count = (
             merge_quarantine_write_count
+            + rearm_write_count
             + len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
             + len(terminal_portal_reconciliations)
@@ -76639,6 +76669,7 @@ class DatabaseImplementationDaemon:
                 "post_merge_recovery_reconciliation": (
                     post_merge_recovery_reconciliation
                 ),
+                "declared_output_rearm": output_rearm,
                 "control_plane_error": {
                     "error_type": type(exc).__name__,
                     "error": str(exc)[-2000:],
@@ -76702,15 +76733,13 @@ class DatabaseImplementationDaemon:
                 "post_merge_recovery_reconciliation": (
                     post_merge_recovery_reconciliation
                 ),
+                "declared_output_rearm": output_rearm,
                 "control_plane_error": {
                     "error_type": type(exc).__name__,
                     "error": str(exc)[-2000:],
                 },
             }
         if attempt is None:
-            output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
-            rearm_write_count = int(output_rearm.get("write_count", 0) or 0)
-            reconciliation_write_count += rearm_write_count
             if rearm_write_count:
                 try:
                     attempt = self.claim_next()
