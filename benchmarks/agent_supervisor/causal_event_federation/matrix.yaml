@@ -1,0 +1,61 @@
+schema: ipfs_accelerate_py/agent-supervisor/causal-event-federation-benchmark-matrix@1
+program_id: agent-supervisor-causal-event-federation-v1
+objective_ref: CASF-G000
+plan_revision: CASF-PLAN-R1
+state: specification_only
+authoritative: false
+profiles:
+  baseline:
+    qualified_supervisors: 1
+    comparison_identity: same-host-tasks-providers-tests-proofs-budgets
+  federation_target:
+    supervisor_processes: 12
+    registered_logical_subagents: 256
+    maximum_concurrent_subagents: 64
+    minimum_bounded_tasks: 1000
+    minimum_event_deliveries_with_replay: 100000
+gates:
+  event:
+    metrics:
+      - commit_to_wakeup_latency
+      - outbox_drain_latency
+      - consumer_lag
+      - duplicate_deliveries
+      - lost_deliveries
+      - coalescing_ratio
+      - idle_query_count
+      - idle_wakeup_count
+    required_lost_deliveries: 0
+    required_duplicate_committed_effects: 0
+  parallel:
+    minimum_accepted_task_throughput_multiplier: 3.0
+    lower_assurance_permitted: false
+  tokens:
+    minimum_repeated_context_token_reduction_percent: 50
+    minimum_input_tokens_per_accepted_criterion_reduction_percent: 40
+    minimum_duplicate_model_call_reduction_percent: 60
+    minimum_eligible_semantic_capsule_reuse_percent: 70
+    minimum_complete_board_scan_reduction_percent: 80
+  idle:
+    required_task_board_scans: 0
+    required_model_calls: 0
+    required_context_recompilations: 0
+    required_unchanged_state_writes: 0
+    permitted_activity:
+      - blocked_server_owned_event_wait
+      - required_lease_heartbeat
+      - bounded_health_deadline
+      - explicit_recovery_timer
+evidence:
+  process_identity_required: true
+  current_tree_identity_required: true
+  control_plane_generation_required: true
+  schema_fingerprint_required: true
+  policy_and_budget_identity_required: true
+  content_addressed_result_manifest_required: true
+  compact_duckdb_receipt_required: true
+nonclaims:
+  - current tree has passed this matrix
+  - in-process simulation qualifies multi-supervisor behavior
+  - metrics alone establish completion or release
+  - DuckLake projection grants scheduling authority
