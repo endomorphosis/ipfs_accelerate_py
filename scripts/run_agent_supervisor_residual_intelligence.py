@@ -2001,7 +2001,9 @@ def launch_supervisor(
     token_path = _token_path(paths["owner"], program.endpoint_secret_handle)
     token = _read_owner_token(token_path)
     os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
-    _probe_quack_attach(program.quack_endpoint, token)
+    # Do not ATTACH here.  A launch-time probe shares Quack's tiny listen
+    # backlog with the four lanes and can make the live token fail closed
+    # before any daemon claims work.  Owner liveness is already required.
     common = [
         "--repo-root",
         str(ROOT),

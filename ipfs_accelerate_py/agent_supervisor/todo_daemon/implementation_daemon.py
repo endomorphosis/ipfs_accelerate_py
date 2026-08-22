@@ -70343,6 +70343,7 @@ class DatabaseImplementationDaemon:
         self._merge_queue: Any = None
         self._merge_repo_root: Path | None = None
         self._merge_target_branch = ""
+        self._quack_attach_blocked_until = 0.0
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -70894,6 +70895,70 @@ class DatabaseImplementationDaemon:
             cleaned.append(path)
         return tuple(dict.fromkeys(cleaned))
 
+    def _arm_quack_attach_cooldown(self) -> None:
+        """Pause ATTACH so a failed token does not wedge the exclusive owner."""
+
+        shard = int(getattr(self, "task_shard_index", 0) or 0)
+        self._quack_attach_blocked_until = time.monotonic() + 15.0 + (shard * 4.0)
+
+    def _quack_attach_cooldown_active(self) -> bool:
+        return time.monotonic() < float(self._quack_attach_blocked_until or 0.0)
+
+    def _completed_repair_receipt_snapshots(self) -> tuple[Any, ...]:
+        """Load post-merge repair receipts without attaching to Quack.
+
+        Completed JSON files are the durable merge-train evidence.  The
+        DuckDB index is a convenience snapshot and may be empty, fenced, or
+        locked while the exclusive owner is still recovering.
+        """
+
+        class _Snapshot:
+            __slots__ = ("task_id", "canonical_task_id", "metadata")
+
+            def __init__(self, payload: Mapping[str, Any]) -> None:
+                self.task_id = str(payload.get("task_id") or "")
+                self.canonical_task_id = str(payload.get("canonical_task_id") or "")
+                metadata = payload.get("metadata")
+                self.metadata = metadata if isinstance(metadata, Mapping) else {}
+
+        snapshots: list[Any] = []
+        seen: set[str] = set()
+        completed_dir = getattr(self._merge_queue, "completed_dir", None)
+        if isinstance(completed_dir, Path) and completed_dir.is_dir():
+            files = sorted(
+                (
+                    path
+                    for path in completed_dir.glob("*.json")
+                    if path.is_file() and not path.is_symlink()
+                ),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+            for path in files[:32]:
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    continue
+                if not isinstance(payload, Mapping):
+                    continue
+                snapshot = _Snapshot(payload)
+                key = snapshot.canonical_task_id or snapshot.task_id or path.name
+                if key in seen:
+                    continue
+                seen.add(key)
+                snapshots.append(snapshot)
+        if snapshots:
+            return tuple(snapshots)
+        completed = getattr(self._merge_queue, "completed_requests", None)
+        if not callable(completed):
+            return ()
+        try:
+            return tuple(completed(limit=32) or ())
+        except Exception as exc:
+            if _is_quack_attach_error(exc):
+                raise
+            return ()
+
     def _head_contains_declared_outputs(self, paths: Sequence[str]) -> bool:
         """Return whether every declared output exists as a blob on HEAD."""
 
@@ -70943,15 +71008,10 @@ class DatabaseImplementationDaemon:
         # Prefer merge-queue repair receipts and the typed owner command.
         # Listing blocked rows requires Quack ATTACH and can wedge the
         # exclusive owner before the attach-free unstall runs.
-        completed = getattr(self._merge_queue, "completed_requests", None)
-        if callable(completed) and (callable(rearm_fn) or callable(getter)):
-            try:
-                snapshots = completed(limit=32)
-            except Exception as exc:
-                if _is_quack_attach_error(exc):
-                    raise
-                snapshots = ()
-            for snapshot in snapshots:
+        snapshots: tuple[Any, ...] = ()
+        if callable(rearm_fn) or callable(getter):
+            snapshots = self._completed_repair_receipt_snapshots()
+        for snapshot in snapshots:
                 metadata = getattr(snapshot, "metadata", None)
                 if not isinstance(metadata, Mapping):
                     continue
@@ -76605,6 +76665,21 @@ class DatabaseImplementationDaemon:
         )
         output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
         rearm_write_count = int(output_rearm.get("write_count", 0) or 0)
+        if self._quack_attach_cooldown_active():
+            return {
+                "unchanged": merge_quarantine_write_count + rearm_write_count == 0,
+                "write_count": merge_quarantine_write_count + rearm_write_count,
+                "active_task_id": "",
+                "selection_idle_reason": "quack_attach_failed",
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "merge_quarantine_settlement": merge_quarantine_settlement,
+                "declared_output_rearm": output_rearm,
+            }
         try:
             completion_reconciliations = self.reconcile_prepared_task_completions()
             expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
@@ -76621,6 +76696,7 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             if not _is_quack_attach_error(exc):
                 raise
+            self._arm_quack_attach_cooldown()
             return {
                 "unchanged": merge_quarantine_write_count + rearm_write_count == 0,
                 "write_count": merge_quarantine_write_count + rearm_write_count,
@@ -76654,6 +76730,7 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             if not _is_quack_attach_error(exc):
                 raise
+            self._arm_quack_attach_cooldown()
             return {
                 "unchanged": reconciliation_write_count == 0,
                 "write_count": reconciliation_write_count,
@@ -76708,6 +76785,7 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             if not _is_quack_attach_error(exc):
                 raise
+            self._arm_quack_attach_cooldown()
             return {
                 "unchanged": reconciliation_write_count == 0,
                 "write_count": reconciliation_write_count,
@@ -76746,6 +76824,7 @@ class DatabaseImplementationDaemon:
                 except Exception as exc:
                     if not _is_quack_attach_error(exc):
                         raise
+                    self._arm_quack_attach_cooldown()
                     return {
                         "unchanged": False,
                         "write_count": reconciliation_write_count,
