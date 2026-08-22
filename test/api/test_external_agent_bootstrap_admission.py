@@ -88,6 +88,35 @@ def test_materialization_projection_binds_command_fabric_v2_board_and_shard() ->
     assert result["materialization_receipt_cid"] == receipt["receipt_cid"]
 
 
+def test_materialization_projection_accepts_188_admitted_child_adapter() -> None:
+    receipt = _materialization_receipt()
+    bindings = receipt["database_program_bindings"]
+    assert isinstance(bindings, dict)
+    command_fabric = bindings["operational_command_fabric"]
+    assert isinstance(command_fabric, dict)
+    command_fabric["child_adapter_status"] = "admitted"
+    bindings["operational_child_adapter_status"] = "admitted"
+    _readdress_materialization_receipt(receipt)
+
+    result = admission._materialization_projection(receipt)
+
+    assert result["materialization_receipt_cid"] == receipt["receipt_cid"]
+
+
+def test_materialization_projection_rejects_child_adapter_status_mismatch() -> None:
+    receipt = _materialization_receipt()
+    bindings = receipt["database_program_bindings"]
+    assert isinstance(bindings, dict)
+    bindings["operational_child_adapter_status"] = "admitted"
+    _readdress_materialization_receipt(receipt)
+
+    with pytest.raises(
+        admission.ExternalAgentBootstrapAdmissionError,
+        match="materialization_database_program_binding_invalid",
+    ):
+        admission._materialization_projection(receipt)
+
+
 @pytest.mark.parametrize("field", ["board_namespace", "shard_id"])
 def test_materialization_projection_rejects_missing_command_fabric_identity(
     field: str,
@@ -448,3 +477,25 @@ def test_publication_rejects_outside_and_symlinked_parent(
             now_ms=NOW_MS,
         )
     assert not list(managed.iterdir())
+
+
+def test_create_once_issuer_diagnoses_current_head_without_publishing() -> None:
+    import importlib.util
+
+    script = REPO_ROOT / "scripts/issue_eaaef_bootstrap_admission.py"
+    spec = importlib.util.spec_from_file_location("eaaef_bootstrap_admission_issue", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    report = module.diagnose()
+    assert report["process_started"] is False
+    assert report["configured_board_launch"] is False
+    assert report["rematerialize"] is False
+    assert report.get("published") is not True
+    assert report["exists"] is False
+    relative = report["relative_path"]
+    assert relative.endswith(f"bootstrap-admission--{report['source_head']}.json")
+    assert not (REPO_ROOT / relative).exists()
+    assert "materialization_source_or_board_mismatch" in report["blockers"]
+    assert report["would_publish"] is False
+

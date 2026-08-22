@@ -45326,9 +45326,26 @@ class PortalImplementationDaemon:
         return tuple(staged)
 
     def _run_host_bootstrap_generation_recovery(self) -> dict[str, Any]:
-        """Advance a failed/stale EAAEF namespace without starting a supervisor."""
+        """Advance a failed/stale EAAEF namespace without starting a supervisor.
+
+        Concurrent supervisors claim one identity-recovery row through the
+        exclusive Quack owner. DuckLake is never current authority.
+        """
 
         import importlib.util
+        import json
+        import time
+        import uuid
+        from datetime import datetime, timezone
+
+        from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+            CLAIM_IDENTITY_RECOVERY_SQL,
+            IDENTITY_RECOVERY_SUBJECT_ID,
+            RELEASE_IDENTITY_RECOVERY_SQL,
+            IdentityRecoveryAction,
+            plan_control_plane_identity_recovery,
+            snapshot_overlay_alias_status,
+        )
 
         repo_root = Path(self.repo_root).resolve()
         script = (
@@ -45341,6 +45358,7 @@ class PortalImplementationDaemon:
                 "attempted": False,
                 "process_started": False,
                 "reason": "eaaef_materializer_unavailable",
+                "ducklake_current_authority": False,
             }
         spec = importlib.util.spec_from_file_location(
             "eaaef_bootstrap_recovery_materializer",
@@ -45351,18 +45369,126 @@ class PortalImplementationDaemon:
                 "attempted": False,
                 "process_started": False,
                 "reason": "eaaef_materializer_unimportable",
+                "ducklake_current_authority": False,
             }
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         try:
-            config = module._load_object(module.CONFIG_PATH)
+            config = module._active_config(module._load_object(module.CONFIG_PATH))
+            receipt_path = module._receipt_path(config)
+            materialization_head = ""
+            if receipt_path.is_file():
+                materialization_head = str(
+                    module._load_object(receipt_path).get("source_head") or ""
+                )
+            source_head = module._git("rev-parse", "HEAD")
+            overlay = snapshot_overlay_alias_status(
+                module._overlay_projection_path(config)
+            )
+            plan = plan_control_plane_identity_recovery(
+                source_head=source_head,
+                materialization_source_head=materialization_head,
+                overlay_statuses=overlay,
+            )
+            if plan.action is IdentityRecoveryAction.DIAGNOSE_ADMISSION:
+                return {
+                    "attempted": False,
+                    "process_started": False,
+                    "reason": plan.reason,
+                    "action": plan.action.value,
+                    "ducklake_current_authority": False,
+                }
+            mutation_dir = Path(
+                os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR") or ""
+            )
+            if not mutation_dir.is_dir():
+                mutation_dir = (
+                    module._paths(config)["control"].parent
+                    / "live/state/quack-owner/mutations"
+                )
+            if not mutation_dir.is_dir():
+                return {
+                    "attempted": False,
+                    "process_started": False,
+                    "reason": "quack_owner_mutation_inbox_unavailable",
+                    "ducklake_current_authority": False,
+                }
+            action_id = uuid.uuid4().hex
+            decided_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            claimed = False
+            if mutation_dir.is_dir():
+                request = mutation_dir / f"{action_id}.request.json"
+                done = mutation_dir / f"{action_id}.done.json"
+                request.write_text(
+                    json.dumps(
+                        {
+                            "sql": CLAIM_IDENTITY_RECOVERY_SQL,
+                            "parameters": [
+                                action_id,
+                                IDENTITY_RECOVERY_SUBJECT_ID,
+                                decided_at,
+                                json.dumps(
+                                    {"pid": os.getpid(), "source_head": source_head},
+                                    sort_keys=True,
+                                ),
+                                IDENTITY_RECOVERY_SUBJECT_ID,
+                            ],
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                deadline = time.monotonic() + 15.0
+                while time.monotonic() < deadline:
+                    if done.is_file():
+                        payload = json.loads(done.read_text(encoding="utf-8"))
+                        claimed = (
+                            payload.get("ok") is True
+                            and int(payload.get("rowcount") or 0) > 0
+                        )
+                        try:
+                            done.unlink()
+                        except OSError:
+                            pass
+                        break
+                    time.sleep(0.05)
+                if not claimed:
+                    return {
+                        "attempted": False,
+                        "process_started": False,
+                        "reason": "another_supervisor_holds_identity_recovery",
+                        "action": IdentityRecoveryAction.WAIT_FOR_HOLDER.value,
+                        "ducklake_current_authority": False,
+                    }
             receipt = module.materialize_with_recovery(config)
+            if mutation_dir.is_dir() and claimed:
+                release_id = uuid.uuid4().hex
+                release_request = mutation_dir / f"{release_id}.request.json"
+                release_request.write_text(
+                    json.dumps(
+                        {
+                            "sql": RELEASE_IDENTITY_RECOVERY_SQL,
+                            "parameters": [
+                                json.dumps(
+                                    {"receipt_cid": receipt.get("receipt_cid")},
+                                    sort_keys=True,
+                                ),
+                                action_id,
+                            ],
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
         except Exception as exc:
             return {
                 "attempted": True,
                 "process_started": False,
                 "reason": "eaaef_bootstrap_recovery_failed",
                 "error": f"{type(exc).__name__}: {exc}",
+                "ducklake_current_authority": False,
             }
         return {
             "attempted": True,
@@ -45371,6 +45497,9 @@ class PortalImplementationDaemon:
             "receipt_cid": str(receipt.get("receipt_cid") or ""),
             "source_head": str(receipt.get("source_head") or ""),
             "generation_recoveries": list(receipt.get("generation_recoveries") or ()),
+            "overlay_preserved": receipt.get("overlay_preserved") is True,
+            "overlay_restored": int(receipt.get("overlay_restored") or 0),
+            "ducklake_current_authority": False,
         }
 
     def _run_pytest_file_isolation(

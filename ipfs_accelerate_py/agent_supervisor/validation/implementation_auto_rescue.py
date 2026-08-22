@@ -93,6 +93,11 @@ _BOOTSTRAP_RECOVERY_TEXT = (
     "advance to a new explicit store generation",
     "bootstrap namespace claim is immutable",
     "nested checkout is dirty",
+    "differs from current source",
+    "materialization_source_or_board_mismatch",
+    "bootstrap receipt population_cid",
+    "stale_materialized",
+    "another_supervisor_holds_identity_recovery",
 )
 _PYTEST_ISOLATION_TEXT = (
     " failed, ",

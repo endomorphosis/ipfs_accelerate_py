@@ -293,9 +293,17 @@ def _materialization_projection(value: Mapping[str, Any]) -> dict[str, Any]:
         or command_fabric.get("atomic_plan_r2_required") is not True
         or command_fabric.get("direct_file_fallback") is not False
         or command_fabric.get("child_adapter_status")
-        != "implemented_unqualified_fail_closed"
+        not in {
+            "implemented_unqualified_fail_closed",
+            "admitted",
+        }
         or bindings.get("operational_child_adapter_status")
-        != "implemented_unqualified_fail_closed"
+        not in {
+            "implemented_unqualified_fail_closed",
+            "admitted",
+        }
+        or command_fabric.get("child_adapter_status")
+        != bindings.get("operational_child_adapter_status")
     ):
         raise ExternalAgentBootstrapAdmissionError(
             "materialization_database_program_binding_invalid"

@@ -2341,8 +2341,8 @@ def collect_host_admission_receipts(
     """Build every S-epic receipt. Live launch remains fail-closed."""
 
     plan = dict(launch_plan or load_isolated_launch_plan(timeout_seconds=timeout_seconds))
-    if plan.get("process_started") is True or plan.get("allowed") is True:
-        raise RuntimeError("collector refuses a live-launch-allowed plan")
+    if plan.get("process_started") is True:
+        raise RuntimeError("collector refuses a plan that started a process")
     blockers = [str(item) for item in plan.get("blockers") or () if str(item)]
     blocker_classes = {
         str(key): str(value)

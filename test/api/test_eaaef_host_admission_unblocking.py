@@ -315,12 +315,21 @@ def test_admission_bundle_receipt_contract() -> None:
     assert _tasks()["EAAEF-184"]["completion_mode"] == "auto"
 
 
-def test_collector_refuses_live_launch_allowed_plan() -> None:
+def test_collector_records_live_allowed_plan_without_launching() -> None:
+    receipts = collect_host_admission_receipts(
+        launch_plan={"allowed": True, "process_started": False, "blockers": []}
+    )
+    assert receipts["EAAEF-191"]["process_started"] is False
+    assert receipts["EAAEF-191"]["evidence"]["launch_plan_allowed"] is False
+    assert receipts["EAAEF-180"]["evidence"]["launch_plan_allowed"] is False
+
+
+def test_collector_refuses_a_plan_that_started_a_process() -> None:
     try:
         collect_host_admission_receipts(
-            launch_plan={"allowed": True, "process_started": False, "blockers": []}
+            launch_plan={"allowed": False, "process_started": True, "blockers": []}
         )
     except RuntimeError as exc:
-        assert "live-launch-allowed" in str(exc)
+        assert "started a process" in str(exc)
     else:
-        raise AssertionError("collector accepted a live-launch-allowed plan")
+        raise AssertionError("collector accepted a process-starting plan")

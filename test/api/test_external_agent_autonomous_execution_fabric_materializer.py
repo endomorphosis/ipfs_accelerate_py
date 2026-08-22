@@ -433,28 +433,38 @@ def test_launch_plan_uses_database_program_cli_and_remains_no_go(
     assert "board validation has not admitted live launch" in result["blockers"]
 
 
-def test_configured_board_launcher_cannot_bypass_launch_plan() -> None:
+def test_configured_board_launcher_cannot_bypass_launch_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Do not invoke live configured-board-launch: EAAEF-191 host-bundle
+    # fallback can make launch-plan.allowed true and the isolated launcher
+    # would start the scheduler. Prove the guard in-process and in source.
+    monkeypatch.setattr(
+        materializer, "_host_receipt_decision", lambda *_args, **_kwargs: ""
+    )
     config = _config()
+    result = materializer.launch_plan(
+        config, invocation_command="configured-board-launch"
+    )
+    assert result["allowed"] is False
+    assert result["argv"] == []
+    assert result["process_started"] is False
     binding = config["bootstrap_runtime_binding"]
     assert isinstance(binding, dict)
     launcher = binding["launcher"]
     assert isinstance(launcher, dict)
-    argv_prefix = launcher["argv_prefix"]
-    assert isinstance(argv_prefix, list)
+    launcher_path = Path(str(launcher["resolved_path"]))
+    text = launcher_path.read_text(encoding="utf-8")
+    assert 'launch_plan.get("allowed") is not True' in text
+    assert "EAAEF configured-board launch is not admitted" in text
 
-    result = subprocess.run(
-        [*argv_prefix, "configured-board-launch"],
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=30,
+
+def test_bootstrap_and_operational_database_programs_are_non_conflated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        materializer, "_host_receipt_decision", lambda *_args, **_kwargs: ""
     )
-
-    assert result.returncode != 0
-    assert "configured-board launch is not admitted" in result.stderr
-
-
-def test_bootstrap_and_operational_database_programs_are_non_conflated() -> None:
     config = _config()
     bindings = materializer._database_program_bindings(config)
     assert bindings["bootstrap"]["authority_mode"] == "embedded"
@@ -475,6 +485,20 @@ def test_bootstrap_and_operational_database_programs_are_non_conflated() -> None
         "implemented_unqualified_fail_closed"
     )
     assert "/" not in bindings["operational"]["store_id"]
+
+
+def test_command_fabric_child_adapter_admits_only_from_188_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        materializer,
+        "_host_receipt_decision",
+        lambda task_id, **_kwargs: "admitted" if task_id == "EAAEF-188" else "",
+    )
+    bindings = materializer._database_program_bindings(_config())
+    assert bindings["operational_child_adapter_status"] == "admitted"
+    assert bindings["materializer_opens_operational_profile"] is False
+    assert bindings["direct_file_fallback"] is False
 
 
 @pytest.mark.parametrize(
@@ -626,6 +650,9 @@ def test_launch_plan_emits_typed_no_go_when_verify_fails_closed(
             "ipfs_accelerate_py nested checkout is dirty"
         )
 
+    monkeypatch.setattr(
+        materializer, "_host_receipt_decision", lambda *_args, **_kwargs: ""
+    )
     monkeypatch.setattr(materializer, "verify", rejected)
     result = materializer.launch_plan(config)
     assert result["schema"].endswith("eaaef-launch-plan@2")
@@ -637,6 +664,30 @@ def test_launch_plan_emits_typed_no_go_when_verify_fails_closed(
     assert result["materialization_receipt_cid"] == ""
     assert "ipfs_accelerate_py nested checkout is dirty" in result["blockers"]
     assert result["configured_board_launch_admission"] is None or result["allowed"] is False
+
+
+def test_descendant_nested_checkout_requires_191_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = json.loads(materializer.CONFIG_PATH.read_text(encoding="utf-8"))
+    monkeypatch.setattr(
+        materializer,
+        "_host_receipt_decision",
+        lambda task_id, **_kwargs: "admitted" if task_id == "EAAEF-191" else "",
+    )
+    generation = materializer._source_generation(config)
+    assert (
+        generation["planning_source_forest_root"]
+        == config["source_binding"]["source_forest_root"]
+    )
+    monkeypatch.setattr(
+        materializer, "_host_receipt_decision", lambda *_args, **_kwargs: ""
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="nested checkout (is dirty|differs from its reviewed root)",
+    ):
+        materializer._source_generation(config)
 
 
 def test_launch_plan_cannot_be_enabled_while_container_is_unadmitted(

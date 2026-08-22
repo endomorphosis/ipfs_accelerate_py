@@ -1036,6 +1036,9 @@ _AUTO_RECOVERABLE_MARKERS = (
     "bootstrap namespace claim is immutable",
     "output path is not a safe identifier",
     "refusing to overwrite existing bootstrap namespace",
+    "differs from current source",
+    "materialization_source_or_board_mismatch",
+    "another_supervisor_holds_identity_recovery",
 )
 
 
@@ -1330,7 +1333,22 @@ def _source_generation(config: Mapping[str, Any]) -> dict[str, Any]:
         if name != "ipfs_accelerate_py" and (
             nested_head != required_head or nested_tree != required_tree
         ):
-            raise MaterializationError(f"{name} nested checkout differs from its reviewed root")
+            descendant = (
+                subprocess.run(
+                    ["git", "merge-base", "--is-ancestor", required_head, nested_head],
+                    cwd=path,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                ).returncode
+                == 0
+            )
+            # EAAEF-191 host admission may accept a descendant overlay of the
+            # reviewed nested root. The planning forest stays the R1 identities.
+            if not descendant or _host_receipt_decision("EAAEF-191") != "admitted":
+                raise MaterializationError(
+                    f"{name} nested checkout differs from its reviewed root"
+                )
         if name != "ipfs_accelerate_py":
             gitlink = _git("rev-parse", f"HEAD:{path.relative_to(ROOT).as_posix()}")
             if gitlink != nested_head:
@@ -2498,8 +2516,14 @@ def _expected_population_projection(population: Mapping[str, Any]) -> dict[str, 
 def _assert_population_equivalent(
     population: Mapping[str, Any], control: Mapping[str, Any]
 ) -> None:
-    expected = _expected_population_projection(population)
-    observed = {key: control.get(key) for key in expected}
+    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+        identity_control_projection,
+    )
+
+    expected = identity_control_projection(_expected_population_projection(population))
+    observed = identity_control_projection(
+        {key: control.get(key) for key in expected}
+    )
     if observed != expected:
         raise MaterializationError(
             "materialized control population differs from the admitted board projection"
@@ -2831,6 +2855,61 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
         ) from exc
 
 
+def _overlay_projection_path(config: Mapping[str, Any]) -> Path:
+    return _paths(config)["control"].parent / "live/state/task-status-projection.json"
+
+
+def _restore_overlay_on_control(
+    control_path: Path, overlay: Mapping[str, str]
+) -> int:
+    """Replay completed alias statuses onto a freshly materialized catalog."""
+
+    if not overlay or not control_path.is_file():
+        return 0
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+        CAS_TASK_STATUS_SQL,
+        restore_overlay_cas_parameters,
+    )
+
+    import duckdb
+
+    connection = connect_duckdb_with_policy(
+        duckdb,
+        control_path,
+        read_only=False,
+        configuration={"threads": 1, "memory_limit": "256MB"},
+    )
+    try:
+        rows = [
+            {
+                "task_cid": str(row[0]),
+                "task_alias": str(row[1]),
+                "status": str(row[2]),
+                "revision": int(row[3] or 0),
+            }
+            for row in connection.execute(
+                "SELECT task_cid, task_alias, status, revision FROM tasks"
+            ).fetchall()
+        ]
+        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        restored = 0
+        for parameters in restore_overlay_cas_parameters(
+            live_rows=rows,
+            overlay_statuses=overlay,
+            updated_at=updated_at,
+        ):
+            connection.execute(CAS_TASK_STATUS_SQL, list(parameters))
+            restored += 1
+        return restored
+    finally:
+        connection.close()
+
+
 def materialize_with_recovery(
     config: Mapping[str, Any],
     *,
@@ -2839,10 +2918,16 @@ def materialize_with_recovery(
 ) -> dict[str, Any]:
     """Materialize, advancing a failed or stale namespace without overwriting it."""
 
+    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+        snapshot_overlay_alias_status,
+    )
+
     actor = materialize_fn or materialize
     recoveries: list[dict[str, Any]] = []
     working = _active_config(config)
     configured = _configured_generation(config)
+    overlay = snapshot_overlay_alias_status(_overlay_projection_path(working))
+    prior_cursor = _read_generation_cursor()
     for attempt in range(max_recoveries + 1):
         state = _namespace_state(working)
         if state == "materialized":
@@ -2878,11 +2963,18 @@ def materialize_with_recovery(
             continue
         try:
             receipt = dict(actor(working))
+            if overlay:
+                receipt["overlay_restored"] = _restore_overlay_on_control(
+                    _paths(working)["control"], overlay
+                )
+                receipt["overlay_preserved"] = True
         except MaterializationError as exc:
             if (
                 "advance to a new explicit store generation" not in str(exc)
                 and _namespace_state(working) != "failed_partial"
             ):
+                if prior_cursor is not None:
+                    _write_generation_cursor(prior_cursor)
                 raise
             if attempt >= max_recoveries:
                 raise
@@ -3014,10 +3106,18 @@ def verify(
             "operation_vocabulary_cid"
         ],
     )
+    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+        identity_control_projection,
+    )
+
     control = _control_projection(paths["control"])
     coordination = read_coordination_registry_projection(paths["coordination"])
     execution = _execution_projection(paths["execution"])
-    if control != receipt.get("control_projection"):
+    if identity_control_projection(control) != identity_control_projection(
+        receipt.get("control_projection")
+        if isinstance(receipt.get("control_projection"), Mapping)
+        else {}
+    ):
         raise MaterializationError("control authority differs from materialization receipt")
     if coordination != receipt.get("coordination_projection"):
         raise MaterializationError("coordination authority differs from materialization receipt")

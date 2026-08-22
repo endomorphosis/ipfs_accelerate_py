@@ -25,14 +25,6 @@ CURSOR_PATH = DATA / "generation-cursor.json"
 HOST = "127.0.0.1"
 PORT = 19495
 SECRET_HANDLE = "secret-handle:eaaef-quack-owner-v1"
-# Keep this identical to the host-admitted gateway CAS template. Quack ATTACH
-# cannot UPDATE the remote tasks view; the exclusive owner applies this DML.
-ALLOWED_OWNER_SQL = frozenset(
-    {
-        "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
-        "WHERE task_cid = ? AND revision = ?"
-    }
-)
 
 
 def _active_generation() -> str:
@@ -61,6 +53,10 @@ def main() -> int:
     sys.path.insert(0, str(ROOT))
     state_dir.mkdir(parents=True, exist_ok=True)
     mutation_dir.mkdir(parents=True, exist_ok=True)
+
+    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+        OWNER_IDENTITY_RECOVERY_SQL,
+    )
 
     import duckdb
 
@@ -215,19 +211,22 @@ def main() -> int:
                 payload = json.loads(request.read_text(encoding="utf-8"))
                 sql = " ".join(str(payload.get("sql") or "").split())
                 parameters = payload.get("parameters")
-                if sql not in ALLOWED_OWNER_SQL:
+                if sql not in OWNER_IDENTITY_RECOVERY_SQL:
                     raise RuntimeError("owner mutation SQL is not allowlisted")
                 if parameters is None:
                     result = inner.execute(sql)
                 else:
                     result = inner.execute(sql, parameters)
-                rowcount = -1
+                rowcount = 0
                 try:
                     rows = result.fetchall()
                     if rows:
-                        rowcount = int(rows[0][0])
+                        try:
+                            rowcount = int(rows[0][0])
+                        except (TypeError, ValueError):
+                            rowcount = len(rows)
                 except Exception:
-                    rowcount = -1
+                    rowcount = 0
                 done.write_text(
                     json.dumps({"ok": True, "rowcount": rowcount}) + "\n",
                     encoding="utf-8",
