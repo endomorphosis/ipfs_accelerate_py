@@ -1286,12 +1286,12 @@ def test_quack_attach_contention_defers_instead_of_crashing(
         max_task_attempts=3,
     )
     try:
-        def boom(*_args: object, **_kwargs: object) -> list[object]:
+        def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
             raise QuackTransportContentionError(
                 "quack control-plane attach contended: Authentication failed"
             )
 
-        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
         result = daemon.run_once()
         assert result.get("deferred") is True
         assert result.get("skipped") is True
@@ -1300,6 +1300,51 @@ def test_quack_attach_contention_defers_instead_of_crashing(
         assert result.get("portal_terminal_failure") is False
         assert result.get("attempt_consumed") is False
         assert result.get("provider_dispatched") is False
+    finally:
+        daemon.close()
+
+
+def test_quack_attach_contention_still_expires_running_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-expire",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> list[object]:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+
+        expired = [
+            {
+                "status": "expired",
+                "reason": "coordination_lease_expired_before_completion",
+            }
+        ]
+        seen = {"expired": False}
+
+        def expire() -> list[dict[str, object]]:
+            seen["expired"] = True
+            return expired
+
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(daemon, "reconcile_expired_running_attempts", expire)
+        monkeypatch.setattr(daemon, "reconcile_terminal_portal_failures", boom)
+        monkeypatch.setattr(daemon, "reconcile_terminal_retry_states", lambda: [])
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        result = daemon.run_once()
+        assert seen["expired"] is True
+        assert result.get("expired_attempt_reconciliations") == expired
+        assert result.get("selection_idle_reason") == "no_ready_tasks"
     finally:
         daemon.close()
 

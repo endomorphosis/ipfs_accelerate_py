@@ -69971,6 +69971,19 @@ class DatabaseImplementationDaemon:
             quack_attach_error_is_contention(exc)
         )
 
+    def _run_reconciliation_step(
+        self,
+        callback: Callable[[], list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Run one reconciliation pass without letting Quack attach freeze the rest."""
+
+        try:
+            return callback()
+        except Exception as exc:
+            if self._is_quack_attach_contention(exc):
+                return []
+            raise
+
     def _quack_attach_contention_deferral(
         self,
         exc: BaseException,
@@ -69981,8 +69994,13 @@ class DatabaseImplementationDaemon:
         here burns supervisor restart budget and drops a rescue-branch retry.
         """
 
+        expired: list[dict[str, Any]] = []
+        try:
+            expired = self.reconcile_expired_running_attempts()
+        except Exception:
+            expired = []
         return {
-            "unchanged": True,
+            "unchanged": not expired,
             "deferred": True,
             "skipped": True,
             "reason": "quack_attach_contended",
@@ -69994,6 +70012,7 @@ class DatabaseImplementationDaemon:
             "error_class": type(exc).__name__,
             "authority_mode": self.authority_mode,
             "task_source_kind": self.task_source_kind,
+            "expired_attempt_reconciliations": expired,
         }
 
     @staticmethod
@@ -72527,12 +72546,18 @@ class DatabaseImplementationDaemon:
 
         if not self.require_real_execution:
             return self._execution_disabled_observation()
-        completion_reconciliations = self.reconcile_prepared_task_completions()
-        expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
-        terminal_portal_reconciliations = (
-            self.reconcile_terminal_portal_failures()
+        completion_reconciliations = self._run_reconciliation_step(
+            self.reconcile_prepared_task_completions
         )
-        terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
+        expired_attempt_reconciliations = self._run_reconciliation_step(
+            self.reconcile_expired_running_attempts
+        )
+        terminal_portal_reconciliations = self._run_reconciliation_step(
+            self.reconcile_terminal_portal_failures
+        )
+        terminal_retry_reconciliations = self._run_reconciliation_step(
+            self.reconcile_terminal_retry_states
+        )
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(expired_attempt_reconciliations)

@@ -18,6 +18,7 @@ import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -570,6 +571,9 @@ _QUACK_OWNER_DML_PREFIXES = (
     "INSERT OR REPLACE",
     "INSERT OR IGNORE",
 )
+# Longer than implementation_max_timeout (14400s) so a live Grok run is not
+# stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
+STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
 _QUACK_ATTACH_LOCK = threading.RLock()
 _QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
 QUACK_ATTACH_ATTEMPTS = 8
@@ -622,6 +626,106 @@ def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
     if path.suffix.lower() in {".duckdb", ".ddb"}:
         return path.expanduser().resolve().parent / "quack-owner" / "mutations"
     return None
+
+
+def _row_tuple(row: Any) -> tuple[Any, ...]:
+    values = getattr(row, "_values", None)
+    if values is not None:
+        return tuple(values)
+    if isinstance(row, Mapping):
+        return tuple(row.values())
+    try:
+        return tuple(row)
+    except TypeError:
+        return (row,)
+
+
+def _parse_task_updated_at(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def unstall_stale_in_progress_tasks(
+    connection: Any,
+    *,
+    now: datetime | None = None,
+    stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+) -> dict[str, Any]:
+    """Return in_progress tasks that have been idle longer than a live attempt.
+
+    Used by the exclusive Quack owner so a dead gate (attach contention,
+    crashed implementer, leftover CAS) cannot freeze the rest of the board.
+    Live implementations heartbeat ``updated_at`` on claim; a run still under
+    ``implementation_max_timeout`` is left alone.
+    """
+
+    if stale_seconds <= 0:
+        raise ValueError("stale_seconds must be positive")
+    clock = now or datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    rows = connection.execute(
+        "SELECT task_cid, task_alias, status, revision, updated_at "
+        "FROM tasks WHERE status = 'in_progress'"
+    ).fetchall()
+    unstalled: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for row in rows:
+        task_cid, task_alias, status, revision, updated_at = _row_tuple(row)[:5]
+        updated = _parse_task_updated_at(updated_at)
+        if updated is None:
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "updated_at_unparseable",
+                }
+            )
+            continue
+        age = (clock - updated).total_seconds()
+        if age < float(stale_seconds):
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "still_within_live_attempt_window",
+                    "age_seconds": int(age),
+                }
+            )
+            continue
+        new_revision = int(revision) + 1
+        stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        connection.execute(
+            "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+            "WHERE task_cid = ? AND revision = ? AND status = 'in_progress'",
+            ["retrying", new_revision, stamp, str(task_cid), int(revision)],
+        )
+        unstalled.append(
+            {
+                "task_cid": str(task_cid),
+                "task_alias": str(task_alias),
+                "previous_revision": int(revision),
+                "revision": new_revision,
+                "previous_status": str(status),
+                "status": "retrying",
+                "age_seconds": int(age),
+            }
+        )
+    return {
+        "unstalled": unstalled,
+        "skipped": skipped,
+        "stale_seconds": int(stale_seconds),
+    }
 
 
 def _quack_owner_mutation_required(normalized: str) -> bool:

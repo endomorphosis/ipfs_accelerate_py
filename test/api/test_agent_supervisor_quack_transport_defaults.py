@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     quack_transport_uri,
     reset_quack_transport_cache,
     resolve_quack_attach_token,
+    unstall_stale_in_progress_tasks,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepository,
@@ -174,6 +175,56 @@ def test_quack_attach_reuses_cached_connection(monkeypatch) -> None:
         assert attaches["n"] == 1
     finally:
         reset_quack_transport_cache()
+
+
+def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    now = datetime(2026, 8, 22, 18, 0, tzinfo=timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-021",
+            "PCCE-021",
+            "in_progress",
+            9,
+            (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-022",
+            "PCCE-022",
+            "in_progress",
+            1,
+            (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    result = unstall_stale_in_progress_tasks(connection, now=now, stale_seconds=16_200)
+    aliases = [item["task_alias"] for item in result["unstalled"]]
+    assert aliases == ["PCCE-021"]
+    rows = {
+        str(row[0]): (row[1], row[2])
+        for row in connection.execute(
+            "SELECT task_alias, status, revision FROM tasks"
+        ).fetchall()
+    }
+    assert rows["PCCE-021"] == ("retrying", 10)
+    assert rows["PCCE-022"] == ("in_progress", 1)
 
 
 def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> None:
