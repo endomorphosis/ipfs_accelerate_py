@@ -92,6 +92,7 @@ TERMINAL_STATUSES: Final = frozenset(
 STATE_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 SUPERVISOR_HEALTH_STALE_SECONDS: Final = 45.0
+UNIX_SOCKET_PATH_CEILING: Final = 100
 
 
 class OperatorError(RuntimeError):
@@ -580,6 +581,23 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
             path.relative_to(runtime)
         except ValueError as exc:
             raise OperatorError(f"{label} must remain below runtime root") from exc
+    socket_identity = hashlib.sha256(
+        _canonical_bytes(
+            {
+                "program_id": PROGRAM_ID,
+                "repository_root": str(ROOT),
+                "runtime_root": str(runtime),
+                "store_id": _control_plane_store_id(program),
+            }
+        )
+    ).hexdigest()[:20]
+    owner_socket = (
+        Path("/tmp")
+        / f"ipfs-accelerate-casf-{os.geteuid()}"
+        / f"owner-{socket_identity}.sock"
+    )
+    if len(os.fsencode(owner_socket)) > UNIX_SOCKET_PATH_CEILING:
+        raise OperatorError("derived state-owner socket path exceeds its platform bound")
     return {
         "runtime": runtime,
         "database": database,
@@ -595,7 +613,7 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
         ),
         "stop_receipt": evidence / "bootstrap-operator" / "stop-current.json",
         "owner_status": owner / "quack-state-server.status.json",
-        "owner_socket": owner / "typed-state-owner.sock",
+        "owner_socket": owner_socket,
         "owner_log": owner / "quack-state-server.log",
         "master_pid": state / "configured-board-master.pid",
         "supervisor_pid": state / "casf_supervisor.pid",
@@ -603,6 +621,30 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
         "supervisor_status": state / "casf_supervisor_status.json",
         "task_state": state / "casf_task_state.json",
     }
+
+
+def _prepare_private_socket_parent(socket_path: Path) -> None:
+    """Create or verify the server-derived private Unix-socket directory."""
+
+    parent = socket_path.parent
+    try:
+        parent.mkdir(mode=0o700)
+        created = True
+    except FileExistsError:
+        created = False
+    try:
+        metadata = os.lstat(parent)
+    except OSError as exc:
+        raise OperatorError("state-owner socket directory is unavailable") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        raise OperatorError("state-owner socket directory custody is unsafe")
+    if created:
+        os.chmod(parent, 0o700)
 
 
 def _control_plane_store_id(program: Any) -> str:
@@ -1159,6 +1201,7 @@ def state_owner(config_path: Path) -> int:
     host, port = endpoint.group(1), int(endpoint.group(2))
     _require_free_port(host, port)
     _quack_capability()
+    _prepare_private_socket_parent(paths["owner_socket"])
     server = build_server(
         database_path=paths["database"],
         state_dir=paths["owner"],
@@ -1168,7 +1211,10 @@ def state_owner(config_path: Path) -> int:
         store_id=_control_plane_store_id(program),
         secret_handle=program.endpoint_secret_handle,
         allow_experimental=False,
+        typed_command_socket_path=paths["owner_socket"],
     )
+    if server.typed_command_socket_path() != paths["owner_socket"]:
+        raise OperatorError("state owner did not retain the derived socket identity")
     identity = server.start()
     from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
         QuackStateClient,

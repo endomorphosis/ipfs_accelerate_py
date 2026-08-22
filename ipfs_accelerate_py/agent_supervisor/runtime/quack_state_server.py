@@ -750,10 +750,21 @@ class QuackStateServerConfig:
     application_version: str | None = None
     tool_version: str | None = None
     secret_handle: str = ""
+    typed_command_socket_path_override: Path | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "database_path", Path(self.database_path))
         object.__setattr__(self, "state_dir", Path(self.state_dir))
+        socket_override = self.typed_command_socket_path_override
+        if socket_override is not None:
+            socket_override = Path(socket_override)
+            if not socket_override.is_absolute():
+                raise ValueError("typed command socket override must be absolute")
+            object.__setattr__(
+                self,
+                "typed_command_socket_path_override",
+                socket_override,
+            )
         object.__setattr__(self, "host", str(self.host or DEFAULT_LOOPBACK_HOST).strip())
         object.__setattr__(self, "port", int(self.port))
         object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
@@ -1861,7 +1872,10 @@ class QuackStateServer:
         return self.config.state_dir / CONTROL_STOP_FILENAME
 
     def typed_command_socket_path(self) -> Path:
-        return self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME
+        return (
+            self.config.typed_command_socket_path_override
+            or self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME
+        )
 
     def typed_command_token_path(self) -> Path:
         return self.config.state_dir / TYPED_STATE_OWNER_TOKEN_FILENAME
@@ -2831,6 +2845,7 @@ def build_server(
     process_birth_factory: Callable[[], ProcessBirthIdentity] | None = None,
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
     event_source: EventSource | None = None,
+    typed_command_socket_path: Path | str | None = None,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`."""
 
@@ -2844,6 +2859,11 @@ def build_server(
         allow_experimental=allow_experimental,
         remote_bind_policy=remote_bind_policy,
         secret_handle=secret_handle,
+        typed_command_socket_path_override=(
+            None
+            if typed_command_socket_path is None
+            else Path(typed_command_socket_path)
+        ),
     )
     server = QuackStateServer(
         config=config,

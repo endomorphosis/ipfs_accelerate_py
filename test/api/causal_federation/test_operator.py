@@ -249,6 +249,51 @@ def test_port_collision_fails_closed_without_touching_listener() -> None:
         assert listener.fileno() >= 0
 
 
+def test_state_owner_socket_is_short_server_derived_and_private(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        build_server,
+    )
+
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+
+    socket_path = operator._runtime_paths(board)["owner_socket"]
+
+    assert socket_path.is_absolute()
+    assert len(os.fsencode(socket_path)) <= operator.UNIX_SOCKET_PATH_CEILING
+    assert socket_path.parent.name == f"ipfs-accelerate-casf-{os.geteuid()}"
+    assert socket_path.name.startswith("owner-")
+    assert str(operator.ROOT) not in str(socket_path)
+
+    private_socket = tmp_path / "private" / "owner.sock"
+    operator._prepare_private_socket_parent(private_socket)
+    metadata = os.lstat(private_socket.parent)
+    assert stat.S_ISDIR(metadata.st_mode)
+    assert stat.S_IMODE(metadata.st_mode) == 0o700
+    assert metadata.st_uid == os.geteuid()
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "deliberately-long-owner-state-directory",
+        typed_command_socket_path=private_socket,
+    )
+    assert server.typed_command_socket_path() == private_socket
+
+    unsafe_parent = tmp_path / "unsafe"
+    unsafe_parent.mkdir(mode=0o755)
+    unsafe_parent.chmod(0o755)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_socket_parent(unsafe_parent / "owner.sock")
+
+    target = tmp_path / "target"
+    target.mkdir(mode=0o700)
+    linked_parent = tmp_path / "linked"
+    linked_parent.symlink_to(target, target_is_directory=True)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_socket_parent(linked_parent / "owner.sock")
+
+
 def test_receipts_are_private_content_addressed_and_tamper_evident(
     tmp_path: Path,
 ) -> None:
