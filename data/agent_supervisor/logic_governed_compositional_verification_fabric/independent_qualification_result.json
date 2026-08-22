@@ -1,6 +1,6 @@
 {
   "candidate_suites_are_self_authority": false,
-  "checkout_fingerprint_cid": "baguqeeraxvbzhhhpmqukfwzntza2klxjirawoxer76vgeny7duln5ne65una",
+  "checkout_fingerprint_cid": "baguqeerassssmii4swihtamusqydqdjmhevatziewbb3dhymioxhuu4ohfra",
   "checkout_unchanged": true,
   "cohort": "hermetic_local_execution",
   "independent_fixed_manifest_executed": true,
@@ -18,12 +18,12 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "result_cid": "baguqeeraf3z4orey2z4ziu2ova5qsuf2b5lgwti62pn5prj7u76bv3o4x5uq",
+  "result_cid": "baguqeeramef5roixvldnw5f3bo4oglssuqvqqmyjgogn275tjqxyebnogbtq",
   "schema": "lgcvf-independent-hermetic-qualification@1",
   "suites": [
     {
       "collected": 9,
-      "duration_ms": 3664,
+      "duration_ms": 3091,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -63,19 +63,19 @@
         "suite_id": "candidate_focused"
       },
       "nodeids_cid": "baguqeera3zvgtvi5l3llqyyo7wr2nzz5cx2zuovoduqrza77vyzgoxy57ksq",
-      "observation_cid": "baguqeeragnoq74hgnmsutru345jpjsaxpxmhgei3qfyl5hvoqzvwiwrkxama",
+      "observation_cid": "baguqeera64gc3o7s3xpipy3p67ebyqw35vhioqvcss2blqp5w2xwdalwwhna",
       "passed": true,
       "passed_count": 9,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_focused",
-      "transcript_sha256": "sha256:e8e1d9e35b1b6fa8a7867ef771c3feb3f1c727454308a1144df1530825656fb3",
+      "transcript_sha256": "sha256:940a7e79db707f4a1b42c019896b9cf47fdfe25be28e2a0f53d41d85e47d563d",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 10,
-      "duration_ms": 2996,
+      "duration_ms": 2531,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -115,19 +115,19 @@
         "suite_id": "candidate_adversarial"
       },
       "nodeids_cid": "baguqeerawyxjp67p656suousq2s2yoqpnagcljminuhw6ooto6mz23zec7ma",
-      "observation_cid": "baguqeeraqillhemiwhrzfj7zxcqizmkjxktxr2ii2vsghsb3qwdsoj7ns5vq",
+      "observation_cid": "baguqeerav2vb2nbifscz6esg3zjl6gklftum24xxtmwhpyfykhdruyan5yda",
       "passed": true,
       "passed_count": 10,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_adversarial",
-      "transcript_sha256": "sha256:815053c575a31cc6c6f423f4c14e166ac238d8b488b2e376cd0dd10ca52ddc5c",
+      "transcript_sha256": "sha256:8ca66e2901f18dbdea3bcd628929fa2fa57784e921436037774a4014c4f89521",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 143,
-      "duration_ms": 3048,
+      "duration_ms": 2672,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -215,19 +215,19 @@
         "suite_id": "fixed_datasets_semantics"
       },
       "nodeids_cid": "baguqeeraynd5gnhnlb7gfytao7zvmjsaxqk3zt3bbpx5ma7e3mzgv6wdohya",
-      "observation_cid": "baguqeerag466htj44lgozkfew4kgqbsbuwnk3oxaeeww2i4qfqzohcctbcnq",
+      "observation_cid": "baguqeeravasc3sj4pxz66kkekxe4etn5uksaasmu32yeenfolk2qchjuksba",
       "passed": true,
       "passed_count": 143,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_datasets_semantics",
-      "transcript_sha256": "sha256:14bbe98dea1c288bb6097709ebbed1977ee8086a1654145a86dbf1dd052311b3",
+      "transcript_sha256": "sha256:9b2d20d0390685fee59c3669e95853d1c37d3c46a14f3da8ed644243f7d340a3",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 199,
-      "duration_ms": 151608,
+      "duration_ms": 120956,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -309,13 +309,13 @@
         "suite_id": "fixed_accelerator_authority"
       },
       "nodeids_cid": "baguqeerar533oighzztc5b5bazgduez2ksn66mzh2vu6c6a6gchquvkqlf2a",
-      "observation_cid": "baguqeerai6ldoj2qn2zb4zdfb7m55o6nk6zfinqbpny4v6mcgxjkzkslobpq",
+      "observation_cid": "baguqeera66vdrrnmo5zipgtygslwogdviorgwsqynhtafuhf3te3s44fxnva",
       "passed": true,
       "passed_count": 199,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_accelerator_authority",
-      "transcript_sha256": "sha256:6490ae8a87cb431d3702efc62e45e7ddae75fe8d47f797d4c961f1a2d3c645a5",
+      "transcript_sha256": "sha256:8ffd46137eccf1c44ee7376dcc530039d2c86b1126c602402b0106b3c44330b2",
       "xfailed_count": 0,
       "xpassed_count": 0
     }

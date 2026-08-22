@@ -1,11 +1,11 @@
 # LGCVF implementation report
 
 - Formal plan CID: baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq
-- Qualification result CID: baguqeeraf3z4orey2z4ziu2ova5qsuf2b5lgwti62pn5prj7u76bv3o4x5uq
-- Qualification authority CID: baguqeera27kvd2aqkl5jm4hgisisygd2jukokjvhbm3q4ovmubguuvm6pekq
-- Benchmark result CID: baguqeera2lz7qz5bjolufndbrayp7tz4p3hsx244zaqhksvcf5m3zezawlwa
+- Qualification result CID: baguqeeramef5roixvldnw5f3bo4oglssuqvqqmyjgogn275tjqxyebnogbtq
+- Qualification authority CID: baguqeeratz3jtsy4vtif5cd534zf3telfi6qffbdq5zw4rvamges3vhdveba
+- Benchmark result CID: baguqeerap4uxygafg7mwww22f3ogq7gbqh2igumha7wuabo3mgeximihqauq
 - Benchmark authority CID: baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa
-- Release report SHA256: sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616
+- Release report SHA256: sha256:ac2dadb58af9af11b0da4731045072cdf87984375e9a65b9ea5ba1638ba34edc
 - Task implementation: incomplete
 - Test success: passed_hermetic
 - Objective completion: incomplete
@@ -15,7 +15,7 @@
 
 ## A. Exact source revisions and repository topology
 
-- Source revisions: {"ipfs_accelerate_py":{"head":"4ee047a46b59f94be4aa70de20f14effe7ddad60","protected_input_cid":"baguqeeraxvbzhhhpmqukfwzntza2klxjirawoxer76vgeny7duln5ne65una","tree":"663f2766c3f9ff70edb127f7e8d52f2c234d1635"},"ipfs_datasets_py":{"gitlink":"af1d2d76d2cd6332baf8cea50df6b2eb4e988203","head":"af1d2d76d2cd6332baf8cea50df6b2eb4e988203","protected_input_cid":"baguqeeraxvbzhhhpmqukfwzntza2klxjirawoxer76vgeny7duln5ne65una","tree":"8f44e00a49d6f67c67ee6810e04e4aae4d869af5"}}
+- Source revisions: {"ipfs_accelerate_py":{"head":"f64208fc851d9e474d759427cdbfdf2dcd63d537","protected_input_cid":"baguqeerassssmii4swihtamusqydqdjmhevatziewbb3dhymioxhuu4ohfra","tree":"f89dffdf0a3ac5548876e67a916601e8821be1cc"},"ipfs_datasets_py":{"gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","head":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeerassssmii4swihtamusqydqdjmhevatziewbb3dhymioxhuu4ohfra","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"}}
 - Repository topology: {"ipfs_accelerate_py":{"kind":"repository_root","path":"."},"ipfs_datasets_py":{"kind":"git_submodule","path":"ipfs_datasets_py"}}
 
 ## B. Pre-existing implemented capabilities
@@ -32,7 +32,7 @@
 
 ## E. Files changed by repository
 
-- Files changed by repository: {"ipfs_accelerate_py":["ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py","ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py","ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py","ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py","ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py","ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py","ipfs_accelerate_py/agent_supervisor/validation/compositional_verification_vertical.py","ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_live_fixed_point.py","ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py","ipfs_accelerate_py/ipfs_kit_integration.py","scripts/qualify_logic_governed_compositional_verification_fabric.py","test/api/test_agent_supervisor_lgcvf_adversarial.py","test/api/test_agent_supervisor_lgcvf_focused_qualification.py","test/api/test_agent_supervisor_lgcvf_persistence.py","test/api/test_agent_supervisor_lgcvf_planner_doctor.py","test/api/test_agent_supervisor_lgcvf_transport_parity.py","test/api/test_agent_supervisor_manual_completion_authority_runtime.py","test/api/test_agent_supervisor_program_repair_cegis.py","test/api/test_agent_supervisor_proof_carrying_context.py"],"ipfs_datasets_py":["ipfs_datasets_py/logic/software_verification/proof_carrying_artifact.py","tests/unit/logic/software_verification/test_proof_carrying_artifact.py"]}
+- Files changed by repository: {"ipfs_accelerate_py":["ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py","ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py","ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py","ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py","ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py","ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py","ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py","ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py","ipfs_accelerate_py/agent_supervisor/validation/compositional_verification_vertical.py","ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_live_fixed_point.py","ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py","ipfs_accelerate_py/ipfs_kit_integration.py","scripts/qualify_logic_governed_compositional_verification_fabric.py","test/api/test_agent_supervisor_lgcvf_adversarial.py","test/api/test_agent_supervisor_lgcvf_focused_qualification.py","test/api/test_agent_supervisor_lgcvf_persistence.py","test/api/test_agent_supervisor_lgcvf_planner_doctor.py","test/api/test_agent_supervisor_lgcvf_transport_parity.py","test/api/test_agent_supervisor_manual_completion_authority_runtime.py","test/api/test_agent_supervisor_program_repair_cegis.py","test/api/test_agent_supervisor_proof_carrying_context.py"],"ipfs_datasets_py":["ipfs_datasets_py/logic/software_verification/proof_carrying_artifact.py","tests/unit/logic/software_verification/test_proof_carrying_artifact.py"]}
 
 ## F. Public interfaces added or extended
 
@@ -45,7 +45,7 @@
 
 ## H. Vertical-slice trace and receipt identities
 
-- Vertical receipt identities: {"artifact_cid":"baguqeeraedyg4jbsoeqgof5vkownnixbhq6qwhivnwijufwdmm7d5munr2za","artifact_verification_receipt_cid":"baguqeera6tbtczwmjqe3h4bqnsrxif6txnrzylheo72wh32k3szqxw4lwsya","fresh_execution_receipts_reproducible":false,"vertical_result_cid":"baguqeerauaqyu6jpplje7wypqtyvlblf65z4zrm3gv24bfzagitkqixiznsa"}
+- Vertical receipt identities: {"artifact_cid":"baguqeeraedyg4jbsoeqgof5vkownnixbhq6qwhivnwijufwdmm7d5munr2za","artifact_verification_receipt_cid":"baguqeera6tbtczwmjqe3h4bqnsrxif6txnrzylheo72wh32k3szqxw4lwsya","fresh_execution_receipts_reproducible":false,"vertical_result_cid":"baguqeerakerdz4c7iyvbc752yff54nytmyhjcqfltniath2rxyfjhm32shxq"}
 
 ## I. Benchmark metrics
 
@@ -64,4 +64,4 @@
 ## L. Next minimal machine-executable tasks
 
 - Successor task IDs: ["LGCVF-S001","LGCVF-S002","LGCVF-S003","LGCVF-S004","LGCVF-S005"]
-- Successor tasks CID: baguqeeragdorgzhqqvsycczwyhdwklbc7i4aywjc34afmlkuiesipjc5ar2a
+- Successor tasks CID: baguqeerayxkibwu72aqnsixmnyyc3rvxcugrphjfbnijacc3uwhfhtxcf6sq
