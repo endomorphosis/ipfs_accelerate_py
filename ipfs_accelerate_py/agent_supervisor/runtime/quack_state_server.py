@@ -110,6 +110,7 @@ from ..task_sources.duckdb_state import (
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
+    unstall_stale_in_progress_tasks,
 )
 from ..task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
@@ -1638,82 +1639,62 @@ class InProcessQuackTransport:
         identity: StateServerIdentity,
         token: str,
     ) -> Mapping[str, Any]:
-        del connection
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
-        # Prove the listener, authentication, request worker, and response
-        # path through a real remote client.  A local SELECT on the owner
-        # connection would not prove that Quack clients can attach.
-        live_sql = "SELECT 1 AS quack_live"
-        identity_sql = (
-            "SELECT server_id, store_id, database_uuid, "
-            "schema_revision, generation, process_birth_id "
-            "FROM state_servers WHERE status IN ('starting', 'ready') "
-            "ORDER BY generation DESC, started_at DESC LIMIT 1"
-        )
+        # Prove the listener, authentication, request worker, and response path
+        # are all usable.  Named token/disable_ssl arguments match the admitted
+        # Quack 1.5.5 surface; positional 4-arg calls are a last compatibility
+        # attempt only.
         query_attempts = (
             (
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := ?)",
-                True,
+                [self._listen_uri, "SELECT 1 AS quack_live", token, True],
             ),
             (
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := true)",
-                False,
-            ),
-            (
-                "SELECT * FROM quack_query(?, ?, ?, ?)",
-                True,
+                [self._listen_uri, "SELECT 1 AS quack_live", token],
             ),
         )
-
-        def _remote_query(client: Any, sql_text: str) -> list[Any]:
-            last_error: Exception | None = None
-            for sql, bind_disable_ssl in query_attempts:
-                params = (
-                    [self._listen_uri, sql_text, token, True]
-                    if bind_disable_ssl
-                    else [self._listen_uri, sql_text, token]
-                )
-                try:
-                    return client.execute(sql, params).fetchall()
-                except Exception as exc:  # pragma: no cover - extension-version path
-                    last_error = exc
-            assert last_error is not None
-            raise last_error
-
+        rows = None
+        last_error: Exception | None = None
         try:
             import duckdb
 
             client = duckdb.connect(":memory:")
             try:
                 client.execute("LOAD quack")
-                probe_rows = _remote_query(client, live_sql)
-                if len(probe_rows) != 1 or tuple(probe_rows[0]) != (1,):
-                    raise QuackStateServerReadyError(
-                        "authenticated remote live query returned an unexpected result"
-                    )
-                rows = _remote_query(client, identity_sql)
+                for sql, params in query_attempts:
+                    try:
+                        rows = client.execute(sql, params).fetchall()
+                        last_error = None
+                        break
+                    except Exception as exc:  # pragma: no cover - extension-version path
+                        last_error = exc
             finally:
                 client.close()
-        except QuackStateServerReadyError:
-            raise
         except Exception as exc:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(exc).__name__}"
             ) from exc
-        if not rows:
-            raise QuackStateServerReadyError("live query returned no row")
-        row = rows[0]
-        observed = {
-            "server_id": str(row[0]),
-            "store_id": str(row[1]),
-            "database_uuid": str(row[2]),
-            "schema_revision": int(row[3]),
-            "generation": int(row[4]),
-            "process_birth_id": str(row[5]),
-            "schema_fingerprint": identity.schema_fingerprint,
-            "listen_uri": self._listen_uri,
-        }
+        if last_error is not None:
+            raise QuackStateServerReadyError(
+                f"authenticated remote live query failed: {type(last_error).__name__}"
+            ) from last_error
+        if rows is None or len(rows) != 1:
+            raise QuackStateServerReadyError(
+                "authenticated remote live query returned an unexpected result"
+            )
+        live_row = rows[0]
+        live_value = (
+            live_row[0]
+            if not isinstance(live_row, Mapping)
+            else live_row.get("quack_live")
+        )
+        if live_value != 1:
+            raise QuackStateServerReadyError(
+                "authenticated remote live query returned an unexpected result"
+            )
+        observed = dict(self._server_identity)
         observed["live"] = True
         if not identity.matches(
             store_id=str(observed.get("store_id") or ""),
@@ -3460,6 +3441,24 @@ class QuackStateServer:
                 self._read_replica_observation["live"] = False
             raise
 
+    def _unstall_stale_board_gates(self, connection: Any) -> None:
+        """Retry leftover in_progress gates before quack_serve occupies the writer."""
+
+        try:
+            result = unstall_stale_in_progress_tasks(connection)
+        except Exception as exc:
+            self._log(f"board unstall skipped: {type(exc).__name__}")
+            return
+        unstalled = result.get("unstalled") or []
+        if not unstalled:
+            return
+        aliases = ",".join(
+            str(item.get("task_alias") or item.get("task_cid") or "")
+            for item in unstalled[:8]
+            if isinstance(item, Mapping)
+        )
+        self._log(f"board unstall gates={len(unstalled)} aliases={aliases}")
+
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
             try:
@@ -4776,6 +4775,7 @@ class QuackStateServer:
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
                 assert self._vault is not None
                 self._vault.mint(secret_handle=secret_handle, generation=1)
+                token = self._vault.resolve(secret_handle)
 
                 identity = StateServerIdentity(
                     server_id=server_id,
@@ -4798,13 +4798,31 @@ class QuackStateServer:
                     status="starting",
                 )
                 self._identity = identity
+
+                assert self.transport is not None
+                # Publish identity before quack_serve occupies this connection.
+                # Auth callbacks open a fresh DuckDB session; DML on the serve
+                # connection after listen starts is reported as Authentication
+                # failed rather than lock contention.
+                self._publish_identity_rows(connection, identity, capability)
+                # Last exclusive-writer window: quack_serve occupies this
+                # connection and later DML contends with auth callbacks.
+                self._unstall_stale_board_gates(connection)
+                public_obs = self.transport.start(
+                    connection,
+                    host=self.config.host,
+                    port=port,
+                    token=token,
+                    identity=identity,
+                )
+                # Ensure transport observation never echoed the token.
+                self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
                 # retains it after identity mint; the replica transport later
                 # resolves the in-process token.
                 self._vault.remove_persisted_copy()
 
-                self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
                 ready_update = connection.execute(
                     "UPDATE state_servers SET status = 'ready', revision = revision + 1 "

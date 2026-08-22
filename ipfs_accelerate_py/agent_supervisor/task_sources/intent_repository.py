@@ -50,11 +50,13 @@ from .duckdb_state import (
     DuckDBQuackMutationConflictError,
     DuckDBQuackMutationTransitionError,
     DuckDBQuackMutationUnknownOutcomeError,
+    STALE_IN_PROGRESS_UNSTALL_SECONDS,
     exclusive_file_lock,
     is_quack_transport_target,
     open_duckdb_connection,
     quack_owner_mutation_write_lock_path,
     quack_transport_uri,
+    unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
 
 # ---------------------------------------------------------------------------
@@ -3452,6 +3454,19 @@ class IntentRepository:
                     "revision": revision,
                     "cleared_at": now,
                 },
+            )
+
+    def unstall_stale_in_progress_tasks(
+        self,
+        *,
+        now: datetime | None = None,
+        stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    ) -> dict[str, Any]:
+        """Retry leftover in_progress gates so dependents can become ready."""
+
+        with self._connection(write=True) as connection:
+            return apply_stale_in_progress_unstall(
+                connection, now=now, stale_seconds=stale_seconds
             )
 
     # -- readiness / selection -----------------------------------------------

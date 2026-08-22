@@ -116,9 +116,8 @@ def test_known_material_counterexample_invalidates_family_boundary() -> None:
         validate_task_family_contract(value, counterexamples=(counterexample,))
 
 
-def test_task_family_p0_contract_helpers_remain_available() -> None:
-    """P0 ships contract validation. G020 may add discovery in this module."""
+def test_task_family_module_does_not_offer_discovery_or_clustering() -> None:
+    import ipfs_accelerate_py.agent_supervisor.procedure_compiler.task_family as module
 
-    value = family()
-    assert parse_task_family(value.to_dict()) == value
-    assert validate_task_family_contract(value) == value
+    assert not hasattr(module, "discover_task_families")
+    assert not hasattr(module, "TaskFamilyDiscoverer")

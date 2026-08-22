@@ -9,8 +9,8 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
-import hmac
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -21,6 +21,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +101,10 @@ _THREAD_LOCKS_GUARD = threading.Lock()
 
 class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
+
+
+class QuackTransportContentionError(DuckDBConnectionPolicyError):
+    """Loopback Quack ATTACH failed because the owner was busy or contended."""
 
 
 def _connection_tuning(
@@ -539,6 +544,7 @@ class DuckDBConnection:
         self._quack_mutation_binding: dict[str, Any] | None = None
         self._quack_mutation_token = ""
         self._quack_pending_mutations: list[dict[str, Any]] = []
+        self._pooled = False
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -583,6 +589,7 @@ class DuckDBConnection:
         instance._quack_mutation_binding = None
         instance._quack_mutation_token = ""
         instance._quack_pending_mutations = []
+        instance._pooled = False
         return instance
 
     @property
@@ -719,6 +726,13 @@ class DuckDBConnection:
             self._transaction_active = False
 
     def close(self) -> None:
+        if getattr(self, "_pooled", False):
+            if self._transaction_active:
+                try:
+                    self.rollback()
+                except Exception:
+                    pass
+            return
         if self._closed:
             return
         self._closed = True
@@ -792,6 +806,13 @@ _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
 _QUACK_TOKEN_FILE_SUFFIX = ".quack-token"
 _QUACK_STATUS_FILENAME = "quack-state-server.status.json"
 _QUACK_CONTROL_CATALOG = "control_plane"
+_QUACK_OWNER_DML_PREFIXES = (
+    "UPDATE ",
+    "DELETE ",
+    "MERGE ",
+    "INSERT OR REPLACE",
+    "INSERT OR IGNORE",
+)
 QUACK_OWNER_MUTATION_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/quack-owner-mutation-request@2"
 )
@@ -956,6 +977,40 @@ def quack_owner_mutation_mac(value: Mapping[str, Any], token: str) -> str:
 _QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 _RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
 _STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
+# Longer than implementation_max_timeout (14400s) so a live Grok run is not
+# stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
+STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
+_QUACK_ATTACH_LOCK = threading.RLock()
+_QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
+QUACK_ATTACH_ATTEMPTS = 8
+QUACK_ATTACH_BACKOFF_SECONDS: tuple[float, ...] = (
+    0.05,
+    0.1,
+    0.2,
+    0.4,
+    0.8,
+    1.6,
+    3.2,
+)
+_QUACK_ATTACH_CONTENTION_MARKERS = (
+    "authentication failed",
+    "could not set lock",
+    "conflicting lock",
+    "lock timeout",
+    "database is locked",
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "temporarily unavailable",
+    "resource temporarily unavailable",
+    "too many clients",
+    "too many connections",
+    "broken pipe",
+    "timeout",
+    "busy",
+    "locked",
+    "contention",
+)
 
 
 def quack_owner_mutation_inbox_path(
@@ -1664,6 +1719,337 @@ def _execute_quack_owner_mutation_bundle(
     )
 
 
+def _row_tuple(row: Any) -> tuple[Any, ...]:
+    values = getattr(row, "_values", None)
+    if values is not None:
+        return tuple(values)
+    if isinstance(row, Mapping):
+        return tuple(row.values())
+    try:
+        return tuple(row)
+    except TypeError:
+        return (row,)
+
+
+def _parse_task_updated_at(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _quote_duckdb_ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _drop_task_status_indexes(connection: Any) -> list[str]:
+    """Drop status-bearing task indexes that can fatal status UPDATEs.
+
+    DuckDB ART indexes on ``tasks.status`` have failed closed with
+    ``Failed to delete all rows from index`` after a leftover in_progress
+    CAS. Drop them for the unstall UPDATE, then recreate from the saved
+    DDL.
+    """
+
+    try:
+        rows = connection.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    names: list[str] = []
+    for row in rows:
+        name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        if "status" not in text.lower():
+            continue
+        names.append(str(name))
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    for name in names:
+        connection.execute("DROP INDEX IF EXISTS " + _quote_duckdb_ident(name))
+    return statements
+
+
+def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> None:
+    for sql in statements:
+        text = str(sql or "").strip()
+        if not text:
+            continue
+        connection.execute(text)
+
+
+def unstall_stale_in_progress_tasks(
+    connection: Any,
+    *,
+    now: datetime | None = None,
+    stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+) -> dict[str, Any]:
+    """Return in_progress tasks that have been idle longer than a live attempt.
+
+    Used by the exclusive Quack owner so a dead gate (attach contention,
+    crashed implementer, leftover CAS) cannot freeze the rest of the board.
+    Live implementations heartbeat ``updated_at`` on claim; a run still under
+    ``implementation_max_timeout`` is left alone.
+    """
+
+    if stale_seconds <= 0:
+        raise ValueError("stale_seconds must be positive")
+    clock = now or datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    rows = connection.execute(
+        "SELECT task_cid, task_alias, status, revision, updated_at "
+        "FROM tasks WHERE status = 'in_progress'"
+    ).fetchall()
+    unstalled: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    pending: list[tuple[Any, ...]] = []
+    for row in rows:
+        task_cid, task_alias, status, revision, updated_at = _row_tuple(row)[:5]
+        updated = _parse_task_updated_at(updated_at)
+        if updated is None:
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "updated_at_unparseable",
+                }
+            )
+            continue
+        age = (clock - updated).total_seconds()
+        if age < float(stale_seconds):
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "still_within_live_attempt_window",
+                    "age_seconds": int(age),
+                }
+            )
+            continue
+        pending.append((task_cid, task_alias, status, revision, int(age)))
+    index_sql: list[str] = []
+    if pending:
+        index_sql = _drop_task_status_indexes(connection)
+    try:
+        for task_cid, task_alias, status, revision, age in pending:
+            new_revision = int(revision) + 1
+            stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            connection.execute(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+                "WHERE task_cid = ? AND revision = ? AND status = 'in_progress'",
+                ["retrying", new_revision, stamp, str(task_cid), int(revision)],
+            )
+            unstalled.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "previous_revision": int(revision),
+                    "revision": new_revision,
+                    "previous_status": str(status),
+                    "status": "retrying",
+                    "age_seconds": int(age),
+                }
+            )
+    finally:
+        if index_sql:
+            _restore_task_status_indexes(connection, index_sql)
+    return {
+        "unstalled": unstalled,
+        "skipped": skipped,
+        "stale_seconds": int(stale_seconds),
+        "status_indexes_rebuilt": list(index_sql),
+    }
+
+
+BOARD_UNSTALL_OWNER_OP = "board_unstall"
+BOARD_UNSTALL_BOUNCE_NAME = "board-unstall.bounce"
+OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS = 15.0
+_OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
+
+
+def apply_owner_command_payload(
+    connection: Any,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply one owner-inbox command on the exclusive writer connection.
+
+    ATTACH clients cannot UPDATE/DELETE base tables, and ``quack_serve``
+    occupies the listen handle, so the owner applies DML here. Structured
+    ``board_unstall`` commands recover leftover ``in_progress`` gates without
+    the client issuing SQL.
+    """
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("mutation request must be an object")
+    op = str(payload.get("op") or "").strip()
+    if op == BOARD_UNSTALL_OWNER_OP:
+        stale_raw = payload.get("stale_seconds", STALE_IN_PROGRESS_UNSTALL_SECONDS)
+        stale_seconds = int(stale_raw)
+        result = unstall_stale_in_progress_tasks(
+            connection, stale_seconds=stale_seconds
+        )
+        return {
+            "ok": True,
+            "rowcount": len(result.get("unstalled") or []),
+            "board_unstall": result,
+        }
+    sql = str(payload.get("sql") or "")
+    normalized = " ".join(sql.strip().upper().split())
+    if not normalized.startswith(_OWNER_INBOX_DML_PREFIXES):
+        raise ValueError("mutation inbox accepts only owner DML")
+    if ";" in normalized.rstrip(";"):
+        raise ValueError("mutation inbox accepts exactly one SQL statement")
+    parameters = payload.get("parameters")
+    result = (
+        connection.execute(sql)
+        if parameters is None
+        else connection.execute(sql, parameters)
+    )
+    rowcount = -1
+    try:
+        if getattr(result, "description", None):
+            result.fetchall()
+        elif hasattr(result, "rowcount"):
+            rowcount = int(result.rowcount)
+    except Exception:
+        pass
+    return {"ok": True, "rowcount": rowcount}
+
+
+def request_owner_board_unstall(
+    *,
+    stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    wait: bool = True,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
+    """Ask the exclusive owner to retry leftover in_progress gates.
+
+    Used when Quack ATTACH is contended: the daemon cannot SELECT or UPDATE,
+    but it can still write a mutation-inbox request. ``wait=False`` is the
+    attach-deferral path so the process does not block on a dead owner.
+    """
+
+    if int(stale_seconds) <= 0:
+        raise ValueError("stale_seconds must be positive")
+    target = quack_owner_mutation_dir()
+    if target is None:
+        return {"ok": False, "requested": False, "error": "no_mutation_dir"}
+    import uuid
+
+    target.mkdir(parents=True, exist_ok=True)
+    request_id = uuid.uuid4().hex
+    request_path = target / f"{request_id}.request.json"
+    done_path = target / f"{request_id}.done.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "op": BOARD_UNSTALL_OWNER_OP,
+                "stale_seconds": int(stale_seconds),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bounce_path = target / BOARD_UNSTALL_BOUNCE_NAME
+    bounce_path.write_text(
+        json.dumps(
+            {
+                "op": BOARD_UNSTALL_OWNER_OP,
+                "request_id": request_id,
+                "stale_seconds": int(stale_seconds),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    if not wait:
+        return {
+            "ok": True,
+            "requested": True,
+            "waited": False,
+            "request_id": request_id,
+        }
+    deadline = time.monotonic() + float(timeout_seconds)
+    while time.monotonic() < deadline:
+        if done_path.is_file():
+            reply = json.loads(done_path.read_text(encoding="utf-8"))
+            try:
+                request_path.unlink(missing_ok=True)
+                done_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if not isinstance(reply, dict):
+                raise DuckDBConnectionPolicyError(
+                    "malformed board unstall owner reply"
+                )
+            return reply
+        time.sleep(0.05)
+    raise DuckDBConnectionPolicyError(
+        "timed out waiting for quack state-owner to unstall the task board"
+    )
+
+
+def owner_should_recycle_for_board_unstall(
+    mutation_dir: object = None,
+    *,
+    min_age_seconds: float = OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS,
+) -> bool:
+    """Return whether the exclusive owner should restart to apply board unstall.
+
+    ``quack_serve`` occupies the listen connection, so leftover in_progress
+    UPDATEs only land in the pre-listen writer window. A bounce marker older
+    than ``min_age_seconds`` means the live owner could not apply it.
+    """
+
+    if mutation_dir is not None:
+        target = Path(str(mutation_dir))
+    else:
+        target = quack_owner_mutation_dir()
+    if target is None:
+        return False
+    bounce = target / BOARD_UNSTALL_BOUNCE_NAME
+    if not bounce.is_file():
+        return False
+    try:
+        age = time.time() - bounce.stat().st_mtime
+    except OSError:
+        return False
+    return age >= float(min_age_seconds)
+
+
+def clear_owner_board_unstall_bounce(mutation_dir: object = None) -> None:
+    """Drop the recycle marker after a pre-listen unstall has run."""
+
+    if mutation_dir is not None:
+        target = Path(str(mutation_dir))
+    else:
+        target = quack_owner_mutation_dir()
+    if target is None:
+        return
+    bounce = target / BOARD_UNSTALL_BOUNCE_NAME
+    try:
+        bounce.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _quack_owner_mutation_required(normalized: str) -> bool:
+    return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
+
+
 def _execute_quack_owner_mutation(
     statement: str,
     parameters: Iterable[Any] | Mapping[str, Any] | None = None,
@@ -1785,49 +2171,126 @@ def _consume_duckdb_result(connection: Any) -> None:
         pass
 
 
-def _open_quack_transport_connection_once(
-    uri: str,
-    *,
-    token: str = "",
-) -> DuckDBConnection:
-    """Attach to the exclusive Quack state-owner (multi-reader/multi-writer).
+def _quack_store_id() -> str:
+    store = str(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or "").strip()
+    if store:
+        return store
+    raw = str(os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or "").strip()
+    if not raw:
+        return ""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("store_id") or "").strip()
 
-    This is a transport connection, not a direct file open. The sealed
-    one-writer file policy does not apply: Quack ATTACH requires a process
-    that can reach the loopback state-owner.
+
+def quack_token_vault_path() -> Path | None:
+    """Return the owner token-vault path when the process can locate it."""
+
+    explicit = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", "") or ""
+    ).strip()
+    if explicit:
+        return Path(explicit)
+    store = _quack_store_id()
+    if not store:
+        return None
+    handle = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "")
+        or "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+    ).strip()
+    owner_dir = Path(store).expanduser().resolve().parent / "quack-owner"
+    safe = handle.replace(":", "_").replace("/", "_")
+    return owner_dir / f"{safe}{'.quack-token'}"
+
+
+def _read_quack_token_vault(path: Path) -> str:
+    try:
+        metadata = os.lstat(path)
+    except OSError:
+        return ""
+    if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        return ""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not _QUACK_TOKEN_RE.fullmatch(token):
+        return ""
+    return token
+
+
+def resolve_quack_attach_token(token: str = "") -> str:
+    """Resolve the current owner attach token.
+
+    The vault file is preferred over a process environment value so a
+    restarted owner generation is not blocked by a stale supervisor env.
     """
 
-    text = quack_transport_uri(uri)
-    if not text:
+    explicit = str(token or "").strip()
+    if explicit:
+        if not _QUACK_TOKEN_RE.fullmatch(explicit):
+            raise DuckDBConnectionPolicyError(
+                "quack attach token must be an opaque url-safe secret"
+            )
+        return explicit
+    vault = quack_token_vault_path()
+    if vault is not None:
+        material = _read_quack_token_vault(vault)
+        if material:
+            return material
+    secret = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
+    if secret and not _QUACK_TOKEN_RE.fullmatch(secret):
         raise DuckDBConnectionPolicyError(
-            f"invalid or non-loopback quack URI: {uri!r}"
+            "quack attach token must be an opaque url-safe secret"
         )
-    if "'" in text or ";" in text or "\x00" in text:
-        raise DuckDBConnectionPolicyError("quack URI contains forbidden characters")
-    try:
-        import duckdb
-    except ImportError as exc:
-        raise DuckDBConnectionPolicyError(
-            "DuckDB is required for Quack transport"
-        ) from exc
+    return secret
+
+
+def quack_attach_error_is_contention(exc: BaseException) -> bool:
+    """Return whether a failed ATTACH is owner-side contention, not a policy bug."""
+
+    text = " ".join(str(exc).lower().split())
+    return any(marker in text for marker in _QUACK_ATTACH_CONTENTION_MARKERS)
+
+
+def reset_quack_transport_cache() -> None:
+    """Drop cached loopback Quack attachments (tests and owner restart)."""
+
+    with _QUACK_ATTACH_LOCK:
+        cached = list(_QUACK_TRANSPORT_CACHE.items())
+        _QUACK_TRANSPORT_CACHE.clear()
+        for _uri, connection in cached:
+            try:
+                connection._pooled = False
+                connection.close()
+            except Exception:
+                pass
+
+
+def _probe_quack_connection(connection: Any) -> None:
+    probed = connection.execute("SELECT 1")
+    _consume_duckdb_result(probed)
+
+
+def _attach_quack_once(uri: str, secret: str) -> Any:
+    import duckdb
+
     connection = duckdb.connect(":memory:")
     try:
         connection.execute("LOAD quack")
-        # Remote clients are read-only at the Quack SQL surface.  Every
-        # intended mutation is a closed, authenticated owner-inbox bundle;
-        # token possession alone must not retain arbitrary remote DML power.
-        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_ONLY"
-        secret = str(
-            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
-        ).strip()
-        admitted_handle_binding: dict[str, Any] = {}
-        if not secret:
-            secret, admitted_handle_binding = _resolve_quack_token_handle(uri=text)
+        try:
+            connection.execute("SET httpfs_connection_caching = true")
+        except Exception:
+            pass
+        attach = (
+            f"ATTACH '{uri}' AS {_QUACK_CONTROL_CATALOG} "
+            "(READ_WRITE, DISABLE_SSL true"
+        )
         if secret:
-            if not _QUACK_TOKEN_RE.fullmatch(secret):
-                raise DuckDBConnectionPolicyError(
-                    "quack attach token must be an opaque url-safe secret"
-                )
             attach += f", TOKEN '{secret}'"
         attach += ")"
         attached = connection.execute(attach)
@@ -1848,7 +2311,7 @@ def _open_quack_transport_connection_once(
             ORDER BY generation DESC, started_at DESC
             LIMIT 1
             """,
-            [text],
+            [uri],
         ).fetchone()
         if identity_row is None or len(identity_row) != 8:
             raise DuckDBConnectionPolicyError(
@@ -1911,39 +2374,126 @@ def _open_quack_transport_connection_once(
             raise DuckDBConnectionPolicyError(
                 "quack transport store generation does not match server binding"
             )
-        if admitted_handle_binding:
-            exact_handle_binding = {
-                "server_id": binding["server_id"],
-                "store_id": binding["store_id"],
-                "database_uuid": binding["database_uuid"],
-                "schema_revision": binding["schema_revision"],
-                "schema_fingerprint": binding["schema_fingerprint"],
-                "generation": binding["generation"],
-                "process_birth_id": binding["process_birth_id"],
-                "listen_uri": binding["listen_uri"],
-                "extension_fingerprint": binding["extension_fingerprint"],
-            }
-            mismatched = [
-                name
-                for name, value in exact_handle_binding.items()
-                if admitted_handle_binding.get(name) != value
-            ]
-            if mismatched:
-                raise DuckDBConnectionPolicyError(
-                    "quack live binding differs from the admitted owner status: "
-                    + ", ".join(mismatched)
-                )
+        connection._quack_live_binding = binding
     except Exception:
         try:
             connection.close()
         except Exception:
             pass
         raise
-    wrapped = DuckDBConnection.wrap(connection)
-    wrapped._default_catalog = _QUACK_CONTROL_CATALOG
-    wrapped._quack_mutation_binding = binding
-    wrapped._quack_mutation_token = secret
-    return wrapped
+    return connection
+
+
+def _open_quack_transport_connection_once(
+    uri: str,
+    *,
+    token: str = "",
+) -> DuckDBConnection:
+    """Attach to the exclusive Quack state-owner (multi-reader/multi-writer).
+
+    This is a transport connection, not a direct file open. The sealed
+    one-writer file policy does not apply: Quack ATTACH requires a process
+    that can reach the loopback state-owner.
+
+    Attach is serialized and retried: the owner DuckDB connection is the
+    single writer, the serve backlog is small, and a new ATTACH per query
+    otherwise loses the handshake to contention (often reported as
+    ``Authentication failed``). Live attachments are reused in-process.
+    Closed catalog mutations bind the live server identity onto the wrapper.
+    """
+
+    text = quack_transport_uri(uri)
+    if not text:
+        raise DuckDBConnectionPolicyError(
+            f"invalid or non-loopback quack URI: {uri!r}"
+        )
+    if "'" in text or ";" in text or "\x00" in text:
+        raise DuckDBConnectionPolicyError("quack URI contains forbidden characters")
+    try:
+        import duckdb
+    except ImportError as exc:
+        raise DuckDBConnectionPolicyError(
+            "DuckDB is required for Quack transport"
+        ) from exc
+    del duckdb
+
+    with _QUACK_ATTACH_LOCK:
+        cached = _QUACK_TRANSPORT_CACHE.get(text)
+        if cached is not None and not getattr(cached, "_closed", False):
+            try:
+                _probe_quack_connection(cached._connection)
+                return cached
+            except Exception:
+                _QUACK_TRANSPORT_CACHE.pop(text, None)
+                try:
+                    cached._pooled = False
+                    cached.close()
+                except Exception:
+                    pass
+
+        last_error: BaseException | None = None
+        for attempt in range(QUACK_ATTACH_ATTEMPTS):
+            secret = resolve_quack_attach_token(token)
+            admitted_handle_binding: dict[str, Any] = {}
+            if not secret:
+                secret, admitted_handle_binding = _resolve_quack_token_handle(
+                    uri=text
+                )
+            try:
+                raw = _attach_quack_once(text, secret)
+            except BaseException as exc:
+                last_error = exc
+                if (
+                    attempt + 1 >= QUACK_ATTACH_ATTEMPTS
+                    or not quack_attach_error_is_contention(exc)
+                ):
+                    break
+                delay = QUACK_ATTACH_BACKOFF_SECONDS[
+                    min(attempt, len(QUACK_ATTACH_BACKOFF_SECONDS) - 1)
+                ]
+                time.sleep(delay)
+                continue
+            wrapped = DuckDBConnection.wrap(raw)
+            wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+            wrapped._pooled = True
+            binding = getattr(raw, "_quack_live_binding", None)
+            wrapped._quack_mutation_binding = (
+                dict(binding) if isinstance(binding, Mapping) else None
+            )
+            wrapped._quack_mutation_token = secret
+            if admitted_handle_binding:
+                live = wrapped._quack_mutation_binding or {}
+                exact_handle_binding = {
+                    "server_id": live.get("server_id"),
+                    "store_id": live.get("store_id"),
+                    "database_uuid": live.get("database_uuid"),
+                    "schema_revision": live.get("schema_revision"),
+                    "schema_fingerprint": live.get("schema_fingerprint"),
+                    "generation": live.get("generation"),
+                    "process_birth_id": live.get("process_birth_id"),
+                    "listen_uri": live.get("listen_uri"),
+                    "extension_fingerprint": live.get("extension_fingerprint"),
+                }
+                mismatched = [
+                    name
+                    for name, value in exact_handle_binding.items()
+                    if admitted_handle_binding.get(name) != value
+                ]
+                if mismatched:
+                    raise DuckDBConnectionPolicyError(
+                        "quack live binding differs from the admitted owner status: "
+                        + ", ".join(mismatched)
+                    )
+            _QUACK_TRANSPORT_CACHE[text] = wrapped
+            return wrapped
+
+        if last_error is not None and quack_attach_error_is_contention(last_error):
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: " + str(last_error)
+            ) from last_error
+        if last_error is not None:
+            raise last_error
+        raise DuckDBConnectionPolicyError("quack control-plane attach failed")
 
 
 def open_quack_transport_connection(

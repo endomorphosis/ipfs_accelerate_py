@@ -1,8 +1,8 @@
 """P0 wire ownership and boundary validation for task families.
 
-P0 helpers reject inconsistent boundaries, memberships, and already-known
-counterexamples in immutable task-family contracts.  PCPC-010/PCPC-011 may
-add discovery and live boundary validators in this same module.
+No clustering or discovery occurs here; PCPC-010 owns that later work.  These
+helpers only reject inconsistent boundaries, memberships, and already-known
+counterexamples in immutable task-family contracts.
 """
 
 from __future__ import annotations

@@ -121,8 +121,9 @@ def test_model_cost_requires_a_closed_typed_hole() -> None:
         parse_execution_trajectory(payload)
 
 
-def test_trajectory_p0_contract_helpers_remain_available() -> None:
-    """P0 ships contract validation. G020 may add a normalizer in this module."""
+def test_trajectory_module_does_not_offer_normalization_engine() -> None:
+    import ipfs_accelerate_py.agent_supervisor.procedure_compiler.trajectory as module
 
+    assert not hasattr(module, "normalize_episode")
+    assert not hasattr(module, "TrajectoryNormalizer")
     assert validate_execution_trajectory_contract(trajectory()) == trajectory()
-    assert parse_execution_trajectory(trajectory().to_dict()) == trajectory()

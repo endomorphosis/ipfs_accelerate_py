@@ -1894,6 +1894,79 @@ def test_real_default_transport_requires_authenticated_remote_readiness(
         server.stop()
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
+def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="test-owner",
+    )
+    stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    connection = open_duckdb_connection(db)
+    try:
+        columns = [
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info('tasks')").fetchall()
+        ]
+        colset = set(columns)
+        required = {"task_cid", "task_alias", "status", "revision", "updated_at"}
+        if not required <= colset:
+            pytest.skip("control-plane tasks table has no unstall columns")
+        payload: dict[str, object] = {
+            "task_cid": "cid-021",
+            "task_alias": "PCCE-021",
+            "status": "in_progress",
+            "revision": 9,
+            "updated_at": stale,
+            "goal_cid": "goal:cid:root",
+            "ordinal": 21,
+            "identity_json": "{}",
+            "body_json": "{}",
+        }
+        names = [name for name in columns if name in payload]
+        connection.execute(
+            f"INSERT INTO tasks ({', '.join(names)}) VALUES ("
+            + ", ".join("?" for _ in names)
+            + ")",
+            [payload[name] for name in names],
+        )
+    finally:
+        connection.close()
+
+    server = build_server(
+        database_path=db,
+        state_dir=state,
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_k: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=os.getpid()),
+        owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
+    )
+    server.start()
+    try:
+        raw = getattr(server._connection, "_connection", server._connection)
+        row = raw.execute(
+            "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
+        ).fetchone()
+        assert row is not None
+        status, revision = row[0], row[1]
+        assert status == "retrying"
+        assert int(revision) == 10
+    finally:
+        server.stop()
+
+
 def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
     with pytest.raises(QuackStateServerTokenError):
         QuackStateServerConfig(

@@ -125,6 +125,7 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
+from ..merge.protected_recovery_fence import is_successful_worktree_merge_result
 from ..merge.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     DEFAULT_STARTUP_GRACE_SECONDS,
@@ -5659,8 +5660,37 @@ def classify_provider_capacity_failure(
     text: str,
     *,
     provider_labels: Sequence[str] = (),
+    provider_returncode: int | None = None,
 ) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
+
+    del provider_returncode
+    # Canonical-legacy Grok preflight writes a typed receipt, then may deny
+    # Codex fallback. That is still quota exhaustion, not a code defect.
+    for receipt in extract_grok_failure_receipts(text):
+        if str(receipt.get("failure_class") or "") != "hard_quota_exhausted":
+            continue
+        if receipt.get("primary_dispatched") is True:
+            continue
+        probe_returncode = receipt.get("probe_returncode")
+        if (
+            isinstance(probe_returncode, bool)
+            or not isinstance(probe_returncode, int)
+            or probe_returncode == 0
+        ):
+            continue
+        return {
+            "exhausted": True,
+            "providers": ["grok"],
+            "reason": "provider_capacity_exhausted",
+            "failure_class": "hard_quota_exhausted",
+            "hard_quota_exhausted_providers": ["grok"],
+            "quota_probe_receipt": dict(receipt),
+            "quota_probe_receipt_id": str(receipt.get("receipt_id") or ""),
+            "hard_quota_evidence_sha256": str(
+                receipt.get("evidence_sha256") or ""
+            ),
+        }
 
     # Worktree pool races can dispose the workspace between setup and provider
     # launch. That is infrastructure, not an implementation attempt to charge.
@@ -21105,15 +21135,26 @@ class PortalImplementationDaemon:
             command = event.get("command")
             if not isinstance(command, list):
                 continue
+            command_nonce = self._command_flag_value(
+                command,
+                "--grok-failure-receipt-nonce",
+            )
+            uses_canonical_legacy = (
+                "--canonical-legacy-preflight-route" in command
+                and not command_nonce
+            )
+            nonce_matches = (
+                command_nonce == nonce
+                if command_nonce
+                else uses_canonical_legacy
+                and bool(re.fullmatch(r"[0-9a-f]{64}", nonce))
+            )
             if (
-                self._command_flag_value(
-                    command,
-                    "--grok-failure-receipt-nonce",
-                )
-                != nonce
+                not nonce_matches
                 or self._command_flag_value(command, "--model") != model
                 or not any(
                     Path(str(item)).name == "grok_cli_runner.py"
+                    or str(item).endswith("grok_cli_runner")
                     for item in command
                 )
             ):
@@ -22094,10 +22135,14 @@ class PortalImplementationDaemon:
         if inflight is not None:
             result = {
                 "skipped": True,
+                "deferred": True,
                 "reason": "inflight_process",
                 "task_id": str(inflight.get("task_id") or task.task_id),
                 "attempt": int(inflight.get("attempt") or 0),
                 "worktree_path": str(inflight.get("worktree_path") or ""),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "backoff_seconds": 30,
             }
             self._record_event("implementation_skipped", result)
             return result
@@ -60519,6 +60564,28 @@ class PortalImplementationDaemon:
                     False,
                 )
             )
+            if retained and is_successful_worktree_merge_result(
+                operation,
+                result,
+                callback_completed=callback_completed,
+            ):
+                # This worktree finished merging. Do not keep the shared
+                # git-common-dir merge lock for generated-board recovery;
+                # other worktrees cannot land until it is released.
+                self._record_event(
+                    "checkout_mutation_lease_released_after_merge",
+                    {
+                        "operation": operation,
+                        "lock_path": str(lease.lock_path),
+                        "lease_id": lease.lease_id,
+                        "task_id": task_id,
+                        "reason": "worktree_merge_completed",
+                    },
+                )
+                retained = False
+                self._checkout_mutation_context.retain_until_protected_clean = (
+                    False
+                )
             if retained:
                 retained_paths = self._retained_checkout_mutation_paths()
                 dirty_paths = self._dirty_implementation_protected_paths(
@@ -70792,6 +70859,30 @@ CREATE TABLE IF NOT EXISTS daemon_execution_events (
 
 _DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS = 300
 _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS = 86_400
+_RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
+    {
+        "proposal_gate_failed",
+        "proposal_validation_failed",
+        "inflight_process",
+        "validation_command_failed",
+        "declared_validation_failed",
+        "quack_attach_contended",
+        "authentication_failed",
+    }
+)
+_QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
+_TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(
+    {
+        "blocked",
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "todo",
+        "cancelled",
+        "failed",
+    }
+)
 _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral@1"
 )
@@ -74109,7 +74200,113 @@ class DatabaseImplementationDaemon:
     @staticmethod
     def _database_portal_reason(value: Any) -> str:
         reason = str(value or "portal_execution_deferred").strip()
+        lowered = reason.lower()
+        if (
+            "authentication failed" in lowered
+            or "quack control-plane attach contended" in lowered
+            or "could not connect to server" in lowered
+        ):
+            return "quack_attach_contended"
         return (reason or "portal_execution_deferred")[:1024]
+
+    @staticmethod
+    def _is_quack_attach_contention(exc: BaseException) -> bool:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            QuackTransportContentionError,
+            quack_attach_error_is_contention,
+        )
+
+        return isinstance(exc, QuackTransportContentionError) or (
+            quack_attach_error_is_contention(exc)
+        )
+
+    def _run_reconciliation_step(
+        self,
+        callback: Callable[[], list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Run one reconciliation pass without letting Quack attach freeze the rest."""
+
+        try:
+            return callback()
+        except Exception as exc:
+            if self._is_quack_attach_contention(exc):
+                return []
+            raise
+
+    def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
+        """Retry leftover in_progress control tasks that freeze claim_next.
+
+        Lane-local lease expiry does not move ``tasks.status``. A dead gate
+        stays ``in_progress`` and dependents never enter the ready frontier.
+        Age out those rows after the live-attempt window so the board can
+        drain after attach contention, a crashed implementer, or a leftover
+        CAS.
+        """
+
+        self._require_execution_authority("stale in_progress board unstall")
+        unstall = getattr(self.task_source, "unstall_stale_in_progress_tasks", None)
+        if not callable(unstall):
+            return []
+        result = unstall()
+        if not isinstance(result, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "task source returned a malformed board unstall receipt"
+            )
+        unstalled = result.get("unstalled") or []
+        if not isinstance(unstalled, list):
+            raise DatabaseImplementationAuthorityError(
+                "task source returned a malformed board unstall receipt"
+            )
+        return [item for item in unstalled if isinstance(item, Mapping)]
+
+    def _request_owner_board_unstall(self) -> dict[str, Any]:
+        """Ask the exclusive owner to unstall gates when ATTACH cannot run."""
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            request_owner_board_unstall,
+        )
+
+        try:
+            return request_owner_board_unstall(wait=False)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "requested": False,
+                "error": f"{type(exc).__name__}: board unstall request failed",
+            }
+
+    def _quack_attach_contention_deferral(
+        self,
+        exc: BaseException,
+    ) -> dict[str, Any]:
+        """Keep the process alive when Quack ATTACH is contended.
+
+        Auth-callback errors are reported as Authentication failed. Crashing
+        here burns supervisor restart budget and drops a rescue-branch retry.
+        """
+
+        expired: list[dict[str, Any]] = []
+        try:
+            expired = self.reconcile_expired_running_attempts()
+        except Exception:
+            expired = []
+        board_unstall = self._request_owner_board_unstall()
+        return {
+            "unchanged": not expired and not board_unstall.get("requested"),
+            "deferred": True,
+            "skipped": True,
+            "reason": "quack_attach_contended",
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "backoff_seconds": _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS,
+            "portal_retryable_failure": True,
+            "portal_terminal_failure": False,
+            "error_class": type(exc).__name__,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "expired_attempt_reconciliations": expired,
+            "board_unstall_request": board_unstall,
+        }
 
     @staticmethod
     def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
@@ -77199,6 +77396,8 @@ class DatabaseImplementationDaemon:
                     )
                     outcome["coordination"] = coordination
                     outcomes.append(outcome)
+                    continue
+            if status in _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES:
                 continue
             if status == "retrying":
                 # The immutable legacy attempt still says terminal failure.
@@ -77921,7 +78120,13 @@ class DatabaseImplementationDaemon:
                 DatabasePortalValidationRetry,
             )
             candidate_retry = isinstance(exc, DatabasePortalCandidateRetry)
-            retryable = deferred or validation_retry or candidate_retry
+            reason = self._database_portal_reason(str(exc))
+            retryable = (
+                deferred
+                or validation_retry
+                or candidate_retry
+                or reason in _RETRYABLE_PORTAL_FAILURE_REASONS
+            )
             backoff_seconds = (
                 self._database_portal_backoff_seconds(
                     getattr(
@@ -77933,7 +78138,6 @@ class DatabaseImplementationDaemon:
                 if retryable
                 else 0
             )
-            reason = self._database_portal_reason(str(exc))
             failed = None
             try:
                 # ``resume_attempt`` can durably advance one or more phases
@@ -78093,12 +78297,16 @@ class DatabaseImplementationDaemon:
                             verified_validation_retry
                         ),
                     )
-                elif candidate_retry:
+                elif candidate_retry or retryable:
                     control_state = self._persist_task_retry_state(
                         terminal,
                         reason=reason,
                         backoff_ms=backoff_seconds * 1000,
-                        evidence_source="portal_candidate_retry",
+                        evidence_source=(
+                            "portal_candidate_retry"
+                            if candidate_retry
+                            else "typed_portal_proposal_gate_retry"
+                        ),
                     )
                 else:
                     control_state = self._persist_terminal_portal_failure(
@@ -78559,18 +78767,39 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        try:
+            return self._run_once_impl()
+        except Exception as exc:
+            if self._is_quack_attach_contention(exc):
+                return self._quack_attach_contention_deferral(exc)
+            raise
+
+    def _run_once_impl(self) -> dict[str, Any]:
+        """One database-authoritative pass: resume inflight or claim new work."""
+
         if not self.require_real_execution:
             return self._execution_disabled_observation()
-        completion_reconciliations = self.reconcile_prepared_task_completions()
-        expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
-        landed_merge_reconciliations = self.reconcile_landed_merged_tasks()
-        unknown_callback_reopens = (
-            self.reconcile_unimplemented_unknown_callback_quarantines()
+        completion_reconciliations = self._run_reconciliation_step(
+            self.reconcile_prepared_task_completions
         )
-        terminal_portal_reconciliations = (
-            self.reconcile_terminal_portal_failures()
+        expired_attempt_reconciliations = self._run_reconciliation_step(
+            self.reconcile_expired_running_attempts
         )
-        terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
+        landed_merge_reconciliations = self._run_reconciliation_step(
+            self.reconcile_landed_merged_tasks
+        )
+        unknown_callback_reopens = self._run_reconciliation_step(
+            self.reconcile_unimplemented_unknown_callback_quarantines
+        )
+        terminal_portal_reconciliations = self._run_reconciliation_step(
+            self.reconcile_terminal_portal_failures
+        )
+        terminal_retry_reconciliations = self._run_reconciliation_step(
+            self.reconcile_terminal_retry_states
+        )
+        stale_in_progress_unstalls = self._run_reconciliation_step(
+            self.reconcile_stale_in_progress_gates
+        )
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
@@ -78578,6 +78807,7 @@ class DatabaseImplementationDaemon:
             + len(unknown_callback_reopens)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
+            + len(stale_in_progress_unstalls)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -78648,6 +78878,7 @@ class DatabaseImplementationDaemon:
                     "terminal_portal_reconciliations": (
                         terminal_portal_reconciliations
                     ),
+                    "stale_in_progress_unstalls": stale_in_progress_unstalls,
                 }
 
         attempt = self.claim_next()
@@ -78675,6 +78906,7 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "stale_in_progress_unstalls": stale_in_progress_unstalls,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -78694,6 +78926,7 @@ class DatabaseImplementationDaemon:
             "unknown_callback_reopens": unknown_callback_reopens,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
+            "stale_in_progress_unstalls": stale_in_progress_unstalls,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
