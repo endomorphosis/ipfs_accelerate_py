@@ -27,13 +27,12 @@ Deprecated ``AGENT_SUPERVISOR_G0xx_*`` and ``AGENT_SUPERVISOR_EVIDENCE_CLUSTER_*
 spellings remain as aliases of the semantic names.
 """
 
-from types import MappingProxyType as _MappingProxyType
-
 import importlib as _importlib
 import os as _os
 import sys as _sys
 import types as _types
 from pathlib import Path
+from types import MappingProxyType as _MappingProxyType
 
 # ---------------------------------------------------------------------------
 # Domain-layout cutover identity (semantic names; board IDs as string values)
@@ -85,6 +84,7 @@ AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
     "core",
     "control",
     "task_sources",
+    "federation",
     "context",
     "analysis",
     "proof",
@@ -104,6 +104,7 @@ AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
 AGENT_SUPERVISOR_CORE_PACKAGES = ("core",)
 AGENT_SUPERVISOR_CONTROL_PACKAGES = ("control",)
 AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES = ("task_sources",)
+AGENT_SUPERVISOR_FEDERATION_PACKAGES = ("federation",)
 AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES = (
     "context",
     "prompt",
@@ -3486,6 +3487,12 @@ _COLD_DISCOVERY_SURFACES = (
         "interface": "SupervisorControlService@1",
     },
     {
+        "id": "federation",
+        "module": f"{__name__}.federation",
+        "role": "service",
+        "interface": "CausalAbstractionSupervisorFederation@1",
+    },
+    {
         "id": "deterministic_doctor_service",
         "module": f"{__name__}.control.deterministic_doctor_service",
         "role": "service",
@@ -3570,6 +3577,7 @@ def agent_supervisor_cold_help() -> dict:
             "package": __name__,
             "contracts": f"{__name__}.control.control_contracts",
             "control_service": f"{__name__}.control.control_plane",
+            "federation": f"{__name__}.federation",
             "doctor_service": f"{__name__}.control.deterministic_doctor_service",
             "adaptive_planner": f"{__name__}.planning.adaptive_planner",
         },
@@ -3966,12 +3974,16 @@ V2_STABLE_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 def agent_supervisor_v2_discovery_manifest():
     """Return static Python discovery for the canonical v2 control catalog."""
 
-    return ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
+    return _control_contracts.ControlDiscoveryManifest(
+        surface=_control_contracts.ControlSurface.PYTHON
+    )
 
 
 # Preserve exact function identity with the transport-neutral publication
 # entry point.  Adapters must call the same catalog validator.
-agent_supervisor_v2_control_surface_publication = control_service_publication
+agent_supervisor_v2_control_surface_publication = (
+    _control_plane.control_service_publication
+)
 
 __all__.extend(
     name
@@ -3992,6 +4004,7 @@ __all__.extend(
         "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_IDS",
         "AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS",
         "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
+        "AGENT_SUPERVISOR_FEDERATION_PACKAGES",
         "AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS",
         "AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES",
         "AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE",

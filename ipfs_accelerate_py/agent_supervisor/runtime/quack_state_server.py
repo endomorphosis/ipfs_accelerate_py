@@ -40,6 +40,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Protocol
 
+from ..federation.event_wait import EventSource, StateOwnerEventWait
+from ..federation.events import EventBatch, EventWaitRequest
+from ..federation.outbox_worker import (
+    EventDrivenOutboxWorker,
+    StateOwnerOutboxWake,
+)
 from ..merge.worktree_lifecycle import (
     OwnerLiveness,
     ProcessBirthIdentity,
@@ -70,11 +76,19 @@ from ..task_sources.control_plane_schema import (
     CONTROL_PLANE_SCHEMA_REVISION,
     install_control_plane_schema,
 )
-from ..task_sources.duckdb_state import open_duckdb_connection
+from ..task_sources.duckdb_state import open_quack_state_owner_connection
 from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
     probe_quack_capabilities,
 )
+from ..task_sources.typed_state_owner import (
+    TYPED_STATE_OWNER_SOCKET_FILENAME,
+    TYPED_STATE_OWNER_TOKEN_FILENAME,
+    OwnerClientGrant,
+    TypedStateOwnerGateway,
+)
+
+_UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
 
 # ---------------------------------------------------------------------------
 # Interface / schema identities
@@ -197,11 +211,11 @@ class QuackStateServerNotRunningError(QuackStateServerError):
 
 
 def _utc_iso(moment: datetime | None = None) -> str:
-    value = moment or datetime.now(timezone.utc)
+    value = moment or datetime.now(_UTC)
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=_UTC)
     return (
-        value.astimezone(timezone.utc)
+        value.astimezone(_UTC)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z")
@@ -694,7 +708,7 @@ class StateServerIdentity:
     def content_id(self) -> str:
         return content_identity(self.to_dict())
 
-    def with_status(self, status: str) -> "StateServerIdentity":
+    def with_status(self, status: str) -> StateServerIdentity:
         return StateServerIdentity(
             server_id=self.server_id,
             store_id=self.store_id,
@@ -792,7 +806,7 @@ class OwnerMarker:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "OwnerMarker":
+    def from_dict(cls, payload: Mapping[str, Any]) -> OwnerMarker:
         birth = ProcessBirthIdentity.from_dict(payload.get("process_birth"))
         return cls(
             server_id=str(payload.get("server_id") or ""),
@@ -936,8 +950,10 @@ class ExclusiveOwnerLease:
 class TokenVault:
     """Store Quack auth tokens behind opaque secret handles.
 
-    The token bytes exist only in a mode-0600 file under the state directory.
-    Public APIs expose only the secret handle.
+    The token is staged through a mode-0600 file only during state-owner
+    startup.  Once Quack has bound, the owner removes that file and retains
+    the transport credential in process memory; supervisor processes receive
+    a distinct typed-command credential. Public APIs expose only the handle.
     """
 
     def __init__(self, state_dir: Path) -> None:
@@ -980,6 +996,17 @@ class TokenVault:
         if not handle or handle != self._handle or not self._token:
             raise QuackStateServerTokenError("token is not available for handle")
         return self._token
+
+    def remove_persisted_copy(self) -> None:
+        """Remove startup material while retaining the in-process token."""
+
+        if self._path is None:
+            return
+        try:
+            self._path.unlink()
+        except FileNotFoundError:
+            pass
+        self._path = None
 
     def destroy(self) -> None:
         self._token = None
@@ -1061,10 +1088,22 @@ class InProcessQuackTransport:
             ) from exc
 
         uri = listen_uri(host, port)
-        # Quack beta surface: try function forms without embedding token in SQL
-        # text that might be logged by wrappers — use parameterized forms when
-        # supported; fall back carefully.
+        disable_ssl = _is_loopback_host(host)
+        # Quack's current table function uses named optional parameters.
+        # Values remain parameter-bound so the token is absent from SQL text,
+        # argv, status, and logs.  Older qualified beta signatures remain a
+        # narrow compatibility path.
         serve_attempts = (
+            (
+                "SELECT * FROM quack_serve(?, token := ?, "
+                "allow_other_hostname := ?, disable_ssl := ?)",
+                [uri, token, False, disable_ssl],
+            ),
+            (
+                "SELECT * FROM quack_serve(token := ?, "
+                "allow_other_hostname := ?, disable_ssl := ?)",
+                [token, False, disable_ssl],
+            ),
             ("SELECT quack_serve(?, ?, ?)", [host, int(port), token]),
             ("SELECT quack_serve(?, ?)", [f"{host}:{int(port)}", token]),
             ("CALL quack_serve(?, ?, ?)", [host, int(port), token]),
@@ -1105,19 +1144,35 @@ class InProcessQuackTransport:
         identity: StateServerIdentity,
         token: str,
     ) -> Mapping[str, Any]:
-        del token  # used only by remote clients; local owner uses the connection
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
-        # Local live probe: prove the exclusive connection still answers and
-        # published identity rows still match.
-        try:
-            row = connection.execute("SELECT 1").fetchone()
-        except Exception as exc:
+        # Query through the actual loopback RPC surface.  A local SELECT on the
+        # owner's connection would not prove that Quack clients can attach.
+        query_attempts = (
+            (
+                "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := ?)",
+                [self._listen_uri, "SELECT 1 AS live", token, True],
+            ),
+            (
+                "SELECT * FROM quack_query(?, ?, ?, ?)",
+                [self._listen_uri, "SELECT 1 AS live", token, True],
+            ),
+        )
+        row = None
+        last_error: Exception | None = None
+        for sql, params in query_attempts:
+            try:
+                row = connection.execute(sql, params).fetchone()
+                last_error = None
+                break
+            except Exception as exc:  # pragma: no cover - extension-version path
+                last_error = exc
+        if last_error is not None:
             raise QuackStateServerReadyError(
-                f"live query failed: {type(exc).__name__}"
-            ) from exc
+                f"loopback Quack live query failed: {type(last_error).__name__}"
+            ) from last_error
         if row is None:
-            raise QuackStateServerReadyError("live query returned no row")
+            raise QuackStateServerReadyError("loopback Quack live query returned no row")
         observed = dict(self._server_identity)
         observed["live"] = True
         if not identity.matches(
@@ -1135,7 +1190,15 @@ class InProcessQuackTransport:
         return MappingProxyType(observed)
 
     def stop(self, connection: Any | None = None) -> None:
-        del connection
+        if connection is not None and self._listen_uri:
+            try:
+                connection.execute(
+                    "SELECT * FROM quack_stop(?)", [self._listen_uri]
+                ).fetchall()
+            except Exception:
+                # Closing the exclusive owning connection is the final stop
+                # boundary; callers still receive lifecycle bookkeeping.
+                pass
         self._started = False
         self._server_identity = {}
 
@@ -1223,7 +1286,7 @@ class FakeQuackTransport:
 # ---------------------------------------------------------------------------
 
 
-class ServerLifecycle(str, Enum):
+class ServerLifecycle(str, Enum):  # noqa: UP042 - Python 3.8 compatibility.
     CREATED = "created"
     STARTING = "starting"
     READY = "ready"
@@ -1260,6 +1323,26 @@ class QuackStateServer:
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _bound_port: int = field(default=0, init=False)
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
+    _event_source: EventSource | None = field(default=None, init=False, repr=False)
+    _event_wait: StateOwnerEventWait | None = field(default=None, init=False, repr=False)
+    _command_gateway: TypedStateOwnerGateway | None = field(
+        default=None, init=False, repr=False
+    )
+    _federation_repository: Any | None = field(default=None, init=False, repr=False)
+    _outbox_wake: StateOwnerOutboxWake | None = field(
+        default=None, init=False, repr=False
+    )
+    _outbox_worker: EventDrivenOutboxWorker | None = field(
+        default=None, init=False, repr=False
+    )
+    _outbox_thread: threading.Thread | None = field(
+        default=None, init=False, repr=False
+    )
+    _outbox_stop: threading.Event = field(
+        default_factory=threading.Event, init=False, repr=False
+    )
+    _outbox_drain_count: int = field(default=0, init=False)
+    _outbox_last_error_type: str = field(default="", init=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, QuackStateServerConfig):
@@ -1285,6 +1368,468 @@ class QuackStateServer:
     @property
     def secret_handle(self) -> str | None:
         return None if self._vault is None else self._vault.secret_handle
+
+    # -- owner-local event wait -------------------------------------------
+
+    def bind_event_source(self, source: EventSource) -> dict[str, object]:
+        """Bind one typed source to the server-owned event condition.
+
+        The binding is intentionally monotonic for a server lifecycle.  Every
+        consumer waits on the same :class:`StateOwnerEventWait`; callers cannot
+        replace it with a competing source after consumers have registered.
+        """
+
+        if not callable(getattr(source, "events_for_subscription", None)) or not callable(
+            getattr(source, "store_generation", None)
+        ):
+            raise QuackStateServerControlError(
+                "event source must expose the closed subscription and generation interfaces"
+            )
+        with self._lock:
+            if self._lifecycle in {
+                ServerLifecycle.STOPPING,
+                ServerLifecycle.STOPPED,
+                ServerLifecycle.FAILED,
+            }:
+                raise QuackStateServerNotRunningError(
+                    "cannot bind event source to a terminal state owner"
+                )
+            if self._event_wait is not None:
+                if self._event_source is source:
+                    return self.event_wait_capability()
+                raise QuackStateServerControlError(
+                    "state owner already has a different event source"
+                )
+            self._event_source = source
+            self._event_wait = StateOwnerEventWait(source)
+            gateway = self._command_gateway
+            if gateway is not None:
+                gateway.bind_event_wait_handlers(
+                    wait=self._gateway_wait_for_events,
+                    cancel=self._gateway_cancel_event_wait,
+                    clear_cancellation=self._gateway_clear_event_wait_cancellation,
+                )
+            return self.event_wait_capability()
+
+    def _require_gateway_event_scope(
+        self,
+        grant: OwnerClientGrant,
+        *,
+        consumer_id: str,
+        subscription_id: str,
+    ) -> None:
+        """Resolve tenant/federation from durable state, never wire input."""
+
+        with self._lock:
+            source = self._event_source
+        resolver = getattr(source, "resolve_event_wait_scope", None)
+        if not callable(resolver):
+            raise QuackStateServerControlError(
+                "event source cannot resolve authoritative wait scope"
+            )
+        tenant_id, federation_id = resolver(
+            consumer_id=consumer_id,
+            subscription_id=subscription_id,
+        )
+        if tenant_id != grant.tenant_id or federation_id != grant.federation_id:
+            raise QuackStateServerControlError(
+                "event wait scope differs from the client grant"
+            )
+
+    def _gateway_wait_for_events(
+        self,
+        request: EventWaitRequest,
+        grant: OwnerClientGrant,
+    ) -> EventBatch:
+        self._require_gateway_event_scope(
+            grant,
+            consumer_id=request.consumer_id,
+            subscription_id=request.subscription_id,
+        )
+        return self.wait_for_events(request)
+
+    def _gateway_cancel_event_wait(
+        self,
+        consumer_id: str,
+        grant: OwnerClientGrant,
+    ) -> None:
+        subscription_id = dict(grant.entity_scopes).get("subscription_id", "")
+        if not subscription_id:
+            raise QuackStateServerControlError(
+                "event wait cancellation requires subscription scope"
+            )
+        self._require_gateway_event_scope(
+            grant,
+            consumer_id=consumer_id,
+            subscription_id=subscription_id,
+        )
+        self.cancel_event_wait(consumer_id)
+
+    def _gateway_clear_event_wait_cancellation(
+        self,
+        consumer_id: str,
+        grant: OwnerClientGrant,
+    ) -> None:
+        subscription_id = dict(grant.entity_scopes).get("subscription_id", "")
+        if not subscription_id:
+            raise QuackStateServerControlError(
+                "event wait cancellation requires subscription scope"
+            )
+        self._require_gateway_event_scope(
+            grant,
+            consumer_id=consumer_id,
+            subscription_id=subscription_id,
+        )
+        self.clear_event_wait_cancellation(consumer_id)
+
+    def bind_federation_repository(
+        self,
+        client: Any,
+        *,
+        require_quack_authority: bool = True,
+    ) -> Any:
+        """Construct the canonical repository with this owner's notify hook.
+
+        The import is local to keep module import cold.  This is the preferred
+        wiring point: the repository publishes its event sequence only after
+        ``submit_command`` durably commits, and the same repository is the
+        bounded source used by all owner-local waiters.  No SQL or database
+        path is accepted here.
+        """
+
+        from ..federation.registry import FederationStateRepository
+        from ..task_sources.quack_state_client import QuackStateClient
+
+        if not isinstance(client, QuackStateClient):
+            raise QuackStateServerControlError(
+                "federation event binding requires QuackStateClient"
+            )
+        with self._lock:
+            identity = self._identity
+            lifecycle = self._lifecycle
+        session = client.session
+        observed = None if session is None else session.store_identity
+        if (
+            lifecycle is not ServerLifecycle.READY
+            or identity is None
+            or session is None
+            or observed is None
+            or session.server_id != identity.server_id
+            or observed.store_id != identity.store_id
+            or observed.database_uuid != identity.database_uuid
+            or observed.schema_revision != identity.schema_revision
+            or observed.generation != identity.generation
+            or observed.schema_fingerprint != identity.schema_fingerprint
+        ):
+            raise QuackStateServerControlError(
+                "event repository client identity differs from the ready state owner"
+            )
+        repository = FederationStateRepository(
+            client,
+            event_notifier=self.notify_committed_event,
+            outbox_notifier=self.notify_committed_outbox,
+            require_quack_authority=require_quack_authority,
+        )
+        self.bind_event_source(repository)
+        client.bind_event_wait_source(repository, owner_boundary=self)
+        with self._lock:
+            if (
+                self._federation_repository is not None
+                and self._federation_repository is not repository
+            ):
+                raise QuackStateServerControlError(
+                    "state owner already has a canonical federation repository"
+                )
+            self._federation_repository = repository
+            if self._outbox_wake is None:
+                self._outbox_wake = StateOwnerOutboxWake()
+            gateway = self._command_gateway
+            if gateway is not None:
+                gateway.bind_commit_observer(self._observe_typed_commit)
+        return repository
+
+    def notify_committed_outbox(self, global_sequence: int) -> bool:
+        """Signal the owner outbox pump after an event/outbox commit."""
+
+        with self._lock:
+            wake = self._outbox_wake
+            lifecycle = self._lifecycle
+        if lifecycle in {ServerLifecycle.STOPPING, ServerLifecycle.STOPPED}:
+            return False
+        if wake is None:
+            raise QuackStateServerControlError(
+                "state-owner outbox wake source is not bound"
+            )
+        return wake.notify_committed(global_sequence)
+
+    def _observe_typed_commit(
+        self,
+        command: Any,
+        manifest: Sequence[tuple[str, Mapping[str, Any]]],
+    ) -> None:
+        """Translate a durable transaction manifest into condition signals."""
+
+        operation = str(command.parameters.get("operation") or "")
+        if operation in {
+            "federation.create",
+            "budget.reserve",
+            "budget.release",
+            "supervisor.register",
+            "supervisor.runtime.attest",
+            "supervisor.transition",
+            "subagent.register",
+            "subagent.slot.reserve",
+            "subagent.slot.release",
+            "subagent.outcome",
+            "subscription.register",
+        }:
+            sequences = [
+                int(bound.get("global_sequence") or 0)
+                for name, bound in manifest
+                if name == "casf_insert_domain_event"
+            ]
+            if sequences:
+                self.notify_committed_outbox(max(sequences))
+        if operation == "event.outbox.disposition":
+            sequences = [
+                int(bound.get("global_sequence") or 0)
+                for name, bound in manifest
+                if name == "casf_mark_outbox_routed"
+            ]
+            if sequences:
+                self.notify_committed_event(max(sequences))
+        if operation == "event.acknowledge":
+            # Acknowledging an older event releases a bounded delivery slot.
+            # Signal the outbox pump by notification generation without
+            # rewinding or inventing an event watermark.
+            sequences = [
+                int(bound.get("global_sequence") or 0)
+                for name, bound in manifest
+                if name == "casf_insert_event_acknowledgement"
+            ]
+            if sequences:
+                self.notify_committed_outbox(max(sequences))
+
+    def start_federation_outbox_worker(
+        self,
+        *,
+        health_deadline_seconds: float = 30.0,
+    ) -> Mapping[str, Any]:
+        """Drain the restart backlog and enter a condition-blocked owner loop."""
+
+        from ..federation.durable_event_router import DurableEventRouter
+
+        deadline = float(health_deadline_seconds)
+        if not 1.0 <= deadline <= 300.0:
+            raise QuackStateServerControlError(
+                "outbox health deadline must be between 1 and 300 seconds"
+            )
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "outbox worker requires a ready state owner"
+                )
+            if self._outbox_thread is not None:
+                if self._outbox_thread.is_alive():
+                    return self.outbox_worker_capability()
+                raise QuackStateServerControlError(
+                    "prior outbox worker exited and requires explicit recovery"
+                )
+            repository = self._federation_repository
+            wake = self._outbox_wake
+            if repository is None or wake is None:
+                raise QuackStateServerControlError(
+                    "outbox worker requires the canonical federation repository"
+                )
+        worker = EventDrivenOutboxWorker(
+            repository,
+            lambda _scope: DurableEventRouter(repository),
+            wake,
+        )
+        # Backlog recovery is bounded and happens before live readiness is
+        # reported for the pump.  Never hold the lifecycle lock across the
+        # typed owner transaction: its post-commit observer acquires that lock.
+        initial = worker.drain_once()
+        with self._lock:
+            if self._outbox_thread is not None:
+                raise QuackStateServerControlError(
+                    "outbox worker was concurrently started"
+                )
+            self._outbox_drain_count = 1
+            self._outbox_worker = worker
+            self._outbox_stop.clear()
+            self._outbox_last_error_type = ""
+
+            def run() -> None:
+                while not self._outbox_stop.is_set():
+                    try:
+                        receipt = worker.wait_and_drain(
+                            deadline_monotonic=time.monotonic() + deadline
+                        )
+                        if receipt is not None:
+                            self._outbox_drain_count += 1
+                    except BaseException as exc:
+                        self._outbox_last_error_type = type(exc).__name__
+                        # Publish the terminal worker observation immediately.
+                        # The owner process and typed gateway can remain alive
+                        # after this thread exits, so process liveness alone is
+                        # not an event-routing health witness.
+                        self._write_status()
+                        return
+
+            thread = threading.Thread(
+                target=run,
+                name="casf-state-owner-outbox",
+                daemon=True,
+            )
+            self._outbox_thread = thread
+            thread.start()
+            result = {
+                "available": bool(thread.is_alive() and not self._outbox_last_error_type),
+                "initial_event_count": initial.event_count,
+                "initial_delivery_count": initial.delivery_count,
+                "watermark": worker.watermark,
+                "thread_alive": thread.is_alive(),
+                "server_owned": True,
+                "polling": False,
+                "last_error_type": self._outbox_last_error_type,
+            }
+        # Startup readiness is not complete until the public owner status
+        # carries the live router-worker observation used by the operator.
+        self._write_status()
+        return MappingProxyType(result)
+
+    def outbox_worker_capability(self) -> Mapping[str, Any]:
+        with self._lock:
+            thread = self._outbox_thread
+            worker = self._outbox_worker
+            wake = self._outbox_wake
+            thread_alive = bool(thread is not None and thread.is_alive())
+            available = bool(thread_alive and not self._outbox_last_error_type)
+            return MappingProxyType(
+                {
+                    "available": available,
+                    "thread_alive": thread_alive,
+                    "server_owned": True,
+                    "polling": False,
+                    "watermark": 0 if worker is None else worker.watermark,
+                    "committed_sequence": (
+                        0 if wake is None else wake.committed_sequence
+                    ),
+                    "wakeup_count": 0 if wake is None else wake.wakeup_count,
+                    "notification_generation": (
+                        0 if wake is None else wake.notification_generation
+                    ),
+                    "drain_count": self._outbox_drain_count,
+                    "last_error_type": self._outbox_last_error_type,
+                }
+            )
+
+    def notify_committed_event(self, global_sequence: int) -> bool:
+        """Wake owner-local consumers after an authoritative commit.
+
+        This hook never writes state or invents an event.  A notification that
+        races shutdown is safely ignored because the durable outbox remains
+        replayable; while READY, absence of the sealed wait source fails
+        closed as a server configuration error.
+        """
+
+        with self._lock:
+            event_wait = self._event_wait
+            lifecycle = self._lifecycle
+        if lifecycle in {ServerLifecycle.STOPPING, ServerLifecycle.STOPPED}:
+            return False
+        if event_wait is None:
+            raise QuackStateServerControlError(
+                "state-owner event wait source is not bound"
+            )
+        event_wait.notify_committed(global_sequence)
+        return True
+
+    def wait_for_events(self, request: EventWaitRequest) -> EventBatch:
+        """Execute one typed bounded wait through the live owner boundary."""
+
+        if not isinstance(request, EventWaitRequest):
+            raise QuackStateServerControlError(
+                "event wait requires EventWaitRequest"
+            )
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "event wait requires a ready state owner"
+                )
+            event_wait = self._event_wait
+            identity = self._identity
+        if event_wait is None:
+            raise QuackStateServerControlError(
+                "state-owner event wait source is not bound"
+            )
+        if identity is None:
+            raise QuackStateServerControlError(
+                "ready state owner has no sealed identity"
+            )
+        # Never hold the server lifecycle lock across a bounded blocking wait.
+        batch = event_wait.wait_for_events(request)
+        if batch.store_generation != identity.generation:
+            raise QuackStateServerControlError(
+                "event wait batch store generation differs from the state owner"
+            )
+        return batch
+
+    def cancel_event_wait(self, consumer_id: str) -> None:
+        """Cancel one consumer without disturbing other blocked consumers."""
+
+        consumer = str(consumer_id or "").strip()
+        if not consumer:
+            raise QuackStateServerControlError("consumer_id is required")
+        with self._lock:
+            event_wait = self._event_wait
+        if event_wait is None:
+            raise QuackStateServerControlError(
+                "state-owner event wait source is not bound"
+            )
+        event_wait.cancel(consumer)
+
+    def clear_event_wait_cancellation(self, consumer_id: str) -> None:
+        """Clear an explicit cancellation before a later consumer wait."""
+
+        consumer = str(consumer_id or "").strip()
+        if not consumer:
+            raise QuackStateServerControlError("consumer_id is required")
+        with self._lock:
+            event_wait = self._event_wait
+        if event_wait is None:
+            raise QuackStateServerControlError(
+                "state-owner event wait source is not bound"
+            )
+        event_wait.clear_cancel(consumer)
+
+    def event_wait_capability(self) -> dict[str, object]:
+        """Return an observation, never an event-driven promotion claim."""
+
+        with self._lock:
+            event_wait = self._event_wait
+        if event_wait is None:
+            return {
+                "interface": "StateOwnerEventWait@1",
+                "available": False,
+                "server_owned": True,
+                "event_driven_qualified": False,
+                "reason": "typed event source is not bound",
+            }
+        capability = dict(event_wait.capability())
+        capability.update(
+            {
+                "available": True,
+                "query_count": event_wait.query_count,
+                "wakeup_count": event_wait.wakeup_count,
+                "notification_generation": event_wait.notification_generation,
+                # Owner-local blocking is real, but remote Quack push remains
+                # unavailable and the program promotion gate remains closed.
+                "event_driven_qualified": False,
+            }
+        )
+        return capability
 
     # -- logging (token-safe) ---------------------------------------------
 
@@ -1314,6 +1859,76 @@ class QuackStateServer:
 
     def stop_control_path(self) -> Path:
         return self.config.state_dir / CONTROL_STOP_FILENAME
+
+    def typed_command_socket_path(self) -> Path:
+        return self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME
+
+    def typed_command_token_path(self) -> Path:
+        return self.config.state_dir / TYPED_STATE_OWNER_TOKEN_FILENAME
+
+    def issue_typed_client_grant(
+        self,
+        *,
+        client_id: str,
+        process_birth_id: str = "",
+        allowed_operations: Sequence[str] = (),
+        allowed_command_operations: Sequence[str] = (),
+        tenant_id: str = "",
+        federation_id: str = "",
+        entity_scopes: Mapping[str, str] | None = None,
+        peer_pid: int | None = None,
+        ttl_seconds: float = 3_600.0,
+    ) -> str:
+        """Mint a bounded grant from owner code, never from a client request."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "client grant issuance requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        token, _grant = gateway.issue_grant(
+            client_id=client_id,
+            process_birth_id=process_birth_id,
+            allowed_operations=allowed_operations,
+            allowed_command_operations=allowed_command_operations,
+            tenant_id=tenant_id,
+            federation_id=federation_id,
+            entity_scopes=entity_scopes,
+            peer_pid=peer_pid,
+            ttl_seconds=ttl_seconds,
+        )
+        return token
+
+    def bind_typed_status_scope(self) -> None:
+        """Bind the persisted status bootstrap to the admitted live slice."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "status scope binding requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        gateway.bind_status_bootstrap_scope()
+
+    def revoke_typed_client_grant(self, grant_id: str) -> None:
+        """Revoke one previously issued grant at the exclusive owner."""
+
+        with self._lock:
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        gateway.revoke_grant(grant_id)
 
     # -- capability + migration -------------------------------------------
 
@@ -1354,7 +1969,7 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        return open_duckdb_connection(self.config.database_path)
+        return open_quack_state_owner_connection(self.config.database_path)
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
@@ -1656,10 +2271,36 @@ class QuackStateServer:
                 )
                 # Ensure transport observation never echoed the token.
                 self._vault.assert_absent_from(public_obs, surface_name="transport.start")
+                # A supervisor must never be able to reuse the HTTP Quack
+                # credential to obtain a generic SQL surface.  Only the owner
+                # retains it after transport startup.
+                self._vault.remove_persisted_copy()
 
                 self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
                 self._identity = identity
+                gateway = TypedStateOwnerGateway(
+                    connection=connection,
+                    socket_path=self.typed_command_socket_path(),
+                    store_id=identity.store_id,
+                    identity=identity.to_dict(),
+                )
+                status_bootstrap_token = gateway.configure_status_bootstrap()
+                gateway.start()
+                self._command_gateway = gateway
+                if self._event_wait is not None:
+                    gateway.bind_event_wait_handlers(
+                        wait=self._gateway_wait_for_events,
+                        cancel=self._gateway_cancel_event_wait,
+                        clear_cancellation=(
+                            self._gateway_clear_event_wait_cancellation
+                        ),
+                    )
+                _atomic_write_text(
+                    self.typed_command_token_path(),
+                    status_bootstrap_token,
+                    mode=0o600,
+                )
                 self._lifecycle = ServerLifecycle.READY
                 self._write_status()
                 self._log(
@@ -1677,6 +2318,23 @@ class QuackStateServer:
                 raise
 
     def _emergency_cleanup(self) -> None:
+        self._outbox_stop.set()
+        if self._outbox_wake is not None:
+            self._outbox_wake.shutdown()
+        if self._outbox_thread is not None:
+            self._outbox_thread.join(timeout=3.0)
+        if self._event_wait is not None:
+            self._event_wait.shutdown()
+        try:
+            if self._command_gateway is not None:
+                self._command_gateway.stop()
+        except Exception:
+            pass
+        self._command_gateway = None
+        try:
+            self.typed_command_token_path().unlink()
+        except FileNotFoundError:
+            pass
         try:
             if self.transport is not None:
                 self.transport.stop(self._connection)
@@ -1716,6 +2374,39 @@ class QuackStateServer:
                 )
             if self._connection is None or self.transport is None or self._vault is None:
                 raise QuackStateServerReadyError("state-owner missing connection/transport")
+            gateway_health = (
+                {} if self._command_gateway is None
+                else self._command_gateway.capability()
+            )
+            if (
+                self._command_gateway is None
+                or gateway_health.get("available") is not True
+                or gateway_health.get("last_observer_error_type")
+            ):
+                raise QuackStateServerReadyError(
+                    "typed owner command gateway is unavailable"
+                )
+            federation_event_path_bound = bool(
+                self._federation_repository is not None
+                or self._outbox_worker is not None
+            )
+            if (
+                federation_event_path_bound
+                and gateway_health.get("commit_observer_bound") is not True
+            ):
+                raise QuackStateServerReadyError(
+                    "federation commit observer is unavailable"
+                )
+            if self._outbox_worker is not None:
+                outbox_health = self.outbox_worker_capability()
+                if (
+                    outbox_health.get("available") is not True
+                    or outbox_health.get("thread_alive") is not True
+                    or outbox_health.get("last_error_type")
+                ):
+                    raise QuackStateServerReadyError(
+                        "state-owner outbox worker is unavailable"
+                    )
 
             identity = self._identity
             token = self._vault.resolve(identity.secret_handle)
@@ -1833,14 +2524,30 @@ class QuackStateServer:
     def stop(self, *, fence_token: str | None = None) -> dict[str, Any]:
         """Stop through the fenced control path and release exclusive ownership."""
 
+        # Stop the pump before taking the lifecycle lock.  It may be finishing
+        # a typed transaction whose post-commit observer briefly needs that
+        # lock; joining while holding it would deadlock shutdown.
+        self._outbox_stop.set()
+        if self._outbox_wake is not None:
+            self._outbox_wake.shutdown()
+        if self._outbox_thread is not None:
+            self._outbox_thread.join(timeout=5.0)
+            if self._outbox_thread.is_alive():
+                raise QuackStateServerControlError(
+                    "outbox worker did not stop within its bounded deadline"
+                )
         with self._lock:
             if self._lifecycle is ServerLifecycle.STOPPED:
                 return {"stopped": True, "already": True}
             if self._lifecycle is ServerLifecycle.CREATED:
+                if self._event_wait is not None:
+                    self._event_wait.shutdown()
                 self._lifecycle = ServerLifecycle.STOPPED
                 return {"stopped": True, "already": True}
 
             self._lifecycle = ServerLifecycle.STOPPING
+            if self._event_wait is not None:
+                self._event_wait.shutdown()
             identity = self._identity
             owner = self._owner
             expected_fence = fence_token
@@ -1862,6 +2569,17 @@ class QuackStateServer:
                     raise QuackStateServerControlError(
                         "stop control server_id does not match live owner"
                     )
+
+            try:
+                if self._command_gateway is not None:
+                    self._command_gateway.stop()
+                    self._command_gateway = None
+                try:
+                    self.typed_command_token_path().unlink()
+                except FileNotFoundError:
+                    pass
+            except Exception as exc:
+                self._log(f"typed command gateway stop warning: {type(exc).__name__}")
 
             try:
                 if self.transport is not None:
@@ -1955,6 +2673,18 @@ class QuackStateServer:
                 ),
                 "owner_marker_path": str(self.owner_marker_path()),
                 "status_path": str(self.status_path()),
+                "event_wait": self.event_wait_capability(),
+                "outbox_worker": dict(self.outbox_worker_capability()),
+                "typed_command_gateway": (
+                    self._command_gateway.capability()
+                    if self._command_gateway is not None
+                    else {
+                        "interface": "TypedStateOwnerCommandGateway@1",
+                        "available": False,
+                        "server_owned": True,
+                        "raw_sql_permitted": False,
+                    }
+                ),
             }
             token = None
             if self._vault is not None:
@@ -2100,6 +2830,7 @@ def build_server(
     connection_factory: Callable[[Path], Any] | None = None,
     process_birth_factory: Callable[[], ProcessBirthIdentity] | None = None,
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
+    event_source: EventSource | None = None,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`."""
 
@@ -2114,7 +2845,7 @@ def build_server(
         remote_bind_policy=remote_bind_policy,
         secret_handle=secret_handle,
     )
-    return QuackStateServer(
+    server = QuackStateServer(
         config=config,
         transport=transport,
         capability_probe=capability_probe,
@@ -2123,6 +2854,9 @@ def build_server(
         process_birth_factory=process_birth_factory,
         owner_liveness_probe=owner_liveness_probe,
     )
+    if event_source is not None:
+        server.bind_event_source(event_source)
+    return server
 
 
 __all__ = (

@@ -13,16 +13,20 @@ Transport modes:
 
 * ``embedded`` — open ``control.duckdb`` through the existing exclusive-lock
   helper (hermetic tests and single-process tooling);
-* ``quack`` — ``ATTACH`` a loopback Quack URI when the extension is available.
+* ``quack`` — connect to the loopback owner's typed Unix-socket command
+  gateway; generic SQL ``ATTACH`` is intentionally unavailable to clients.
 
 Transaction, CAS, fence, generation, and idempotency semantics live in
 ``control_plane_transactions.StateTransaction``.
 """
 
+# Python 3.8 compatibility requires ``str, Enum`` rather than ``StrEnum``.
+# ruff: noqa: UP042
+
 from __future__ import annotations
 
+import base64
 import hashlib
-import json
 import re
 import threading
 import time
@@ -34,6 +38,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
+from ..federation.event_wait import (
+    AdaptiveLongPollEventWaitClient,
+    EventSource,
+    EventWaitError,
+)
+from ..federation.events import EventBatch, EventWaitRequest
 from .control_plane_contracts import (
     CommandKind,
     CommandOutcome,
@@ -52,8 +62,8 @@ from .control_plane_transactions import (
     IdempotencyConflictError,
     OptimisticConflictError,
     RetryPolicy,
-    StateTransaction,
     StaleGenerationError,
+    StateTransaction,
     TransactionConflictKind,
     TransactionError,
     TransientTransactionError,
@@ -61,6 +71,10 @@ from .control_plane_transactions import (
     run_with_retry,
 )
 from .duckdb_state import open_duckdb_connection
+from .typed_state_owner import (
+    TypedStateOwnerError,
+    open_typed_state_owner_connection,
+)
 
 QUACK_STATE_CLIENT_INTERFACE: Final = "QuackStateClient@1"
 QUACK_STATE_CLIENT_SCHEMA: Final = (
@@ -91,6 +105,43 @@ _FORBIDDEN_SQL_FRAGMENT_RE: Final = re.compile(
     r"['\"]/|['\"]\.\./",
     re.IGNORECASE,
 )
+
+
+def _schema_fingerprint_digest(value: str) -> str:
+    """Return the SHA-256 identity carried by a canonical schema CID.
+
+    Migration metadata stores the canonical DAG-JSON CID, while the closed
+    control-plane store identity contract admits digest strings.  The state
+    owner performs the same lossless conversion before publishing identity;
+    attached clients must compare that digest instead of an unrelated
+    fallback derived from store coordinates.
+    """
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.startswith("sha256:"):
+        digest = text.removeprefix("sha256:")
+        if len(digest) == 64:
+            try:
+                bytes.fromhex(digest)
+            except ValueError:
+                pass
+            else:
+                return f"sha256:{digest.lower()}"
+    if text.startswith("b"):
+        try:
+            encoded = text[1:].upper()
+            encoded += "=" * ((8 - len(encoded) % 8) % 8)
+            raw = base64.b32decode(encoded)
+        except (ValueError, TypeError):
+            raw = b""
+        dag_json_sha256_prefix = b"\x01\xa9\x02\x12\x20"
+        if raw.startswith(dag_json_sha256_prefix) and len(raw) == (
+            len(dag_json_sha256_prefix) + 32
+        ):
+            return f"sha256:{raw[len(dag_json_sha256_prefix):].hex()}"
+    return ""
 
 
 class QuackClientError(ControlPlaneContractError):
@@ -427,6 +478,35 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.QUERY,
             description="Count tasks",
         ),
+        "list_ready_task_aliases": StatementTemplate(
+            name="list_ready_task_aliases",
+            sql=(
+                "SELECT t.task_alias FROM tasks AS t "
+                "WHERE lower(t.status) IN ('admitted','pending','proposed','queued',"
+                "'ready','retrying','todo','unstarted') "
+                "AND NOT EXISTS ("
+                "SELECT 1 FROM task_dependencies AS d "
+                "JOIN tasks AS prerequisite "
+                "ON prerequisite.task_cid = d.dependency_task_cid "
+                "WHERE d.task_cid = t.task_cid "
+                "AND lower(prerequisite.status) NOT IN "
+                "('complete','completed','done','skipped')"
+                ") ORDER BY t.ordinal ASC, t.task_cid ASC LIMIT 500"
+            ),
+            parameter_names=(),
+            kind=StatementKind.QUERY,
+            description="Bounded configured-board ready frontier",
+        ),
+        "max_event_watermark": StatementTemplate(
+            name="max_event_watermark",
+            sql=(
+                "SELECT COALESCE(MAX(global_sequence), 0) AS event_watermark "
+                "FROM domain_events"
+            ),
+            parameter_names=(),
+            kind=StatementKind.QUERY,
+            description="Latest authoritative domain-event watermark",
+        ),
     }
 
 
@@ -648,6 +728,18 @@ class _ConnectionAdapter:
             return self._connection.execute(sql)
         return self._connection.execute(sql, parameters)
 
+    def execute_operation(
+        self,
+        operation: str,
+        parameters: Sequence[Any] | None = None,
+    ) -> Any:
+        execute = getattr(self._connection, "execute_operation", None)
+        if callable(execute):
+            return execute(operation, parameters)
+        # Native/embedded connections intentionally stay on the existing SQL
+        # path. The caller supplies the trusted template object separately.
+        raise AttributeError("connection has no typed owner operation surface")
+
     def commit(self) -> None:
         commit = getattr(self._connection, "commit", None)
         if callable(commit):
@@ -723,12 +815,18 @@ class QuackStateClient:
         self._templates: dict[str, StatementTemplate] = dict(
             templates or DEFAULT_STATEMENT_TEMPLATES
         )
+        self._templates_sealed = False
         self._lock = threading.RLock()
         self._endpoint: QuackEndpoint | None = None
         self._adapter: _ConnectionAdapter | None = None
         self._session: ClientSession | None = None
         self._store_generation: StoreGeneration | None = None
         self._closed = False
+        self._event_wait_source: EventSource | None = None
+        self._event_wait_owner_boundary: Any | None = None
+        self._event_wait_minimum_interval_seconds = 0.25
+        self._event_wait_maximum_interval_seconds = 5.0
+        self._event_wait_backoff_multiplier = 2.0
 
     @property
     def attached(self) -> bool:
@@ -757,7 +855,311 @@ class QuackStateClient:
         if not isinstance(template, StatementTemplate):
             raise QuackClientSQLError("template must be a StatementTemplate")
         with self._lock:
+            if self._templates_sealed:
+                raise QuackClientSQLError(
+                    "statement template catalog is sealed for this client"
+                )
             self._templates[template.name] = template
+
+    def seal_templates(self) -> tuple[str, ...]:
+        """Prevent runtime enlargement of the named statement catalog.
+
+        Federation state-owner facades call this after installing their closed,
+        trusted templates.  The method is monotonic and idempotent; it never
+        removes an existing template or changes SQL text.
+        """
+
+        with self._lock:
+            self._templates_sealed = True
+            return tuple(sorted(self._templates))
+
+    @property
+    def templates_sealed(self) -> bool:
+        with self._lock:
+            return bool(self._templates_sealed)
+
+    # ------------------------------------------------------------------
+    # Typed event wait boundary
+    # ------------------------------------------------------------------
+
+    def bind_event_wait_source(
+        self,
+        source: EventSource,
+        *,
+        owner_boundary: Any | None = None,
+        minimum_interval_seconds: float = 0.25,
+        maximum_interval_seconds: float = 5.0,
+        backoff_multiplier: float = 2.0,
+    ) -> Mapping[str, object]:
+        """Bind a closed event source and optional owner-local wait service.
+
+        ``owner_boundary`` is normally :class:`QuackStateServer` in the state
+        owner process and provides the real shared condition.  A remote Quack
+        client cannot receive server push with the current extension; without
+        that boundary this method enables only the bounded, backing-off,
+        explicitly unqualified compatibility path.
+        """
+
+        if not callable(getattr(source, "events_for_subscription", None)) or not callable(
+            getattr(source, "store_generation", None)
+        ):
+            raise QuackClientError(
+                "event source must expose the closed subscription and generation interfaces"
+            )
+        if owner_boundary is not None:
+            if not callable(getattr(owner_boundary, "wait_for_events", None)) or not callable(
+                getattr(owner_boundary, "event_wait_capability", None)
+            ):
+                raise QuackClientError(
+                    "owner event boundary does not expose the typed wait interface"
+                )
+        try:
+            minimum = float(minimum_interval_seconds)
+            maximum = float(maximum_interval_seconds)
+            multiplier = float(backoff_multiplier)
+            # Reuse the compatibility implementation's closed bound checks.
+            AdaptiveLongPollEventWaitClient(
+                lambda request: self._fetch_event_batch(source, request),
+                minimum_interval_seconds=minimum,
+                maximum_interval_seconds=maximum,
+                backoff_multiplier=multiplier,
+            )
+        except (TypeError, ValueError, EventWaitError) as exc:
+            raise QuackClientError("adaptive event wait bounds are invalid") from exc
+        with self._lock:
+            if not self.attached:
+                raise QuackClientError(
+                    "event wait source requires an attached state client"
+                )
+            if self._event_wait_source is not None and self._event_wait_source is not source:
+                raise QuackClientError(
+                    "event wait source is already bound for this client session"
+                )
+            if (
+                self._event_wait_owner_boundary is not None
+                and self._event_wait_owner_boundary is not owner_boundary
+            ):
+                raise QuackClientError(
+                    "event wait owner boundary is already bound for this client session"
+                )
+            self._event_wait_source = source
+            self._event_wait_owner_boundary = owner_boundary
+            self._event_wait_minimum_interval_seconds = minimum
+            self._event_wait_maximum_interval_seconds = maximum
+            self._event_wait_backoff_multiplier = multiplier
+        return MappingProxyType(self.event_wait_capability())
+
+    def clear_event_wait_binding(self) -> None:
+        """Release client-side references without changing owner state."""
+
+        with self._lock:
+            self._event_wait_source = None
+            self._event_wait_owner_boundary = None
+
+    def _fetch_event_batch(
+        self,
+        source: EventSource,
+        request: EventWaitRequest,
+    ) -> EventBatch:
+        events = source.events_for_subscription(
+            consumer_id=request.consumer_id,
+            subscription_id=request.subscription_id,
+            subscription_revision=request.subscription_revision,
+            after_cursor=request.after_cursor,
+            maximum_events=request.maximum_events,
+        )
+        return EventBatch(
+            consumer_id=request.consumer_id,
+            subscription_id=request.subscription_id,
+            subscription_revision=request.subscription_revision,
+            after_cursor=request.after_cursor,
+            next_cursor=(events[-1].global_sequence if events else request.after_cursor),
+            store_generation=source.store_generation(),
+            events=events,
+            timed_out=False,
+            cancelled=False,
+            server_shutdown=False,
+        )
+
+    @staticmethod
+    def _validate_event_batch(
+        request: EventWaitRequest,
+        batch: EventBatch,
+        *,
+        expected_store_generation: int,
+    ) -> EventBatch:
+        if not isinstance(batch, EventBatch):
+            raise QuackClientError("event wait boundary returned an untyped batch")
+        if (
+            batch.consumer_id != request.consumer_id
+            or batch.subscription_id != request.subscription_id
+            or batch.subscription_revision != request.subscription_revision
+            or batch.after_cursor != request.after_cursor
+            or len(batch.events) > request.maximum_events
+            or batch.store_generation != expected_store_generation
+        ):
+            raise QuackClientIdentityError(
+                "event wait batch differs from the bounded request identity"
+            )
+        return batch
+
+    def wait_for_events(self, request: EventWaitRequest) -> EventBatch:
+        """Wait through the owner condition or explicit adaptive fallback."""
+
+        if not isinstance(request, EventWaitRequest):
+            raise QuackClientError("event wait requires EventWaitRequest")
+        with self._lock:
+            session = self._require_session()
+            adapter = self._require_adapter()
+            source = self._event_wait_source
+            owner_boundary = self._event_wait_owner_boundary
+            minimum = self._event_wait_minimum_interval_seconds
+            maximum = self._event_wait_maximum_interval_seconds
+            multiplier = self._event_wait_backoff_multiplier
+        remote_wait = getattr(adapter.raw, "wait_for_events", None)
+        if (
+            session.transport_mode is TransportMode.QUACK
+            and callable(remote_wait)
+            and bool(getattr(adapter.raw, "supports_event_wait", False))
+        ):
+            return self._validate_event_batch(
+                request,
+                remote_wait(request),
+                expected_store_generation=session.generation,
+            )
+        if source is None:
+            raise QuackClientError("typed event wait source is not bound")
+        if owner_boundary is not None:
+            return self._validate_event_batch(
+                request,
+                owner_boundary.wait_for_events(request),
+                expected_store_generation=session.generation,
+            )
+        if session.transport_mode is not TransportMode.QUACK:
+            raise QuackClientError(
+                "embedded event waits require the server-owned condition boundary"
+            )
+        compatibility = AdaptiveLongPollEventWaitClient(
+            lambda candidate: self._fetch_event_batch(source, candidate),
+            minimum_interval_seconds=minimum,
+            maximum_interval_seconds=maximum,
+            backoff_multiplier=multiplier,
+        )
+        return self._validate_event_batch(
+            request,
+            compatibility.wait_for_events(request),
+            expected_store_generation=session.generation,
+        )
+
+    def cancel_event_wait(self, consumer_id: str) -> None:
+        """Cancel through the owner boundary; adaptive fallback has no push."""
+
+        consumer = str(consumer_id or "").strip()
+        if not consumer:
+            raise QuackClientError("consumer_id is required")
+        with self._lock:
+            adapter = self._adapter
+            owner_boundary = self._event_wait_owner_boundary
+        cancel = getattr(owner_boundary, "cancel_event_wait", None)
+        if not callable(cancel) and adapter is not None:
+            remote_cancel = getattr(adapter.raw, "cancel_event_wait", None)
+            if callable(remote_cancel) and bool(
+                getattr(adapter.raw, "supports_event_wait", False)
+            ):
+                remote_cancel(consumer)
+                return
+        if not callable(cancel):
+            raise QuackClientError(
+                "remote adaptive event wait cancellation is unavailable"
+            )
+        cancel(consumer)
+
+    def clear_event_wait_cancellation(self, consumer_id: str) -> None:
+        """Clear an owner-side cancellation before a later wait."""
+
+        consumer = str(consumer_id or "").strip()
+        if not consumer:
+            raise QuackClientError("consumer_id is required")
+        with self._lock:
+            adapter = self._adapter
+            owner_boundary = self._event_wait_owner_boundary
+        clear = getattr(owner_boundary, "clear_event_wait_cancellation", None)
+        if not callable(clear) and adapter is not None:
+            remote_clear = getattr(
+                adapter.raw,
+                "clear_event_wait_cancellation",
+                None,
+            )
+            if callable(remote_clear) and bool(
+                getattr(adapter.raw, "supports_event_wait", False)
+            ):
+                remote_clear(consumer)
+                return
+        if not callable(clear):
+            raise QuackClientError(
+                "remote adaptive event wait cancellation is unavailable"
+            )
+        clear(consumer)
+
+    def event_wait_capability(self) -> dict[str, object]:
+        """Describe the selected wait path without claiming promotion."""
+
+        with self._lock:
+            source = self._event_wait_source
+            owner_boundary = self._event_wait_owner_boundary
+            session = self._session
+            adapter = self._adapter
+        if (
+            session is not None
+            and session.transport_mode is TransportMode.QUACK
+            and adapter is not None
+            and callable(getattr(adapter.raw, "wait_for_events", None))
+            and bool(getattr(adapter.raw, "supports_event_wait", False))
+        ):
+            return {
+                "available": True,
+                "interface": "TypedStateOwnerEventWait@1",
+                "client_interface": "QuackStateClientEventWait@1",
+                "transport": "typed_state_owner_bounded_long_wait",
+                "server_owned": True,
+                "blocking_condition": True,
+                "adaptive_polling": False,
+                "event_driven_qualified": True,
+            }
+        if source is None:
+            return {
+                "available": False,
+                "interface": "QuackStateClientEventWait@1",
+                "event_driven_qualified": False,
+                "reason": "typed event source is not bound",
+            }
+        if owner_boundary is not None:
+            capability = dict(owner_boundary.event_wait_capability())
+            capability.update(
+                {
+                    "client_interface": "QuackStateClientEventWait@1",
+                    "transport": "owner_local_condition",
+                    "event_driven_qualified": False,
+                }
+            )
+            return capability
+        if session is not None and session.transport_mode is TransportMode.QUACK:
+            capability = dict(AdaptiveLongPollEventWaitClient.capability())
+            capability.update(
+                {
+                    "available": True,
+                    "client_interface": "QuackStateClientEventWait@1",
+                    "transport": "quack_adaptive_long_poll",
+                    "event_driven_qualified": False,
+                }
+            )
+            return capability
+        return {
+            "available": False,
+            "interface": "QuackStateClientEventWait@1",
+            "event_driven_qualified": False,
+            "reason": "embedded mode requires an owner-local wait boundary",
+        }
 
     def attach(
         self,
@@ -792,6 +1194,29 @@ class QuackStateClient:
                 )
             adapter = self._open_connection(endpoint)
             try:
+                if endpoint.mode is TransportMode.QUACK:
+                    owner_identity = getattr(adapter.raw, "identity", None)
+                    observed_server_id = (
+                        str(owner_identity.get("server_id") or "")
+                        if isinstance(owner_identity, Mapping)
+                        else ""
+                    )
+                    if (
+                        not observed_server_id
+                        and self._connection_factory is not None
+                    ):
+                        # Hermetic tests may inject an in-memory DB-API object;
+                        # it is never the default Quack authority path.
+                        observed_server_id = str(server_id or "")
+                    if not observed_server_id:
+                        raise QuackClientIdentityError(
+                            "typed state-owner handshake returned no server identity"
+                        )
+                    if server_id not in {"", "server:local", observed_server_id}:
+                        raise QuackClientIdentityError(
+                            "requested server identity differs from the typed owner"
+                        )
+                    server_id = observed_server_id
                 if seed_generation:
                     self._seed_generation_if_missing(adapter)
                 generation = self._load_generation(adapter)
@@ -799,26 +1224,31 @@ class QuackStateClient:
                 expected = expected_identity or self.expected_identity
                 if expected is not None:
                     self._verify_identity(expected, identity, generation)
-                session_id = _new_session_id()
-                attached_at = self._clock()
-                self._execute_template(
-                    adapter,
-                    "seed_client_session",
-                    {
-                        "session_id": session_id,
-                        "server_id": server_id,
-                        "owner_id": self.owner_id,
-                        "process_birth_id": self.process_birth_id,
-                        "attached_at": attached_at,
-                        "last_seen_at": attached_at,
-                        "fence_epoch": generation.fence_epoch,
-                        "generation": generation.generation,
-                        "status": "attached",
-                        "revision": 0,
-                    },
+                owner_session_id = str(
+                    getattr(adapter.raw, "session_id", "") or ""
                 )
-                # Best-effort commit for session row when using explicit tx APIs.
-                adapter.commit()
+                session_id = owner_session_id or _new_session_id()
+                attached_at = self._clock()
+                if not owner_session_id:
+                    self._execute_template(
+                        adapter,
+                        "seed_client_session",
+                        {
+                            "session_id": session_id,
+                            "server_id": server_id,
+                            "owner_id": self.owner_id,
+                            "process_birth_id": self.process_birth_id,
+                            "attached_at": attached_at,
+                            "last_seen_at": attached_at,
+                            "fence_epoch": generation.fence_epoch,
+                            "generation": generation.generation,
+                            "status": "attached",
+                            "revision": 0,
+                        },
+                    )
+                    # Embedded/test adapters retain their existing session
+                    # registration path. Quack sessions are server-issued.
+                    adapter.commit()
                 session = ClientSession(
                     session_id=session_id,
                     server_id=server_id,
@@ -855,8 +1285,9 @@ class QuackStateClient:
         with self._lock:
             self._closed = True
         self.detach()
+        self.clear_event_wait_binding()
 
-    def __enter__(self) -> "QuackStateClient":
+    def __enter__(self) -> QuackStateClient:
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -1021,6 +1452,9 @@ class QuackStateClient:
                     now_iso=self._clock,
                 )
                 try:
+                    prepare = getattr(adapter.raw, "prepare_command", None)
+                    if callable(prepare):
+                        prepare(active)
                     result = txn.execute_command(active, apply=apply_fn)
                 except OptimisticConflictError as exc:
                     return CASResult(
@@ -1133,6 +1567,7 @@ class QuackStateClient:
             idempotency_key=idempotency_key,
             authority_class=StateAuthorityClass.AUTHORITATIVE,
             parameters={
+                "operation": "task.status.cas",
                 "task_cid": task_cid,
                 "expected_task_revision": expected_task_revision,
                 "status": new_status,
@@ -1177,33 +1612,20 @@ class QuackStateClient:
                 "non-loopback Quack bind requires a separately reviewed policy"
             )
         try:
-            import duckdb
-        except ImportError as exc:
-            raise QuackClientTransportError(
-                "DuckDB is required for Quack transport"
-            ) from exc
-        try:
-            connection = duckdb.connect(":memory:")
-            # LOAD is local-only; network INSTALL is never implicit here.
-            try:
-                connection.execute("LOAD quack")
-            except Exception as load_exc:
-                raise QuackClientTransportError(
-                    "Quack extension is not loadable in this process"
-                ) from load_exc
-            # ATTACH uses a fixed SQL shape; the URI is a bound parameter value
-            # only when the engine supports it. DuckDB ATTACH takes a literal,
-            # so we validate the URI strictly before interpolation.
-            safe_uri = self._validated_quack_uri_literal(uri)
-            connection.execute(f"ATTACH '{safe_uri}' AS control_plane (READ_WRITE)")
-            # Subsequent statements run against the attached alias by setting path.
-            connection.execute("USE control_plane")
+            # The Quack state owner exposes a closed server-side operation
+            # catalog over its authenticated local command socket.  Clients do
+            # not receive a generic READ_WRITE ATTACH and cannot submit SQL.
+            connection = open_typed_state_owner_connection(
+                store_id=self.store_id,
+                client_id=self.owner_id,
+                process_birth_id=self.process_birth_id,
+                timeout_seconds=self.connect_timeout_seconds,
+            )
             return _ConnectionAdapter(connection)
-        except QuackClientError:
-            raise
-        except Exception as exc:
+        except (OSError, TypedStateOwnerError) as exc:
             raise QuackClientTransportError(
-                f"failed to attach Quack endpoint: {exc}"
+                "failed to attach the typed Quack state-owner boundary "
+                f"({type(exc).__name__})"
             ) from exc
 
     @staticmethod
@@ -1239,7 +1661,11 @@ class QuackStateClient:
         template = self.get_template(template_name)
         bound = template.bind(parameters)
         try:
-            result = adapter.execute(template.sql, bound if bound else None)
+            execute_operation = getattr(adapter.raw, "execute_operation", None)
+            if callable(execute_operation):
+                result = execute_operation(template.name, bound)
+            else:
+                result = adapter.execute(template.sql, bound if bound else None)
         except QuackClientError:
             raise
         except Exception as exc:
@@ -1283,12 +1709,22 @@ class QuackStateClient:
             for item in self._execute_template(adapter, "whoami_metadata", None)
         }
         database_uuid = str(meta.get("database_uuid") or str(uuid.uuid4()))
+        try:
+            schema_revision = int(meta.get("schema_version") or 1)
+        except (TypeError, ValueError) as exc:
+            raise QuackClientIdentityError(
+                "control-plane schema_version metadata is not an integer"
+            ) from exc
+        if schema_revision < 1:
+            raise QuackClientIdentityError(
+                "control-plane schema_version metadata must be positive"
+            )
         self._execute_template(
             adapter,
             "seed_store_generation",
             {
                 "generation": 1,
-                "schema_revision": 1,
+                "schema_revision": schema_revision,
                 "fence_epoch": 1,
                 "revision": 0,
                 "database_uuid": database_uuid,
@@ -1305,8 +1741,10 @@ class QuackStateClient:
     ) -> ControlPlaneStoreIdentity:
         meta_rows = self._execute_template(adapter, "whoami_metadata", None)
         meta = {str(row["key"]): str(row["value"]) for row in meta_rows}
-        schema_fingerprint = str(meta.get("schema_fingerprint") or "")
-        if not schema_fingerprint.startswith("sha256:"):
+        schema_fingerprint = _schema_fingerprint_digest(
+            str(meta.get("schema_fingerprint") or "")
+        )
+        if not schema_fingerprint:
             # Derive a stable fingerprint from available identity material so
             # hermetic stores without migration metadata still verify.
             material = {
